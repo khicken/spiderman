@@ -76,20 +76,6 @@ export function arrowGeometry() {
   return new THREE.ConeGeometry(0.35, 1.1, 10).rotateX(Math.PI / 2);
 }
 
-export function thugGeometries() {
-  return {
-    torso: new THREE.CylinderGeometry(0.27, 0.2, 0.62, 10).scale(1, 1, 0.62).translate(0, 0.31, 0),
-    head: new THREE.SphereGeometry(0.14, 10, 8).scale(1, 1.12, 1.05),
-    beanie: merge([
-      new THREE.SphereGeometry(0.153, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.03, 0),
-      new THREE.CylinderGeometry(0.158, 0.158, 0.07, 10).translate(0, 0.02, 0),
-    ]),
-    leg: new THREE.CapsuleGeometry(0.1, 0.72, 3, 8).translate(0, -0.46, 0),
-    arm: new THREE.CapsuleGeometry(0.075, 0.5, 3, 8).translate(0, -0.29, 0),
-    cocoon: new THREE.IcosahedronGeometry(1, 1),
-  };
-}
-
 export function carGeometries() {
   const parts = [
     box(1.9, 0.62, 4.5, 0, 0.62, 0, "#ffffff"),

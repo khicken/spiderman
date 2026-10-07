@@ -1,48 +1,31 @@
 import * as THREE from "three";
 import { BLOCKS, HALF, PERIOD, STREET, rng, type Box, type City } from "./city";
+import type { GameEvent, HudState, Marker, Objective } from "./contracts";
+import type { Combat, EnemyKind } from "./combat";
+import { BOSSES, bossArena, type BossName } from "./bosses";
 import * as M from "./missions-models";
 
-export type MissionEvent =
-  | { type: "sfx"; name: "collect" | "checkpoint" | "hit" | "ko" | "complete" | "fail" | "start" | "levelUp" | "countdown" | "go" | "siren" }
-  | { type: "toast"; title: string; text?: string }
-  | { type: "xp"; amount: number; reason: string }
-  | { type: "shake"; strength: number };
-export type Marker = { x: number; z: number; kind: "race" | "crime" | "chase" | "collectible" | "checkpoint" | "enemy" };
-export type MissionHud = {
-  xp: number;
-  level: number;
-  levelProgress: number;
-  activity: null | { title: string; objective: string; timer?: number; progress?: string; medal?: string };
-  collected: number;
-  totalCollectibles: number;
-  completed: { races: number; crimes: number; chases: number };
-  markers: Marker[];
-  nearPrompt?: string;
-  combo?: number;
-};
 type Player = { pos: THREE.Vector3; vel: THREE.Vector3; mode: string; camera: THREE.Camera };
+export type MissionHud = Pick<HudState, "objective" | "markers" | "progress" | "prompts" | "combo"> & { race: boolean; xp: number };
 
 const G = 24;
 const COLLECTIBLES = 30;
-const SLOTS = 3;
-const CREW = 6;
-const MAX_THUGS = SLOTS * CREW;
-const CAR_COCOON = MAX_THUGS;
-const LINES_PER_THUG = 3;
+const SLOTS = 2;
 const CAR_LINES = 8;
-const LINES = MAX_THUGS * LINES_PER_THUG + CAR_LINES;
 const SPARKS = 120;
 const BEAM_RACE = 0;
 const BEAM_CRIME = 6;
-const BEAM_CHASE = 12;
-const BEAM_NEXT = 14;
-const BEAMS = 15;
+const BEAM_CHASE = 10;
+const BEAM_NEXT = 12;
+const BEAM_HIDEOUT = 13;
+const BEAM_BOSS = 17;
+const BEAMS = 23;
 const CHASE_HITS = 3;
 const SIDEWALK = STREET / 2 + 1.5;
 const XP_ITEM = 100;
-const XP_TAKEDOWN = 25;
 const XP_CRIME = 250;
 const XP_CHASE = 400;
+const XP_HIDEOUT = 600;
 const MEDALS = ["GOLD", "SILVER", "BRONZE"] as const;
 const MEDAL_XP = [600, 400, 250, 100];
 const RACES = [
@@ -50,20 +33,24 @@ const RACES = [
   { name: "Harlem Hustle", i: 3, j: 2, di: 1, dj: 0, rings: 13 },
   { name: "Skyline Sprint", i: 11, j: 6, di: 0, dj: -1, rings: 14 },
 ];
-const CRIMES = [
-  { name: "Car theft", roof: false, min: 3, max: 4, car: true },
-  { name: "Robbery", roof: false, min: 3, max: 5, car: false },
-  { name: "Armed thugs on a rooftop", roof: true, min: 4, max: 6, car: false },
+const CRIMES: { name: string; text: string; kind: EnemyKind; min: number; max: number; mix: Partial<Record<EnemyKind, number>>; roof: boolean; car: boolean }[] = [
+  { name: "Mugging", text: "Stop the muggers", kind: "thug", min: 2, max: 4, mix: {}, roof: false, car: false },
+  { name: "Store robbery", text: "Armed robbers. Web the gunmen", kind: "gunner", min: 2, max: 2, mix: { thug: 2 }, roof: false, car: false },
+  { name: "Rooftop snipers", text: "Take out the sniper squad", kind: "sniper", min: 2, max: 3, mix: { thug: 1, rocket: 1 }, roof: true, car: false },
+  { name: "Car theft", text: "Stop the car thieves", kind: "thug", min: 2, max: 3, mix: { shield: 1 }, roof: false, car: true },
 ];
-const JACKETS = ["#2b2f3a", "#6a1f1f", "#2f4a2a", "#3a3d6b", "#6b4a1f", "#4a4a4a", "#5b2a5e"];
-const BEANIES = ["#c62828", "#1d1d1f", "#1565c0", "#f9a825", "#2e7d32", "#e0e0e0"];
-const SKINS = ["#e0b89a", "#a36f4f", "#6b4430", "#c99476"];
+const WAVES: { kind: EnemyKind; n: number; mix: Partial<Record<EnemyKind, number>> }[] = [
+  { kind: "thug", n: 4, mix: {} },
+  { kind: "thug", n: 2, mix: { shield: 1, gunner: 1 } },
+  { kind: "brute", n: 1, mix: { thug: 2, rocket: 1 } },
+];
+const BOSS_ORDER: BossName[] = ["kingpin", "shocker", "vulture"];
 const PAINT = ["#b01c1c", "#f2f2f2", "#2a4f8f", "#e3b81f", "#7d8288"];
 
-type ThugState = "idle" | "alert" | "punch" | "flee" | "flying" | "down";
-type Thug = { active: boolean; state: ThugState; pos: THREE.Vector3; vel: THREE.Vector3; yaw: number; tilt: number; phase: number; punchT: number; coward: boolean; fled: boolean };
-type Crime = { state: "empty" | "active" | "cleared"; kind: number; center: THREE.Vector3; ground: number; count: number; noticed: boolean; near: Box[]; roof: Box | null; respawnAt: number };
+type Crime = { state: "empty" | "active"; kind: number; center: THREE.Vector3; group: number; noticed: boolean; respawnAt: number; farT: number };
 type Race = { name: string; start: THREE.Vector3; rings: THREE.Vector3[]; quats: THREE.Quaternion[]; times: number[]; limit: number; best: number; done: boolean };
+type Hideout = { pos: THREE.Vector3; state: "idle" | "active" | "done"; wave: number; group: number; waitT: number };
+type BossSlot = { name: BossName; pos: THREE.Vector3; state: "locked" | "open" | "active" | "done"; id: number };
 
 const lineAt = (k: number) => -HALF + k * PERIOD;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -71,8 +58,12 @@ const inBox = (b: Box, x: number, z: number, m = 0) => x > b.minX - m && x < b.m
 const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 const turn = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * Math.min(1, k);
 const levelNeed = (level: number) => 300 + 200 * level;
+const district = (x: number, z: number) => {
+  const j = Math.floor((z + HALF) / PERIOD);
+  return j <= 1 ? "Harlem" : j <= 5 ? "Upper Manhattan" : j <= 10 ? "Midtown" : "Downtown";
+};
 
-export function createMissions(scene: THREE.Scene, city: City) {
+export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const r = rng(4242);
   const group = new THREE.Group();
   group.name = "missions";
@@ -85,7 +76,6 @@ export function createMissions(scene: THREE.Scene, city: City) {
   const _m2 = new THREE.Matrix4();
   const _m3 = new THREE.Matrix4();
   const _root = new THREE.Matrix4();
-  const _torso = new THREE.Matrix4();
   const _e = new THREE.Euler();
   const _q = new THREE.Quaternion();
   const _s = new THREE.Vector3();
@@ -119,23 +109,15 @@ export function createMissions(scene: THREE.Scene, city: City) {
   const rings = inst(M.ringGeometry(), M.glowMaterial(false), 14, true);
   const arrow = inst(M.arrowGeometry(), M.glowMaterial(false), 1, true);
   setColor(arrow, 0, 0.5, 1.6, 4);
-  const tg = M.thugGeometries();
-  const lit = (color: string, rough = 0.8) => new THREE.MeshStandardMaterial({ color, roughness: rough });
-  const torsos = inst(tg.torso, lit("#ffffff"), MAX_THUGS, true);
-  const heads = inst(tg.head, lit("#ffffff", 0.6), MAX_THUGS, true);
-  const beanies = inst(tg.beanie, lit("#ffffff", 0.9), MAX_THUGS, true);
-  const legs = inst(tg.leg, lit("#24262c"), MAX_THUGS * 2);
-  const arms = inst(tg.arm, lit("#ffffff"), MAX_THUGS * 2, true);
-  const cocoons = inst(tg.cocoon, new THREE.MeshStandardMaterial({ color: "#f4f6fb", roughness: 0.55, emissive: "#9aa4b8", emissiveIntensity: 0.35, flatShading: true }), MAX_THUGS + 1);
-  for (const m of [torsos, heads, beanies, legs, arms, cocoons]) m.castShadow = true;
+  const cocoons = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: "#f4f6fb", roughness: 0.55, emissive: "#9aa4b8", emissiveIntensity: 0.35, flatShading: true }), 1);
   const cg = M.carGeometries();
   const cars = inst(cg.body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.6 }), 1 + SLOTS, true);
   cars.castShadow = true;
   const carLights = inst(cg.lights, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), 1 + SLOTS);
   const hazards = inst(cg.hazards, new THREE.MeshBasicMaterial({ color: new THREE.Color("#ff9a1a").multiplyScalar(6), toneMapped: false }), 1 + SLOTS);
-  const meshes = [packs, halos, beams, bases, rings, arrow, torsos, heads, beanies, legs, arms, cocoons, cars, carLights, hazards];
+  const meshes = [packs, halos, beams, bases, rings, arrow, cocoons, cars, carLights, hazards];
 
-  const linePos = new Float32Array(LINES * 6).fill(-9999);
+  const linePos = new Float32Array(CAR_LINES * 6).fill(-9999);
   const lineGeo = new THREE.BufferGeometry();
   lineGeo.setAttribute("position", new THREE.BufferAttribute(linePos, 3).setUsage(THREE.DynamicDrawUsage));
   const webs = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: new THREE.Color(2, 2, 2.2), toneMapped: false }));
@@ -185,7 +167,7 @@ export function createMissions(scene: THREE.Scene, city: City) {
   };
   const roofBox = (s: THREE.Vector3) => city.near(s.x, s.z, 1).find((b) => inBox(b, s.x, s.z) && Math.abs(b.maxY - s.y) < 0.05) ?? null;
   const shuffled = <T,>(a: T[]) => a.map((v) => [r(), v] as const).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
-  const streetSpots: THREE.Vector3[] = (city as unknown as { streetSpots?: THREE.Vector3[] }).streetSpots?.slice() ?? [];
+  const streetSpots: THREE.Vector3[] = city.streetSpots.slice();
   if (!streetSpots.length) {
     for (let k = 1; k < BLOCKS; k++) {
       for (let j = 0; j < BLOCKS; j++) {
@@ -277,12 +259,23 @@ export function createMissions(scene: THREE.Scene, city: City) {
     return { name: def.name, start, rings: ringsAt, quats, times, limit: Math.round(len / 15 + 10), best: Infinity, done: false };
   });
 
-  const thugs: Thug[] = Array.from({ length: MAX_THUGS }, () => ({ active: false, state: "idle", pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, tilt: 0, phase: 0, punchT: 0, coward: false, fled: false }));
-  const crimes: Crime[] = Array.from({ length: SLOTS }, (_, i) => ({ state: "empty", kind: 0, center: new THREE.Vector3(), ground: 0, count: 0, noticed: false, near: [], roof: null, respawnAt: i < 2 ? 0 : 20 }));
+  const crimes: Crime[] = Array.from({ length: SLOTS }, (_, i) => ({ state: "empty", kind: 0, center: new THREE.Vector3(), group: 0, noticed: false, respawnAt: i ? 35 : 10, farT: 0 }));
   const roofCandidates = city.roofSpots.filter((s) => s.y > 20 && s.y < 90).map(roofBox).filter((b): b is Box => !!b && b.maxX - b.minX > 14 && b.maxZ - b.minZ > 14);
 
-  const hideLines = (from: number, n: number) => {
-    linePos.fill(-9999, from * 6, (from + n) * 6);
+  const bossSlots: BossSlot[] = BOSS_ORDER.map((name) => ({ name, pos: bossArena(city, name), state: "locked", id: 0 }));
+  const hideoutSpots = (() => {
+    const out: THREE.Vector3[] = [];
+    const far = (s: THREE.Vector3) => out.every((o) => o.distanceTo(s) > 250) && races.every((q) => q.start.distanceTo(s) > 60) && bossSlots.every((b) => Math.hypot(b.pos.x - s.x, b.pos.z - s.z) > 80);
+    for (const s of shuffled(streetSpots.filter((s) => s.y < 0.5 && !insideAny(s.x, 1, s.z, 1.5)))) {
+      if (out.length >= 3) break;
+      if (far(s)) out.push(s.clone());
+    }
+    return out;
+  })();
+  const hideouts: Hideout[] = hideoutSpots.map((pos) => ({ pos, state: "idle", wave: 0, group: 0, waitT: 0 }));
+
+  const hideLines = () => {
+    linePos.fill(-9999);
     lineGeo.attributes.position.needsUpdate = true;
   };
   const setLine = (i: number, a: THREE.Vector3, b: THREE.Vector3) => {
@@ -296,115 +289,55 @@ export function createMissions(scene: THREE.Scene, city: City) {
     const kind = Math.floor(r() * CRIMES.length);
     const def = CRIMES[kind];
     let best: THREE.Vector3 | null = null;
-    let roof: Box | null = null;
     for (let n = 0; n < 60; n++) {
       const b = def.roof ? roofCandidates[Math.floor(r() * roofCandidates.length)] : null;
-      const s = b ? _w.set((b.minX + b.maxX) / 2, b.maxY, (b.minZ + b.maxZ) / 2) : streetSpots[Math.floor(r() * streetSpots.length)];
       if (def.roof && !b) break;
+      const s = b ? _w.set((b.minX + b.maxX) / 2, b.maxY, (b.minZ + b.maxZ) / 2) : streetSpots[Math.floor(r() * streetSpots.length)];
       const d = Math.hypot(s.x - avoid.x, s.z - avoid.z);
-      const clear = crimes.every((o) => o === c || o.state === "empty" || o.center.distanceTo(s) > 150) && races.every((q) => q.start.distanceTo(s) > 40);
+      const clear =
+        crimes.every((o) => o === c || o.state === "empty" || o.center.distanceTo(s) > 150) &&
+        races.every((q) => q.start.distanceTo(s) > 40) &&
+        hideouts.every((h) => h.pos.distanceTo(s) > 60) &&
+        bossSlots.every((q) => Math.hypot(q.pos.x - s.x, q.pos.z - s.z) > 60);
       if (!best || (d > 90 && d < 450 && clear)) {
         best = s.clone();
-        roof = b;
         if (d > 90 && d < 450 && clear) break;
       }
     }
     if (!best) return;
     c.state = "active";
     c.kind = kind;
-    c.roof = roof;
-    c.ground = best.y;
     c.center.copy(best);
-    c.near = city.near(best.x, best.z, 60);
     c.noticed = false;
-    c.count = def.min + Math.floor(r() * (def.max - def.min + 1));
+    c.farT = 0;
     if (def.car) {
-      const dx = Math.abs(best.x - lineAt(Math.round((best.x + HALF) / PERIOD)));
-      const dz = Math.abs(best.z - lineAt(Math.round((best.z + HALF) / PERIOD)));
-      const alongZ = dx < dz;
-      const lx = lineAt(Math.round((best.x + HALF) / PERIOD));
-      const lz = lineAt(Math.round((best.z + HALF) / PERIOD));
+      const kx = Math.round((best.x + HALF) / PERIOD);
+      const kz = Math.round((best.z + HALF) / PERIOD);
+      const lx = lineAt(kx);
+      const lz = lineAt(kz);
+      const alongZ = Math.abs(best.x - lx) < Math.abs(best.z - lz);
       if (alongZ) c.center.x = lx + Math.sign(best.x - lx || 1) * 7.5;
       else c.center.z = lz + Math.sign(best.z - lz || 1) * 7.5;
       _e.set(0, alongZ ? 0 : Math.PI / 2, 0, "XYZ");
       _m.makeRotationFromEuler(_e).setPosition(c.center);
       cars.setMatrixAt(1 + slot, _m);
       carLights.setMatrixAt(1 + slot, _m);
-      const p = PAINT[Math.floor(r() * PAINT.length)];
-      cars.setColorAt(1 + slot, _c.set(p));
+      cars.setColorAt(1 + slot, _c.set(PAINT[Math.floor(r() * PAINT.length)]));
     }
-    for (let k = 0; k < CREW; k++) {
-      const th = thugs[slot * CREW + k];
-      th.active = k < c.count;
-      if (!th.active) continue;
-      th.state = "idle";
-      th.tilt = 0;
-      th.punchT = 0;
-      th.fled = false;
-      th.coward = r() < 0.45;
-      th.phase = r() * 10;
-      th.vel.set(0, 0, 0);
-      for (let n = 0; n < 8; n++) {
-        const a = (k / c.count) * Math.PI * 2 + r() * 0.6;
-        const rad = def.car ? 3.2 + r() * 1.5 : 2 + r() * 3;
-        if (roof) th.pos.set(clamp(c.center.x + Math.cos(a) * rad, roof.minX + 1.5, roof.maxX - 1.5), c.ground, clamp(c.center.z + Math.sin(a) * rad, roof.minZ + 1.5, roof.maxZ - 1.5));
-        else th.pos.set(c.center.x + Math.cos(a) * rad, 0, c.center.z + Math.sin(a) * rad);
-        if (roof || !insideAny(th.pos.x, 1, th.pos.z, 0.6)) break;
-        th.pos.set(c.center.x + (r() - 0.5) * 2, 0, c.center.z + (r() - 0.5) * 2);
-      }
-      th.yaw = Math.atan2(c.center.x - th.pos.x, c.center.z - th.pos.z);
-      const i = slot * CREW + k;
-      torsos.setColorAt(i, _c.set(JACKETS[Math.floor(r() * JACKETS.length)]));
-      arms.setColorAt(i * 2, _c);
-      arms.setColorAt(i * 2 + 1, _c);
-      heads.setColorAt(i, _c.set(SKINS[Math.floor(r() * SKINS.length)]));
-      beanies.setColorAt(i, r() < 0.8 ? _c.set(BEANIES[Math.floor(r() * BEANIES.length)]) : _c.set(SKINS[0]).multiplyScalar(0));
-    }
-    hideLines(slot * CREW * LINES_PER_THUG, CREW * LINES_PER_THUG);
-    for (const m of [torsos, arms, heads, beanies, cars]) m.instanceColor!.needsUpdate = true;
+    const n = def.min + Math.floor(r() * (def.max - def.min + 1));
+    _v.copy(c.center);
+    if (def.car) _v.x += 3.5;
+    c.group = combat.spawnGroup(def.kind, _v, n, { mix: def.mix });
   };
 
   const clearCrime = (slot: number) => {
     const c = crimes[slot];
+    if (c.group) combat.clearGroup(c.group);
+    c.group = 0;
     c.state = "empty";
-    for (let k = 0; k < CREW; k++) thugs[slot * CREW + k].active = false;
     cars.setMatrixAt(1 + slot, ZERO);
     carLights.setMatrixAt(1 + slot, ZERO);
     hazards.setMatrixAt(1 + slot, ZERO);
-    hideLines(slot * CREW * LINES_PER_THUG, CREW * LINES_PER_THUG);
-  };
-
-  const rootMatrix = (th: Thug, bob: number, out: THREE.Matrix4) => {
-    _e.set(th.tilt, th.yaw, 0, "YXZ");
-    return out.makeRotationFromEuler(_e).setPosition(th.pos.x, th.pos.y + bob + (th.state === "down" ? 0.16 : 0), th.pos.z);
-  };
-  const part = (out: THREE.Matrix4, parent: THREE.Matrix4, x: number, y: number, z: number, ax: number, az: number) => {
-    _e.set(ax, 0, az, "XYZ");
-    _m3.makeRotationFromEuler(_e).setPosition(x, y, z);
-    return out.multiplyMatrices(parent, _m3);
-  };
-
-  const webThug = (i: number, th: Thug, ground: number, near: Box[]) => {
-    rootMatrix(th, 0, _root);
-    const center = target.set(0, 0.95, 0).applyMatrix4(_root);
-    let bestD = 10;
-    _w.set(0, -9999, 0);
-    for (const b of near) {
-      if (b.maxY < ground + 3) continue;
-      const cx = clamp(center.x, b.minX, b.maxX);
-      const cz = clamp(center.z, b.minZ, b.maxZ);
-      const d = Math.hypot(cx - center.x, cz - center.z);
-      if (d > 0.01 && d < bestD) {
-        bestD = d;
-        _w.set(cx, ground + 2.5, cz);
-      }
-    }
-    if (_w.y < -999) _w.set(0, 0, 3).applyMatrix4(_root).setY(ground);
-    setLine(i * LINES_PER_THUG, center, _w);
-    for (let s = 0; s < 2; s++) {
-      _w.set(s ? 1.6 : -1.6, 0.6 + s * 0.4, 0).applyMatrix4(_root).setY(ground);
-      setLine(i * LINES_PER_THUG + 1 + s, center, _w);
-    }
   };
 
   const chase = { state: "none" as "none" | "active" | "webbed", nextAt: 45, axis: 0, fixed: 0, nextK: 0, dir: 1, s: 0, speed: 0, yaw: 0, pos: new THREE.Vector3(), touched: false, hits: 0, farT: 0, doneT: 0, webbed: false };
@@ -413,7 +346,7 @@ export function createMissions(scene: THREE.Scene, city: City) {
     return chase.axis === 0 ? out.set(chase.s, 0, line + 3.5 * chase.dir) : out.set(line - 3.5 * chase.dir, 0, chase.s);
   };
   const carYaw = () => (chase.axis === 0 ? (chase.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : chase.dir > 0 ? 0 : Math.PI);
-  const spawnChase = (p: THREE.Vector3, out: MissionEvent[]) => {
+  const spawnChase = (p: THREE.Vector3, out: GameEvent[]) => {
     let gi = 7;
     let gj = 7;
     for (let n = 0; n < 40; n++) {
@@ -437,7 +370,6 @@ export function createMissions(scene: THREE.Scene, city: City) {
     chase.yaw = carYaw();
     carTarget(chase.pos);
     cars.setColorAt(0, _c.set("#15171c"));
-    cars.instanceColor!.needsUpdate = true;
     out.push({ type: "sfx", name: "siren" }, { type: "toast", title: "GETAWAY CAR", text: "Chase down the fleeing car" });
   };
   const steer = () => {
@@ -445,8 +377,7 @@ export function createMissions(scene: THREE.Scene, city: City) {
     const straight = ok(chase.nextK + chase.dir);
     const turnL = ok(chase.fixed - 1);
     const turnR = ok(chase.fixed + 1);
-    const roll = r();
-    if (straight && (roll < 0.55 || (!turnL && !turnR))) {
+    if (straight && (r() < 0.55 || (!turnL && !turnR))) {
       chase.nextK += chase.dir;
       return;
     }
@@ -461,7 +392,7 @@ export function createMissions(scene: THREE.Scene, city: City) {
   const webCar = () => {
     _e.set(0, chase.yaw, 0, "XYZ");
     _root.makeRotationFromEuler(_e).setPosition(chase.pos);
-    let n = MAX_THUGS * LINES_PER_THUG;
+    let n = 0;
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         target.set(sx * 0.7, 1.5, sz * 1.2).applyMatrix4(_root);
@@ -477,11 +408,10 @@ export function createMissions(scene: THREE.Scene, city: City) {
   let combo = 0;
   let now = 0;
   let started = false;
-  let hitCooldown = 0;
-  const completed = { races: 0, crimes: 0, chases: 0 };
-  const award = (out: MissionEvent[], amount: number, reason: string) => {
-    xp += amount;
-    levelXp += amount;
+  const completed = { races: 0, crimes: 0, chases: 0, hideouts: 0, bosses: 0 };
+  const award = (out: GameEvent[], amount: number, reason: string) => {
+    xp = Math.max(0, xp + amount);
+    levelXp = Math.max(0, levelXp + amount);
     out.push({ type: "xp", amount, reason });
     while (levelXp >= levelNeed(level)) {
       levelXp -= levelNeed(level);
@@ -499,12 +429,13 @@ export function createMissions(scene: THREE.Scene, city: City) {
   };
   const medalFor = (q: Race, time: number) => q.times.findIndex((m) => time <= m);
 
-  const events: MissionEvent[] = [];
+  const events: GameEvent[] = [];
+  const busy = () => race.state !== "idle" || combat.bossActive() || hideouts.some((h) => h.state === "active");
 
   const updateRace = (p: Player, dt: number) => {
     if (race.latch >= 0 && Math.hypot(p.pos.x - races[race.latch].start.x, p.pos.z - races[race.latch].start.z) > 8) race.latch = -1;
     if (race.state === "idle") {
-      if (chase.state === "active") return;
+      if (chase.state === "active" || busy()) return;
       for (let i = 0; i < races.length; i++) {
         const s = races[i].start;
         if (i !== race.latch && Math.hypot(p.pos.x - s.x, p.pos.z - s.z) < 5 && p.pos.y < 120) {
@@ -514,7 +445,7 @@ export function createMissions(scene: THREE.Scene, city: City) {
           race.count = 3;
           race.next = 0;
           race.latch = i;
-          events.push({ type: "sfx", name: "start" }, { type: "toast", title: races[i].name, text: "Swing race" }, { type: "sfx", name: "countdown" }, { type: "toast", title: "3" });
+          events.push({ type: "sfx", name: "start" }, { type: "toast", title: races[i].name, text: "Swing race" }, { type: "sfx", name: "countdown" }, { type: "toast", title: "3" }, { type: "music", state: "race", duration: 3 });
           return;
         }
       }
@@ -560,117 +491,111 @@ export function createMissions(scene: THREE.Scene, city: City) {
     }
   };
 
-  const updateThug = (i: number, th: Thug, c: Crime, p: Player, dt: number) => {
-    const dx = p.pos.x - th.pos.x;
-    const dz = p.pos.z - th.pos.z;
-    const dist = Math.hypot(dx, dz);
-    const dy = p.pos.y - th.pos.y - 1;
-    if (th.state === "down") return;
-    if (th.state === "flying") {
-      th.vel.y -= G * dt;
-      const nx = th.pos.x + th.vel.x * dt;
-      const nz = th.pos.z + th.vel.z * dt;
-      let blocked = false;
-      for (const b of c.near) if (inBox(b, nx, nz) && b.maxY > th.pos.y + 0.3) blocked = true;
-      if (blocked) {
-        th.vel.x *= -0.2;
-        th.vel.z *= -0.2;
-      } else {
-        th.pos.x = nx;
-        th.pos.z = nz;
-      }
-      th.pos.y += th.vel.y * dt;
-      th.tilt = Math.max(-Math.PI / 2, th.tilt - dt * 5);
-      let ground = 0;
-      for (const b of c.near) if (inBox(b, th.pos.x, th.pos.z) && b.maxY <= th.pos.y + 1) ground = Math.max(ground, b.maxY);
-      if (th.pos.y <= ground && th.vel.y < 0) {
-        th.pos.y = ground;
-        th.tilt = -Math.PI / 2;
-        th.state = "down";
-        webThug(i, th, ground, c.near);
-        burst(th.pos.x, ground + 0.5, th.pos.z, 10, 5, 2.4, 2.4, 2.6);
-      }
-      return;
-    }
-    if (th.state === "flee") {
-      const away = Math.atan2(-dx, -dz);
-      th.yaw = turn(th.yaw, away, dt * 6);
-      const nx = th.pos.x + Math.sin(th.yaw) * 5.5 * dt;
-      const nz = th.pos.z + Math.cos(th.yaw) * 5.5 * dt;
-      let blocked = false;
-      for (const b of c.near) if (inBox(b, nx, nz, 0.4) && b.maxY > th.pos.y + 0.5) blocked = true;
-      if (c.roof && !inBox(c.roof, nx, nz, -1.5)) blocked = true;
-      if (blocked) th.yaw += Math.PI / 2;
-      else th.pos.set(nx, th.pos.y, nz);
-      if (Math.hypot(th.pos.x - c.center.x, th.pos.z - c.center.z) > 26 || dist > 40) th.state = "alert";
-      return;
-    }
-    const close = dist < 24 && Math.abs(dy) < 14;
-    if (!close) {
-      th.state = "idle";
-      return;
-    }
-    th.yaw = turn(th.yaw, Math.atan2(dx, dz), dt * 8);
-    if (dist < 2.6 && Math.abs(dy) < 2.2) {
-      th.state = "punch";
-      th.punchT += dt;
-      if (th.punchT > 1.2) {
-        th.punchT = 0;
-        if (hitCooldown <= 0) {
-          hitCooldown = 0.9;
-          events.push({ type: "sfx", name: "hit" }, { type: "shake", strength: 0.35 });
-        }
-      }
-    } else {
-      th.state = "alert";
-      th.punchT = Math.max(0, th.punchT - dt);
-    }
-  };
-
+  const carClear: { slot: number; at: number }[] = [];
   const updateCrimes = (p: Player, dt: number) => {
     for (let s = 0; s < SLOTS; s++) {
       const c = crimes[s];
-      if (c.state !== "active") {
-        if (now >= c.respawnAt) {
-          clearCrime(s);
-          spawnCrime(s, p.pos);
+      if (c.state === "empty") {
+        if (now >= c.respawnAt && !combat.bossActive()) spawnCrime(s, p.pos);
+        continue;
+      }
+      const d = c.center.distanceTo(p.pos);
+      if (!c.noticed && d < 90) {
+        c.noticed = true;
+        events.push({ type: "sfx", name: "start" }, { type: "toast", title: "CRIME IN PROGRESS", text: CRIMES[c.kind].text });
+      }
+      c.farT = d > 600 ? c.farT + dt : 0;
+      if (c.farT > 60) {
+        clearCrime(s);
+        c.respawnAt = now + 10;
+        continue;
+      }
+      if (combat.groupDone(c.group)) {
+        c.respawnAt = now + 45 + r() * 45;
+        completed.crimes++;
+        events.push({ type: "sfx", name: "complete" }, { type: "sfx", name: "cheer" }, { type: "toast", title: "CRIME STOPPED", text: CRIMES[c.kind].name });
+        award(events, XP_CRIME, CRIMES[c.kind].name);
+        c.group = 0;
+        c.state = "empty";
+        hazards.setMatrixAt(1 + s, ZERO);
+        if (CRIMES[c.kind].car) carClear.push({ slot: s, at: now + 20 });
+      }
+    }
+    for (let k = carClear.length - 1; k >= 0; k--) {
+      const cc = carClear[k];
+      if (now < cc.at || crimes[cc.slot].state === "active") {
+        if (crimes[cc.slot].state === "active") carClear.splice(k, 1);
+        continue;
+      }
+      cars.setMatrixAt(1 + cc.slot, ZERO);
+      carLights.setMatrixAt(1 + cc.slot, ZERO);
+      carClear.splice(k, 1);
+    }
+  };
+
+  const updateHideouts = (p: Player, dt: number) => {
+    for (const h of hideouts) {
+      if (h.state === "done") continue;
+      const d = Math.hypot(p.pos.x - h.pos.x, p.pos.z - h.pos.z);
+      if (h.state === "idle") {
+        if (d < 18 && p.pos.y < 8 && !busy()) {
+          h.state = "active";
+          h.wave = 0;
+          h.waitT = 1.5;
+          events.push({ type: "sfx", name: "start" }, { type: "toast", title: "HIDEOUT", text: "Survive three waves" }, { type: "music", state: "combat", duration: 4 });
         }
         continue;
       }
-      if (!c.noticed && c.center.distanceTo(p.pos) < 90) {
-        c.noticed = true;
-        events.push({ type: "sfx", name: "start" }, { type: "toast", title: "CRIME IN PROGRESS", text: CRIMES[c.kind].name });
+      if (d > 120) {
+        if (h.group) combat.clearGroup(h.group);
+        h.group = 0;
+        h.state = "idle";
+        events.push({ type: "sfx", name: "fail" }, { type: "toast", title: "HIDEOUT ABANDONED", text: "Come back to finish it" });
+        continue;
       }
-      let down = 0;
-      let ko = 0;
-      for (let k = 0; k < c.count; k++) {
-        const th = thugs[s * CREW + k];
-        updateThug(s * CREW + k, th, c, p, dt);
-        if (th.state === "down") down++;
-        if (th.state === "down" || th.state === "flying") ko++;
+      if (h.group && !combat.groupDone(h.group)) continue;
+      if (h.group) {
+        h.group = 0;
+        if (h.wave >= WAVES.length) {
+          h.state = "done";
+          completed.hideouts++;
+          events.push({ type: "sfx", name: "complete" }, { type: "toast", title: "HIDEOUT CLEARED", text: `+${XP_HIDEOUT} XP` });
+          award(events, XP_HIDEOUT, "Hideout cleared");
+          continue;
+        }
+        h.waitT = 2;
       }
-      if (ko * 2 >= c.count) {
-        for (let k = 0; k < c.count; k++) {
-          const th = thugs[s * CREW + k];
-          if (th.coward && !th.fled && (th.state === "idle" || th.state === "alert")) {
-            th.fled = true;
-            th.state = "flee";
-          }
+      h.waitT -= dt;
+      if (h.waitT > 0) continue;
+      const w = WAVES[h.wave];
+      h.wave++;
+      h.group = combat.spawnGroup(w.kind, h.pos, w.n, { mix: w.mix, aware: true, radius: 7 });
+      events.push({ type: "sfx", name: "start" }, { type: "toast", title: `WAVE ${h.wave}`, text: h.wave === 3 ? "A brute is coming" : "Enemies incoming" });
+    }
+  };
+
+  const updateBosses = (p: Player) => {
+    for (const b of bossSlots) {
+      if (b.state === "locked" && level >= BOSSES[b.name].level) {
+        b.state = "open";
+        events.push({ type: "sfx", name: "ping" }, { type: "toast", title: "NEW BOSS", text: `${BOSSES[b.name].name} at ${BOSSES[b.name].place}` });
+      }
+      if (b.state === "open" && !busy()) {
+        if (Math.hypot(p.pos.x - b.pos.x, p.pos.z - b.pos.z) < 30 && p.pos.y > b.pos.y - 4 && p.pos.y < b.pos.y + 40) {
+          b.id = combat.spawnBoss(b.name, b.pos);
+          b.state = "active";
         }
       }
-      if (down === c.count) {
-        c.state = "cleared";
-        c.respawnAt = now + 22 + r() * 12;
-        completed.crimes++;
-        events.push({ type: "sfx", name: "complete" }, { type: "toast", title: "CRIME STOPPED", text: `+${XP_CRIME} XP` });
-        award(events, XP_CRIME, CRIMES[c.kind].name);
+      if (b.state === "active" && combat.bossDone(b.id)) {
+        b.state = "done";
+        completed.bosses++;
       }
     }
   };
 
   const updateChase = (p: Player, dt: number) => {
     if (chase.state === "none") {
-      if (now >= chase.nextAt && race.state === "idle") spawnChase(p.pos, events);
+      if (now >= chase.nextAt && !busy()) spawnChase(p.pos, events);
       return;
     }
     if (chase.state === "webbed") {
@@ -686,7 +611,7 @@ export function createMissions(scene: THREE.Scene, city: City) {
       if (chase.doneT > 25) {
         chase.state = "none";
         chase.nextAt = now + 90;
-        hideLines(MAX_THUGS * LINES_PER_THUG, CAR_LINES);
+        hideLines();
       }
       return;
     }
@@ -746,8 +671,8 @@ export function createMissions(scene: THREE.Scene, city: City) {
     sparkGeo.attributes.color.needsUpdate = true;
   };
 
-  const setBeam = (i: number, x: number, z: number, rad: number, h: number, rr: number, g: number, b: number) => {
-    _m.makeScale(rad, h, rad).setPosition(x, 0, z);
+  const setBeam = (i: number, x: number, y: number, z: number, rad: number, h: number, rr: number, g: number, b: number) => {
+    _m.makeScale(rad, h, rad).setPosition(x, y, z);
     beams.setMatrixAt(i, _m);
     setColor(beams, i, rr, g, b);
   };
@@ -761,76 +686,10 @@ export function createMissions(scene: THREE.Scene, city: City) {
     beams.setMatrixAt(i, ZERO);
     bases.setMatrixAt(i, ZERO);
   };
-
-  const drawThug = (i: number, t: number) => {
-    const th = thugs[i];
-    if (!th.active) {
-      torsos.setMatrixAt(i, ZERO);
-      heads.setMatrixAt(i, ZERO);
-      beanies.setMatrixAt(i, ZERO);
-      legs.setMatrixAt(i * 2, ZERO);
-      legs.setMatrixAt(i * 2 + 1, ZERO);
-      arms.setMatrixAt(i * 2, ZERO);
-      arms.setMatrixAt(i * 2 + 1, ZERO);
-      cocoons.setMatrixAt(i, ZERO);
-      return;
-    }
-    const ph = t + th.phase;
-    let legL = 0;
-    let legR = 0;
-    let armL = -0.05 + Math.sin(ph * 1.7) * 0.06;
-    let armR = -0.05 - Math.sin(ph * 1.7) * 0.06;
-    let spread = 0.12;
-    let lean = 0.02;
-    let bob = 0;
-    if (th.state === "alert" || th.state === "punch") {
-      legL = -0.28;
-      legR = 0.22;
-      armL = -1.35 + Math.sin(ph * 7) * 0.1;
-      armR = -1.15 + Math.cos(ph * 7) * 0.1;
-      spread = 0.35;
-      lean = 0.18;
-      bob = Math.abs(Math.sin(ph * 7)) * 0.05;
-      if (th.state === "punch") {
-        armR = -1.2 - 0.5 * Math.max(0, Math.sin((th.punchT / 1.2) * Math.PI * 4));
-        lean = 0.28;
-      }
-    } else if (th.state === "flee") {
-      const s = Math.sin(ph * 12);
-      legL = s * 0.9;
-      legR = -s * 0.9;
-      armL = -s * 0.8;
-      armR = s * 0.8;
-      spread = 0.15;
-      lean = 0.32;
-      bob = Math.abs(s) * 0.08;
-    } else if (th.state === "flying") {
-      legL = 0.5;
-      legR = -0.3;
-      armL = -2.6 + Math.sin(ph * 20) * 0.3;
-      armR = -2.4;
-      spread = 0.6;
-      lean = -0.2;
-    } else if (th.state === "down") {
-      legL = 0.05;
-      legR = -0.05;
-      armL = armR = -0.1;
-      spread = 0.08;
-      lean = 0;
-    }
-    rootMatrix(th, bob, _root);
-    legs.setMatrixAt(i * 2, part(_m, _root, M.HIP_X, M.HIP_Y, 0, legL, 0));
-    legs.setMatrixAt(i * 2 + 1, part(_m, _root, -M.HIP_X, M.HIP_Y, 0, legR, 0));
-    torsos.setMatrixAt(i, part(_torso, _root, 0, M.HIP_Y, 0, lean, 0));
-    arms.setMatrixAt(i * 2, part(_m, _torso, M.SHOULDER_X, M.SHOULDER_Y, 0, armL, spread));
-    arms.setMatrixAt(i * 2 + 1, part(_m, _torso, -M.SHOULDER_X, M.SHOULDER_Y, 0, armR, -spread));
-    part(_m, _torso, 0, M.HEAD_Y, 0, -lean * 0.5, 0);
-    heads.setMatrixAt(i, _m);
-    beanies.setMatrixAt(i, _m);
-    if (th.state === "down") {
-      _m3.makeScale(0.42, 1.05, 0.34).setPosition(0, 0.95, 0);
-      cocoons.setMatrixAt(i, _m.multiplyMatrices(_root, _m3));
-    } else cocoons.setMatrixAt(i, ZERO);
+  const pillar = (i: number, x: number, y: number, z: number, wide: number, k: number, rr: number, g: number, b: number, spin: number) => {
+    setBeam(i, x, y, z, wide, 400, rr * 0.35 * k, g * 0.35 * k, b * 0.35 * k);
+    setBeam(i + 1, x, y, z, wide * 0.28, 400, rr, g, b);
+    setBase(i, x, y, z, wide * 1.4, spin, rr, g, b);
   };
 
   const render = (p: Player, dt: number, t: number) => {
@@ -857,39 +716,50 @@ export function createMissions(scene: THREE.Scene, city: City) {
     const racing = race.state !== "idle";
     for (let i = 0; i < races.length; i++) {
       const s = races[i].start;
-      if (racing) {
-        hideBeam(BEAM_RACE + i);
-        hideBeam(BEAM_RACE + 3 + i);
+      if (racing || busy()) {
+        hideBeam(BEAM_RACE + i * 2);
+        hideBeam(BEAM_RACE + i * 2 + 1);
         continue;
       }
-      setBeam(BEAM_RACE + i, s.x, s.z, 4.5, 420, 0.12, 0.35, 1.3 * pulse);
-      setBeam(BEAM_RACE + 3 + i, s.x, s.z, 1.3, 420, 0.4, 1.1, 4);
-      setBase(BEAM_RACE + i, s.x, 0, s.z, 6 + Math.sin(t * 3) * 0.4, t, 0.4, 1.2, 4);
+      pillar(BEAM_RACE + i * 2, s.x, 0, s.z, 4.5, pulse, 0.4, 1.2, 4, t);
     }
     for (let s = 0; s < SLOTS; s++) {
       const c = crimes[s];
-      const hz = c.state === "active" && CRIMES[c.kind].car && Math.sin(t * 9) > 0;
-      if (CRIMES[c.kind].car && c.state !== "empty") {
+      if (CRIMES[c.kind].car && c.state === "active") {
         cars.getMatrixAt(1 + s, _m);
-        hazards.setMatrixAt(1 + s, hz ? _m : ZERO);
+        hazards.setMatrixAt(1 + s, Math.sin(t * 9) > 0 ? _m : ZERO);
       }
-      if (c.state !== "active") {
-        hideBeam(BEAM_CRIME + s);
-        hideBeam(BEAM_CRIME + 3 + s);
+      if (c.state !== "active" || combat.bossActive()) {
+        hideBeam(BEAM_CRIME + s * 2);
+        hideBeam(BEAM_CRIME + s * 2 + 1);
         continue;
       }
       const k = 0.6 + 0.4 * Math.sin(t * 6 + s);
-      setBeam(BEAM_CRIME + s, c.center.x, c.center.z, 5, 360, 1.4 * k, 0.08 * k, 0.06 * k);
-      setBeam(BEAM_CRIME + 3 + s, c.center.x, c.center.z, 1.4, 360, 4 * k, 0.3, 0.25);
-      setBase(BEAM_CRIME + s, c.center.x, c.ground, c.center.z, 7 + k, -t, 4 * k, 0.3, 0.25);
+      pillar(BEAM_CRIME + s * 2, c.center.x, c.center.y, c.center.z, 5, k, 4 * k, 0.3, 0.25, -t);
     }
-    for (let i = 0; i < MAX_THUGS; i++) drawThug(i, t);
+    for (let i = 0; i < 2; i++) {
+      const h = hideouts[i];
+      if (!h || h.state !== "idle" || busy()) {
+        hideBeam(BEAM_HIDEOUT + i * 2);
+        hideBeam(BEAM_HIDEOUT + i * 2 + 1);
+        continue;
+      }
+      pillar(BEAM_HIDEOUT + i * 2, h.pos.x, 0, h.pos.z, 5, pulse, 3.6, 0.9, 3.2, t * 0.7);
+    }
+    bossSlots.forEach((b, i) => {
+      if (b.state !== "open" || busy()) {
+        hideBeam(BEAM_BOSS + i * 2);
+        hideBeam(BEAM_BOSS + i * 2 + 1);
+        return;
+      }
+      pillar(BEAM_BOSS + i * 2, b.pos.x, b.pos.y, b.pos.z, 7, pulse, 4, 2.6, 0.5, -t * 0.5);
+    });
 
     if (chase.state === "none") {
       cars.setMatrixAt(0, ZERO);
       carLights.setMatrixAt(0, ZERO);
       hazards.setMatrixAt(0, ZERO);
-      cocoons.setMatrixAt(CAR_COCOON, ZERO);
+      cocoons.setMatrixAt(0, ZERO);
       hideBeam(BEAM_CHASE);
       hideBeam(BEAM_CHASE + 1);
     } else {
@@ -900,13 +770,13 @@ export function createMissions(scene: THREE.Scene, city: City) {
       hazards.setMatrixAt(0, Math.sin(t * 10) > 0 ? _m : ZERO);
       if (chase.state === "webbed") {
         _m3.makeScale(1.15, 0.4, 1.9).setPosition(0, 1.45, -0.2);
-        cocoons.setMatrixAt(CAR_COCOON, _m2.multiplyMatrices(_m, _m3));
+        cocoons.setMatrixAt(0, _m2.multiplyMatrices(_m, _m3));
         hideBeam(BEAM_CHASE);
         hideBeam(BEAM_CHASE + 1);
       } else {
-        cocoons.setMatrixAt(CAR_COCOON, ZERO);
-        setBeam(BEAM_CHASE, chase.pos.x, chase.pos.z, 3, 260, 1.6 * pulse, 0.6 * pulse, 0.05);
-        setBeam(BEAM_CHASE + 1, chase.pos.x, chase.pos.z, 0.8, 260, 4, 1.6, 0.2);
+        cocoons.setMatrixAt(0, ZERO);
+        setBeam(BEAM_CHASE, chase.pos.x, 0, chase.pos.z, 3, 260, 1.6 * pulse, 0.6 * pulse, 0.05);
+        setBeam(BEAM_CHASE + 1, chase.pos.x, 0, chase.pos.z, 0.8, 260, 4, 1.6, 0.2);
       }
     }
 
@@ -935,7 +805,7 @@ export function createMissions(scene: THREE.Scene, city: City) {
     race.popT += dt;
     const next = racing ? q.rings[race.next] : undefined;
     if (next) {
-      setBeam(BEAM_NEXT, next.x, next.z, 0.6, 400, 0.3, 0.9, 2.6);
+      setBeam(BEAM_NEXT, next.x, 0, next.z, 0.6, 400, 0.3, 0.9, 2.6);
       _v.set(p.pos.x, p.pos.y + 2.4, p.pos.z);
       _m.lookAt(next, _v, UP).scale(_s.setScalar(1 + 0.15 * Math.sin(t * 8))).setPosition(_v);
       arrow.setMatrixAt(0, _m);
@@ -950,15 +820,15 @@ export function createMissions(scene: THREE.Scene, city: City) {
     }
   };
 
-  const update = (dt: number, t: number, p: Player): MissionEvent[] => {
+  const update = (dt: number, t: number, p: Player): GameEvent[] => {
     events.length = 0;
     now += dt;
-    hitCooldown -= dt;
     if (!started) {
       started = true;
       prev.copy(p.pos);
     }
     if (p.mode === "ground") combo = 0;
+    for (const x of combat.takeXp()) award(events, x.amount, x.reason);
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (it.got || segDist(prev, p.pos, it.pos) > 3.2) continue;
@@ -971,6 +841,8 @@ export function createMissions(scene: THREE.Scene, city: City) {
     }
     updateRace(p, dt);
     updateCrimes(p, dt);
+    updateHideouts(p, dt);
+    updateBosses(p);
     updateChase(p, dt);
     updateSparks(dt);
     render(p, dt, t);
@@ -980,65 +852,31 @@ export function createMissions(scene: THREE.Scene, city: City) {
   };
 
   const strikeTarget = (pos: THREE.Vector3, range: number): THREE.Vector3 | null => {
-    let best = range;
-    let found = false;
-    for (const th of thugs) {
-      if (!th.active || th.state === "flying" || th.state === "down") continue;
-      const d = _v.set(th.pos.x, th.pos.y + 1, th.pos.z).distanceTo(pos);
-      if (d < best) {
-        best = d;
-        strikeOut.copy(_v);
-        found = true;
-      }
-    }
-    if (chase.state === "active") {
-      const d = _v.copy(chase.pos).setY(1).distanceTo(pos);
-      if (d < best) {
-        strikeOut.copy(_v);
-        found = true;
-      }
-    }
-    return found ? strikeOut : null;
+    if (chase.state !== "active") return null;
+    strikeOut.copy(chase.pos).setY(1);
+    return strikeOut.distanceTo(pos) < range ? strikeOut : null;
   };
 
-  const strike = (pos: THREE.Vector3, power: number): MissionEvent[] => {
-    const out: MissionEvent[] = [];
-    const radius = power >= 2 ? 6 : 3.5;
-    let hits = 0;
-    for (const th of thugs) {
-      if (!th.active || th.state === "flying" || th.state === "down") continue;
-      _v.set(th.pos.x, th.pos.y + 1, th.pos.z);
-      if (_v.distanceTo(pos) > radius) continue;
-      const away = Math.atan2(th.pos.x - pos.x, th.pos.z - pos.z);
-      th.yaw = away + Math.PI;
-      th.state = "flying";
-      th.vel.set(Math.sin(away) * (7 + 3 * power), 5 + 2 * power, Math.cos(away) * (7 + 3 * power));
-      burst(_v.x, _v.y, _v.z, 14, 9, 3, 2.4, 1.2);
-      hits++;
-      out.push({ type: "sfx", name: "ko" });
-      award(out, XP_TAKEDOWN, "Takedown");
+  const strike = (pos: THREE.Vector3, power: number): GameEvent[] => {
+    const out: GameEvent[] = [];
+    if (chase.state !== "active" || _v.copy(chase.pos).setY(1).distanceTo(pos) > (power >= 2 ? 6 : 3.5) + 2.5) return out;
+    chase.touched = true;
+    chase.hits++;
+    burst(_v.x, _v.y + 0.6, _v.z, 26, 12, 4, 1.8, 0.4);
+    out.push({ type: "sfx", name: "hit" }, { type: "shake", strength: 0.25 * power });
+    if (chase.hits >= CHASE_HITS) {
+      chase.state = "webbed";
+      chase.webbed = false;
+      chase.doneT = 0;
+      completed.chases++;
+      out.push({ type: "sfx", name: "complete" }, { type: "toast", title: "CHASE COMPLETE", text: `+${XP_CHASE} XP` });
+      award(out, XP_CHASE, "Getaway car stopped");
     }
-    if (chase.state === "active" && _v.copy(chase.pos).setY(1).distanceTo(pos) < radius + 2.5) {
-      chase.touched = true;
-      chase.hits++;
-      hits++;
-      burst(_v.x, _v.y + 0.6, _v.z, 26, 12, 4, 1.8, 0.4);
-      out.push({ type: "sfx", name: "hit" }, { type: "shake", strength: 0.5 });
-      if (chase.hits >= CHASE_HITS) {
-        chase.state = "webbed";
-        chase.webbed = false;
-        chase.doneT = 0;
-        completed.chases++;
-        out.push({ type: "sfx", name: "complete" }, { type: "toast", title: "CHASE COMPLETE", text: `+${XP_CHASE} XP` });
-        award(out, XP_CHASE, "Getaway car stopped");
-      }
-    }
-    if (hits) out.push({ type: "shake", strength: 0.25 * power });
     return out;
   };
 
-  const trick = (kind: "flip" | "spin", airTime: number): MissionEvent[] => {
-    const out: MissionEvent[] = [];
+  const trick = (kind: "flip" | "spin", airTime: number): GameEvent[] => {
+    const out: GameEvent[] = [];
     combo++;
     const mult = Math.min(combo, 5);
     award(out, Math.round((kind === "flip" ? 20 : 15) + airTime * 10) * mult, mult > 1 ? `Style x${mult}` : "Style");
@@ -1046,68 +884,101 @@ export function createMissions(scene: THREE.Scene, city: City) {
     return out;
   };
 
+  const districts = () => {
+    const tally = new Map<string, [number, number]>();
+    const add = (x: number, z: number, done: boolean) => {
+      const k = district(x, z);
+      const v = tally.get(k) ?? [0, 0];
+      v[0] += done ? 1 : 0;
+      v[1]++;
+      tally.set(k, v);
+    };
+    for (const it of items) add(it.pos.x, it.pos.z, it.got);
+    for (const q of races) add(q.start.x, q.start.z, q.done);
+    for (const h of hideouts) add(h.pos.x, h.pos.z, h.state === "done");
+    for (const b of bossSlots) add(b.pos.x, b.pos.z, b.state === "done");
+    return ["Harlem", "Upper Manhattan", "Midtown", "Downtown"].filter((n) => tally.has(n)).map((name) => {
+      const [d, n] = tally.get(name)!;
+      return { name, pct: Math.round((100 * d) / n) };
+    });
+  };
+
   const hud = (): MissionHud => {
     const markers: Marker[] = [];
+    const prompts: { key: string; label: string }[] = [];
     const near = (x: number, z: number, d: number) => Math.hypot(x - last.x, z - last.z) < d;
-    let activity: MissionHud["activity"] = null;
-    let nearPrompt: string | undefined;
+    let objective: Objective | null = null;
     if (race.state === "idle") {
       for (const q of races) {
         markers.push({ x: q.start.x, z: q.start.z, kind: "race" });
-        if (!nearPrompt && near(q.start.x, q.start.z, 60)) nearPrompt = `Enter the beam to start: ${q.name}`;
+        if (!busy() && !prompts.length && near(q.start.x, q.start.z, 60)) prompts.push({ key: "", label: `Enter the beam: ${q.name}` });
       }
     } else {
       const q = races[race.idx];
       const n = q.rings[race.next];
       markers.push({ x: n.x, z: n.z, kind: "checkpoint" });
       const medal = race.state === "running" ? medalFor(q, race.t) : 0;
-      activity = {
+      objective = {
         title: q.name,
-        objective: race.state === "countdown" ? "Get ready" : "Swing through the rings",
+        text: race.state === "countdown" ? "Get ready" : "Swing through the rings",
         timer: race.state === "running" ? race.t : 0,
         progress: `${race.next}/${q.rings.length}`,
         medal: medal >= 0 ? `${MEDALS[medal]} ${fmt(q.times[medal])}` : `Limit ${fmt(q.limit)}`,
       };
     }
+    for (const b of bossSlots) {
+      if (b.state === "open") {
+        markers.push({ x: b.pos.x, z: b.pos.z, kind: "boss" });
+        if (!objective && near(b.pos.x, b.pos.z, 150)) objective = { title: BOSSES[b.name].name, text: `Reach ${BOSSES[b.name].place}` };
+      }
+      if (b.state === "active" && !objective) objective = { title: BOSSES[b.name].name, text: BOSSES[b.name].intro };
+    }
+    for (const h of hideouts) {
+      if (h.state === "idle") {
+        markers.push({ x: h.pos.x, z: h.pos.z, kind: "hideout" });
+        if (!objective && near(h.pos.x, h.pos.z, 80)) objective = { title: "Hideout", text: "Step in to start the fight" };
+      }
+      if (h.state === "active") {
+        objective = { title: "Hideout", text: h.group ? "Defeat every enemy" : "Next wave incoming", progress: `Wave ${Math.max(1, h.wave)}/${WAVES.length}` };
+      }
+    }
     let closest = Infinity;
-    crimes.forEach((c, s) => {
-      if (c.state !== "active") return;
+    for (const c of crimes) {
+      if (c.state !== "active") continue;
       markers.push({ x: c.center.x, z: c.center.z, kind: "crime" });
       const d = Math.hypot(c.center.x - last.x, c.center.z - last.z);
-      let standing = 0;
-      for (let k = 0; k < c.count; k++) {
-        const th = thugs[s * CREW + k];
-        if (th.state === "down" || th.state === "flying") continue;
-        standing++;
-        if (d < 200) markers.push({ x: th.pos.x, z: th.pos.z, kind: "enemy" });
-      }
-      if (!activity && d < 120 && d < closest) {
+      if (!objective && d < 120 && d < closest) {
         closest = d;
-        activity = { title: CRIMES[c.kind].name, objective: "Take down the thugs", progress: `${c.count - standing}/${c.count}` };
+        const left = combat.groupAlive(c.group);
+        objective = { title: CRIMES[c.kind].name, text: CRIMES[c.kind].text, progress: `${left} left` };
       }
-    });
+    }
     if (chase.state === "active") {
       markers.push({ x: chase.pos.x, z: chase.pos.z, kind: "chase" });
-      if (race.state === "idle" && (chase.touched || closest > 60))
-        activity = {
+      if (race.state === "idle" && !combat.bossActive() && (chase.touched || closest > 60))
+        objective = {
           title: "Getaway Car",
-          objective: chase.farT > 0 ? "The car is escaping" : chase.touched ? "Web-strike the car" : "Catch the car",
+          text: chase.farT > 0 ? "The car is escaping" : chase.touched ? "Web-strike the car" : "Catch the car",
           progress: `${chase.hits}/${CHASE_HITS} hits`,
           timer: chase.farT > 0 ? 10 - chase.farT : undefined,
         };
     }
     for (const it of items) if (!it.got && near(it.pos.x, it.pos.z, 250)) markers.push({ x: it.pos.x, z: it.pos.z, kind: "collectible" });
     return {
+      race: race.state !== "idle",
       xp,
-      level,
-      levelProgress: levelXp / levelNeed(level),
-      activity,
-      collected: items.filter((it) => it.got).length,
-      totalCollectibles: items.length,
-      completed: { ...completed },
+      objective,
       markers,
-      nearPrompt: activity ? undefined : nearPrompt,
-      combo: combo > 1 ? Math.min(combo, 5) : undefined,
+      prompts: objective ? [] : prompts,
+      combo: combo > 1 ? Math.min(combo, 5) : 0,
+      progress: {
+        level,
+        levelProgress: levelXp / levelNeed(level),
+        collected: items.filter((it) => it.got).length,
+        totalCollectibles: items.length,
+        completed: { ...completed },
+        districts: districts(),
+      },
     };
   };
 
@@ -1131,7 +1002,13 @@ export function createMissions(scene: THREE.Scene, city: City) {
     });
   };
 
-  return { update, hud, strikeTarget, strike, trick, setDetail, dispose, debug: { races, crimes, thugs, items, chase } };
+  const addXp = (amount: number, reason: string): GameEvent[] => {
+    const out: GameEvent[] = [];
+    award(out, amount, reason);
+    return out;
+  };
+
+  return { update, hud, strikeTarget, strike, trick, addXp, setDetail, dispose, debug: { races, crimes, items, chase, hideouts, bossSlots } };
 }
 
 export type Missions = ReturnType<typeof createMissions>;

@@ -1,863 +1,344 @@
-export type Sfx =
-  | "thwip"
-  | "zip"
-  | "land"
-  | "bigLand"
-  | "collect"
-  | "checkpoint"
-  | "hit"
-  | "ko"
-  | "whoosh"
-  | "trick"
-  | "complete"
-  | "fail"
-  | "start"
-  | "levelUp"
-  | "countdown"
-  | "go"
-  | "siren"
-  | "ui";
-export type MusicState = "explore" | "swing" | "combat" | "race" | "menu";
+import type { MusicState, Sfx } from "./contracts";
+import { makeBuffers, makeVoices, mtof, shaperCurve } from "./audio-synth";
+import { CHANNELS, TRACKS, type Beat, type Ch, type Track, type TrackId } from "./audio-tracks";
 
-const BPM = 92;
-const BEAT = 60 / BPM;
-const S16 = BEAT / 4;
-const BAR = BEAT * 4;
-const SWING = 0.2; // off-16ths land late by this fraction of a 16th
+export type { MusicState, Sfx };
+
 const LOOKAHEAD = 0.12;
-const NOISE_SEC = 3;
+const XFADE = 2;
+const ROAM_SEC = 150;
+const ROAM: TrackId[] = ["hero", "harlem", "jingle"];
+const STATE_TRACK: Record<Exclude<MusicState, "explore" | "swing">, TrackId> = {
+  menu: "roof",
+  combat: "fight",
+  boss: "boss",
+  race: "rush",
+  stealth: "stealth",
+  victory: "victory",
+};
+const TRIM: Record<TrackId, number> = { hero: 1, harlem: 1.05, fight: 1, stealth: 1.2, boss: 0.9, roof: 1.4, jingle: 1.15, rush: 1, victory: 1.3 };
+// [reverb send, delay send]
+const SENDS: Record<Ch, [number, number]> = {
+  drums: [0.1, 0],
+  bass: [0, 0],
+  keys: [0.3, 0.12],
+  pad: [0.35, 0],
+  lead: [0.3, 0.18],
+  str: [0.28, 0],
+  perc: [0.2, 0.22],
+  fx: [0.4, 0],
+};
+const LOW: Record<Ch, number> = { drums: 0.5, bass: 0.8, keys: 1, pad: 0.9, lead: 0, str: 0.3, perc: 0.4, fx: 0.5 };
 
-const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
-// F minor, 8 bars: i - VI - III - VII | i - VI - iv - V
-const PROG: { root: number; keys: number[] }[] = [
-  { root: 29, keys: [56, 60, 63, 67] }, // Fm9
-  { root: 37, keys: [53, 56, 60, 63] }, // Dbmaj9
-  { root: 32, keys: [55, 58, 60, 63] }, // Abmaj9
-  { root: 39, keys: [55, 58, 63, 65] }, // Eb add9
-  { root: 29, keys: [56, 60, 63, 67] },
-  { root: 37, keys: [53, 56, 60, 63] },
-  { root: 34, keys: [56, 60, 61, 65] }, // Bbm9
-  { root: 36, keys: [52, 55, 58, 61] }, // C7b9
-];
-
-// Brass hook: [bar, step, midi, length in 16ths]
-const HOOK: [number, number, number, number][] = [
-  [0, 0, 72, 3], [0, 3, 77, 3], [0, 6, 79, 2], [0, 8, 80, 6], [0, 14, 79, 2],
-  [1, 0, 77, 6], [1, 6, 75, 2], [1, 8, 72, 7],
-  [2, 0, 75, 3], [2, 3, 80, 3], [2, 6, 82, 2], [2, 8, 84, 6], [2, 14, 82, 2],
-  [3, 0, 79, 8], [3, 8, 77, 4], [3, 12, 79, 4],
-  [4, 0, 72, 3], [4, 3, 77, 3], [4, 6, 79, 2], [4, 8, 80, 6], [4, 14, 82, 2],
-  [5, 0, 84, 6], [5, 6, 80, 2], [5, 8, 77, 7],
-  [6, 0, 73, 3], [6, 3, 77, 3], [6, 6, 80, 2], [6, 8, 77, 8],
-  [7, 0, 76, 6], [7, 6, 79, 2], [7, 8, 82, 4], [7, 12, 76, 4],
-];
-
-const LAYERS = ["drums", "bass", "keys", "pad", "brass", "arp", "stabs", "riser", "crackle"] as const;
-type Layer = (typeof LAYERS)[number];
-
-const MIX: Record<MusicState, Record<Layer, number>> = {
-  menu: { drums: 0, bass: 0, keys: 0.6, pad: 0.85, brass: 0, arp: 0, stabs: 0, riser: 0, crackle: 1 },
-  explore: { drums: 0.6, bass: 0.8, keys: 0.6, pad: 0.45, brass: 0, arp: 0, stabs: 0, riser: 0, crackle: 0.6 },
-  swing: { drums: 1, bass: 1, keys: 0.55, pad: 0.35, brass: 0.6, arp: 0, stabs: 0, riser: 0, crackle: 0.3 },
-  combat: { drums: 1, bass: 1, keys: 0.3, pad: 0.4, brass: 0.35, arp: 0, stabs: 1, riser: 0, crackle: 0.2 },
-  race: { drums: 1, bass: 1, keys: 0.4, pad: 0.3, brass: 0.45, arp: 0.8, stabs: 0, riser: 1, crackle: 0.2 },
+type Deck = {
+  out: GainNode[]; // dry, reverb, delay buses fade together
+  ch: Record<Ch, GainNode>;
+  lvl: Record<Ch, number>;
+  crackle: GainNode;
+  track: Track | null;
+  until: number;
+  t: number;
+  s: number;
+  steps: number;
+  bar: number;
+  bars: number;
+  sec: string;
+  n: number;
+  plays: Record<string, number>;
+  beat: Beat;
 };
-const TONE: Record<MusicState, number> = { menu: 2400, explore: 2600, swing: 9000, combat: 11000, race: 14000 };
-
-function shaperCurve(drive: number, out = 1) {
-  const n = 1024;
-  const c = new Float32Array(n);
-  const norm = Math.tanh(drive);
-  for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 2 - 1;
-    c[i] = (out * Math.tanh(drive * x)) / norm;
-  }
-  return c;
-}
 
 export function createAudio() {
   const ctx = new AudioContext({ latencyHint: "interactive" });
-  const sr = ctx.sampleRate;
+  const buf = makeBuffers(ctx);
+  const v = makeVoices(ctx, buf.noise);
+  const { g, filt } = v;
 
-  const noiseBuf = ctx.createBuffer(1, sr * NOISE_SEC, sr);
-  {
-    const d = noiseBuf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  }
-  const impulse = ctx.createBuffer(2, Math.floor(sr * 2.2), sr);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = impulse.getChannelData(ch);
-    let lp = 0;
-    for (let i = 0; i < d.length; i++) {
-      const p = i / d.length;
-      const k = 0.65 - 0.5 * p; // darker tail
-      lp += k * (Math.random() * 2 - 1 - lp);
-      d[i] = lp * Math.pow(1 - p, 2.5) * (i < sr * 0.012 ? 0 : 1);
-    }
-  }
-  const crackleBuf = ctx.createBuffer(1, sr * 4, sr);
-  {
-    const d = crackleBuf.getChannelData(0);
-    let pop = 0;
-    for (let i = 0; i < d.length; i++) {
-      if (Math.random() < 0.0004) pop = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.75);
-      d[i] = pop + (Math.random() * 2 - 1) * 0.012;
-      pop *= 0.82;
-    }
-  }
-
-  const master = ctx.createGain();
+  const master = g(1);
   const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -12;
+  comp.threshold.value = -14;
   comp.knee.value = 8;
-  comp.ratio.value = 2.5;
-  comp.attack.value = 0.008;
+  comp.ratio.value = 3;
+  comp.attack.value = 0.006;
   comp.release.value = 0.2;
   const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -2;
+  limiter.threshold.value = -3;
   limiter.knee.value = 0;
   limiter.ratio.value = 20;
   limiter.attack.value = 0.001;
   limiter.release.value = 0.08;
   const clip = ctx.createWaveShaper();
   clip.curve = shaperCurve(1.2, 0.97);
-  const out = ctx.createGain();
+  const out = g(1);
   master.connect(comp).connect(limiter).connect(clip).connect(out).connect(ctx.destination);
 
-  const revIn = ctx.createGain();
-  const revHp = ctx.createBiquadFilter();
-  revHp.type = "highpass";
-  revHp.frequency.value = 350;
+  const revIn = g(1);
   const conv = ctx.createConvolver();
-  conv.buffer = impulse;
-  const revOut = ctx.createGain();
-  revOut.gain.value = 0.45;
-  revIn.connect(revHp).connect(conv).connect(revOut).connect(master);
+  conv.buffer = buf.impulse;
+  revIn.connect(filt("highpass", 350)).connect(conv).connect(g(0.45)).connect(master);
 
-  const dlyIn = ctx.createGain();
+  const dlyIn = g(1);
   const dly = ctx.createDelay(2);
-  dly.delayTime.value = BEAT * 0.75;
-  const dlyFb = ctx.createGain();
-  dlyFb.gain.value = 0.32;
-  const dlyLp = ctx.createBiquadFilter();
-  dlyLp.type = "lowpass";
-  dlyLp.frequency.value = 2800;
-  const dlyOut = ctx.createGain();
-  dlyOut.gain.value = 0.35;
+  const dlyFb = g(0.32);
+  const dlyLp = filt("lowpass", 2800);
   dlyIn.connect(dly).connect(dlyLp).connect(dlyFb).connect(dly);
-  dlyLp.connect(dlyOut).connect(master);
+  dlyLp.connect(g(0.35)).connect(master);
 
-  const musicTone = ctx.createBiquadFilter();
-  musicTone.type = "lowpass";
-  musicTone.frequency.value = 2400;
-  musicTone.Q.value = 0.5;
-  const musicVol = ctx.createGain();
-  musicVol.gain.value = 0.36;
-  musicTone.connect(musicVol).connect(master);
+  const musicTone = filt("lowpass", 6000, 0.5);
+  const duck = g(1);
+  const swellGain = g(1);
+  const musicVol = g(0.4);
+  musicTone.connect(duck).connect(swellGain).connect(musicVol).connect(master);
+  const revBus = g(1);
+  revBus.connect(revIn);
+  const dlyBus = g(1);
+  dlyBus.connect(dlyIn);
 
-  const layerIn = {} as Record<Layer, GainNode>;
-  const layerOut = {} as Record<Layer, GainNode>;
-  const layerTarget = {} as Record<Layer, number>;
-  const sends: Partial<Record<Layer, [number, number]>> = {
-    drums: [0.12, 0],
-    keys: [0.3, 0.12],
-    pad: [0.35, 0],
-    brass: [0.3, 0.22],
-    arp: [0.2, 0.4],
-    stabs: [0.35, 0.1],
-    riser: [0.3, 0],
-  };
-  for (const l of LAYERS) {
-    const i = ctx.createGain();
-    const o = ctx.createGain();
-    o.gain.value = 0;
-    i.connect(o);
-    o.connect(l === "crackle" ? musicVol : musicTone);
-    const s = sends[l];
-    if (s) {
-      const r = ctx.createGain();
-      r.gain.value = s[0];
-      o.connect(r).connect(revIn);
-      if (s[1]) {
-        const dd = ctx.createGain();
-        dd.gain.value = s[1];
-        o.connect(dd).connect(dlyIn);
-      }
+  const crackleSrc = ctx.createBufferSource();
+  crackleSrc.buffer = buf.crackle;
+  crackleSrc.loop = true;
+  const crackleOut = g(0.3);
+  crackleSrc.connect(filt("highpass", 900)).connect(filt("lowpass", 6500)).connect(crackleOut);
+  crackleSrc.start();
+
+  function makeDeck(): Deck {
+    const dry = g(0);
+    const rv = g(0);
+    const dl = g(0);
+    dry.connect(musicTone);
+    rv.connect(revBus);
+    dl.connect(dlyBus);
+    const ch = {} as Record<Ch, GainNode>;
+    const lvl = {} as Record<Ch, number>;
+    for (const c of CHANNELS) {
+      const n = g(1);
+      n.connect(dry);
+      const [r, d] = SENDS[c];
+      if (r) n.connect(g(r)).connect(rv);
+      if (d) n.connect(g(d)).connect(dl);
+      ch[c] = n;
+      lvl[c] = 1;
     }
-    layerIn[l] = i;
-    layerOut[l] = o;
-    layerTarget[l] = 0;
+    const crackle = g(0);
+    crackleOut.connect(crackle).connect(ch.fx);
+    const beat = { r: [0, 0, 0, 0, 0, 0, 0, 0], v, c: ch } as unknown as Beat;
+    return { out: [dry, rv, dl], ch, lvl, crackle, track: null, until: 0, t: 0, s: 0, steps: 16, bar: 0, bars: 0, sec: "", n: 0, plays: {}, beat };
   }
-
-  const bassIn = ctx.createGain();
-  const bassClean = ctx.createGain();
-  const bassDrive = ctx.createWaveShaper();
-  bassDrive.curve = shaperCurve(5);
-  bassDrive.oversample = "2x";
-  const bassDriveLp = ctx.createBiquadFilter();
-  bassDriveLp.type = "lowpass";
-  bassDriveLp.frequency.value = 1800;
-  const bassDist = ctx.createGain();
-  bassDist.gain.value = 0;
-  bassIn.connect(bassClean).connect(layerIn.bass);
-  bassIn.connect(bassDrive).connect(bassDriveLp).connect(bassDist).connect(layerIn.bass);
-
-  const keysPan = ctx.createStereoPanner();
-  const trem = ctx.createOscillator();
-  trem.frequency.value = 3.2;
-  const tremAmt = ctx.createGain();
-  tremAmt.gain.value = 0.35;
-  trem.connect(tremAmt).connect(keysPan.pan);
-  trem.start();
-  const keysIn = ctx.createGain();
-  keysIn.connect(keysPan).connect(layerIn.keys);
-
-  const vib = ctx.createOscillator();
-  vib.frequency.value = 5.2;
-  const vibAmt = ctx.createGain();
-  vibAmt.gain.value = 7;
-  vib.connect(vibAmt);
-  vib.start();
-
-  const crackle = ctx.createBufferSource();
-  crackle.buffer = crackleBuf;
-  crackle.loop = true;
-  const crackleHp = ctx.createBiquadFilter();
-  crackleHp.type = "highpass";
-  crackleHp.frequency.value = 900;
-  const crackleLp = ctx.createBiquadFilter();
-  crackleLp.type = "lowpass";
-  crackleLp.frequency.value = 6500;
-  const crackleVol = ctx.createGain();
-  crackleVol.gain.value = 0.3;
-  crackle.connect(crackleHp).connect(crackleLp).connect(crackleVol).connect(layerIn.crackle);
-  crackle.start();
+  let cur = makeDeck();
+  let other = makeDeck();
 
   const wind = ctx.createBufferSource();
-  wind.buffer = noiseBuf;
+  wind.buffer = buf.noise;
   wind.loop = true;
-  const windBand = ctx.createBiquadFilter();
-  windBand.type = "bandpass";
-  windBand.Q.value = 0.7;
-  windBand.frequency.value = 300;
-  const windGain = ctx.createGain();
-  windGain.gain.value = 0;
+  const windBand = filt("bandpass", 300, 0.7);
+  const windGain = g(0);
   wind.connect(windBand).connect(windGain).connect(master);
   wind.start();
 
-  const sfxBus = ctx.createGain();
-  sfxBus.gain.value = 0.8;
+  const sfxBus = g(0.8);
   sfxBus.connect(master);
-  const sfxRev = ctx.createGain();
-  sfxRev.gain.value = 0.35;
+  const sfxRev = g(0.35);
   sfxRev.connect(revIn);
 
-  const g = (v = 1) => {
-    const n = ctx.createGain();
-    n.gain.value = v;
-    return n;
-  };
-  const filt = (type: BiquadFilterType, f: number, q = 0.7) => {
-    const n = ctx.createBiquadFilter();
-    n.type = type;
-    n.frequency.value = f;
-    n.Q.value = q;
-    return n;
-  };
-  const osc = (type: OscillatorType, f: number, t: number) => {
-    const o = ctx.createOscillator();
-    o.type = type;
-    o.frequency.setValueAtTime(f, t);
-    return o;
-  };
-  const noise = (t: number) => {
-    const s = ctx.createBufferSource();
-    s.buffer = noiseBuf;
-    s.loop = true;
-    s.start(t, Math.random() * (NOISE_SEC - 0.5));
-    return s;
-  };
-  const play = (srcs: AudioScheduledSourceNode[], nodes: AudioNode[], t: number, end: number, onEnd?: () => void) => {
-    for (const s of srcs) {
-      if (!(s instanceof AudioBufferSourceNode)) s.start(t);
-      s.stop(end);
-    }
-    srcs[0].onended = () => {
-      for (const s of srcs) s.disconnect();
-      for (const n of nodes) n.disconnect();
-      onEnd?.();
-    };
-  };
-  const perc = (p: AudioParam, t: number, peak: number, a: number, d: number) => {
-    p.setValueAtTime(0, t);
-    p.linearRampToValueAtTime(peak, t + a);
-    p.exponentialRampToValueAtTime(0.0005, t + a + d);
-  };
-
-  const drumIn = layerIn.drums;
-  function kick(t: number, v: number) {
-    const o = osc("sine", 165, t);
-    o.frequency.exponentialRampToValueAtTime(52, t + 0.07);
-    o.frequency.exponentialRampToValueAtTime(42, t + 0.35);
-    const og = g(0);
-    perc(og.gain, t, v, 0.002, 0.42);
-    o.connect(og).connect(drumIn);
-    const n = noise(t);
-    const hp = filt("highpass", 2200);
-    const ng = g(0);
-    perc(ng.gain, t, v * 0.3, 0.001, 0.012);
-    n.connect(hp).connect(ng).connect(drumIn);
-    play([o], [og], t, t + 0.46);
-    play([n], [hp, ng], t, t + 0.03);
-  }
-  function snare(t: number, v: number, clap: boolean) {
-    const n = noise(t);
-    const bp = filt("bandpass", clap ? 1300 : 1900, clap ? 1.4 : 0.6);
-    const ng = g(0);
-    if (clap) {
-      const p = ng.gain;
-      p.setValueAtTime(0, t);
-      for (let i = 0; i < 3; i++) {
-        p.linearRampToValueAtTime(v * 0.9, t + i * 0.011 + 0.001);
-        p.exponentialRampToValueAtTime(v * 0.15, t + i * 0.011 + 0.01);
-      }
-      p.linearRampToValueAtTime(v, t + 0.035);
-      p.exponentialRampToValueAtTime(0.0005, t + 0.22);
-    } else perc(ng.gain, t, v * 0.75, 0.001, 0.19);
-    n.connect(bp).connect(ng).connect(drumIn);
-    const o = osc("triangle", 210, t);
-    o.frequency.exponentialRampToValueAtTime(165, t + 0.06);
-    const og = g(0);
-    perc(og.gain, t, v * (clap ? 0.25 : 0.5), 0.001, 0.09);
-    o.connect(og).connect(drumIn);
-    play([n], [bp, ng], t, t + 0.25);
-    play([o], [og], t, t + 0.12);
-  }
-  function hat(t: number, v: number, open: boolean) {
-    const n = noise(t);
-    const hp = filt("highpass", 7200);
-    const pk = filt("peaking", 10500, 1);
-    pk.gain.value = 5;
-    const ng = g(0);
-    perc(ng.gain, t, v, 0.001, open ? 0.32 : 0.035);
-    n.connect(hp).connect(pk).connect(ng).connect(drumIn);
-    play([n], [hp, pk, ng], t, t + (open ? 0.36 : 0.06));
-  }
-  function crash(t: number, v: number, dest: AudioNode = drumIn) {
-    const n = noise(t);
-    const hp = filt("highpass", 4200);
-    const ng = g(0);
-    perc(ng.gain, t, v, 0.002, 1.6);
-    n.connect(hp).connect(ng).connect(dest);
-    play([n], [hp, ng], t, t + 1.7);
-  }
-
-  function bass(t: number, midi: number, dur: number, v: number, from?: number) {
-    const f = mtof(midi);
-    const o = osc("sine", from ? mtof(from) : f, t);
-    const h = osc("triangle", (from ? mtof(from) : f) * 2, t);
-    if (from) {
-      o.frequency.exponentialRampToValueAtTime(f, t + 0.09);
-      h.frequency.exponentialRampToValueAtTime(f * 2, t + 0.09);
-    }
-    const hg = g(0.14);
-    const eg = g(0);
-    const p = eg.gain;
-    p.setValueAtTime(0, t);
-    p.linearRampToValueAtTime(v, t + 0.006);
-    p.setTargetAtTime(v * 0.55, t + 0.01, 0.3);
-    p.setTargetAtTime(0, t + dur, 0.03);
-    o.connect(eg);
-    h.connect(hg).connect(eg);
-    eg.connect(bassIn);
-    play([o, h], [hg, eg], t, t + dur + 0.2);
-  }
-  function rhodes(t: number, midi: number, dur: number, v: number) {
-    const f = mtof(midi);
-    const c = osc("sine", f, t);
-    const m = osc("sine", f, t);
-    const mg = g(0);
-    mg.gain.setValueAtTime(f * 1.4, t);
-    mg.gain.setTargetAtTime(f * 0.15, t, 0.12);
-    m.connect(mg).connect(c.frequency);
-    const eg = g(0);
-    const p = eg.gain;
-    p.setValueAtTime(0, t);
-    p.linearRampToValueAtTime(v, t + 0.004);
-    p.setTargetAtTime(0, t + 0.004, 0.9);
-    p.setTargetAtTime(0, t + dur, 0.08);
-    c.connect(eg).connect(keysIn);
-    play([c, m], [mg, eg], t, t + dur + 0.4);
-  }
-  function pad(t: number, notes: number[], dur: number, v: number) {
-    const lp = filt("lowpass", 700, 0.6);
-    lp.frequency.setValueAtTime(500, t);
-    lp.frequency.linearRampToValueAtTime(1300, t + dur * 0.6);
-    lp.frequency.linearRampToValueAtTime(800, t + dur);
-    const eg = g(0);
-    const p = eg.gain;
-    p.setValueAtTime(0, t);
-    p.linearRampToValueAtTime(v, t + 0.7);
-    p.setTargetAtTime(0, t + dur, 0.35);
-    const srcs: OscillatorNode[] = [];
-    for (const n of notes) {
-      for (const d of [-9, 9]) {
-        const o = osc("sawtooth", mtof(n), t);
-        o.detune.value = d;
-        o.connect(lp);
-        srcs.push(o);
-      }
-    }
-    lp.connect(eg).connect(layerIn.pad);
-    play(srcs, [lp, eg], t, t + dur + 1.6);
-  }
-  function brass(t: number, midi: number, dur: number, v: number, bright: number, dest: AudioNode) {
-    const f = mtof(midi);
-    const lp = filt("lowpass", 350, 2.2);
-    const fp = lp.frequency;
-    fp.setValueAtTime(350, t);
-    fp.linearRampToValueAtTime(400 + 3200 * bright, t + 0.06);
-    fp.setTargetAtTime(900 + 1100 * bright, t + 0.06, 0.15);
-    fp.setTargetAtTime(400, t + dur, 0.06);
-    const eg = g(0);
-    const p = eg.gain;
-    p.setValueAtTime(0, t);
-    p.linearRampToValueAtTime(v, t + 0.035);
-    p.setTargetAtTime(v * 0.72, t + 0.04, 0.12);
-    p.setTargetAtTime(0, t + dur, 0.06);
-    const srcs: OscillatorNode[] = [];
-    const parts: [OscillatorType, number, number][] = [
-      ["sawtooth", 1, -11],
-      ["sawtooth", 1, 11],
-      ["square", 0.5, 0],
-    ];
-    const sub = g(0.35);
-    for (const [type, mul, det] of parts) {
-      const o = osc(type, f * mul * 0.97, t);
-      o.frequency.exponentialRampToValueAtTime(f * mul, t + 0.05);
-      o.detune.value = det;
-      vibAmt.connect(o.detune);
-      o.connect(mul < 1 ? sub : lp);
-      srcs.push(o);
-    }
-    sub.connect(lp);
-    lp.connect(eg).connect(dest);
-    play(srcs, [lp, eg, sub], t, t + dur + 0.4, () => {
-      for (const o of srcs) vibAmt.disconnect(o.detune);
-    });
-  }
-  function pluck(t: number, midi: number, v: number) {
-    const o = osc("square", mtof(midi), t);
-    const lp = filt("lowpass", 3200, 3);
-    lp.frequency.setValueAtTime(3600, t);
-    lp.frequency.setTargetAtTime(500, t, 0.05);
-    const eg = g(0);
-    perc(eg.gain, t, v, 0.003, 0.17);
-    o.connect(lp).connect(eg).connect(layerIn.arp);
-    play([o], [lp, eg], t, t + 0.22);
-  }
-  function stab(t: number, notes: number[], v: number) {
-    const lp = filt("lowpass", 2600, 1.5);
-    lp.frequency.setValueAtTime(3000, t);
-    lp.frequency.setTargetAtTime(400, t, 0.06);
-    const eg = g(0);
-    perc(eg.gain, t, v, 0.004, 0.24);
-    const srcs: OscillatorNode[] = [];
-    for (const n of notes) {
-      const o = osc("sawtooth", mtof(n), t);
-      o.connect(lp);
-      srcs.push(o);
-    }
-    lp.connect(eg).connect(layerIn.stabs);
-    play(srcs, [lp, eg], t, t + 0.3);
-  }
-  function riser(t: number, dur: number, v: number) {
-    const n = noise(t);
-    const bp = filt("bandpass", 300, 3);
-    bp.frequency.setValueAtTime(300, t);
-    bp.frequency.exponentialRampToValueAtTime(7000, t + dur);
-    const eg = g(0);
-    eg.gain.setValueAtTime(0, t);
-    eg.gain.linearRampToValueAtTime(v, t + dur);
-    eg.gain.linearRampToValueAtTime(0, t + dur + 0.03);
-    n.connect(bp).connect(eg).connect(layerIn.riser);
-    play([n], [bp, eg], t, t + dur + 0.05);
-  }
-
   let state: MusicState = "menu";
-  let intensity = 0; // 0..1 from speed
-  const hookBright = () => 0.45 + 0.55 * intensity;
+  let energy = 0;
+  let bossPhase = 0;
+  let roamIdx = Math.floor(Math.random() * ROAM.length);
+  let roamSince = 0;
+  let rotate = false;
+  let pendingRoam = false;
+  const played = new Set<TrackId>();
 
-  function active(l: Layer) {
-    return layerTarget[l] > 0.01 || layerOut[l].gain.value > 0.01;
+  function fade(d: Deck, to: number, t: number, dur: number, cut = false) {
+    for (const o of d.out) {
+      o.gain.cancelScheduledValues(t);
+      o.gain.setValueAtTime(o.gain.value, t);
+      if (cut) o.gain.linearRampToValueAtTime(0, t + 0.05);
+      o.gain.linearRampToValueAtTime(to, t + dur + (cut ? 0.05 : 0));
+    }
   }
 
-  function scheduleStep(n: number, t: number) {
-    const s = n % 16;
-    const bar = Math.floor(n / 16) % 8;
-    const ch = PROG[bar];
-    const next = PROG[(bar + 1) % 8];
-    const st = state;
-    const hum = () => 0.85 + Math.random() * 0.15;
+  function enterSection(d: Deck, sec: string) {
+    const tr = d.track!;
+    d.sec = sec;
+    d.bar = 0;
+    d.bars = tr.sections[sec];
+    d.beat.loop = d.plays[sec] ?? 0;
+    d.plays[sec] = d.beat.loop + 1;
+  }
 
-    if (active("drums") && st !== "menu") {
-      const kicks =
-        st === "combat" ? [0, 3, 7, 10, 11] : st === "race" ? [0, 6, 10, 13] : bar % 4 === 3 ? [0, 3, 7, 10] : [0, 7, 10];
-      const kv = st === "explore" ? 0.75 : st === "combat" ? 1 : 0.9;
-      if (kicks.includes(s)) kick(t, kv * (s === 0 ? 1 : 0.85));
-      if (s === 4 || s === 12) snare(t, (st === "explore" ? 0.55 : 0.8) * hum(), st === "combat" || (st === "swing" && s === 12));
-      if (st !== "explore" && bar % 2 === 1 && s === 15) snare(t, 0.18, false);
-      if ((st === "swing" || st === "race") && bar === 7 && s >= 13) snare(t, 0.25 + (s - 13) * 0.12, false);
+  function load(id: TrackId) {
+    const now = ctx.currentTime;
+    const back = other.track?.id === id && now < other.until;
+    if (back) other.until = 0;
+    else {
+      const tr = TRACKS[id];
+      other.track = tr;
+      other.until = 0;
+      other.t = now + 0.06;
+      other.s = 0;
+      other.n = 0;
+      other.plays = {};
+      enterSection(other, played.has(id) ? tr.resume : tr.start);
+      played.add(id);
+      other.crackle.gain.value = tr.crackle ?? 0;
+      dly.delayTime.setValueAtTime((60 / tr.bpm) * 0.75, now);
+    }
+    fade(other, TRIM[id], now, XFADE, !back);
+    if (cur.track) {
+      fade(cur, 0, now, XFADE);
+      cur.until = now + XFADE + 0.1;
+    }
+    [cur, other] = [other, cur];
+    if (ROAM.includes(id)) roamSince = now;
+  }
 
-      const accent = [1, 0.35, 0.65, 0.4][s % 4];
-      const hv = st === "explore" ? 0.22 : 0.3;
-      const openAt = st !== "explore" && bar % 2 === 1 && s === 14;
-      if (openAt) hat(t, hv * 0.9, true);
-      else if (st === "explore") {
-        if (s % 2 === 0) hat(t, hv * accent * hum(), false);
-      } else {
-        hat(t, hv * accent * hum(), false);
-        const roll = st === "race" ? s % 8 === 6 || (bar % 2 === 1 && s >= 12) : bar % 4 === 3 && s >= 12 && st !== "combat";
-        if (roll) {
-          const div = st === "race" && bar % 2 === 1 ? 3 : 2;
-          for (let i = 1; i < div; i++) hat(t + (S16 * i) / div, hv * 0.5, false);
+  function stepDeck(d: Deck) {
+    const tr = d.track!;
+    const S16 = 60 / tr.bpm / 4;
+    const b = d.beat;
+    if (d.s === 0) {
+      if (d.bar >= d.bars) {
+        const opts = tr.flow[d.sec];
+        const pick = opts[Math.floor(Math.random() * opts.length)];
+        enterSection(d, pick);
+        if (rotate && d === cur && ROAM.includes(tr.id as TrackId)) {
+          rotate = false;
+          pendingRoam = true;
         }
       }
-      if (s === 0 && bar === 0 && (st === "swing" || st === "race")) crash(t, 0.22);
+      d.steps = tr.barSteps?.(d.n) ?? 16;
+      for (let i = 0; i < 8; i++) b.r[i] = Math.random();
+      b.k = tr.key?.(bossPhase) ?? 0;
     }
-
-    if (active("bass") && st !== "menu") {
-      const r = ch.root;
-      const pat: [number, number, number, number?][] =
-        st === "combat"
-          ? [[0, 3, r], [3, 3, r], [7, 3, r], [10, 1, r], [11, 4, r + 12, r]]
-          : [[0, 6, r], [7, 3, r], [10, 4, r], [14, 2, next.root, r]];
-      const hit = pat.find((p) => p[0] === s);
-      if (hit) bass(t, hit[2], hit[1] * S16, st === "explore" ? 0.15 : 0.19, hit[3]);
+    const sw = tr.swing ?? 0;
+    const late = tr.swing8 ? (d.s % 4 === 2 ? sw : 0) : d.s % 2 === 1 ? sw : 0;
+    b.t = d.t + late * S16;
+    b.s = d.s;
+    b.steps = d.steps;
+    b.bar = d.bar;
+    b.bars = d.bars;
+    b.sec = d.sec;
+    b.n = d.n;
+    b.e = energy;
+    b.S16 = S16;
+    tr.step(b);
+    d.t += S16;
+    if (++d.s >= d.steps) {
+      d.s = 0;
+      d.bar++;
+      d.n++;
     }
-
-    if (active("keys")) {
-      const k = ch.keys;
-      if (s === 0) {
-        const strum = st === "menu" ? 0.035 : 0.012;
-        k.forEach((m, i) => rhodes(t + i * strum, m, BAR * 0.95, (st === "menu" ? 0.18 : 0.19) * hum()));
-      } else if (st === "menu") {
-        if (s === 8 && bar % 2 === 1) rhodes(t, k[3] + 12, BEAT * 2, 0.11);
-      } else if (s === 10 && bar % 2 === 0) {
-        k.slice(1).forEach((m) => rhodes(t, m, S16 * 2.5, 0.11 * hum()));
-      } else if (s === 7 && bar % 2 === 1) {
-        k.slice(2).forEach((m) => rhodes(t, m, S16 * 2, 0.11 * hum()));
-      }
-    }
-
-    if (active("pad") && s === 0) pad(t, [ch.root + 24, ...ch.keys], BAR, st === "combat" ? 0.075 : 0.056);
-
-    if (active("brass")) {
-      for (const [hb, hs, m, len] of HOOK) {
-        if (hb === bar && hs === s) brass(t, m, len * S16 * 0.92, 0.26, hookBright(), layerIn.brass);
-      }
-    }
-
-    if (active("stabs") && (s === 0 || s === 3 || (bar % 2 === 1 && s === 6))) {
-      stab(t, [ch.root + 12, ...ch.keys.map((m) => m - 12)], s === 0 ? 0.18 : 0.13);
-    }
-
-    if (active("arp")) {
-      const a = [...ch.keys, ch.keys[0] + 12];
-      const seq = [0, 1, 2, 3, 4, 3, 2, 1];
-      pluck(t, a[seq[n % 8]] + 12, 0.2 * (s % 4 === 0 ? 1 : 0.7));
-    }
-
-    if (active("riser") && bar % 4 === 2 && s === 0) riser(t, BAR * 2 - S16, 0.36);
   }
 
-  let step = 0;
-  let nextTime = ctx.currentTime + 0.1;
   function tick() {
     if (ctx.state !== "running") return;
     const now = ctx.currentTime;
-    if (nextTime < now - 0.2) nextTime = now + 0.05;
-    while (nextTime < now + LOOKAHEAD) {
-      scheduleStep(step, nextTime + (step % 2 ? SWING * S16 : 0));
-      nextTime += S16;
-      step++;
+    for (const d of [cur, other]) {
+      if (!d.track) continue;
+      if (d.until && now > d.until) {
+        d.track = null;
+        continue;
+      }
+      if (d.t < now - 0.2) d.t = now + 0.05;
+      while (d.t < now + LOOKAHEAD) stepDeck(d);
+    }
+    if (pendingRoam) {
+      pendingRoam = false;
+      roamIdx = (roamIdx + 1) % ROAM.length;
+      load(ROAM[roamIdx]);
     }
   }
   const timer = setInterval(tick, 25);
 
-  let lastTone = 0;
-  let lastDist = -1;
-  function setLayers() {
+  function setMix() {
     const t = ctx.currentTime;
-    const mix = MIX[state];
-    for (const l of LAYERS) {
-      let v = mix[l];
-      if (l === "brass" && state === "swing") v *= 0.45 + 0.55 * intensity;
-      if (l === "drums" && state === "swing") v *= 0.85 + 0.15 * intensity;
-      if (Math.abs(v - layerTarget[l]) > 0.02 || (v === 0 && layerTarget[l] !== 0)) {
-        layerTarget[l] = v;
-        layerOut[l].gain.setTargetAtTime(v, t, v > layerOut[l].gain.value ? 0.6 : 0.9);
+    const roam = state === "explore" || state === "swing";
+    for (const c of CHANNELS) {
+      let x = 1;
+      if (state === "explore") x = LOW[c];
+      else if (state === "swing") {
+        if (c === "lead") x = 0.55 + 0.45 * energy;
+        else if (c === "str") x = 0.75 + 0.25 * energy;
+        else if (c === "drums") x = 0.85 + 0.15 * energy;
+        else if (c === "keys") x = 0.8;
+      }
+      if (!roam && c === "lead" && state === "menu") x = 0.9;
+      if (Math.abs(x - cur.lvl[c]) > 0.02) {
+        cur.lvl[c] = x;
+        cur.ch[c].gain.setTargetAtTime(x, t, x > cur.ch[c].gain.value ? 0.35 : 0.8);
       }
     }
-    const tone = TONE[state] * (state === "swing" ? 0.6 + 0.4 * intensity : 1);
+    const tone =
+      state === "explore" ? 4500 : state === "swing" ? 7000 + 9000 * energy : state === "stealth" ? 3200 : state === "menu" ? 7000 : 16000;
     if (Math.abs(tone - lastTone) > 150) {
       lastTone = tone;
-      musicTone.frequency.setTargetAtTime(tone, t, 0.5);
-    }
-    const dist = state === "combat" ? 1 : 0;
-    if (dist !== lastDist) {
-      lastDist = dist;
-      bassDist.gain.setTargetAtTime(dist * 0.12, t, 0.4);
-      bassClean.gain.setTargetAtTime(1 - dist * 0.2, t, 0.4);
+      musicTone.frequency.setTargetAtTime(tone, t, 0.4);
     }
   }
-  setLayers();
+  let lastTone = 0;
+
+  let lastSwell = -10;
+  function swell() {
+    const t = ctx.currentTime;
+    if (t - lastSwell < 2.5 || !cur.track) return;
+    lastSwell = t;
+    v.swell(cur.ch.fx, t, 0.45, 0.22);
+    v.crash(cur.ch.fx, t + 0.45, 0.16, 1.4);
+    v.tone(cur.ch.fx, t + 0.45, "sine", 90, 45, 0.3, 0.35, 0.003, 0.6);
+    swellGain.gain.cancelScheduledValues(t);
+    swellGain.gain.setTargetAtTime(1.3, t, 0.15);
+    swellGain.gain.setTargetAtTime(1, t + 1.2, 0.8);
+  }
+
+  function duckMusic(amount: number, dur: number) {
+    const t = ctx.currentTime;
+    duck.gain.cancelScheduledValues(t);
+    duck.gain.setTargetAtTime(1 - amount, t, 0.02);
+    duck.gain.setTargetAtTime(1, t + dur, 0.4);
+  }
 
   let muted = false;
   let windLevel = -1;
+  let prevSpeed = 0;
   return {
     ctx,
     update(_dt: number, speed: number, next: MusicState) {
       const sp = Math.max(0, speed);
-      intensity = clamp01((sp - 20) / 40);
-      state = next === "explore" && sp > 22 ? "swing" : next;
-      setLayers();
+      energy = clamp01((sp - 15) / 45);
+      const st: MusicState = next === "explore" && sp > 22 ? "swing" : next;
+      const roam = st === "explore" || st === "swing";
+      if (st === "swing" && (state === "explore" || (sp - prevSpeed > 6 && prevSpeed < 25))) swell();
+      prevSpeed = sp;
+      state = st;
+      const now = ctx.currentTime;
+      if (roam && cur.track && ROAM.includes(cur.track.id as TrackId) && now - roamSince > ROAM_SEC) rotate = true;
+      const want = roam ? ROAM[roamIdx] : STATE_TRACK[st];
+      if (cur.track?.id !== want) {
+        if (roam && cur.track && !ROAM.includes(cur.track.id as TrackId) && ROAM.includes(want)) rotate = false;
+        load(want);
+      }
+      setMix();
       const k = Math.min(sp / 60, 1);
       const w = k * k * 0.12;
       if (Math.abs(w - windLevel) > 0.003) {
         windLevel = w;
-        const t = ctx.currentTime;
-        windGain.gain.setTargetAtTime(w, t, 0.12);
-        windBand.frequency.setTargetAtTime(250 + sp * 25, t, 0.12);
+        windGain.gain.setTargetAtTime(w, now, 0.12);
+        windBand.frequency.setTargetAtTime(250 + sp * 25, now, 0.12);
       }
+    },
+    swell,
+    setBossPhase(phase: number) {
+      bossPhase = Math.max(0, Math.floor(phase));
+    },
+    setVolume(x: number) {
+      master.gain.setTargetAtTime(clamp01(x) * clamp01(x), ctx.currentTime, 0.05);
     },
     sfx(name: Sfx, opts?: { pan?: number; volume?: number }) {
       if (ctx.state === "closed") return;
-      const t = ctx.currentTime + 0.005;
-      const vol = g(opts?.volume ?? 1);
-      const pan = ctx.createStereoPanner();
-      pan.pan.value = Math.max(-1, Math.min(1, opts?.pan ?? 0));
-      vol.connect(pan).connect(sfxBus);
-      const wet = g(0);
-      vol.connect(wet).connect(sfxRev);
-      let life = 0.5;
-      const live = (end: number) => (life = Math.max(life, end - t));
-
-      const noiseShot = (
-        at: number,
-        dur: number,
-        v: number,
-        type: BiquadFilterType,
-        f0: number,
-        f1: number,
-        q = 1,
-        a = 0.002,
-      ) => {
-        const n = noise(at);
-        const f = filt(type, f0, q);
-        if (f1 !== f0) f.frequency.exponentialRampToValueAtTime(f1, at + dur);
-        const e = g(0);
-        perc(e.gain, at, v, a, dur);
-        n.connect(f).connect(e).connect(vol);
-        play([n], [f, e], at, at + a + dur + 0.02);
-        live(at + a + dur);
-      };
-      const toneShot = (
-        at: number,
-        type: OscillatorType,
-        f0: number,
-        f1: number,
-        glide: number,
-        v: number,
-        a: number,
-        d: number,
-      ) => {
-        const o = osc(type, f0, at);
-        if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, at + glide);
-        const e = g(0);
-        perc(e.gain, at, v, a, d);
-        o.connect(e).connect(vol);
-        play([o], [e], at, at + a + d + 0.02);
-        live(at + a + d);
-      };
-      const bell = (at: number, midi: number, v: number, d = 0.9) => {
-        const f = mtof(midi);
-        toneShot(at, "sine", f, f, 0, v, 0.002, d);
-        toneShot(at, "sine", f * 2.76, f * 2.76, 0, v * 0.25, 0.001, d * 0.3);
-        toneShot(at, "sine", f * 5.4, f * 5.4, 0, v * 0.12, 0.001, d * 0.12);
-      };
-      const horn = (at: number, notes: number[], dur: number, v: number, bright = 0.9) => {
-        for (const m of notes) brass(at, m, dur, v, bright, vol);
-        live(at + dur + 0.4);
-      };
-      const debris = (from: number, to: number, count: number, v: number) => {
-        for (let i = 0; i < count; i++) {
-          const at = from + Math.random() * (to - from);
-          noiseShot(at, 0.025 + Math.random() * 0.03, v * (0.5 + Math.random() * 0.5), "bandpass", 2000 + Math.random() * 4000, 2000, 2.5, 0.001);
-        }
-      };
-
-      switch (name) {
-        case "thwip":
-          noiseShot(t, 0.12, 0.55, "bandpass", 5200, 1100, 2.5, 0.002);
-          noiseShot(t, 0.015, 0.25, "highpass", 6500, 6500, 0.7, 0.0005);
-          toneShot(t, "triangle", 1700, 650, 0.05, 0.18, 0.001, 0.06);
-          break;
-        case "zip": {
-          const n = noise(t);
-          const f = filt("bandpass", 450, 2.5);
-          f.frequency.exponentialRampToValueAtTime(3800, t + 0.42);
-          const e = g(0);
-          e.gain.setValueAtTime(0, t);
-          e.gain.linearRampToValueAtTime(0.5, t + 0.32);
-          e.gain.linearRampToValueAtTime(0, t + 0.5);
-          n.connect(f).connect(e).connect(vol);
-          play([n], [f, e], t, t + 0.52);
-          toneShot(t, "sine", 240, 900, 0.42, 0.06, 0.3, 0.15);
-          noiseShot(t, 0.1, 0.3, "bandpass", 4500, 1200, 2.5);
-          live(t + 0.55);
-          break;
-        }
-        case "land":
-          toneShot(t, "sine", 130, 38, 0.18, 0.62, 0.002, 0.28);
-          noiseShot(t, 0.16, 0.35, "lowpass", 900, 300, 0.7);
-          debris(t + 0.03, t + 0.22, 4, 0.12);
-          break;
-        case "bigLand":
-          wet.gain.value = 0.5;
-          toneShot(t, "sine", 100, 28, 0.45, 1, 0.003, 0.7);
-          toneShot(t, "sine", 48, 40, 0.5, 0.5, 0.01, 0.8);
-          noiseShot(t, 0.45, 0.7, "lowpass", 600, 150, 0.7);
-          noiseShot(t, 0.08, 0.35, "highpass", 1500, 1500, 0.7, 0.001);
-          debris(t + 0.04, t + 0.6, 10, 0.16);
-          break;
-        case "collect":
-          wet.gain.value = 0.6;
-          [80, 84, 87, 92].forEach((m, i) => {
-            const at = t + i * 0.055;
-            toneShot(at, "sine", mtof(m), mtof(m), 0, 0.16, 0.002, 0.35);
-            toneShot(at, "triangle", mtof(m) * 2, mtof(m) * 2, 0, 0.04, 0.002, 0.15);
-          });
-          break;
-        case "checkpoint":
-          wet.gain.value = 0.6;
-          bell(t, 80, 0.26);
-          bell(t + 0.12, 87, 0.3, 1.2);
-          break;
-        case "hit":
-          toneShot(t, "sine", 190, 55, 0.08, 0.95, 0.001, 0.17);
-          noiseShot(t, 0.07, 0.6, "bandpass", 1400, 700, 0.8, 0.001);
-          noiseShot(t, 0.01, 0.35, "highpass", 3500, 3500, 0.7, 0.0005);
-          break;
-        case "ko":
-          wet.gain.value = 0.5;
-          toneShot(t, "sine", 210, 50, 0.1, 1, 0.001, 0.22);
-          toneShot(t + 0.02, "sine", 140, 30, 0.7, 0.8, 0.005, 0.9);
-          noiseShot(t, 0.3, 0.6, "lowpass", 1800, 300, 0.7, 0.001);
-          noiseShot(t, 0.012, 0.4, "highpass", 3000, 3000, 0.7, 0.0005);
-          debris(t + 0.05, t + 0.35, 5, 0.12);
-          break;
-        case "whoosh": {
-          const n = noise(t);
-          const f = filt("bandpass", 400, 1.8);
-          f.frequency.exponentialRampToValueAtTime(2400, t + 0.18);
-          f.frequency.exponentialRampToValueAtTime(550, t + 0.45);
-          const e = g(0);
-          e.gain.setValueAtTime(0, t);
-          e.gain.linearRampToValueAtTime(0.55, t + 0.15);
-          e.gain.linearRampToValueAtTime(0, t + 0.46);
-          n.connect(f).connect(e).connect(vol);
-          play([n], [f, e], t, t + 0.48);
-          live(t + 0.5);
-          break;
-        }
-        case "trick":
-          wet.gain.value = 0.4;
-          horn(t, [65, 72], 0.1, 0.09);
-          horn(t + 0.09, [72, 77], 0.22, 0.1);
-          toneShot(t + 0.09, "sine", mtof(89), mtof(89), 0, 0.06, 0.002, 0.25);
-          break;
-        case "complete":
-          wet.gain.value = 0.7;
-          horn(t, [49, 61, 65, 68, 73], 0.16, 0.075);
-          horn(t + 0.2, [51, 63, 67, 70, 75], 0.16, 0.075);
-          horn(t + 0.42, [41, 53, 65, 69, 72, 77], 1.4, 0.08, 1);
-          toneShot(t + 0.42, "sine", mtof(29), mtof(29), 0, 0.6, 0.005, 1.2);
-          crash(t + 0.42, 0.25, vol);
-          live(t + 2.2);
-          break;
-        case "fail":
-          wet.gain.value = 0.5;
-          [67, 66, 65].forEach((m, i) => horn(t + i * 0.3, [m, m - 12], 0.24, 0.08, 0.25));
-          horn(t + 0.9, [64, 52], 0.8, 0.08, 0.2);
-          break;
-        case "start":
-          wet.gain.value = 0.6;
-          toneShot(t, "sine", 80, 35, 0.4, 0.9, 0.003, 0.7);
-          noiseShot(t, 0.25, 0.4, "lowpass", 1200, 300);
-          horn(t, [53, 60, 65], 0.13, 0.09);
-          horn(t + 0.17, [53, 60, 65], 0.13, 0.09);
-          horn(t + 0.34, [56, 63, 68, 72], 0.75, 0.085, 1);
-          snare(t + 0.34, 0.6, true);
-          break;
-        case "levelUp":
-          wet.gain.value = 0.7;
-          [65, 69, 72].forEach((m, i) => horn(t + i * 0.1, [m], 0.12, 0.1));
-          horn(t + 0.32, [53, 65, 69, 72, 77], 1.1, 0.075, 1);
-          [89, 93, 96, 101].forEach((m, i) => toneShot(t + 0.32 + i * 0.05, "sine", mtof(m), mtof(m), 0, 0.07, 0.002, 0.5));
-          break;
-        case "countdown":
-          toneShot(t, "sine", 880, 880, 0, 0.3, 0.002, 0.13);
-          toneShot(t, "triangle", 1760, 1760, 0, 0.06, 0.002, 0.08);
-          break;
-        case "go":
-          wet.gain.value = 0.4;
-          toneShot(t, "sine", 1760, 1760, 0, 0.32, 0.002, 0.4);
-          toneShot(t, "triangle", 880, 880, 0, 0.12, 0.002, 0.35);
-          toneShot(t, "square", 1318.5, 1318.5, 0, 0.03, 0.002, 0.3);
-          break;
-        case "siren": {
-          wet.gain.value = 0.5;
-          const o = osc("sawtooth", 700, t);
-          const o2 = osc("sawtooth", 700, t);
-          o2.detune.value = 8;
-          const fq = o.frequency;
-          const fq2 = o2.frequency;
-          for (let i = 0; i < 2; i++) {
-            const d = i === 0 ? 1.03 : 0.95; // doppler: approach then pass
-            const at = t + i;
-            for (const p of [fq, fq2]) {
-              p.linearRampToValueAtTime(1250 * d, at + 0.55);
-              p.linearRampToValueAtTime(700 * d, at + 1);
-            }
-          }
-          const lp = filt("lowpass", 2200, 0.7);
-          lp.frequency.setValueAtTime(1600, t);
-          lp.frequency.linearRampToValueAtTime(3000, t + 0.9);
-          lp.frequency.linearRampToValueAtTime(1300, t + 2);
-          const e = g(0);
-          e.gain.setValueAtTime(0, t);
-          e.gain.linearRampToValueAtTime(0.11, t + 0.9);
-          e.gain.linearRampToValueAtTime(0.0, t + 2);
-          o.connect(lp);
-          o2.connect(lp);
-          lp.connect(e).connect(vol);
-          play([o, o2], [lp, e], t, t + 2.02);
-          live(t + 2.05);
-          break;
-        }
-        case "ui":
-          toneShot(t, "sine", 1500, 1100, 0.03, 0.14, 0.001, 0.035);
-          noiseShot(t, 0.008, 0.05, "highpass", 4000, 4000, 0.7, 0.0005);
-          break;
-      }
-      setTimeout(() => {
-        vol.disconnect();
-        pan.disconnect();
-        wet.disconnect();
-      }, (life + 0.3) * 1000);
+      playSfx(name, opts?.pan ?? 0, opts?.volume ?? 1);
     },
     setMuted(m: boolean) {
       muted = m;
@@ -871,7 +352,7 @@ export function createAudio() {
     },
     resume() {
       void ctx.resume().then(() => {
-        nextTime = Math.max(nextTime, ctx.currentTime + 0.05);
+        for (const d of [cur, other]) d.t = Math.max(d.t, ctx.currentTime + 0.05);
       });
     },
     dispose() {
@@ -879,4 +360,398 @@ export function createAudio() {
       if (ctx.state !== "closed") void ctx.close();
     },
   };
+
+  function playSfx(name: Sfx, panV: number, volume: number) {
+    const t = ctx.currentTime + 0.005;
+    const vol = g(volume);
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.max(-1, Math.min(1, panV));
+    vol.connect(pan).connect(sfxBus);
+    const wet = g(0);
+    vol.connect(wet).connect(sfxRev);
+    let life = 0.5;
+    const live = (end: number) => (life = Math.max(life, end - t));
+    const R = Math.random;
+
+    const N = (at: number, dur: number, x: number, type: BiquadFilterType, f0: number, f1 = f0, q = 1, a = 0.002) => {
+      v.nz(vol, at, dur, x, type, f0, f1, q, a);
+      live(at + a + dur);
+    };
+    const T = (at: number, type: OscillatorType, f0: number, f1: number, glide: number, x: number, a: number, d: number) => {
+      v.tone(vol, at, type, f0, f1, glide, x, a, d);
+      live(at + a + d);
+    };
+    const bell = (at: number, midi: number, x: number, d = 0.9) => {
+      v.bell(vol, at, midi, x, d);
+      live(at + d);
+    };
+    const horn = (at: number, notes: number[], dur: number, x: number, bright = 0.9) => {
+      for (const m of notes) v.brass(vol, at, m, dur, x, bright);
+      live(at + dur + 0.4);
+    };
+    const debris = (from: number, to: number, count: number, x: number) => {
+      for (let i = 0; i < count; i++) {
+        const f = 2000 + R() * 4000;
+        N(from + R() * (to - from), 0.025 + R() * 0.03, x * (0.5 + R() * 0.5), "bandpass", f, f, 2.5, 0.001);
+      }
+    };
+    // Noise through a moving band: [time, freq] points plus a gain envelope.
+    const sweep = (at: number, freqs: [number, number][], gains: [number, number][], q = 1.8, type: BiquadFilterType = "bandpass") => {
+      const n = v.noise(at);
+      const f = filt(type, freqs[0][1], q);
+      for (const [dt, hz] of freqs.slice(1)) f.frequency.exponentialRampToValueAtTime(hz, at + dt);
+      const e = g(0);
+      e.gain.setValueAtTime(0, at);
+      for (const [dt, x] of gains) e.gain.linearRampToValueAtTime(x, at + dt);
+      const end = at + gains[gains.length - 1][0];
+      n.connect(f).connect(e).connect(vol);
+      v.play([n], [f, e], at, end + 0.02);
+      live(end);
+      return e;
+    };
+    const crowd = (at: number, dur: number, x: number, voices: number, rise: number) => {
+      for (let i = 0; i < voices; i++) {
+        const f = [500, 750, 1100, 1600, 2400, 3200][i % 6] * (0.9 + R() * 0.2);
+        const n = v.noise(at);
+        const bp = filt("bandpass", f, 3 + R() * 3);
+        bp.frequency.linearRampToValueAtTime(f * rise, at + dur * 0.4);
+        const e = g(0);
+        e.gain.setValueAtTime(0, at);
+        e.gain.linearRampToValueAtTime(x, at + 0.12 + R() * 0.15);
+        e.gain.setTargetAtTime(0, at + dur * (0.5 + R() * 0.3), dur * 0.2);
+        const am = g(0.75);
+        const lfo = v.osc("sine", 3 + R() * 6, at);
+        const la = g(0.25);
+        lfo.connect(la).connect(am.gain);
+        n.connect(bp).connect(e).connect(am).connect(vol);
+        v.play([n, lfo], [bp, e, am, la], at, at + dur + 0.2);
+      }
+      live(at + dur + 0.2);
+    };
+
+    switch (name) {
+      case "thwip":
+        N(t, 0.12, 0.55, "bandpass", 5200, 1100, 2.5, 0.002);
+        N(t, 0.015, 0.25, "highpass", 6500, 6500, 0.7, 0.0005);
+        T(t, "triangle", 1700, 650, 0.05, 0.18, 0.001, 0.06);
+        break;
+      case "zip":
+        sweep(t, [[0, 450], [0.42, 3800]], [[0.32, 0.5], [0.5, 0]], 2.5);
+        T(t, "sine", 240, 900, 0.42, 0.06, 0.3, 0.15);
+        N(t, 0.1, 0.3, "bandpass", 4500, 1200, 2.5);
+        break;
+      case "land":
+        T(t, "sine", 130, 38, 0.18, 0.62, 0.002, 0.28);
+        N(t, 0.16, 0.35, "lowpass", 900, 300, 0.7);
+        debris(t + 0.03, t + 0.22, 4, 0.12);
+        break;
+      case "bigLand":
+        wet.gain.value = 0.5;
+        T(t, "sine", 100, 28, 0.45, 1, 0.003, 0.7);
+        T(t, "sine", 48, 40, 0.5, 0.5, 0.01, 0.8);
+        N(t, 0.45, 0.7, "lowpass", 600, 150, 0.7);
+        N(t, 0.08, 0.35, "highpass", 1500, 1500, 0.7, 0.001);
+        debris(t + 0.04, t + 0.6, 10, 0.16);
+        break;
+      case "collect":
+        wet.gain.value = 0.6;
+        [80, 84, 87, 92].forEach((m, i) => {
+          T(t + i * 0.055, "sine", mtof(m), mtof(m), 0, 0.16, 0.002, 0.35);
+          T(t + i * 0.055, "triangle", mtof(m) * 2, mtof(m) * 2, 0, 0.04, 0.002, 0.15);
+        });
+        break;
+      case "checkpoint":
+        wet.gain.value = 0.6;
+        bell(t, 80, 0.26);
+        bell(t + 0.12, 87, 0.3, 1.2);
+        break;
+      case "hit":
+        T(t, "sine", 190, 55, 0.08, 0.95, 0.001, 0.17);
+        N(t, 0.07, 0.6, "bandpass", 1400, 700, 0.8, 0.001);
+        N(t, 0.01, 0.35, "highpass", 3500, 3500, 0.7, 0.0005);
+        break;
+      case "ko":
+        wet.gain.value = 0.5;
+        T(t, "sine", 210, 50, 0.1, 1, 0.001, 0.22);
+        T(t + 0.02, "sine", 140, 30, 0.7, 0.8, 0.005, 0.9);
+        N(t, 0.3, 0.6, "lowpass", 1800, 300, 0.7, 0.001);
+        N(t, 0.012, 0.4, "highpass", 3000, 3000, 0.7, 0.0005);
+        debris(t + 0.05, t + 0.35, 5, 0.12);
+        break;
+      case "whoosh":
+        sweep(t, [[0, 400], [0.18, 2400], [0.45, 550]], [[0.15, 0.55], [0.46, 0]]);
+        break;
+      case "trick":
+        wet.gain.value = 0.4;
+        horn(t, [65, 72], 0.1, 0.09);
+        horn(t + 0.09, [72, 77], 0.22, 0.1);
+        T(t + 0.09, "sine", mtof(89), mtof(89), 0, 0.06, 0.002, 0.25);
+        break;
+      case "complete":
+        wet.gain.value = 0.7;
+        duckMusic(0.5, 1.6);
+        horn(t, [49, 61, 65, 68, 73], 0.16, 0.075);
+        horn(t + 0.2, [51, 63, 67, 70, 75], 0.16, 0.075);
+        horn(t + 0.42, [41, 53, 65, 69, 72, 77], 1.4, 0.08, 1);
+        T(t + 0.42, "sine", mtof(29), mtof(29), 0, 0.6, 0.005, 1.2);
+        v.crash(vol, t + 0.42, 0.25);
+        live(t + 2.2);
+        break;
+      case "fail":
+        wet.gain.value = 0.5;
+        [67, 66, 65].forEach((m, i) => horn(t + i * 0.3, [m, m - 12], 0.24, 0.08, 0.25));
+        horn(t + 0.9, [64, 52], 0.8, 0.08, 0.2);
+        break;
+      case "start":
+        wet.gain.value = 0.6;
+        T(t, "sine", 80, 35, 0.4, 0.9, 0.003, 0.7);
+        N(t, 0.25, 0.4, "lowpass", 1200, 300);
+        horn(t, [53, 60, 65], 0.13, 0.09);
+        horn(t + 0.17, [53, 60, 65], 0.13, 0.09);
+        horn(t + 0.34, [56, 63, 68, 72], 0.75, 0.085, 1);
+        v.snare(vol, t + 0.34, 0.6, true);
+        break;
+      case "levelUp":
+        wet.gain.value = 0.7;
+        [65, 69, 72].forEach((m, i) => horn(t + i * 0.1, [m], 0.12, 0.1));
+        horn(t + 0.32, [53, 65, 69, 72, 77], 1.1, 0.075, 1);
+        [89, 93, 96, 101].forEach((m, i) => T(t + 0.32 + i * 0.05, "sine", mtof(m), mtof(m), 0, 0.07, 0.002, 0.5));
+        break;
+      case "countdown":
+        T(t, "sine", 880, 880, 0, 0.3, 0.002, 0.13);
+        T(t, "triangle", 1760, 1760, 0, 0.06, 0.002, 0.08);
+        break;
+      case "go":
+        wet.gain.value = 0.4;
+        T(t, "sine", 1760, 1760, 0, 0.32, 0.002, 0.4);
+        T(t, "triangle", 880, 880, 0, 0.12, 0.002, 0.35);
+        T(t, "square", 1318.5, 1318.5, 0, 0.03, 0.002, 0.3);
+        break;
+      case "siren": {
+        wet.gain.value = 0.5;
+        const o = v.osc("sawtooth", 700, t);
+        const o2 = v.osc("sawtooth", 700, t);
+        o2.detune.value = 8;
+        for (let i = 0; i < 2; i++) {
+          const d = i === 0 ? 1.03 : 0.95; // doppler: approach then pass
+          for (const p of [o.frequency, o2.frequency]) {
+            p.linearRampToValueAtTime(1250 * d, t + i + 0.55);
+            p.linearRampToValueAtTime(700 * d, t + i + 1);
+          }
+        }
+        const lp = filt("lowpass", 1600, 0.7);
+        lp.frequency.linearRampToValueAtTime(3000, t + 0.9);
+        lp.frequency.linearRampToValueAtTime(1300, t + 2);
+        const e = g(0);
+        e.gain.setValueAtTime(0, t);
+        e.gain.linearRampToValueAtTime(0.11, t + 0.9);
+        e.gain.linearRampToValueAtTime(0, t + 2);
+        o.connect(lp);
+        o2.connect(lp);
+        lp.connect(e).connect(vol);
+        v.play([o, o2], [lp, e], t, t + 2.02);
+        live(t + 2.05);
+        break;
+      }
+      case "ui":
+        T(t, "sine", 1500, 1100, 0.03, 0.14, 0.001, 0.035);
+        N(t, 0.008, 0.05, "highpass", 4000, 4000, 0.7, 0.0005);
+        break;
+      case "punch": {
+        const p = 0.85 + R() * 0.3;
+        const body = 900 + R() * 900;
+        T(t, "sine", (160 + R() * 70) * p, 48 * p, 0.07, 0.9, 0.001, 0.14 + R() * 0.05);
+        N(t, 0.05 + R() * 0.04, 0.55, "bandpass", body, body * 0.55, 0.9, 0.001);
+        N(t, 0.01, 0.3 + R() * 0.15, "highpass", 2800 + R() * 2200, 3000, 0.7, 0.0005);
+        const kind = Math.floor(R() * 3);
+        if (kind === 1) N(t + 0.006, 0.03, 0.3, "bandpass", 2600, 2600, 1.5, 0.0005);
+        if (kind === 2) T(t, "triangle", 320 * p, 90, 0.05, 0.25, 0.001, 0.07);
+        break;
+      }
+      case "punchHeavy":
+        wet.gain.value = 0.4;
+        duckMusic(0.35, 0.3);
+        T(t, "sine", 140, 32, 0.25, 1, 0.002, 0.45);
+        T(t, "triangle", 95, 40, 0.2, 0.35, 0.001, 0.25);
+        N(t, 0.18, 0.8, "lowpass", 2600, 300, 0.7, 0.001);
+        N(t, 0.015, 0.5, "highpass", 2500, 2500, 0.7, 0.0005);
+        debris(t + 0.03, t + 0.25, 4, 0.1);
+        break;
+      case "dodge":
+        sweep(t, [[0, 600], [0.08, 3000], [0.24, 700]], [[0.07, 0.42], [0.25, 0]], 1.6);
+        break;
+      case "perfectDodge":
+        wet.gain.value = 0.75;
+        duckMusic(0.45, 0.8);
+        sweep(t, [[0, 2600], [0.85, 260]], [[0.1, 0.5], [0.9, 0]], 1.4);
+        T(t, "sine", 320, 70, 0.75, 0.28, 0.01, 0.8);
+        [88, 91, 95, 100].forEach((m, i) => bell(t + 0.08 + i * 0.07, m, 0.06, 1.1));
+        break;
+      case "spiderSense": {
+        wet.gain.value = 0.6;
+        for (let i = 0; i < 10; i++) {
+          const f = [2900, 3500, 4100][i % 3] * (1 + R() * 0.06);
+          T(t + i * 0.035, "sine", f, f * 1.03, 0.05, 0.06 * (1 - i / 12), 0.002, 0.07);
+        }
+        T(t, "sine", 160, 230, 0.3, 0.16, 0.05, 0.4);
+        break;
+      }
+      case "webShot":
+        N(t, 0.1, 0.5, "bandpass", 4200, 900, 2.5);
+        N(t, 0.02, 0.3, "highpass", 7000, 7000, 0.7, 0.0005);
+        T(t, "triangle", 1400, 500, 0.04, 0.16, 0.001, 0.05);
+        N(t + 0.02, 0.06, 0.2, "lowpass", 900, 300);
+        break;
+      case "webImpact":
+        N(t, 0.12, 0.45, "lowpass", 1200, 200, 1, 0.001);
+        N(t, 0.18, 0.45, "bandpass", 1400, 250, 6, 0.003);
+        T(t, "sine", 180, 60, 0.1, 0.4, 0.001, 0.15);
+        break;
+      case "whiff":
+        sweep(t, [[0, 800], [0.07, 2000], [0.2, 600]], [[0.06, 0.28], [0.2, 0]], 1.5);
+        break;
+      case "glide": {
+        const e = sweep(t, [[0, 400], [0.5, 650], [1.2, 450]], [[0.4, 0.32], [0.9, 0.28], [1.25, 0]], 0.8);
+        const lfo = v.osc("sine", 13, t);
+        const la = g(0.08);
+        lfo.connect(la).connect(e.gain);
+        v.play([lfo], [la], t, t + 1.25);
+        break;
+      }
+      case "finisher":
+        wet.gain.value = 0.6;
+        duckMusic(0.7, 1);
+        T(t, "sine", 150, 30, 0.3, 1, 0.002, 0.5);
+        T(t, "sine", 70, 25, 0.9, 0.8, 0.003, 1.2);
+        N(t, 0.25, 0.8, "lowpass", 3000, 250, 0.7, 0.001);
+        N(t, 0.02, 0.5, "highpass", 2500, 2500, 0.7, 0.0005);
+        horn(t + 0.02, [38, 45, 50, 53], 0.5, 0.08, 1);
+        v.crash(vol, t, 0.3);
+        debris(t + 0.05, t + 0.5, 8, 0.12);
+        live(t + 1.6);
+        break;
+      case "hurt":
+        T(t, "sine", 160, 60, 0.12, 0.75, 0.001, 0.2);
+        N(t, 0.1, 0.5, "bandpass", 700, 400, 1, 0.001);
+        T(t + 0.01, "sawtooth", 170, 110, 0.18, 0.08, 0.01, 0.2);
+        break;
+      case "heal":
+        wet.gain.value = 0.7;
+        [69, 73, 76, 81, 85].forEach((m, i) => T(t + i * 0.06, "sine", mtof(m), mtof(m), 0, 0.11, 0.01, 0.6));
+        N(t, 0.4, 0.1, "bandpass", 2000, 5000, 1.5, 0.3);
+        break;
+      case "focusFull":
+        wet.gain.value = 0.6;
+        N(t, 0.1, 0.22, "bandpass", 500, 4000, 1.5, 0.25);
+        [76, 83, 88].forEach((m) => bell(t + 0.28, m, 0.1, 1.1));
+        break;
+      case "bossIntro":
+        wet.gain.value = 0.8;
+        duckMusic(0.85, 2.4);
+        T(t, "sine", 55, 30, 1.5, 0.9, 0.01, 2.2);
+        horn(t, [36, 43, 48, 51], 1.8, 0.09, 0.8);
+        [0, 0.3, 0.6, 1.2].forEach((d, i) => v.tom(vol, t + d, i === 3 ? 31 : 36, 0.6, 0.7));
+        N(t, 1.8, 0.35, "lowpass", 800, 150, 0.7, 0.05);
+        v.crash(vol, t, 0.25, 2);
+        live(t + 2.6);
+        break;
+      case "bossPhase":
+        wet.gain.value = 0.6;
+        duckMusic(0.6, 1.2);
+        horn(t, [48, 55, 60, 63], 0.15, 0.08, 0.8);
+        horn(t + 0.2, [49, 56, 61, 64], 0.9, 0.09, 1);
+        v.tom(vol, t + 0.2, 33, 0.7, 0.8);
+        T(t + 0.2, "sine", 80, 35, 0.5, 0.6, 0.005, 0.8);
+        live(t + 1.4);
+        break;
+      case "bossDefeat":
+        wet.gain.value = 0.8;
+        duckMusic(0.9, 3);
+        T(t, "sine", 70, 22, 0.8, 1, 0.003, 1.4);
+        N(t, 1.2, 0.8, "lowpass", 2500, 120, 0.7, 0.002);
+        debris(t + 0.1, t + 1, 10, 0.14);
+        horn(t + 0.6, [48, 55, 60, 64, 67, 72], 2, 0.07, 1);
+        T(t + 0.6, "sine", mtof(36), mtof(36), 0, 0.5, 0.01, 2);
+        v.crash(vol, t + 0.6, 0.25, 2.2);
+        live(t + 3);
+        break;
+      case "cheer":
+        wet.gain.value = 0.5;
+        crowd(t, 2, 0.24, 8, 1.15);
+        T(t + 0.3, "sine", 1800, 2700, 0.35, 0.04, 0.05, 0.4);
+        T(t + 0.9, "sine", 2200, 1700, 0.3, 0.035, 0.05, 0.35);
+        break;
+      case "gasp":
+        wet.gain.value = 0.4;
+        crowd(t, 0.6, 0.3, 6, 1.4);
+        break;
+      case "photo":
+        N(t, 0.008, 0.6, "highpass", 3000, 3000, 0.7, 0.0005);
+        N(t, 0.03, 0.4, "bandpass", 1800, 1800, 2, 0.001);
+        N(t + 0.07, 0.02, 0.5, "bandpass", 2600, 2600, 2, 0.0005);
+        T(t + 0.1, "square", 900, 1400, 0.15, 0.025, 0.01, 0.15);
+        break;
+      case "gunshot":
+        wet.gain.value = 0.7;
+        N(t, 0.03, 1, "highpass", 1500, 1500, 0.7, 0.0005);
+        N(t, 0.12, 0.7, "bandpass", 900, 400, 0.8, 0.001);
+        T(t, "sine", 120, 45, 0.1, 0.7, 0.001, 0.15);
+        N(t + 0.02, 0.4, 0.15, "lowpass", 2000, 500, 0.7, 0.005);
+        break;
+      case "rocket":
+        wet.gain.value = 0.5;
+        T(t, "sine", 90, 40, 0.2, 0.6, 0.002, 0.3);
+        sweep(t, [[0, 600], [1, 3000], [1.3, 2000]], [[0.15, 0.45], [0.9, 0.35], [1.3, 0]], 0.7, "lowpass");
+        debris(t + 0.1, t + 1.1, 9, 0.08);
+        break;
+      case "explosion":
+        wet.gain.value = 0.7;
+        duckMusic(0.6, 1.2);
+        T(t, "sine", 70, 22, 0.8, 1, 0.003, 1.4);
+        N(t, 1.2, 0.9, "lowpass", 2500, 120, 0.7, 0.002);
+        N(t, 0.05, 0.6, "highpass", 1200, 1200, 0.7, 0.001);
+        debris(t + 0.1, t + 1, 12, 0.15);
+        break;
+      case "shock": {
+        wet.gain.value = 0.3;
+        const o = v.osc("sawtooth", 55, t);
+        const q = v.osc("square", 300, t);
+        for (let i = 1; i < 25; i++) q.frequency.setValueAtTime(150 + R() * 900, t + i * 0.02);
+        const bp = filt("bandpass", 2000, 1);
+        const e = g(0);
+        v.perc(e.gain, t, 0.22, 0.005, 0.5);
+        o.connect(bp);
+        q.connect(bp);
+        bp.connect(e).connect(vol);
+        v.play([o, q], [bp, e], t, t + 0.52);
+        for (let i = 0; i < 8; i++) N(t + R() * 0.45, 0.01, 0.2 + R() * 0.2, "highpass", 4000, 4000, 0.7, 0.0005);
+        break;
+      }
+      case "metal": {
+        wet.gain.value = 0.5;
+        const f = 420 * (0.9 + R() * 0.2);
+        [[1, 0.28, 0.9], [2.76, 0.18, 0.5], [5.4, 0.1, 0.3], [8.93, 0.06, 0.2]].forEach(([m, x, d]) => T(t, "sine", f * m, f * m, 0, x, 0.001, d));
+        N(t, 0.02, 0.4, "highpass", 3000, 3000, 0.7, 0.0005);
+        break;
+      }
+      case "fistBump":
+        T(t, "sine", 200, 90, 0.06, 0.55, 0.001, 0.12);
+        N(t, 0.03, 0.25, "bandpass", 1500, 1500, 1, 0.001);
+        bell(t + 0.08, 84, 0.07, 0.5);
+        bell(t + 0.15, 91, 0.07, 0.6);
+        break;
+      case "ping":
+        wet.gain.value = 0.6;
+        [0, 0.18, 0.36].forEach((d, i) => {
+          T(t + d, "sine", 1318.5, 1318.5, 0, 0.2 / (i + 1), 0.002, 0.45);
+          T(t + d, "sine", 2637, 2637, 0, 0.04 / (i + 1), 0.002, 0.18);
+        });
+        break;
+    }
+    setTimeout(() => {
+      vol.disconnect();
+      pan.disconnect();
+      wet.disconnect();
+    }, (life + 0.3) * 1000);
+  }
 }

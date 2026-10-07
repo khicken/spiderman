@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { Bucket, Bulbs, UNIT, beam, box, cyl, mat, type Col, type Rect } from "./city-kit";
-import { FACADES, SHOP_H, SHOP_W, STYLE, type Atlas } from "./city-textures";
+import { SHOP_H, SHOP_W, type Atlas } from "./city-textures";
+import { FACADES, STYLE } from "./city-facades";
+import { massDetail } from "./city-detail";
 
 export type Box = { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number };
 
@@ -22,6 +24,8 @@ export type Ctx = {
   landmarks: { name: string; pos: THREE.Vector3 }[];
   trees: { x: number; z: number; s: number; lit: boolean }[];
   pines: { x: number; z: number; s: number }[];
+  anchors: THREE.Vector3[];
+  loads: { x: number; y: number; z: number; len: number; ry: number }[];
 };
 
 const SNOW = 0xe9eef5;
@@ -47,7 +51,7 @@ export function fquad(b: Bucket, F: Face, a0: number, a1: number, y0: number, y1
   b.quad(x0, y0, z0, x1, y0, z1, x1, y1, z1, x0, y1, z0, uv, col, k, blink);
 }
 
-function blade(c: Ctx, F: Face, a: number, y0: number, y1: number, o0: number, o1: number, uv: Rect, k: number, blink?: readonly [number, number]) {
+export function blade(c: Ctx, F: Face, a: number, y0: number, y1: number, o0: number, o1: number, uv: Rect, k: number, blink?: readonly [number, number]) {
   const px = F.ox + F.dx * a, pz = F.oz + F.dz * a;
   const ax = px + F.nx * o0, az = pz + F.nz * o0, bx = px + F.nx * o1, bz = pz + F.nz * o1;
   const e = 0.06;
@@ -68,6 +72,7 @@ export type MassOpts = {
   box?: boolean;
   spot?: boolean;
   faces?: number;
+  detail?: boolean;
 };
 
 export function mass(c: Ctx, x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, o: MassOpts) {
@@ -76,20 +81,23 @@ export function mass(c: Ctx, x0: number, x1: number, z0: number, z1: number, y0:
   const sv = 1 / (st.ch * st.rows);
   const vBase = o.vBase ?? 0;
   const tint = o.tint ?? 0xffffff;
-  const uOff = o.uOff ?? Math.floor(c.r() * st.cols) / st.cols;
-  const vOff = Math.floor(c.r() * st.rows) / st.rows;
+  const uOff = (o.uOff ?? 0) + Math.floor(c.r() * st.cols * 64) / st.cols;
+  const vOff = Math.floor(c.r() * st.rows * 64) / st.rows;
   const shop = o.shop ?? -1;
   const fy = shop >= 0 && y0 === 0 ? SHOP_H : y0;
   const faces = o.faces ?? 15;
+  const shown: Face[] = [];
   for (let f = 0; f < 4; f++) {
     if (!(faces & (1 << f))) continue;
     const F = face(f, x0, x1, z0, z1);
-    const uv: Rect = [uOff, (fy - vBase) * sv + vOff, uOff + F.len * su, (y1 - vBase) * sv + vOff];
+    shown.push(F);
+    const u0 = uOff + f * 17;
+    const uv: Rect = [u0, (fy - vBase) * sv + vOff, u0 + F.len * su, (y1 - vBase) * sv + vOff];
     fquad(c.facade[o.style], F, 0, F.len, fy, y1, 0, uv, tint);
     if (fy > y0) {
       const row = shop;
       const su2 = 1 / SHOP_W;
-      const u0 = Math.floor(c.r() * 4) / 4;
+      const u0 = Math.floor(c.r() * 8) / 8;
       fquad(c.shop, F, 0, F.len, 0, SHOP_H, 0, [u0, 1 - (row + 1) / 4 + 0.002, u0 + F.len * su2, 1 - row / 4 - 0.002], tint);
     }
   }
@@ -106,6 +114,7 @@ export function mass(c: Ctx, x0: number, x1: number, z0: number, z1: number, y0:
       c.solid.quad(F.ox, Y, F.oz, F.ox + F.dx * F.len, Y, F.oz + F.dz * F.len, ix0, Y, iz0, ix1, Y, iz1, [0, 0, 1, 1], SNOW);
     }
   }
+  if (o.detail !== false) massDetail(c, x0, x1, z0, z1, y0, fy, y1, vBase, st, 1 / (su * st.cols), shown, o.parapet !== null);
   if (o.box !== false) c.boxes.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, maxY: y1 });
   if (o.spot !== false && x1 - x0 > 5 && z1 - z0 > 5) c.roofSpots.push(new THREE.Vector3((x0 + x1) / 2, y1, (z0 + z1) / 2));
 }
@@ -178,12 +187,30 @@ export function waterTower(c: Ctx, x: number, z: number, y: number) {
   c.solid.add(UNIT.cone8, mat(x, y + 8.1 * s + 0.9 * s, z, 2.35 * s, 1.8 * s, 2.35 * s), 0xdfe6ee);
 }
 
+function offCenter(x0: number, x1: number, z0: number, z1: number, x: number, z: number): [number, number] {
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  if (Math.abs(x - cx) > 3.2 || Math.abs(z - cz) > 3.2) return [x, z];
+  return Math.abs(x - cx) > Math.abs(z - cz) ? [cx + Math.sign(x - cx || 1) * 3.4, z] : [x, cz + Math.sign(z - cz || 1) * 3.4];
+}
+
 function acUnits(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number, n: number) {
   for (let i = 0; i < n; i++) {
     const w = 1.6 + c.r() * 2.4;
-    const x = x0 + 2 + c.r() * (x1 - x0 - 4), z = z0 + 2 + c.r() * (z1 - z0 - 4);
+    const [x, z] = offCenter(x0, x1, z0, z1, x0 + 2 + c.r() * (x1 - x0 - 4), z0 + 2 + c.r() * (z1 - z0 - 4));
     box(c.solid, x, y + 0.7, z, w, 1.4, w * 0.7, 0x8d9096);
     box(c.solid, x, y + 1.42, z, w, 0.05, w * 0.7, SNOW);
+    if (c.r() < 0.5) cyl(c.solid, UNIT.cyl8, x, y + 1.45, z, w * 0.22, 0.25, 0x5d6066);
+  }
+  const vents = Math.floor(c.r() * 3);
+  for (let i = 0; i < vents; i++) {
+    const [x, z] = offCenter(x0, x1, z0, z1, x0 + 1.5 + c.r() * (x1 - x0 - 3), z0 + 1.5 + c.r() * (z1 - z0 - 3));
+    cyl(c.solid, UNIT.cyl6, x, y, z, 0.25, 1.2 + c.r(), 0x6a6e74);
+    c.solid.add(UNIT.cone6, mat(x, y + 2.0, z, 0.45, 0.4, 0.45), 0x55585e);
+  }
+  if (c.r() < 0.4 && x1 - x0 > 10 && z1 - z0 > 10) {
+    const [x, z] = offCenter(x0, x1, z0, z1, x0 + 3 + c.r() * (x1 - x0 - 6), z0 + 3 + c.r() * (z1 - z0 - 6));
+    box(c.solid, x, y + 0.35, z, 2.4, 0.7, 1.6, 0x4a4d52);
+    c.solid.add(UNIT.prism, mat(x, y + 0.95, z, 1.0, 2.4, 0.9, 0, 0, Math.PI / 2), 0x9fb3c4);
   }
 }
 
@@ -249,18 +276,18 @@ export function rooftopBillboard(c: Ctx, F: Face, a: number, y: number, w: numbe
   }
 }
 
-function roofKit(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number, kind: "res" | "office" | "tower" | "ind", facesStreet: number) {
+export function roofKit(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number, kind: "res" | "office" | "tower" | "ind", facesStreet: number) {
   const r = c.r;
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, w = x1 - x0, d = z1 - z0;
   if (w < 6 || d < 6) return;
   if (kind === "res") {
-    if (r() < 0.45 && w > 9 && d > 9) waterTower(c, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6), y);
+    if (r() < 0.45 && w > 9 && d > 9) waterTower(c, ...offCenter(x0, x1, z0, z1, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6)), y);
     if (r() < 0.6) bulkhead(c, x0 + 2.5, z1 - 2.5, y, 0x6e4636);
-    acUnits(c, x0, x1, z0, z1, y, Math.floor(r() * 3));
+    acUnits(c, x0, x1, z0, z1, y, 1 + Math.floor(r() * 3));
     if (r() < 0.12 && w > 12 && d > 12) garden(c, x0 + 1, x1 - 1, z0 + 1, z1 - 1, y);
   } else if (kind === "office") {
     acUnits(c, x0, x1, z0, z1, y, 2 + Math.floor(r() * 3));
-    if (r() < 0.5) box(c.solid, cx, y + 2, cz, w * 0.4, 4, d * 0.4, 0x5d6168);
+    if (r() < 0.5) box(c.solid, x0 + w * 0.27, y + 2, z0 + d * 0.27, w * 0.36, 4, d * 0.36, 0x5d6168);
     if (r() < 0.3 && w > 14) {
       for (let f = 0; f < 4; f++) {
         if (facesStreet & (1 << f)) {
@@ -271,11 +298,11 @@ function roofKit(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: numb
       }
     }
   } else if (kind === "tower") {
-    if (r() < 0.55) box(c.solid, cx, y + 2.5, cz, w * 0.45, 5, d * 0.45, 0x4d5157);
+    if (r() < 0.55) box(c.solid, x1 - w * 0.25, y + 2.5, z1 - d * 0.25, w * 0.36, 5, d * 0.36, 0x4d5157);
     if (r() < 0.5) antenna(c, cx + w * 0.2, cz - d * 0.2, y, 8 + r() * 16);
   } else {
-    if (r() < 0.7 && w > 10) waterTower(c, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6), y);
-    if (r() < 0.4 && w > 16) waterTower(c, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6), y);
+    if (r() < 0.7 && w > 10) waterTower(c, ...offCenter(x0, x1, z0, z1, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6)), y);
+    if (r() < 0.4 && w > 16) waterTower(c, ...offCenter(x0, x1, z0, z1, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6)), y);
     acUnits(c, x0, x1, z0, z1, y, 1 + Math.floor(r() * 3));
     if (r() < 0.2) {
       const sx = x0 + 3 + r() * (w - 6), sz = z0 + 3 + r() * (d - 6);
@@ -297,7 +324,7 @@ function roofKit(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: numb
 
 export type Block = { i: number; j: number; x0: number; x1: number; z0: number; z1: number };
 
-function streetFaces(b: Block, x0: number, x1: number, z0: number, z1: number) {
+export function streetFaces(b: Block, x0: number, x1: number, z0: number, z1: number) {
   let m = 0;
   if (z0 <= b.z0 + 0.5) m |= 1;
   if (x1 >= b.x1 - 0.5) m |= 2;
@@ -306,7 +333,7 @@ function streetFaces(b: Block, x0: number, x1: number, z0: number, z1: number) {
   return m;
 }
 
-function shopFront(c: Ctx, F: Face, len: number, harlem: boolean) {
+export function shopFront(c: Ctx, F: Face, len: number, harlem: boolean) {
   const r = c.r;
   const n = Math.max(1, Math.floor(len / 6.5));
   for (let k = 0; k < n; k++) {
@@ -319,7 +346,7 @@ function shopFront(c: Ctx, F: Face, len: number, harlem: boolean) {
   }
 }
 
-function tenement(c: Ctx, b: Block, x0: number, x1: number, z0: number, z1: number, nFloors: number, style: number) {
+export function tenement(c: Ctx, b: Block, x0: number, x1: number, z0: number, z1: number, nFloors: number, style: number) {
   const r = c.r;
   const vBase = SHOP_H;
   const h = floors(style, vBase, nFloors);
@@ -343,23 +370,25 @@ function tenement(c: Ctx, b: Block, x0: number, x1: number, z0: number, z1: numb
   roofKit(c, x0, x1, z0, z1, h, "res", sf);
 }
 
-function rowHouses(c: Ctx, b: Block, x0: number, x1: number, z0: number, z1: number, front: number) {
+export function rowHouses(c: Ctx, b: Block, x0: number, x1: number, z0: number, z1: number, front: number) {
   const r = c.r;
-  const n = Math.max(1, Math.round((x1 - x0) / 6.6));
-  const w = (x1 - x0) / n;
+  const alongX = front === 0 || front === 2;
+  const L = alongX ? x1 - x0 : z1 - z0;
+  const n = Math.max(1, Math.round(L / 6.6));
+  const w = L / n;
   const st = STYLE.brownstone;
   const stone = 0x4a3024;
   for (let k = 0; k < n; k++) {
-    const hx0 = x0 + k * w, hx1 = hx0 + w;
+    const [hx0, hx1, hz0, hz1] = alongX ? [x0 + k * w, x0 + (k + 1) * w, z0, z1] : [x0, x1, z0 + k * w, z0 + (k + 1) * w];
     const nf = r() < 0.6 ? 4 : 3;
     const h = nf * 3.4 + 0.3;
     const brick = r() < 0.18;
     const tint = brick ? new THREE.Color(1.15, 0.82, 0.78) : new THREE.Color(0.9 + r() * 0.2, 0.88 + r() * 0.15, 0.85 + r() * 0.12);
-    mass(c, hx0, hx1, z0, z1, 0, h, { style: st, tint, su: 0.75 / w, uOff: 0, vBase: 0.3, parapet: null });
-    const F = face(front, hx0, hx1, z0, z1);
-    cornice(c, hx0, hx1, z0, z1, h + 0.7, 1 << front, pick(r, [0x2b211c, 0x3d2f26, 0x1f1d1c]), 0.55, 0.9);
+    mass(c, hx0, hx1, hz0, hz1, 0, h, { style: st, tint, su: 0.75 / w, uOff: 0, vBase: 0.3, parapet: null });
+    const F = face(front, hx0, hx1, hz0, hz1);
+    cornice(c, hx0, hx1, hz0, hz1, h + 0.7, 1 << front, pick(r, [0x2b211c, 0x3d2f26, 0x1f1d1c]), 0.55, 0.9);
     stoop(c, F, w * 0.27, stone);
-    for (let q = 0; q < 2; q++) box(c.solid, hx0 + 1 + r() * (w - 2), h + 1.2, z0 + 2 + r() * (z1 - z0 - 4), 0.8, 2.4, 1.0, 0x5b3326);
+    for (let q = 0; q < 2; q++) box(c.solid, hx0 + 1 + r() * (hx1 - hx0 - 2), h + 1.2, hz0 + 1 + r() * (hz1 - hz0 - 2), 0.8, 2.4, 1.0, 0x5b3326);
     if (r() < 0.12) {
       const n2 = 10;
       for (let q = 0; q < n2; q++) {
@@ -389,35 +418,8 @@ export function genHarlem(c: Ctx, b: Block) {
   for (let k = 0; k < 3; k++) c.trees.push({ x: rx0 + 3 + r() * (rx1 - rx0 - 6), z: b.z0 + 17 + r() * (b.z1 - b.z0 - 34), s: 0.8 + r() * 0.3, lit: r() < 0.3 });
 }
 
-export function genUpper(c: Ctx, b: Block, slender: boolean) {
-  const r = c.r;
-  if (slender) {
-    podiumTower(c, b.x0, b.x1, b.z0, b.z1, 140 + r() * 120, r() < 0.5 ? STYLE.glass : STYLE.deco, true);
-    return;
-  }
-  const lots: [number, number, number, number][] = [
-    [b.x0, b.x1, b.z0, b.z0 + 18],
-    [b.x0, b.x1, b.z1 - 18, b.z1],
-    [b.x0, b.x0 + 16, b.z0 + 18.01, b.z1 - 18.01],
-    [b.x1 - 16, b.x1, b.z0 + 18.01, b.z1 - 18.01],
-  ];
-  for (const [x0, x1, z0, z1] of lots) {
-    const style = pick(r, [STYLE.limestone, STYLE.limestone, STYLE.brick, STYLE.deco]);
-    const vBase = SHOP_H;
-    const nf = 7 + Math.floor(r() * 10);
-    const h = floors(style, vBase, nf);
-    const sf = streetFaces(b, x0, x1, z0, z1);
-    mass(c, x0, x1, z0, z1, 0, h, { style, shop: r() < 0.6 ? 2 : 0, vBase, parapet: 0x8a8070, tint: new THREE.Color().setHSL(0.1, 0.1, 0.9 + r() * 0.15) });
-    cornice(c, x0, x1, z0, z1, h - 0.2, sf, 0x9a8f7c, 0.8, 1.2);
-    for (let f = 0; f < 4; f++) if (sf & (1 << f) && r() < 0.5) shopFront(c, face(f, x0, x1, z0, z1), face(f, x0, x1, z0, z1).len, false);
-    if (r() < 0.5 && x1 - x0 > 12 && z1 - z0 > 12) {
-      const i = 3;
-      const ph = h + FACADES[style].ch * 2;
-      mass(c, x0 + i, x1 - i, z0 + i, z1 - i, h, ph, { style, vBase, parapet: 0x8a8070 });
-      if (r() < 0.4) garden(c, x0 + i, x1 - i, z0 + i, z1 - i, ph);
-      else roofKit(c, x0 + i, x1 - i, z0 + i, z1 - i, ph, "res", 15);
-    } else roofKit(c, x0, x1, z0, z1, h, "res", sf);
-  }
+export function genUpper(c: Ctx, b: Block) {
+  podiumTower(c, b.x0, b.x1, b.z0, b.z1, 140 + c.r() * 120, c.r() < 0.5 ? STYLE.glass : STYLE.deco, true);
 }
 
 function podiumTower(c: Ctx, x0: number, x1: number, z0: number, z1: number, h: number, style: number, slim = false) {
@@ -478,58 +480,6 @@ function decoTiers(c: Ctx, x0: number, x1: number, z0: number, z1: number, y0: n
   } else roofKit(c, ax0 - 2, ax1 + 2, az0 - 2, az1 + 2, y, "tower", 0);
 }
 
-export function genMidtown(c: Ctx, b: Block, hScale: number) {
-  const r = c.r;
-  const kind = r();
-  const nx = kind < 0.4 ? 1 : 2;
-  const nz = kind < 0.4 ? (r() < 0.5 ? 1 : 2) : 2;
-  const lw = (b.x1 - b.x0) / nx, ld = (b.z1 - b.z0) / nz;
-  for (let a = 0; a < nx; a++) {
-    for (let q = 0; q < nz; q++) {
-      const x0 = b.x0 + a * lw + (a ? 0.6 : 0), x1 = b.x0 + (a + 1) * lw - (a < nx - 1 ? 0.6 : 0);
-      const z0 = b.z0 + q * ld + (q ? 0.6 : 0), z1 = b.z0 + (q + 1) * ld - (q < nz - 1 ? 0.6 : 0);
-      const t = r();
-      const h = (50 + r() ** 1.5 * 170) * hScale;
-      if (t < 0.38 && x1 - x0 > 20 && z1 - z0 > 20) podiumTower(c, x0, x1, z0, z1, h, pick(r, [STYLE.glass, STYLE.ribbon, STYLE.office, STYLE.darkglass, STYLE.office]));
-      else if (t < 0.55 && x1 - x0 > 20) podiumTower(c, x0, x1, z0, z1, h, STYLE.deco);
-      else if (t < 0.75 && x1 - x0 > 16 && z1 - z0 > 16) lShape(c, b, x0, x1, z0, z1, h * 0.55);
-      else slabBuilding(c, b, x0, x1, z0, z1, Math.max(25, h * 0.6), pick(r, [STYLE.office, STYLE.limestone, STYLE.ribbon, STYLE.brick]));
-    }
-  }
-}
-
-function slabBuilding(c: Ctx, b: Block, x0: number, x1: number, z0: number, z1: number, h: number, style: number) {
-  const r = c.r;
-  const vBase = SHOP_H;
-  const top = floors(style, vBase, Math.max(3, Math.round((h - vBase) / FACADES[style].ch)));
-  const sf = streetFaces(b, x0, x1, z0, z1);
-  const shop = style === STYLE.office || style === STYLE.ribbon ? 2 : r() < 0.5 ? 0 : 1;
-  mass(c, x0, x1, z0, z1, 0, top, { style, shop, vBase });
-  if (style === STYLE.limestone || style === STYLE.brick) cornice(c, x0, x1, z0, z1, top - 0.1, sf, 0x8f8572, 0.7, 1.1);
-  for (let f = 0; f < 4; f++) if (sf & (1 << f) && shop < 2) shopFront(c, face(f, x0, x1, z0, z1), face(f, x0, x1, z0, z1).len, false);
-  roofKit(c, x0, x1, z0, z1, top, style === STYLE.brick || style === STYLE.limestone ? "res" : "office", sf);
-}
-
-function lShape(c: Ctx, b: Block, x0: number, x1: number, z0: number, z1: number, h: number) {
-  const r = c.r;
-  const style = pick(r, [STYLE.limestone, STYLE.office, STYLE.brick, STYLE.ribbon]);
-  const vBase = SHOP_H;
-  const t1 = floors(style, vBase, Math.max(4, Math.round((h - vBase) / FACADES[style].ch)));
-  const t2 = floors(style, vBase, Math.max(3, Math.round((h * (0.5 + r() * 0.4) - vBase) / FACADES[style].ch)));
-  const wx = (x1 - x0) * (0.45 + r() * 0.15), wz = (z1 - z0) * (0.45 + r() * 0.15);
-  const flipX = r() < 0.5, flipZ = r() < 0.5;
-  const ax0 = flipX ? x1 - wx : x0, ax1 = flipX ? x1 : x0 + wx;
-  mass(c, ax0, ax1, z0, z1, 0, t1, { style, shop: 2, vBase });
-  roofKit(c, ax0, ax1, z0, z1, t1, "office", streetFaces(b, ax0, ax1, z0, z1));
-  const bx0 = flipX ? x0 : ax1 + 0.01, bx1 = flipX ? ax0 - 0.01 : x1;
-  const bz0 = flipZ ? z1 - wz : z0, bz1 = flipZ ? z1 : z0 + wz;
-  mass(c, bx0, bx1, bz0, bz1, 0, t2, { style, shop: r() < 0.5 ? 0 : 1, vBase });
-  const sf = streetFaces(b, bx0, bx1, bz0, bz1);
-  for (let f = 0; f < 4; f++) if (sf & (1 << f)) shopFront(c, face(f, bx0, bx1, bz0, bz1), face(f, bx0, bx1, bz0, bz1).len, false);
-  roofKit(c, bx0, bx1, bz0, bz1, t2, r() < 0.3 ? "res" : "office", sf);
-  if (r() < 0.3) garden(c, bx0 + 1, bx1 - 1, bz0 + 1, bz1 - 1, t2);
-}
-
 export function genIndustrial(c: Ctx, b: Block) {
   const r = c.r;
   if (r() < 0.12) {
@@ -550,41 +500,6 @@ export function genIndustrial(c: Ctx, b: Block) {
     roofKit(c, x0, x1, z0, z1, top, "ind", sf);
   }
   return "";
-}
-
-export function genDowntown(c: Ctx, b: Block, big: boolean) {
-  const r = c.r;
-  if (big) {
-    const h = 380;
-    const x0 = b.x0 + 4, x1 = b.x1 - 4, z0 = b.z0 + 4, z1 = b.z1 - 4;
-    mass(c, b.x0, b.x1, b.z0, b.z1, 0, floors(STYLE.darkglass, SHOP_H, 4), { style: STYLE.darkglass, shop: 2, vBase: SHOP_H });
-    let y = floors(STYLE.darkglass, SHOP_H, 4);
-    const tiers = [0.55, 0.85, 1];
-    let ax0 = x0, ax1 = x1, az0 = z0, az1 = z1;
-    for (const t of tiers) {
-      const yt = Math.round((h * t) / 3.6) * 3.6;
-      mass(c, ax0, ax1, az0, az1, y, yt, { style: STYLE.glass, parapet: 0x2a2e34 });
-      glowRim(c, ax0, ax1, az0, az1, yt - 0.4, 0xcfe8ff, 3, 0.4);
-      glowCorners(c, ax0, ax1, az0, az1, y, yt, 0xcfe8ff, 1.05);
-      y = yt;
-      ax0 += 4;
-      ax1 -= 4;
-      az0 += 4;
-      az1 -= 4;
-    }
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    helipad(c, cx, cz, y + 0.05, 8);
-    antenna(c, ax0 + 2, az0 + 2, y, 50);
-    c.landmarks.push({ name: "Downtown Tower", pos: new THREE.Vector3(cx, y, cz) });
-    return;
-  }
-  const two = r() < 0.5;
-  const lots: [number, number, number, number][] = two
-    ? [[b.x0, b.x0 + 27.5, b.z0, b.z1], [b.x0 + 28.5, b.x1, b.z0, b.z1]]
-    : [[b.x0, b.x1, b.z0, b.z1]];
-  for (const [x0, x1, z0, z1] of lots) {
-    podiumTower(c, x0, x1, z0, z1, 110 + r() ** 1.3 * 190, pick(r, [STYLE.glass, STYLE.darkglass, STYLE.ribbon, STYLE.glass]));
-  }
 }
 
 export function genTimes(c: Ctx, b: Block) {
@@ -755,6 +670,7 @@ export function genPlaza(c: Ctx, b: Block) {
   c.glow.add(sg, mat(cx, T + 1.2, tz - 0.2, 1, 1, 1), 0xffd84a, 8, [-0.4, 0]);
   c.glow.add(sg, mat(cx, T + 1.2, tz - 0.2, 1, 1, 1, Math.PI / 2), 0xffd84a, 8, [-0.4, 0]);
   c.landmarks.push({ name: "Holiday Plaza", pos: new THREE.Vector3(cx, 0, cz + rd / 2 + 3) });
+  c.anchors.push(new THREE.Vector3(cx, T + 1.2, tz));
   for (let x = b.x0 + 3; x < tx0 - 2; x += 5) for (const z of [b.z0 + 3, b.z1 - 3]) c.streetSpots.push(new THREE.Vector3(x, 0, z));
   for (const x of [cx - rw / 2 - 3, cx + rw / 2 + 3]) for (let z = cz - rd / 2; z <= cz + rd / 2; z += 4) c.streetSpots.push(new THREE.Vector3(x, 0, z));
   for (let k = 0; k < 6; k++) c.pines.push({ x: b.x0 + 3 + k * ((tx0 - b.x0 - 6) / 5), z: b.z1 - 2.5, s: 0.45 });
@@ -764,101 +680,6 @@ function podiumTowerDeco(c: Ctx, x0: number, x1: number, z0: number, z1: number)
   const style = STYLE.deco;
   mass(c, x0, x1, z0, z1, 0, floors(style, SHOP_H, 5), { style, shop: 2, vBase: SHOP_H });
   decoTiers(c, x0 + 2, x1 - 2, z0 + 6, z1 - 6, floors(style, SHOP_H, 5), 205, style, false);
-}
-
-export function genSite(c: Ctx, b: Block) {
-  const r = c.r;
-  const x0 = b.x0 + 8, x1 = b.x1 - 14, z0 = b.z0 + 8, z1 = b.z1 - 8;
-  const fh = 4;
-  const done = 12;
-  const steel = 16;
-  for (let k = 0; k <= steel; k++) {
-    const y = k * fh;
-    box(c.solid, (x0 + x1) / 2, y + 0.15, (z0 + z1) / 2, x1 - x0, 0.3, z1 - z0, k <= done ? 0x8d8f93 : 0x6d6f73);
-  }
-  for (let gx = 0; gx <= 4; gx++) {
-    for (let gz = 0; gz <= 4; gz++) {
-      const x = x0 + ((x1 - x0) * gx) / 4, z = z0 + ((z1 - z0) * gz) / 4;
-      box(c.solid, x, (steel * fh) / 2, z, 0.5, steel * fh, 0.5, gx === 0 || gx === 4 || gz === 0 || gz === 4 ? 0x9a3a22 : 0x7a7d82);
-    }
-  }
-  for (let k = 1; k <= steel; k++) {
-    const y = k * fh - 0.3;
-    for (const z of [z0, z1]) box(c.solid, (x0 + x1) / 2, y, z, x1 - x0, 0.45, 0.35, 0x9a3a22);
-    for (const x of [x0, x1]) box(c.solid, x, y, (z0 + z1) / 2, 0.35, 0.45, z1 - z0, 0x9a3a22);
-  }
-  mass(c, x0 + 0.3, x1 - 0.3, z0 + 0.3, z1 - 0.3, 0, done * fh, { style: STYLE.glass, parapet: null, box: false, spot: false });
-  for (let k = 1; k < steel; k += 1) {
-    const y = k * fh;
-    if (k > done - 1 && r() < 0.5) continue;
-    box(c.glowSmall, (x0 + x1) / 2, y - 0.6, (z0 + z1) / 2, x1 - x0 - 3, 0.1, 0.1, 0xfff0c8, 0, 3.5);
-  }
-  const ccx = x0 + (x1 - x0) * 0.45, ccz = (z0 + z1) / 2;
-  box(c.solid, ccx, (steel * fh + 8) / 2, ccz, 8, steel * fh + 8, 8, 0x9a9ea4);
-  c.boxes.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, maxY: steel * fh + 0.3 });
-  c.boxes.push({ minX: ccx - 4, maxX: ccx + 4, minZ: ccz - 4, maxZ: ccz + 4, maxY: steel * fh + 8 });
-  c.roofSpots.push(new THREE.Vector3(ccx, steel * fh + 8, ccz));
-
-  const mx = b.x1 - 6, mz = (b.z0 + b.z1) / 2;
-  const H = 118;
-  const s = 1.2;
-  const yellow = 0xf2b705;
-  for (const [ox, oz] of [[-s, -s], [s, -s], [s, s], [-s, s]]) box(c.solid, mx + ox, H / 2, mz + oz, 0.22, H, 0.22, yellow);
-  for (let y = 0; y < H; y += 3) {
-    for (let f = 0; f < 4; f++) {
-      const F = face(f, mx - s, mx + s, mz - s, mz + s);
-      const ax = F.ox + F.nx * 0, az = F.oz + F.nz * 0;
-      beam(c.solid, ax, y, az, ax + F.dx * F.len, y + 3, az + F.dz * F.len, 0.1, yellow);
-      beam(c.solid, ax, y + 3, az, ax + F.dx * F.len, y + 3, az + F.dz * F.len, 0.1, yellow);
-    }
-  }
-  c.boxes.push({ minX: mx - s, maxX: mx + s, minZ: mz - s, maxZ: mz + s, maxY: H });
-  box(c.solid, mx, H + 1.5, mz, 3.2, 3, 3.2, 0xe8e8e8);
-  box(c.glowSmall, mx + 1.61, H + 1.8, mz, 0.05, 1.4, 2.4, 0xffe2a8, 0, 2.5);
-  const jib = 58, cj = 18;
-  const ang = -0.5 - r() * 0.6;
-  const ca = Math.cos(ang), sa = Math.sin(ang);
-  const P = (d: number, h: number, w: number): [number, number, number] => [mx + ca * d - sa * w, H + 3 + h, mz + sa * d + ca * w];
-  for (const [d0, d1] of [[-cj, jib]]) {
-    for (const w of [-0.9, 0.9]) {
-      beam(c.solid, ...P(d0, 0, w), ...P(d1, 0, w), 0.16, yellow);
-    }
-    beam(c.solid, ...P(d0, 2.2, 0), ...P(d1, 1.2, 0), 0.16, yellow);
-    for (let d = d0; d < d1; d += 3) {
-      beam(c.solid, ...P(d, 0, -0.9), ...P(d + 3, 0, 0.9), 0.08, yellow);
-      beam(c.solid, ...P(d, 0, 0.9), ...P(d + 1.5, 2.2 - ((d + 1.5 - d0) / (d1 - d0)), 0), 0.08, yellow);
-      beam(c.solid, ...P(d + 3, 0, -0.9), ...P(d + 1.5, 2.2 - ((d + 1.5 - d0) / (d1 - d0)), 0), 0.08, yellow);
-    }
-  }
-  beam(c.solid, ...P(0, 0, 0), ...P(0, 9, 0), 0.4, yellow);
-  beam(c.solid, ...P(0, 9, 0), ...P(jib * 0.7, 1.2, 0), 0.06, 0x333333);
-  beam(c.solid, ...P(0, 9, 0), ...P(-cj, 2, 0), 0.06, 0x333333);
-  const [wx, wy, wz] = P(-cj + 3, -1.5, 0);
-  box(c.solid, wx, wy, wz, 4, 3, 3, 0x8d8f93, -ang);
-  const [hx, hy, hz] = P(jib * 0.6, 0, 0);
-  beam(c.solid, hx, hy, hz, hx, hy - 50, hz, 0.05, 0x222222);
-  box(c.solid, hx, hy - 51, hz, 1, 1.2, 1, yellow);
-  box(c.solid, hx, hy - 53, hz, 6, 0.6, 0.6, 0x9a3a22);
-  for (const p of [P(jib, 0.5, 0), P(0, 9.5, 0), P(-cj, 1, 0)]) c.glow.add(UNIT.ball, mat(p[0], p[1], p[2], 0.45, 0.45, 0.45), 0xff2020, 8, [0.7, r()]);
-  for (let f = 0; f < 4; f++) {
-    const F = face(f, b.x0, b.x1, b.z0, b.z1);
-    for (let a = 0; a < F.len; a += 2.4) {
-      fbox(c.small, F, a + 1.2, 1.25, -0.1, 2.38, 2.5, 0.12, 0x1d4f8a);
-      if (Math.floor(a / 2.4) % 6 === 2) fquad(c.glow, F, a + 0.3, a + 2.1, 0.7, 1.6, 0.02, c.atlas.whiteRect, 0xff7a10, 1.2);
-    }
-  }
-  for (const [px, pz] of [[b.x0 + 2, b.z0 + 2], [b.x0 + 2, b.z1 - 2], [x1 + 2, b.z0 + 2]]) {
-    cyl(c.small, UNIT.cyl6, px, 0, pz, 0.12, 9, 0x666666);
-    box(c.glow, px, 9.2, pz, 1.6, 0.8, 0.5, 0xfff4dc, 0, 5);
-  }
-  for (let k = 0; k < 2; k++) {
-    const tx = b.x0 + 5 + k * 10;
-    box(c.solid, tx, 1.5, b.z1 - 4, 8, 2.6, 3, 0xe6e2d8);
-    box(c.solid, tx, 2.85, b.z1 - 4, 8, 0.1, 3, SNOW);
-    box(c.glowSmall, tx + 1, 1.8, b.z1 - 2.45, 1.2, 0.8, 0.05, 0xffe2a8, 0, 2.5);
-  }
-  for (let k = 0; k < 5; k++) box(c.solid, b.x0 + 4 + r() * 8, 0.4 + k * 0.1, b.z0 + 4 + r() * 6, 6, 0.3, 0.5, 0x8a3a22, r());
-  c.landmarks.push({ name: "Construction Site", pos: new THREE.Vector3(mx, H + 3, mz) });
 }
 
 export function genFiller(c: Ctx, b: Block, kind: "brick" | "ind" | "mixed", hScale = 1) {

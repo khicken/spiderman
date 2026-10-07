@@ -20,13 +20,6 @@ export function tex(c: HTMLCanvasElement, repeat = true, aniso = 8) {
 
 const pick = <T,>(r: R, a: readonly T[]) => a[Math.floor(r() * a.length)];
 
-function speckle(g: G, r: R, w: number, h: number, n: number, light: string, dark: string, size = 2) {
-  for (let i = 0; i < n; i++) {
-    g.fillStyle = r() < 0.5 ? light : dark;
-    g.fillRect(r() * w, r() * h, size, size);
-  }
-}
-
 function bricks(g: G, r: R, w: number, h: number, bw: number, bh: number) {
   for (let y = 0; y < h; y += bh) {
     for (let x = (y / bh) % 2 ? 0 : -bw / 2; x < w; x += bw) {
@@ -61,370 +54,182 @@ function shade(hex: string, k: number) {
   return `rgb(${f(16)},${f(8)},${f(0)})`;
 }
 
-function curtain(g: G, e: G, r: R, S: number, base: number[], litP: number) {
-  const cols = 16, rows = 8, cw = S / cols, ch = S / rows;
-  const gr = g.createLinearGradient(0, 0, S, S);
-  gr.addColorStop(0, `rgb(${base[0] * 1.2},${base[1] * 1.2},${base[2] * 1.15})`);
-  gr.addColorStop(0.5, `rgb(${base[0] * 0.85},${base[1] * 0.85},${base[2] * 0.9})`);
-  gr.addColorStop(1, `rgb(${base[0] * 1.05},${base[1] * 1.05},${base[2] * 1.05})`);
-  g.fillStyle = gr;
-  g.fillRect(0, 0, S, S);
-  for (let cy = 0; cy < rows; cy++) {
-    const y = cy * ch;
-    const full = r() < litP * 0.5;
-    const col = pick(r, full ? COOL : MIXED);
-    let lit = full || r() < litP;
-    for (let cx = 0; cx < cols; cx++) {
-      const x = cx * cw;
-      g.fillStyle = `rgba(255,255,255,${r() * 0.04})`;
-      g.fillRect(x, y, cw, ch);
-      if (!full && r() < 0.08) lit = !lit;
-      if (!lit) continue;
-      const a = full ? 0.5 + r() * 0.15 : 0.3 + r() * 0.3;
-      for (const c of [g, e]) {
-        c.globalAlpha = a;
-        c.fillStyle = col;
-        c.fillRect(x, y + 10, cw, ch - 10);
-        c.globalAlpha = Math.min(1, a + 0.25);
-        c.fillRect(x, y + 10, cw, 2);
-        c.globalAlpha = 1;
-      }
-      if (r() < 0.3) {
-        g.fillStyle = e.fillStyle = "rgba(12,16,22,0.45)";
-        g.fillRect(x + 4, y + ch - 18, cw - 8, 18);
-        e.fillRect(x + 4, y + ch - 18, cw - 8, 18);
-      }
-    }
-    g.fillStyle = `rgba(${base[0] * 0.35},${base[1] * 0.4},${base[2] * 0.45},0.95)`;
-    g.fillRect(0, y, S, 10);
-    e.fillStyle = "#000";
-    e.fillRect(0, y, S, 10);
-  }
-  g.fillStyle = "rgba(200,212,230,0.4)";
-  for (let x = 0; x < S; x += cw) g.fillRect(x, 0, 1.5, S);
-}
-
-export type FacadeStyle = {
-  name: string;
-  cw: number;
-  ch: number;
-  cols: number;
-  rows: number;
-  rough: number;
-  metal: number;
-  glow: number;
-  env?: number;
-  draw: (g: G, e: G, r: R, S: number) => void;
-};
-
-const WARM = ["#ffd08a", "#ffc070", "#ffe1ad", "#ffb562"];
-const COOL = ["#e4efff", "#cfe3ff", "#f4f7ff"];
-const MIXED = ["#ffe2b0", "#d9e8ff", "#ffcf8a", "#fff3d6"];
-
-function grid(S: number, cols: number, rows: number, fn: (x: number, y: number, cw: number, ch: number, cx: number, cy: number) => void) {
-  const cw = S / cols;
-  const ch = S / rows;
-  for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) fn(cx * cw, cy * ch, cw, ch, cx, cy);
-}
-
-export const FACADES: FacadeStyle[] = [
-  {
-    name: "glass",
-    cw: 1.5, ch: 3.6, cols: 16, rows: 8, rough: 0.1, metal: 0.55, glow: 0.95, env: 2.2,
-    draw(g, e, r, S) {
-      curtain(g, e, r, S, [120, 150, 185], 0.3);
-    },
-  },
-  {
-    name: "ribbon",
-    cw: 3, ch: 3.8, cols: 8, rows: 8, rough: 0.25, metal: 0.5, glow: 1.2,
-    draw(g, e, r, S) {
-      g.fillStyle = "#1d3436";
-      g.fillRect(0, 0, S, S);
-      for (let cy = 0; cy < 8; cy++) {
-        const y = cy * 64;
-        g.fillStyle = "#8f989a";
-        g.fillRect(0, y, S, 20);
-        g.fillStyle = "rgba(0,0,0,0.25)";
-        g.fillRect(0, y + 18, S, 2);
-        for (let cx = 0; cx < 8; cx++) if (r() < 0.42) interior(g, e, r, cx * 64, y + 20, 64, 44, pick(r, COOL), 0.5 + r() * 0.4);
-      }
-      g.fillStyle = "rgba(20,30,30,0.8)";
-      for (let x = 0; x < S; x += 32) g.fillRect(x, 0, 2, S);
-    },
-  },
-  {
-    name: "office",
-    cw: 3, ch: 3.6, cols: 8, rows: 8, rough: 0.45, metal: 0.35, glow: 1.25,
-    draw(g, e, r, S) {
-      g.fillStyle = "#2b2f36";
-      g.fillRect(0, 0, S, S);
-      speckle(g, r, S, S, 1500, "rgba(255,255,255,0.04)", "rgba(0,0,0,0.08)");
-      grid(S, 8, 8, (x, y) => {
-        g.fillStyle = "#0f141b";
-        g.fillRect(x + 8, y + 10, 48, 46);
-        if (r() < 0.5) interior(g, e, r, x + 8, y + 10, 48, 46, pick(r, COOL), 0.6 + r() * 0.3);
-        g.fillStyle = "rgba(0,0,0,0.5)";
-        g.fillRect(x + 31, y + 10, 2, 46);
-      });
-    },
-  },
-  {
-    name: "deco",
-    cw: 3, ch: 3.8, cols: 8, rows: 8, rough: 0.75, metal: 0.05, glow: 1.25,
-    draw(g, e, r, S) {
-      g.fillStyle = "#c4b393";
-      g.fillRect(0, 0, S, S);
-      speckle(g, r, S, S, 3000, "rgba(255,250,235,0.15)", "rgba(60,40,20,0.08)");
-      grid(S, 8, 8, (x, y) => {
-        g.fillStyle = "#5c4a38";
-        g.fillRect(x + 14, y + 4, 36, 56);
-        g.fillStyle = "#1a1612";
-        g.fillRect(x + 17, y + 6, 30, 38);
-        if (r() < 0.45) interior(g, e, r, x + 17, y + 6, 30, 38, pick(r, WARM), 0.65 + r() * 0.35);
-        g.fillStyle = "#806a4f";
-        g.beginPath();
-        g.moveTo(x + 17, y + 58);
-        g.lineTo(x + 32, y + 48);
-        g.lineTo(x + 47, y + 58);
-        g.fill();
-      });
-      g.fillStyle = "rgba(255,245,225,0.35)";
-      for (let x = 0; x < S; x += 64) g.fillRect(x + 4, 0, 6, S);
-    },
-  },
-  {
-    name: "brownstone",
-    cw: 2.2, ch: 3.4, cols: 4, rows: 4, rough: 0.9, metal: 0, glow: 1.35,
-    draw(g, e, r, S) {
-      g.fillStyle = "#5e3c2d";
-      g.fillRect(0, 0, S, S);
-      speckle(g, r, S, S, 9000, "rgba(255,210,180,0.06)", "rgba(0,0,0,0.1)", 3);
-      for (let y = 0; y < S; y += 9) {
-        g.fillStyle = "rgba(0,0,0,0.06)";
-        g.fillRect(0, y, S, 1);
-      }
-      grid(S, 4, 4, (x, y, w) => {
-        const ww = 54, wh = 92, wx = x + (w - ww) / 2, wy = y + 18;
-        g.fillStyle = "#7a5644";
-        g.fillRect(wx - 8, wy - 14, ww + 16, 12);
-        g.fillRect(wx - 5, wy + wh, ww + 10, 7);
-        g.fillStyle = "#e9e1d2";
-        g.fillRect(wx - 3, wy - 2, ww + 6, wh + 4);
-        g.fillStyle = "#16100d";
-        g.fillRect(wx, wy, ww, wh);
-        if (r() < 0.55) {
-          interior(g, e, r, wx, wy, ww, wh, pick(r, WARM), 0.75 + r() * 0.25);
-          for (const c of [g, e]) {
-            c.fillStyle = "rgba(120,40,30,0.55)";
-            c.fillRect(wx, wy, 10, wh);
-            c.fillRect(wx + ww - 10, wy, 10, wh);
-          }
-          if (r() < 0.25) {
-            g.strokeStyle = e.strokeStyle = "#1f6b2a";
-            g.lineWidth = e.lineWidth = 6;
-            for (const c of [g, e]) {
-              c.beginPath();
-              c.arc(wx + ww / 2, wy + 30, 13, 0, Math.PI * 2);
-              c.stroke();
-            }
-            g.fillStyle = e.fillStyle = "#c81e1e";
-            g.fillRect(wx + ww / 2 - 4, wy + 40, 8, 6);
-            e.fillRect(wx + ww / 2 - 4, wy + 40, 8, 6);
-          }
-        }
-        g.fillStyle = "#e9e1d2";
-        g.fillRect(wx, wy + wh / 2 - 2, ww, 4);
-        g.fillRect(wx + ww / 2 - 2, wy, 4, wh);
-      });
-    },
-  },
-  {
-    name: "brick",
-    cw: 2.6, ch: 3.1, cols: 8, rows: 8, rough: 0.92, metal: 0, glow: 1.3,
-    draw(g, e, r, S) {
-      g.fillStyle = "#7a3324";
-      g.fillRect(0, 0, S, S);
-      bricks(g, r, S, S, 10, 4);
-      grid(S, 8, 8, (x, y) => {
-        g.fillStyle = "#cfc6b8";
-        g.fillRect(x + 13, y + 46, 40, 5);
-        g.fillStyle = "#e6e0d4";
-        g.fillRect(x + 15, y + 8, 34, 40);
-        g.fillStyle = "#14100e";
-        g.fillRect(x + 18, y + 11, 28, 34);
-        if (r() < 0.42) interior(g, e, r, x + 18, y + 11, 28, 34, r() < 0.12 ? "#8fb8ff" : pick(r, WARM), 0.7 + r() * 0.3);
-        g.fillStyle = "#e6e0d4";
-        g.fillRect(x + 18, y + 26, 28, 3);
-      });
-    },
-  },
-  {
-    name: "limestone",
-    cw: 3, ch: 3.3, cols: 8, rows: 8, rough: 0.85, metal: 0, glow: 1.3,
-    draw(g, e, r, S) {
-      g.fillStyle = "#b3a58b";
-      g.fillRect(0, 0, S, S);
-      speckle(g, r, S, S, 4000, "rgba(255,255,240,0.12)", "rgba(60,50,30,0.08)");
-      for (let y = 0; y < S; y += 16) {
-        g.fillStyle = "rgba(0,0,0,0.05)";
-        g.fillRect(0, y, S, 1);
-      }
-      grid(S, 8, 8, (x, y, w, _h, _cx, cy) => {
-        g.fillStyle = "#8f8169";
-        g.fillRect(x + 14, y + 8, 36, 46);
-        g.fillStyle = "#15130f";
-        g.fillRect(x + 17, y + 10, 30, 41);
-        if (r() < 0.45) interior(g, e, r, x + 17, y + 10, 30, 41, pick(r, WARM), 0.7 + r() * 0.3);
-        g.fillStyle = "#cfc3aa";
-        g.fillRect(x + 17, y + 29, 30, 3);
-        if (cy % 4 === 3) {
-          g.fillStyle = "#d4c8ae";
-          g.fillRect(x, y + 57, w, 7);
-        }
-      });
-    },
-  },
-  {
-    name: "industrial",
-    cw: 4.5, ch: 4.6, cols: 4, rows: 4, rough: 0.9, metal: 0.05, glow: 1.3,
-    draw(g, e, r, S) {
-      g.fillStyle = "#553328";
-      g.fillRect(0, 0, S, S);
-      bricks(g, r, S, S, 12, 5);
-      grid(S, 4, 4, (x, y) => {
-        const wx = x + 14, wy = y + 22, ww = 100, wh = 92;
-        g.fillStyle = "#3a2018";
-        g.beginPath();
-        g.moveTo(wx - 6, wy + 4);
-        g.quadraticCurveTo(wx + ww / 2, wy - 20, wx + ww + 6, wy + 4);
-        g.lineTo(wx + ww + 6, wy + 10);
-        g.lineTo(wx - 6, wy + 10);
-        g.fill();
-        g.fillStyle = "#101614";
-        g.fillRect(wx, wy, ww, wh);
-        if (r() < 0.32) interior(g, e, r, wx, wy, ww, wh, pick(r, ["#ffd27a", "#ffe6b0", "#d8f0ff"]), 0.6 + r() * 0.3);
-        g.fillStyle = "#24332c";
-        for (let k = 0; k <= 4; k++) {
-          g.fillRect(wx + (k * ww) / 4 - 1, wy, 3, wh);
-          g.fillRect(wx, wy + (k * wh) / 4 - 1, ww, 3);
-        }
-        for (let k = 0; k < 3; k++) {
-          if (r() < 0.3) {
-            g.fillStyle = "#050707";
-            e.fillStyle = "#000";
-            const px = wx + Math.floor(r() * 4) * 25 + 2, py = wy + Math.floor(r() * 4) * 23 + 2;
-            g.fillRect(px, py, 21, 19);
-            e.fillRect(px, py, 21, 19);
-          }
-        }
-        g.fillStyle = "#9a8f80";
-        g.fillRect(wx - 4, wy + wh, ww + 8, 6);
-      });
-    },
-  },
-  {
-    name: "darkglass",
-    cw: 1.5, ch: 3.6, cols: 16, rows: 8, rough: 0.08, metal: 0.6, glow: 1.1, env: 2.0,
-    draw(g, e, r, S) {
-      curtain(g, e, r, S, [60, 74, 96], 0.2);
-    },
-  },
+/** Ground floor atlas: 4 rows of 4.5 m bands, 36 m wide. Rows: shops, shops, lobby, garage. */
+export const SHOP_W = 36;
+export const SHOP_H = 4.5;
+type Kind = "shelf" | "tables" | "laundry" | "racks" | "counter" | "flowers" | "screens" | "bar" | "bakery" | "barber";
+const SHOPS: [string, string, Kind, string][] = [
+  ["BODEGA", "#1f6b3a", "shelf", "#fff1d0"], ["DELI", "#a3241f", "counter", "#ffe6b8"], ["PIZZA", "#1d3f7a", "counter", "#ffd59a"], ["LAUNDROMAT", "#246b6b", "laundry", "#eef6ff"],
+  ["CAFE", "#5b2a6e", "tables", "#ffd9a0"], ["BOOKS", "#8a1d2f", "shelf", "#ffe2b0"], ["FLOWERS", "#2f5d1f", "flowers", "#f4fff0"], ["GROCERY", "#d07a12", "shelf", "#fff6e0"],
+  ["DINER", "#b0121f", "tables", "#fff0d0"], ["PHARMACY", "#1458a8", "shelf", "#f2f8ff"], ["BOUTIQUE", "#222222", "racks", "#ffe8d8"], ["ELECTRONICS", "#0b2a5e", "screens", "#dfe9ff"],
+  ["BAR", "#3a0d12", "bar", "#ff9a5a"], ["BAKERY", "#8a5a1d", "bakery", "#ffe0a8"], ["BARBER", "#1a1a1a", "barber", "#f6f2ff"], ["RAMEN", "#7a1212", "tables", "#ffcf8a"],
 ];
 
-export const STYLE = Object.fromEntries(FACADES.map((f, i) => [f.name, i])) as Record<string, number>;
-
-export function facadeTextures(r: R) {
-  return FACADES.map((f) => {
-    const [c, g] = canvas(512);
-    const [ce, e] = canvas(512);
-    e.fillStyle = "#000";
-    e.fillRect(0, 0, 512, 512);
-    f.draw(g, e, r, 512);
-    return { map: tex(c), emissive: tex(ce) };
-  });
-}
-
-/** Ground floor atlas: 4 rows of 4.5 m bands, 18 m wide. Rows: shops, shops, lobby, garage. */
-export const SHOP_W = 18;
-export const SHOP_H = 4.5;
-const SHOPS = ["BODEGA", "DELI", "PIZZA", "LAUNDRY", "CAFE", "BOOKS", "FLOWERS", "GROCERY"];
-const AWNINGS = ["#1f6b3a", "#a3241f", "#1d3f7a", "#d07a12", "#5b2a6e", "#246b6b", "#8a1d2f", "#2f5d1f"];
-
-export function shopTexture(r: R) {
-  const [c, g] = canvas(1024);
-  const [ce, e] = canvas(1024);
-  e.fillStyle = "#000";
-  e.fillRect(0, 0, 1024, 1024);
-  const font = (px: number) => `800 ${px}px "Arial Black", Impact, Helvetica, sans-serif`;
-  for (let row = 0; row < 2; row++) {
+function shopInside(g: G, e: G, r: R, x: number, y: number, w: number, h: number, kind: Kind, light: string) {
+  for (const c of [g, e]) {
+    const gr = c.createLinearGradient(0, y, 0, y + h);
+    gr.addColorStop(0, light);
+    gr.addColorStop(0.7, shade(light, 0.75));
+    gr.addColorStop(1, shade(light, 0.45));
+    c.fillStyle = gr;
+    c.globalAlpha = kind === "bar" ? 0.6 : 0.95;
+    c.fillRect(x, y, w, h);
+    c.globalAlpha = 1;
+    c.fillStyle = "rgba(255,255,255,0.9)";
+    for (let k = 0; k < 3; k++) c.fillRect(x + 10 + k * (w / 3), y + 4, w / 3 - 20, 4);
+  }
+  const both = (col: string, fx: number, fy: number, fw: number, fh: number) => {
+    g.fillStyle = e.fillStyle = col;
+    g.fillRect(fx, fy, fw, fh);
+    e.fillRect(fx, fy, fw, fh);
+  };
+  const hue = () => `hsl(${Math.floor(r() * 360)},65%,${45 + Math.floor(r() * 20)}%)`;
+  const floor = y + h;
+  if (kind === "shelf") {
+    for (let sy = y + 40; sy < floor - 10; sy += 32) {
+      for (let p = x + 6; p < x + w - 8; p += 8) both(hue(), p, sy - 10 - r() * 12, 6, 10 + r() * 12);
+      both("#3a2a20", x + 4, sy, w - 8, 3);
+    }
+  } else if (kind === "tables") {
+    for (let k = 0; k < 3; k++) {
+      const tx = x + 12 + k * (w / 3);
+      both("#2a1a12", tx, floor - 46, w / 3 - 30, 5);
+      both("#2a1a12", tx + (w / 3 - 30) / 2 - 2, floor - 46, 4, 46);
+      both("rgba(30,20,15,0.85)", tx - 6, floor - 70, 14, 40);
+      if (r() < 0.6) both("rgba(30,20,15,0.85)", tx + w / 3 - 36, floor - 74, 16, 44);
+    }
+  } else if (kind === "laundry") {
     for (let k = 0; k < 4; k++) {
-      const x = k * 256, y = row * 256, i = row * 4 + k;
-      g.fillStyle = "#3b2f2a";
-      g.fillRect(x, y, 256, 256);
-      g.fillStyle = "#24201e";
-      g.fillRect(x + 8, y + 236, 240, 20);
-      const shutter = r() < 0.2;
-      if (shutter) {
-        g.fillStyle = "#6d7178";
-        g.fillRect(x + 14, y + 70, 228, 166);
-        for (let s = y + 70; s < y + 236; s += 6) {
-          g.fillStyle = "rgba(0,0,0,0.25)";
-          g.fillRect(x + 14, s, 228, 2);
-        }
-      } else {
-        interior(g, e, r, x + 14, y + 70, 160, 160, pick(r, ["#ffe6b8", "#fff2d8", "#ffd9a0"]), 0.95);
-        for (let s = y + 100; s < y + 225; s += 30) {
-          for (let p = x + 18; p < x + 170; p += 9) {
-            const col = `hsl(${r() * 360},60%,${45 + r() * 20}%)`;
-            g.fillStyle = e.fillStyle = col;
-            const ph = 8 + r() * 12;
-            g.fillRect(p, s - ph, 7, ph);
-            e.fillRect(p, s - ph, 7, ph);
-          }
-          g.fillStyle = e.fillStyle = "#3a2a20";
-          g.fillRect(x + 14, s, 160, 3);
-          e.fillRect(x + 14, s, 160, 3);
-        }
-        g.fillStyle = "#1a1514";
-        g.fillRect(x + 186, y + 80, 56, 156);
-        interior(g, e, r, x + 192, y + 88, 44, 90, "#ffe2b0", 0.8);
-        g.fillStyle = "#c9b28a";
-        g.fillRect(x + 228, y + 160, 4, 14);
-      }
-      g.fillStyle = "#18120f";
-      g.fillRect(x + 4, y + 14, 248, 50);
-      for (const ctx of [g, e]) {
-        ctx.fillStyle = AWNINGS[i];
-        ctx.globalAlpha = ctx === e ? 0.35 : 1;
-        ctx.fillRect(x + 4, y + 14, 248, 50);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = "#fff6e0";
-        ctx.font = font(30);
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(SHOPS[i], x + 128, y + 41, 230);
+      const mx = x + 8 + k * (w / 4);
+      both("#d8dde4", mx, floor - 60, w / 4 - 10, 60);
+      g.fillStyle = e.fillStyle = "#3a4a5a";
+      for (const c of [g, e]) {
+        c.beginPath();
+        c.arc(mx + (w / 4 - 10) / 2, floor - 32, 14, 0, Math.PI * 2);
+        c.fill();
       }
     }
+  } else if (kind === "racks") {
+    both("#2a2a2a", x + 10, y + 40, w - 20, 3);
+    for (let p = x + 14; p < x + w - 14; p += 7) both(hue(), p, y + 43, 6, 50 + r() * 20);
+    for (let k = 0; k < 2; k++) {
+      const mx = x + 30 + k * (w - 70);
+      both("rgba(25,20,20,0.9)", mx, floor - 110, 18, 80);
+      both("rgba(25,20,20,0.9)", mx + 4, floor - 128, 10, 16);
+    }
+  } else if (kind === "counter") {
+    both("#4a2a1a", x + 6, floor - 50, w - 12, 50);
+    both("#d8c8a8", x + 6, floor - 54, w - 12, 5);
+    both("#ff8a2a", x + w - 70, y + 34, 50, 26);
+    both("rgba(30,20,15,0.85)", x + 40, floor - 104, 22, 54);
+    both("rgba(30,20,15,0.85)", x + 44, floor - 122, 14, 16);
+  } else if (kind === "flowers") {
+    for (let k = 0; k < 18; k++) {
+      const fx = x + 8 + r() * (w - 20), fy = floor - 20 - r() * 70;
+      both("#2f5d1f", fx + 4, fy, 3, floor - fy);
+      both(hue(), fx, fy - 8, 12, 10);
+    }
+  } else if (kind === "screens") {
+    for (let k = 0; k < 6; k++) both(`hsl(${200 + r() * 60},80%,${55 + r() * 20}%)`, x + 8 + (k % 3) * (w / 3), y + 30 + Math.floor(k / 3) * 50, w / 3 - 14, 38);
+    both("#2a2e36", x + 6, floor - 40, w - 12, 40);
+  } else if (kind === "bar") {
+    both("#2a120c", x + 6, floor - 52, w - 12, 52);
+    for (let p = x + 10; p < x + w - 10; p += 9) both(`hsl(${20 + r() * 40},70%,${40 + r() * 25}%)`, p, y + 40 - r() * 8, 5, 20);
+    both("#ff3b6e", x + w / 2 - 30, y + 18, 60, 6);
+  } else if (kind === "bakery") {
+    both("#e8e0d0", x + 6, floor - 56, w - 12, 56);
+    for (let k = 0; k < 12; k++) both(`hsl(${25 + r() * 15},70%,${45 + r() * 15}%)`, x + 14 + (k % 6) * ((w - 28) / 6), floor - 48 + Math.floor(k / 6) * 22, 16, 9);
+  } else {
+    for (let k = 0; k < 2; k++) {
+      both("#b0121f", x + 20 + k * (w / 2), floor - 60, 26, 34);
+      both("#c8c8d0", x + 18 + k * (w / 2), floor - 70, 30, 10);
+    }
+    both("#ffffff", x + w - 18, y + 30, 8, 60);
+    both("#d81a1a", x + w - 18, y + 40, 8, 8);
+    both("#1a3ad8", x + w - 18, y + 60, 8, 8);
   }
+}
+
+export function shopTexture(r: R) {
+  const W = 2048, H = 1024;
+  const [c, g] = canvas(W, H);
+  const [ce, e] = canvas(W, H);
+  e.fillStyle = "#000";
+  e.fillRect(0, 0, W, H);
+  const font = (px: number) => `800 ${px}px "Arial Black", Impact, Helvetica, sans-serif`;
+  SHOPS.forEach(([name, awn, kind, light], i) => {
+    const x = (i % 8) * 256, y = Math.floor(i / 8) * 256;
+    g.fillStyle = pick(r, ["#3b2f2a", "#2a2c30", "#4a3a2a", "#5a5048"]);
+    g.fillRect(x, y, 256, 256);
+    g.fillStyle = "#24201e";
+    g.fillRect(x + 8, y + 238, 240, 18);
+    const doorLeft = r() < 0.5;
+    const wx = doorLeft ? x + 70 : x + 12, ww = 174;
+    if (r() < 0.12) {
+      g.fillStyle = "#6d7178";
+      g.fillRect(x + 10, y + 68, 236, 170);
+      for (let s = y + 68; s < y + 238; s += 6) {
+        g.fillStyle = "rgba(0,0,0,0.25)";
+        g.fillRect(x + 10, s, 236, 2);
+      }
+      g.fillStyle = "rgba(255,255,255,0.5)";
+      g.font = font(18);
+      g.textAlign = "center";
+      g.fillText(pick(r, ["NO PARKING", "SALE", "OPEN 7AM"]), x + 128, y + 150);
+    } else {
+      g.fillStyle = "#121010";
+      g.fillRect(wx - 4, y + 66, ww + 8, 176);
+      shopInside(g, e, r, wx, y + 70, ww, 166, kind, light);
+      g.fillStyle = "rgba(20,20,20,0.85)";
+      g.fillRect(wx + ww / 2 - 2, y + 70, 4, 166);
+      g.fillStyle = "rgba(255,255,255,0.12)";
+      g.beginPath();
+      g.moveTo(wx, y + 70);
+      g.lineTo(wx + 40, y + 70);
+      g.lineTo(wx, y + 140);
+      g.fill();
+      const dx = doorLeft ? x + 12 : x + 196;
+      g.fillStyle = "#1a1514";
+      g.fillRect(dx, y + 78, 50, 160);
+      shopInside(g, e, r, dx + 6, y + 86, 38, 100, kind, light);
+      g.fillStyle = "#c9b28a";
+      g.fillRect(dx + (doorLeft ? 40 : 6), y + 160, 4, 14);
+    }
+    g.fillStyle = "#18120f";
+    g.fillRect(x + 4, y + 12, 248, 52);
+    for (const ctx of [g, e]) {
+      ctx.fillStyle = awn;
+      ctx.globalAlpha = ctx === e ? 0.4 : 1;
+      ctx.fillRect(x + 4, y + 12, 248, 52);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#fff6e0";
+      ctx.font = font(28);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(name, x + 128, y + 40, 228);
+    }
+  });
   const y2 = 512;
   g.fillStyle = "#c9bea7";
-  g.fillRect(0, y2, 1024, 256);
-  for (let x = 0; x < 1024; x += 128) {
+  g.fillRect(0, y2, W, 256);
+  for (let x = 0; x < W; x += 128) {
     g.fillStyle = "#0d1118";
     g.fillRect(x + 18, y2 + 30, 92, 226);
     interior(g, e, r, x + 18, y2 + 30, 92, 226, pick(r, ["#fff4dc", "#ffe7bd", "#f2f6ff"]), 0.9);
+    g.fillStyle = e.fillStyle = "rgba(255,255,255,0.9)";
+    g.fillRect(x + 30, y2 + 34, 68, 4);
+    e.fillRect(x + 30, y2 + 34, 68, 4);
     g.fillStyle = "rgba(30,30,30,0.7)";
     g.fillRect(x + 62, y2 + 30, 4, 226);
     g.fillRect(x + 18, y2 + 120, 92, 3);
   }
   g.fillStyle = "#a89a80";
-  g.fillRect(0, y2, 1024, 22);
+  g.fillRect(0, y2, W, 22);
   const y3 = 768;
   g.fillStyle = "#4e3026";
-  g.fillRect(0, y3, 1024, 256);
-  bricks(g, r, 1024, 256, 12, 5);
-  for (let x = 0; x < 1024; x += 256) {
+  g.fillRect(0, y3, W, 256);
+  bricks(g, r, W, 256, 12, 5);
+  for (let x = 0; x < W; x += 256) {
     g.fillStyle = "#6f7378";
     g.fillRect(x + 20, y3 + 70, 150, 186);
     for (let s = y3 + 70; s < y3 + 256; s += 8) {
@@ -441,14 +246,14 @@ export function shopTexture(r: R) {
   return { map: tex(c), emissive: tex(ce) };
 }
 
-export type Atlas = { tex: THREE.CanvasTexture; white: [number, number]; whiteRect: [number, number, number, number]; billboards: [number, number, number, number][]; neon: [number, number, number, number][]; tall: [number, number, number, number][]; blades: [number, number, number, number][]; helipad: [number, number, number, number]; flake: [number, number, number, number] };
+export type Atlas = { tex: THREE.CanvasTexture; white: [number, number]; whiteRect: [number, number, number, number]; billboards: [number, number, number, number][]; neon: [number, number, number, number][]; tall: [number, number, number, number][]; blades: [number, number, number, number][]; helipad: [number, number, number, number]; flake: [number, number, number, number]; cnBlades: [number, number, number, number][]; cnSigns: [number, number, number, number][] };
 
 export function signAtlas(r: R): Atlas {
-  const S = 2048;
-  const [c, g] = canvas(S);
+  const S = 2048, SH = 2560;
+  const [c, g] = canvas(S, SH);
   g.fillStyle = "#000";
-  g.fillRect(0, 0, S, S);
-  const rect = (x: number, y: number, w: number, h: number) => [x / S, 1 - (y + h) / S, (x + w) / S, 1 - y / S] as [number, number, number, number];
+  g.fillRect(0, 0, S, SH);
+  const rect = (x: number, y: number, w: number, h: number) => [x / S, 1 - (y + h) / SH, (x + w) / S, 1 - y / SH] as [number, number, number, number];
   const font = (px: number, w = 800) => `${w} ${px}px "Arial Black", Impact, Helvetica, sans-serif`;
   const text = (s: string, x: number, y: number, px: number, col: string, maxW?: number, w = 800) => {
     g.font = font(px, w);
@@ -770,9 +575,84 @@ export function signAtlas(r: R): Atlas {
 
   g.fillStyle = "#fff";
   g.fillRect(1536, 1536, 512, 512);
-  const white: [number, number] = [1792 / S, 1 - 1792 / S];
+  const white: [number, number] = [1792 / S, 1 - 1792 / SH];
+
+  const glyph = (cx: number, cy: number, s: number, col: string) => {
+    g.strokeStyle = col;
+    g.lineWidth = s * 0.085;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    const part = (x0: number, y0: number, w: number, h: number, n: number) => {
+      const X = (t: number) => cx + (x0 + t * w - 0.5) * s * 0.86;
+      const Y = (t: number) => cy + (y0 + t * h - 0.5) * s * 0.86;
+      g.beginPath();
+      for (let k = 0; k < n; k++) {
+        const t = r(), a = 0.15 + r() * 0.7;
+        if (t < 0.32) {
+          g.moveTo(X(0.05), Y(a));
+          g.lineTo(X(0.95), Y(a));
+        } else if (t < 0.55) {
+          g.moveTo(X(a), Y(0.05));
+          g.lineTo(X(a), Y(0.95));
+          if (r() < 0.4) g.lineTo(X(a - 0.12), Y(0.85));
+        } else if (t < 0.7) {
+          g.rect(X(0.2), Y(a * 0.6), (w * 0.6) * s * 0.86, h * 0.35 * s * 0.86);
+        } else if (t < 0.85) {
+          g.moveTo(X(0.5), Y(0.1));
+          g.quadraticCurveTo(X(0.45), Y(0.6), X(0.05), Y(0.95));
+          g.moveTo(X(0.5), Y(0.4));
+          g.quadraticCurveTo(X(0.65), Y(0.75), X(0.95), Y(0.95));
+        } else {
+          g.moveTo(X(a), Y(0.1));
+          g.lineTo(X(a + 0.1), Y(0.25));
+        }
+      }
+      g.stroke();
+    };
+    const lay = r();
+    if (lay < 0.45) {
+      part(0, 0, 0.36, 1, 2 + Math.floor(r() * 2));
+      part(0.42, 0, 0.58, 1, 3 + Math.floor(r() * 2));
+    } else if (lay < 0.8) {
+      part(0, 0, 1, 0.42, 2 + Math.floor(r() * 2));
+      part(0, 0.48, 1, 0.52, 3 + Math.floor(r() * 2));
+    } else {
+      g.beginPath();
+      g.rect(cx - s * 0.38, cy - s * 0.38, s * 0.76, s * 0.76);
+      g.stroke();
+      part(0.2, 0.2, 0.6, 0.6, 3);
+    }
+  };
+  const cnPal = [["#c8102e", "#ffd34a"], ["#ffd34a", "#a3000f"], ["#0f0f12", "#ff3b3b"], ["#1a5c2a", "#ffe08a"], ["#a3000f", "#ffffff"], ["#0b2a5e", "#ffcf4a"]];
+  const cnBlades: [number, number, number, number][] = [];
+  for (let i = 0; i < 6; i++) {
+    const x = i * 128, y = 2048;
+    const [bg, fg] = cnPal[i];
+    g.fillStyle = bg;
+    g.fillRect(x + 4, y + 4, 120, 504);
+    g.strokeStyle = fg;
+    g.lineWidth = 4;
+    g.strokeRect(x + 10, y + 10, 108, 492);
+    const n = 3 + (i % 2);
+    for (let k = 0; k < n; k++) glyph(x + 64, y + 256 + (k - (n - 1) / 2) * (440 / n), 92, fg);
+    cnBlades.push(rect(x + 4, y + 4, 120, 504));
+  }
+  const EN = ["NOODLES", "DIM SUM", "BAKERY", "TEA HOUSE", "HERBS", "SEAFOOD", "DUMPLINGS", "JEWELRY"];
+  const cnSigns: [number, number, number, number][] = [];
+  EN.forEach((word, i) => {
+    const x = 768 + (i % 4) * 320, y = 2048 + Math.floor(i / 4) * 256;
+    const [bg, fg] = cnPal[(i + 2) % cnPal.length];
+    g.fillStyle = bg;
+    g.fillRect(x + 4, y + 4, 312, 248);
+    g.strokeStyle = fg;
+    g.lineWidth = 5;
+    g.strokeRect(x + 12, y + 12, 296, 232);
+    for (let k = 0; k < 4; k++) glyph(x + 50 + k * 73, y + 92, 66, fg);
+    text(word, x + 160, y + 196, 46, fg, 280);
+    cnSigns.push(rect(x + 4, y + 4, 312, 248));
+  });
   const t = tex(c, false, 4);
-  return { tex: t, white, whiteRect: [white[0], white[1], white[0], white[1]], billboards, neon, tall, blades, helipad, flake };
+  return { tex: t, white, whiteRect: [white[0], white[1], white[0], white[1]], billboards, neon, tall, blades, helipad, flake, cnBlades, cnSigns };
 }
 
 export function tickerTexture() {

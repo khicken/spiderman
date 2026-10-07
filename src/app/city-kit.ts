@@ -202,6 +202,7 @@ export const UNIT = {
   cyl12: new THREE.CylinderGeometry(1, 1, 1, 12, 1),
   cone6: new THREE.ConeGeometry(1, 1, 6, 1),
   cone8: new THREE.ConeGeometry(1, 1, 8, 1),
+  cone4: new THREE.ConeGeometry(1, 1, 4, 1),
   sphere: new THREE.SphereGeometry(1, 8, 6),
   ball: new THREE.IcosahedronGeometry(1, 0),
   octa: new THREE.OctahedronGeometry(1, 0),

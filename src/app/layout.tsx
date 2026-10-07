@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import "animate.css";
 import "./globals.css";
 
 const title = "spiderman";
