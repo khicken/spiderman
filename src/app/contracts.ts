@@ -3,9 +3,10 @@ import type * as THREE from "three";
 // Shared types between modules. Change only with the lead.
 
 export type Action =
-  | "swing" // hold Shift in air (on ground: parkour sprint)
+  | "swing" // hold LMB with no enemy near, or hold Shift in air (Shift on ground: parkour sprint)
   | "jump" // Space (in air: forward web zip)
-  | "attack" // LMB (in air with no enemy near: air trick)
+  | "attack" // LMB with an enemy near
+  | "trick" // T in air
   | "web" // RMB (in combat: web shooter, else: web zip to aimed point)
   | "launch" // E tap: point launch, E hold: perch, near a civilian: greet
   | "strike" // F tap: web strike, F hold: yank
@@ -26,6 +27,7 @@ export type Input = {
   pressed: ReadonlySet<Action>; // went down this frame
   released: ReadonlySet<Action>; // went up this frame
   holdTime: (a: Action) => number; // seconds the action has been held, 0 if up
+  swingFromMouse: boolean; // the swing hold comes from LMB, so it may start from the ground
 };
 
 export type PlayerMode = "ground" | "air" | "swing" | "wall" | "zip" | "perch" | "wings" | "launch";
