@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <clipPath id="head">
+      <path d="M32 3C17 3 9 15 9 29c0 15 10 30 23 32 13-2 23-17 23-32C55 15 47 3 32 3z"/>
+    </clipPath>
+  </defs>
+  <path d="M32 3C17 3 9 15 9 29c0 15 10 30 23 32 13-2 23-17 23-32C55 15 47 3 32 3z" fill="#d6142a"/>
+  <g clip-path="url(#head)" fill="none" stroke="#1a0508" stroke-width="1.3" stroke-linecap="round">
+    <path d="M32 30V0M32 30V64M32 30L0 22M32 30L64 22M32 30L4 50M32 30L60 50M32 30L12 2M32 30L52 2M32 30L18 64M32 30L46 64"/>
+    <path d="M24 30q8-6 16 0q-8 7-16 0z"/>
+    <path d="M17 31q15-15 30 0q-15 15-30 0z"/>
+    <path d="M10 32q22-24 44 0q-22 26-44 0z"/>
+    <path d="M3 33q29-34 58 0q-29 36-58 0z"/>
+  </g>
+  <path d="M30 27C25 19 17 17 12 21c1 8 9 12 18 9z" fill="#fff" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M34 27c5-8 13-10 18-6-1 8-9 12-18 9z" fill="#fff" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M32 3C17 3 9 15 9 29c0 15 10 30 23 32 13-2 23-17 23-32C55 15 47 3 32 3z" fill="none" stroke="#000" stroke-width="2"/>
+</svg>

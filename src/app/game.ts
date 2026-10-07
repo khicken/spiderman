@@ -203,6 +203,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         greet = { pose: r.pose, t: 0 };
       }
     }
+    input.fight = inCombat || combat.nearEnemy(player.pos, 10);
     if (playing) route(combat.update(dt, t, input.state, player, view.camera));
     if (greet) {
       greet.t += dt / 1.4;

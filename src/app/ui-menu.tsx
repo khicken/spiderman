@@ -22,7 +22,8 @@ const CONTROLS: { group: string; keys: [string[], string][] }[] = [
     keys: [
       [["Mouse"], "Look"],
       [["W", "A", "S", "D"], "Move"],
-      [["Shift"], "Hold to swing, sprint on ground"],
+      [["LMB"], "Hold to swing"],
+      [["Shift"], "Sprint, or hold to swing in air"],
       [["Space"], "Jump, web zip in air"],
       [["RMB"], "Web zip to aimed point"],
       [["E"], "Point launch, hold to perch"],
@@ -33,7 +34,8 @@ const CONTROLS: { group: string; keys: [string[], string][] }[] = [
   {
     group: "Combat",
     keys: [
-      [["LMB"], "Punch, air trick"],
+      [["LMB"], "Punch when enemies are near"],
+      [["T"], "Air trick"],
       [["RMB"], "Web shooter"],
       [["F"], "Web strike, hold to yank"],
       [["Q"], "Dodge"],
