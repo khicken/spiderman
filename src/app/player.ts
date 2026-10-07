@@ -899,6 +899,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   spawnFacing.copy(spawnDir);
   reset();
 
+  // Combat movement drops webs, wings and perches.
+  const detach = () => {
+    if (mode !== "swing" && mode !== "wings" && mode !== "zip" && mode !== "perch") return;
+    mode = "air";
+    striking = false;
+  };
+
   const api = {
     get pos() {
       return p;
@@ -924,10 +931,12 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       actProgress = progress;
     },
     lunge(to: THREE.Vector3, speed: number) {
+      detach();
       lungeTo.copy(to);
       lungeSpeed = speed;
     },
     push(impulse: THREE.Vector3) {
+      detach();
       v.add(impulse);
       if (impulse.y > 0 && (mode === "ground" || mode === "perch")) mode = "air";
     },

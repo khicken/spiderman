@@ -106,13 +106,14 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     for (const k of c.markers) if (k.kind === "enemy" || k.kind === "boss") danger.push({ pos: new THREE.Vector3(k.x, 0, k.z), radius: 15 });
     crowd.setDanger(danger);
     const greetPrompt = player.grounded && !c.inCombat ? crowd.prompt() : null;
-    const useActivity = a.objective && (activities.activeSince() !== null || !m.objective) && !c.boss;
+    const useActivity = a.objective && (activities.activeSince() !== null || !m.objective) && !c.boss && !m.race;
     return {
       c,
+      greet: greetPrompt !== null,
       race: m.race,
       objective: useActivity ? a.objective : m.objective,
       prompts: [...c.prompts, ...m.prompts, ...a.prompts, ...(greetPrompt ? [greetPrompt] : [])],
-      markers: [...m.markers, ...a.markers, ...c.markers],
+      markers: [...m.markers, ...a.markers.filter((k) => k.kind !== "request" || Math.hypot(k.x - player.pos.x, k.z - player.pos.z) < 250), ...c.markers],
       combo: c.combo || m.combo,
       progress: { ...m.progress, completed: { ...m.progress.completed, ...a.completed }, districts: a.districts },
     };
@@ -205,16 +206,18 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (playing) route(combat.update(dt, t, input.state, player, view.camera));
     if (greet) {
       greet.t += dt / 1.4;
-      player.busy = greet.t < 1;
       if (greet.t >= 1) greet = null;
-      else player.act(greet.pose, greet.t);
+      else {
+        player.busy = true;
+        player.act(greet.pose, greet.t);
+      }
     }
     if (playing || !everPlayed) route(player.update(dt, input.state, t));
     rig.update(real, player, playing, input.mouseIdle);
-    input.endFrame();
     view.frame(t, player.pos);
 
     if (playing) updateModules(dt, t);
+    input.endFrame();
     routeExternal(crowd.update(dt, t, player, view.camera));
     city.updateTraffic(dt);
     city.update(dt, t);
@@ -230,7 +233,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         bossPhase = phase;
         if (phase >= 0) audio?.setBossPhase(phase);
       }
-      shownMusic = forcedMusic ?? (!playing ? "menu" : mh.c.boss ? "boss" : mh.race ? "race" : inCombat ? "combat" : speed > 20 ? "swing" : "explore");
+      if (forcedMusic === "race" && !mh.race && activities.activeSince() === null) forcedMusic = null;
+      shownMusic = !playing ? "menu" : forcedMusic ?? (mh.c.boss ? "boss" : mh.race ? "race" : inCombat ? "combat" : speed > 20 ? "swing" : "explore");
       onHud({
         playing,
         fps,
@@ -247,7 +251,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         boss: mh.c.boss,
         gadget: mh.c.gadget,
         objective: mh.objective,
-        prompts: [...player.prompts, ...mh.prompts],
+        prompts: [...(mh.greet ? player.prompts.filter((p) => p.key !== "E") : player.prompts), ...mh.prompts],
         markers: mh.markers,
         combo: mh.combo,
         progress: mh.progress,
@@ -286,6 +290,15 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       crowd.dispose();
       missions.dispose();
       player.dispose();
+      // City and hero have no dispose of their own.
+      view.scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        m.geometry?.dispose();
+        for (const mat of m.material ? ([] as THREE.Material[]).concat(m.material) : []) {
+          for (const v of Object.values(mat)) if (v instanceof THREE.Texture) v.dispose();
+          mat.dispose();
+        }
+      });
       view.dispose();
     },
   };
