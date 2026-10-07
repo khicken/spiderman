@@ -143,6 +143,8 @@ export function signal(t: number, axis: number, g: number) {
 }
 
 type Car = { model: number; slot: number; road: number; dir: number; lane: number; s: number; v: number; vmax: number; len: number; next: number; g: number };
+export type CarBox = { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number; vx: number; vz: number };
+const SIZE: Record<ModelName, [number, number]> = { sedan: [1.9, 1.5], taxi: [1.9, 1.75], police: [1.9, 1.75], bus: [2.6, 3.2], truck: [2.5, 3.4] };
 
 export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: number) => number; lines: number; max: number; time: { value: number } }) {
   const { r, roads, max } = o;
@@ -208,6 +210,8 @@ export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: n
 
   let active = max;
   const P = lineAt(1) - lineAt(0);
+  const boxes: CarBox[] = cars.map(() => ({ minX: 0, maxX: 0, minZ: 0, maxZ: 0, maxY: 0, vx: 0, vz: 0 }));
+  const obstacle = { x: 0, z: 0, on: false };
 
   const update = (dt: number, t: number) => {
     dt = Math.min(dt, 0.1);
@@ -235,7 +239,14 @@ export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: n
         const st = signal(t, rd.axis, (m + lineIdx) & 1);
         if (d > -0.5 && d < 40 && st !== 0 && !(st === 1 && d < 5 && c.v > 6)) target = Math.min(target, Math.sqrt(Math.max(0, d - 0.3) * 10));
       }
+      let soft = Infinity;
+      if (obstacle.on) {
+        const lat = rd.axis === 0 ? obstacle.z - (rd.line + c.dir * LANES[c.lane]) : obstacle.x - (rd.line - c.dir * LANES[c.lane]);
+        const ahead = ((rd.axis === 0 ? obstacle.x : obstacle.z) - c.s) * c.dir - c.len / 2;
+        if (Math.abs(lat) < 1.8 && ahead > -1 && ahead < 14) soft = Math.sqrt(Math.max(0, ahead - 1.5) * 8);
+      }
       c.v = target > c.v ? Math.min(target, c.v + 5 * dt) : target;
+      if (soft < c.v) c.v = Math.max(soft, c.v - 12 * dt);
       c.s += c.v * c.dir * dt;
       if (c.s > rd.max) c.s -= span;
       if (c.s < rd.min) c.s += span;
@@ -253,6 +264,17 @@ export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: n
         cs = c.dir;
         sn = 0;
       }
+      const [w, hgt] = SIZE[names[c.model]];
+      const bx = boxes[i];
+      const hx = rd.axis === 0 ? c.len / 2 : w / 2;
+      const hz = rd.axis === 0 ? w / 2 : c.len / 2;
+      bx.minX = x - hx;
+      bx.maxX = x + hx;
+      bx.minZ = z - hz;
+      bx.maxZ = z + hz;
+      bx.maxY = hgt;
+      bx.vx = rd.axis === 0 ? c.v * c.dir : 0;
+      bx.vz = rd.axis === 0 ? 0 : c.v * c.dir;
       for (let q = 0; q < mesh.ims.length; q++) {
         const im = mesh.ims[q];
         const e = im.instanceMatrix.array as Float32Array;
@@ -275,5 +297,20 @@ export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: n
     }
   };
 
-  return { group, update, setCount };
+  const near = (x: number, z: number, r: number, out: CarBox[]) => {
+    out.length = 0;
+    for (let i = 0; i < cars.length; i++) {
+      if (cars[i].g >= active) continue;
+      const b = boxes[i];
+      if (b.maxX > x - r && b.minX < x + r && b.maxZ > z - r && b.minZ < z + r) out.push(b);
+    }
+    return out;
+  };
+  const setObstacle = (x: number, z: number, on: boolean) => {
+    obstacle.x = x;
+    obstacle.z = z;
+    obstacle.on = on;
+  };
+
+  return { group, update, setCount, near, setObstacle };
 }

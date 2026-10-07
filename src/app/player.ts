@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Box, City } from "./city";
+import type { CarBox } from "./city-cars";
 import type { Hero } from "./hero";
 import type { GameEvent, HeroPose, Input, PlayerApi, PlayerMode, Sfx } from "./contracts";
 
@@ -93,7 +94,9 @@ export type PlayerHooks = {
   trick: (kind: "flip" | "spin", airTime: number) => GameEvent[];
   enemyNear: (pos: THREE.Vector3) => boolean;
   inCombat: () => boolean;
+  carHit: (from: THREE.Vector3, speed: number) => void;
 };
+const ZIP_RANGE = 60;
 
 type Candidate = { p: THREE.Vector3; n: THREE.Vector3; side: number; score: number };
 const POOL = 400;
@@ -344,8 +347,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const startZip = (look: THREE.Vector3, camPos: THREE.Vector3) => {
     const skip = camPos.distanceTo(p);
-    const t = raycast(city, camPos, look, skip + 160, tmp);
-    if (t < skip) return false;
+    const t = raycast(city, camPos, look, skip + ZIP_RANGE, tmp);
+    if (t < skip || t - skip > ZIP_RANGE) {
+      sfx("whiff", 0.6);
+      return false;
+    }
     anchor.copy(camPos).addScaledVector(look, t);
     anchorN.copy(tmp);
     zipTarget.copy(anchor).addScaledVector(tmp, R + 0.2);
@@ -450,6 +456,52 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         promptCorner.set(cx, b.maxY, cz);
         promptTarget.set(tx, b.maxY + R + 0.02, tz);
       }
+    }
+  };
+
+  const carList: CarBox[] = [];
+  const carFrom = new THREE.Vector3();
+  let carCd = 0;
+  const collideCars = (h: number) => {
+    carCd -= h;
+    if (p.y > 6) return;
+    for (const b of city.carsNear(p.x, p.z, 4, carList)) {
+      const x0 = b.minX - 0.45;
+      const x1 = b.maxX + 0.45;
+      const z0 = b.minZ - 0.45;
+      const z1 = b.maxZ + 0.45;
+      const top = b.maxY + R;
+      if (p.x <= x0 || p.x >= x1 || p.z <= z0 || p.z >= z1 || p.y >= top) continue;
+      const up = top - p.y;
+      let m = 0;
+      let pen = p.x - x0;
+      if (x1 - p.x < pen) [m, pen] = [1, x1 - p.x];
+      if (p.z - z0 < pen) [m, pen] = [2, p.z - z0];
+      if (z1 - p.z < pen) [m, pen] = [3, z1 - p.z];
+      if (up < pen || (up < 0.8 && v.y <= 1)) {
+        p.y = top;
+        if (v.y < 0) v.y = 0;
+        p.x += b.vx * h;
+        p.z += b.vz * h;
+        grounded = true;
+        continue;
+      }
+      if (m === 0) p.x = x0;
+      else if (m === 1) p.x = x1;
+      else if (m === 2) p.z = z0;
+      else p.z = z1;
+      const n = tmp.set(m === 0 ? -1 : m === 1 ? 1 : 0, 0, m === 2 ? -1 : m === 3 ? 1 : 0);
+      const toward = b.vx * n.x + b.vz * n.z;
+      if (toward > 4 && carCd <= 0) {
+        carCd = 1;
+        v.copy(n).multiplyScalar(8 + toward * 0.6).addScaledVector(UP, 7);
+        if (mode !== "air") mode = "air";
+        carFrom.set((b.minX + b.maxX) / 2, p.y, (b.minZ + b.maxZ) / 2);
+        hooks.carHit(carFrom, toward);
+        continue;
+      }
+      const vn = v.dot(n) - Math.max(0, toward);
+      if (vn < 0) v.addScaledVector(n, -vn);
     }
   };
 
@@ -642,6 +694,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     nPre.copy(wallN);
     const boxPre = wallBox;
     collide();
+    collideCars(h);
     if (wasWall && wallContact && wallBox === boxPre && wallN.dot(nPre) < 0.5) {
       v.copy(vPre).addScaledVector(nPre, 3);
       wallN.copy(nPre);
