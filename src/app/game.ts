@@ -177,6 +177,7 @@ export function startGame(canvas: HTMLCanvasElement, onStats: (s: Stats) => void
 
   const keys = new Set<string>();
   let swingHeld = false;
+  let swingQueued = false;
   let zipQueued = false;
   let jumpQueued = false;
 
@@ -272,12 +273,16 @@ export function startGame(canvas: HTMLCanvasElement, onStats: (s: Stats) => void
         anchor.copy(cp);
       }
     }
-    if (best === Infinity) anchor.copy(ideal).addScaledVector(UP, 10);
+    if (best === Infinity) {
+      audio?.sfx("whoosh");
+      return false;
+    }
     rope = p.distanceTo(anchor);
     webHand = webSide > 0 ? "R" : "L";
     webGrow = 0;
     mode = "swing";
     audio?.sfx("thwip");
+    return true;
   };
 
   const startZip = () => {
@@ -359,11 +364,14 @@ export function startGame(canvas: HTMLCanvasElement, onStats: (s: Stats) => void
   const step = (dt: number) => {
     const wish = wishDir();
     const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    const wasMode = mode;
 
-    if (swingHeld && mode !== "swing" && mode !== "zip") {
-      if (mode === "ground") v.y = JUMP;
-      if (mode === "wall") v.copy(wallN).multiplyScalar(10).addScaledVector(UP, 6);
-      attachWeb();
+    if (swingQueued && mode !== "swing" && mode !== "zip") {
+      swingQueued = false;
+      if (attachWeb()) {
+        if (wasMode === "ground") v.y = Math.max(v.y, JUMP);
+        if (wasMode === "wall") v.copy(wallN).multiplyScalar(10).addScaledVector(UP, 6);
+      }
     }
     if (!swingHeld && mode === "swing") {
       mode = "air";
@@ -695,11 +703,17 @@ export function startGame(canvas: HTMLCanvasElement, onStats: (s: Stats) => void
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
   const onMouseDown = (e: MouseEvent) => {
     if (!playing) return;
-    if (e.button === 0) swingHeld = true;
+    if (e.button === 0) {
+      swingHeld = true;
+      swingQueued = true;
+    }
     if (e.button === 2) zipQueued = true;
   };
   const onMouseUp = (e: MouseEvent) => {
-    if (e.button === 0) swingHeld = false;
+    if (e.button === 0) {
+      swingHeld = false;
+      swingQueued = false;
+    }
   };
   const onMouseMove = (e: MouseEvent) => {
     if (!playing) return;
