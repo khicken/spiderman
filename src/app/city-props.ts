@@ -7,7 +7,7 @@ const pick = <T,>(r: () => number, a: readonly T[]) => a[Math.floor(r() * a.leng
 const LUMP = new THREE.SphereGeometry(1, 6, 2, 0, Math.PI * 2, 0, Math.PI / 2);
 const LAMP = 0xffd59a;
 
-export type District = "harlem" | "upper" | "cps" | "park" | "midtown" | "times" | "downtown" | "industrial" | "plaza" | "site" | "landmark";
+export type District = "harlem" | "upper" | "cps" | "park" | "midtown" | "times" | "downtown" | "industrial" | "plaza" | "site" | "landmark" | "fidi" | "chinatown" | "greenwich" | "hk" | "les" | "build";
 
 function lamp(c: Ctx, F: Face, a: number, o: number, wreath: boolean) {
   const x = F.ox + F.dx * a + F.nx * o, z = F.oz + F.dz * a + F.nz * o;
@@ -180,9 +180,9 @@ const CAR_COLORS = [0xb01c1c, 0xf2f2f2, 0x15171b, 0x2a4f8f, 0x7d8288, 0x3e5e46, 
 
 export function blockStreet(c: Ctx, b: Block, d: District, vents: { x: number; z: number; stack: boolean }[]) {
   const r = c.r;
-  const leafy = d === "harlem" || d === "upper" || d === "cps" || d === "park";
-  const busy = d === "midtown" || d === "times" || d === "downtown" || d === "plaza" || d === "landmark";
-  const parks = d === "harlem" || d === "upper" || d === "industrial";
+  const leafy = d === "harlem" || d === "upper" || d === "cps" || d === "park" || d === "greenwich";
+  const busy = d === "midtown" || d === "times" || d === "downtown" || d === "plaza" || d === "landmark" || d === "fidi" || d === "chinatown";
+  const parks = d === "harlem" || d === "upper" || d === "industrial" || d === "hk" || d === "greenwich" || d === "les" || d === "chinatown";
   for (let f = 0; f < 4; f++) {
     const F = face(f, b.x0, b.x1, b.z0, b.z1);
     const L = F.len;
@@ -224,7 +224,7 @@ export function blockStreet(c: Ctx, b: Block, d: District, vents: { x: number; z
         if (name === "truck") a += 3;
       }
     }
-    if ((f === 1 || f === 2) && (d === "harlem" || busy || d === "upper") && r() < 0.32) strand(c, F, L * (0.3 + r() * 0.4));
+    if ((f === 1 || f === 2) && (d === "harlem" || busy || d === "upper" || d === "hk" || d === "greenwich") && d !== "chinatown" && r() < 0.32) strand(c, F, L * (0.3 + r() * 0.4));
     for (let a = 5; a < L - 4; a += 9) c.streetSpots.push(new THREE.Vector3(F.ox + F.dx * a + F.nx * 1.8, 0, F.oz + F.dz * a + F.nz * 1.8));
     if (r() < (busy ? 0.35 : 0.15)) {
       const s = 4 + r() * (L - 8);
