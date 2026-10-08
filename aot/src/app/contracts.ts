@@ -145,8 +145,16 @@ export interface Titans {
 }
 
 // ---- input.ts: createInput(canvas, onSystem: (code: string) => void): Controls
+// Touch UI drives the same actions through VirtualPad.
+export interface VirtualPad {
+  down(a: Action): void;
+  up(a: Action): void;
+  stick(x: number, y: number): void; // move stick, -1..1, y up = forward
+  look(dx: number, dy: number): void; // pixels, same scale as mouse movement
+}
 export interface Controls {
   readonly state: Input;
+  readonly virtual: VirtualPad;
   enabled: boolean;
   readonly mouseIdle: number;
   takeMouse(out: { x: number; y: number }): { x: number; y: number };
@@ -176,7 +184,9 @@ export interface CameraRig {
 // ---- player.ts: createPlayer(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Player
 export type PlayerMode = "ground" | "air" | "reel" | "wall" | "held" | "dead";
 export type Lock = { titan: TitanView; part: TitanPart };
+export type Hint = { key: string; text: string };
 export type PlayerHud = {
+  hint: Hint | null; // the next useful action for a new player
   health: number;
   gas: number;
   blades: number; // spare sets

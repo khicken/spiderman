@@ -55,6 +55,7 @@ export function Hud({
       <WavePanel h={h} />
       <KillPanel h={h} />
       {!h.dead && h.escape === null && <Crosshair h={h} />}
+      {!h.dead && h.escape === null && <Prompt h={h} />}
       <Toasts pops={pops} />
       <ScorePops pops={pops} />
       {h.combo > 1 && <Combo n={h.combo} />}
@@ -74,7 +75,7 @@ function Intro({ onSkip }: { onSkip: () => void }) {
     <div className="pointer-events-none absolute inset-0 overflow-hidden text-bone">
       <div className="letterbox absolute inset-x-0 top-0 h-[12vh] origin-top bg-black" />
       <div className="letterbox absolute inset-x-0 bottom-0 flex h-[12vh] origin-bottom items-center justify-end gap-4 bg-black px-[4vw]">
-        <span className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-bone/60">
+        <span data-keyhint className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-bone/60">
           Press <Key>Enter</Key> to skip
         </span>
         <button
@@ -369,6 +370,16 @@ function Crosshair({ h }: { h: HudState }) {
           斬
         </div>
       )}
+    </div>
+  );
+}
+
+function Prompt({ h }: { h: HudState }) {
+  const hint = h.hint;
+  if (!hint) return null;
+  return (
+    <div className="hud-z absolute left-1/2 top-[calc(50%+78px)] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap text-xs uppercase tracking-[0.2em] ink-shadow">
+      <Key>{hint.key}</Key> {hint.text}
     </div>
   );
 }

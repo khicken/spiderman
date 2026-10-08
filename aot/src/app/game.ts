@@ -246,10 +246,11 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       playing = true;
       everPlayed = true;
       input.enabled = true;
-      canvas.requestPointerLock()?.catch?.(() => {});
+      if (!window.matchMedia("(pointer: coarse)").matches) canvas.requestPointerLock()?.catch?.(() => {});
     },
     pause,
     skipIntro: endIntro,
+    virtual: input.virtual,
     bindReticle(el: HTMLElement | null) {
       reticle = el;
     },

@@ -20,6 +20,14 @@ import {
   type MenuItem,
   type Panel,
 } from "./ui-menu";
+import {
+  RotateHint,
+  TouchControls,
+  TouchHelp,
+  enterFullscreen,
+  isPhone,
+  isTouch,
+} from "./ui-touch";
 
 type Screen = "title" | "playing" | "pause";
 
@@ -28,7 +36,7 @@ const POP_MS = { toast: 2800, score: 1900, hurt: 700, kill: 2200 } as const;
 
 function loadSettings(): Settings {
   const s: Settings = {
-    quality: "medium",
+    quality: isPhone() ? "low" : "medium",
     muted: false,
     volume: 0.8,
     sensitivity: 1,
@@ -71,7 +79,16 @@ export default function TitanPage() {
   useEffect(() => {
     const initial = loadSettings();
     setSettingsState(initial);
-    setTouch(window.matchMedia("(pointer: coarse)").matches);
+    const coarse = isTouch();
+    setTouch(coarse);
+    const portrait = window.matchMedia("(orientation: portrait)");
+    const onTurn = () => {
+      if (coarse && portrait.matches && screenRef.current === "playing")
+        gameRef.current?.pause();
+    };
+    const noZoom = (e: Event) => e.preventDefault();
+    portrait.addEventListener("change", onTurn);
+    document.addEventListener("gesturestart", noZoom);
     let id = 0;
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const onEvent = (e: UiEvent) => {
@@ -100,6 +117,8 @@ export default function TitanPage() {
     game.bindReticle(reticleRef.current);
     gameRef.current = game;
     return () => {
+      portrait.removeEventListener("change", onTurn);
+      document.removeEventListener("gesturestart", noZoom);
       timers.forEach(clearTimeout);
       game.dispose();
       gameRef.current = null;
@@ -129,6 +148,7 @@ export default function TitanPage() {
   const play = () => {
     setStarted(true);
     setPanel(null);
+    if (touch) enterFullscreen();
     gameRef.current?.play();
   };
   const toggle = (p: Panel) => setPanel((cur) => (cur === p ? null : p));
@@ -197,7 +217,20 @@ export default function TitanPage() {
       </div>
 
       {screen === "playing" && hud && (
-        <Hud h={hud} pops={pops} onSkip={() => gameRef.current?.skipIntro()} />
+        <div className={touch ? "touch-hud" : undefined}>
+          <Hud
+            h={hud}
+            pops={pops}
+            onSkip={() => gameRef.current?.skipIntro()}
+          />
+        </div>
+      )}
+      {touch && screen === "playing" && hud && !hud.intro && !hud.dead && (
+        <TouchControls
+          pad={gameRef.current!.virtual}
+          h={hud}
+          onPause={() => gameRef.current?.pause()}
+        />
       )}
 
       {screen !== "playing" && (
@@ -207,8 +240,14 @@ export default function TitanPage() {
           <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_70%_40%,transparent_20%,rgba(40,0,0,0.55)_70%,rgba(0,0,0,0.9)_100%)]" />
           <div className="pointer-events-none fixed inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent" />
           <div className="pointer-events-none fixed inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 to-transparent" />
-          <div className="relative flex min-h-full flex-col gap-8 px-4 pb-20 pt-10 sm:px-12 lg:flex-row lg:items-center lg:gap-14 lg:px-16">
-            <div key={screen} className="flex shrink-0 flex-col">
+          <div
+            className={`relative flex min-h-full ${touch ? "touch-menu flex-row items-center gap-6 py-6" : "flex-col gap-8 px-4 pb-20 pt-10 sm:px-12 lg:flex-row lg:items-center lg:gap-14 lg:px-16"}`}
+          >
+            <div
+              key={screen}
+              className="flex shrink-0 flex-col"
+              style={touch && panel ? { zoom: 0.6 } : undefined}
+            >
               {screen === "title" ? (
                 <div className="mb-10" style={{ zoom: panel ? 0.72 : 1 }}>
                   <TitleLogo />
@@ -226,7 +265,10 @@ export default function TitanPage() {
               <Menu key={screen} items={items} active={panel} />
             </div>
             {panel && settings && (
-              <div key={panel} className="w-full lg:max-w-[720px]">
+              <div
+                key={panel}
+                className={touch ? "min-w-0 flex-1" : "w-full lg:max-w-[720px]"}
+              >
                 {panel === "settings" && (
                   <SettingsPanel
                     qualities={QUALITIES}
@@ -235,20 +277,18 @@ export default function TitanPage() {
                     onClose={() => setPanel(null)}
                   />
                 )}
-                {panel === "controls" && (
-                  <ControlsPanel onClose={() => setPanel(null)} />
-                )}
+                {panel === "controls" &&
+                  (touch ? (
+                    <TouchHelp onClose={() => setPanel(null)} />
+                  ) : (
+                    <ControlsPanel onClose={() => setPanel(null)} />
+                  ))}
               </div>
             )}
           </div>
           {screen === "title" && (
             <div className="fixed bottom-4 left-4 right-4 flex items-end justify-between gap-4 text-xs text-bone/50 sm:left-12 lg:left-16">
-              <div>
-                {touch && (
-                  <div className="mb-1">Best with a keyboard and mouse.</div>
-                )}
-                <Disclaimer />
-              </div>
+              <Disclaimer />
               <a
                 href="https://kalebkim.com"
                 className="pointer-events-auto cursor-pointer underline hover:text-bone"
@@ -259,6 +299,7 @@ export default function TitanPage() {
           )}
         </div>
       )}
+      {touch && <RotateHint />}
     </main>
   );
 }

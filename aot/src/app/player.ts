@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Action, Blade, CameraView, Fx, GameEvent, Input, Lock, Player, PlayerHud, PlayerMode, Sfx, TitanPart, TitanView, Titans, World } from "./contracts";
+import type { Action, Blade, TitanHit, CameraView, Fx, GameEvent, Input, Lock, Player, PlayerHud, PlayerMode, Sfx, TitanPart, TitanView, Titans, World, Hint } from "./contracts";
 import { createWires, type Hook } from "./player-wire";
 import { createScout, SCOUT_HALF, type ScoutAnim, type ScoutFrame } from "./scout";
 
@@ -15,6 +15,7 @@ const SPARE = 8;
 const CHARGE_T = 0.6;
 const PERFECT = [0.5, 0.82] as const;
 const SLASH_T = 0.42;
+const TAP = 0.25;
 const PARTS: TitanPart[] = ["nape", "eyes", "armL", "armR", "legL", "legR"];
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -62,7 +63,26 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
 
   const aim = { kind: "none" as "none" | "world" | "titan", blocked: false, dist: 0, point: new THREE.Vector3(), normal: new THREE.Vector3(), obj: null as THREE.Object3D | null, titan: null as TitanView | null };
   const frame: ScoutFrame = { anim: "idle", t: 0, k: 0, speed: 0, vel, charge: 0, side: 1, broken: false };
-  const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0 };
+  const pressT = new Map<Action, number>();
+  const lastLook = new THREE.Vector3(0, 0, 1);
+  const hv = new THREE.Vector3();
+  const hint = (): Hint | null => {
+    if (mode === "dead" || mode === "held") return null;
+    if (charging) return { key: "E", text: "Release to strike" };
+    if (sharp <= 0) return blades > 0 ? { key: "R", text: "Swap blades" } : null;
+    if (lock && titans.partPos(lock.titan, lock.part, hv) && hv.distanceTo(pos) < 32) return { key: "E", text: "Hold, release to strike" };
+    const ti = titans.nearest(pos, lastLook, 22);
+    if (ti && titans.partPos(ti, "nape", hv)) return { key: "E", text: "Hold, release to strike" };
+    const on = hooks.some((h) => h.state === "on");
+    if (on && hooks.some((h) => h.state === "on" && h.titan)) return { key: "Space", text: "Gas to close in" };
+    if (on) return hooks.some((h) => h.latch) ? { key: "F", text: "Let go" } : null;
+    if (aim.kind === "titan" || (lock && hv.distanceTo(pos) < RANGE) || (!lock && titans.nearest(pos, lastLook, RANGE))) return { key: "F", text: "Hook the titan" };
+    if (!lock && titans.nearest(pos, lastLook, 170)) return { key: "Q", text: "Lock on a titan" };
+    if (lock) return { key: "F", text: "Anchor toward the titan" };
+    if (aim.kind === "world") return { key: "F", text: "Anchor where you aim" };
+    return null;
+  };
+  const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, hint: null };
   const lockPoint = new THREE.Vector3();
   const view: CameraView = { pos, vel, mode, lockPoint: null, charge: 0 };
 
@@ -92,6 +112,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     const h = hooks[i];
     h.button = button;
     h.state = "fly";
+    h.latch = false;
     hip(i, h.head);
     h.hit = !!point;
     h.obj = obj;
@@ -114,6 +135,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (h.state === "idle") return;
     const wasOn = h.state === "on";
     h.state = "back";
+    h.latch = false;
     h.obj = null;
     h.titan = null;
     if (wasOn && !quiet) {
@@ -251,16 +273,51 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     return p ? { titan: ti, part: p } : null;
   };
 
+  const crosshair = (input: Input) => {
+    if (aim.kind === "none") findAim(input, true);
+    if (aim.kind === "none") return false;
+    for (let i = 0; i < 2; i++) fire(i, "autoHook", aim.point, aim.obj, aim.titan, aim.kind === "world" ? aim.normal : null, input.look);
+    return true;
+  };
+
+  const toward = (goal: THREE.Vector3) => {
+    eye.copy(pos).addScaledVector(UP, 0.7);
+    t1.copy(goal).sub(eye);
+    const yaw = Math.atan2(t1.x, t1.z);
+    const base = Math.atan2(t1.y, Math.hypot(t1.x, t1.z));
+    t1.normalize();
+    let best = 0;
+    for (const off of [-0.7, -0.5, -0.35, -0.2, -0.1, 0, 0.12, 0.25, 0.4, 0.6, 0.85])
+      for (const side of [0, -0.15, 0.15]) {
+        const p = THREE.MathUtils.clamp(base + off, -1.3, 1.3);
+        const y = yaw + side;
+        t2.set(Math.sin(y) * Math.cos(p), Math.sin(p), Math.cos(y) * Math.cos(p));
+        const t = world.raycast(eye, t2, RANGE, rNorm);
+        const gain = t * t2.dot(t1);
+        if (t > 8 && gain > best) {
+          best = gain;
+          aim.point.copy(eye).addScaledVector(t2, t);
+          aim.normal.copy(rNorm);
+        }
+      }
+    if (!best) return false;
+    t2.copy(aim.point).sub(pos).normalize();
+    for (let i = 0; i < 2; i++) fire(i, "autoHook", aim.point, null, null, aim.normal, t2);
+    return true;
+  };
+
   const autoHook = (input: Input) => {
+    if (!lock && crosshair(input)) return;
     const target = lock ?? acquire(input);
     if (!target || !titans.partPos(target.titan, target.part, mid)) {
+      if (crosshair(input)) return;
       sfx("anchorMiss", 0.6);
       say("No titan in range");
       return;
     }
     t1.copy(mid).sub(pos);
     rightV.set(-t1.z, 0, t1.x).normalize();
-    let missed = 0;
+    const hits: (TitanHit | null)[] = [null, null];
     for (let i = 0; i < 2; i++) {
       t2.copy(mid).addScaledVector(rightV, i ? -1.6 : 1.6).addScaledVector(UP, 0.8).sub(pos);
       const len = t2.length();
@@ -272,12 +329,17 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         hit = titans.raycast(pos, t2, RANGE);
         if (hit && reach(hit.point) >= 0) hit = null;
       }
-      if (hit) fire(i, "autoHook", hit.point, hit.obj, hit.titan, null, t2);
-      else missed++;
+      hits[i] = hit;
     }
-    if (missed) {
+    if (!hits[0] && !hits[1]) {
+      if (lock ? toward(mid) : crosshair(input)) return;
       sfx("anchorMiss", 0.6);
       say(mid.distanceTo(pos) > RANGE ? "Out of range" : "No clear line");
+      return;
+    }
+    for (let i = 0; i < 2; i++) {
+      const h = hits[i];
+      if (h) fire(i, "autoHook", h.point, h.obj, h.titan, null, t2.copy(h.point).sub(pos).normalize());
     }
   };
 
@@ -302,6 +364,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     combo = comboT > 0 ? combo + 1 : 1;
     comboT = 4;
     vel.multiplyScalar(0.25).addScaledVector(slash.dir, -6).addScaledVector(UP, 11);
+    for (let i = 0; i < 2; i++) if (hooks[i].latch) release(i, true);
     slash.on = false;
     flipNext = true;
     if (sharp <= 0) {
@@ -527,11 +590,14 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     } else if (!n && mode !== "wall") a.addScaledVector(wish, 9);
 
     if (boosting && !input.pressed.has("gas")) {
-      const along = vel.dot(look);
-      a.addScaledVector(look, 34 * Math.max(0.3, 1 - Math.max(0, along) / 48));
-      a.y += 6;
+      if (n) t1.copy(look);
+      else t1.copy(wish.lengthSq() > 0 ? wish : look).setY(0).normalize();
+      const along = vel.dot(t1);
+      a.addScaledVector(t1, (n ? 34 : 26) * Math.max(0.3, 1 - Math.max(0, along) / 48));
+      if (n) a.y += 6;
+      else if (vel.y < 0) a.y += 3;
       gas = Math.max(0, gas - 0.09 * dt);
-      gasPuff(t2.copy(look).negate(), 1, dt);
+      gasPuff(t2.copy(t1).negate(), 1, dt);
     }
 
     dashCd -= dt;
@@ -539,7 +605,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       dashCd = 0.45;
       gas = Math.max(0, gas - 0.05);
       if (wish.lengthSq() > 0) t2.copy(wish).addScaledVector(UP, grounded ? 0.12 : 0.18).normalize();
-      else t2.copy(look);
+      else if (n) t2.copy(look);
+      else t2.copy(look).setY(0).normalize().addScaledVector(UP, 0.12).normalize();
       const along = vel.dot(t2);
       vel.addScaledVector(t2, Math.max(16, 30 - Math.max(0, along) * 0.4));
       startAct("dash", 0.28);
@@ -615,7 +682,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       const h = hooks[i];
       h.t += dt;
       if (h.state === "fly") {
-        if (!input.held.has(h.button)) {
+        if (!h.latch && !input.held.has(h.button)) {
           h.state = "back";
           continue;
         }
@@ -641,7 +708,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
           }
         } else h.head.addScaledVector(t2, step / d);
       } else if (h.state === "on") {
-        if (!input.held.has(h.button) || (h.titan && !h.titan.alive)) release(i);
+        if (h.latch && !h.titan && pos.distanceTo(h.point) < 4) release(i);
+        else if ((!h.latch && !input.held.has(h.button)) || (h.titan && !h.titan.alive)) release(i);
         else wires.anchor(h, h.head);
       } else if (h.state === "back") {
         hip(i, t1);
@@ -754,6 +822,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         return out;
       }
       findAim(input);
+      lastLook.copy(input.look);
       comboT -= dt;
       if (comboT <= 0) combo = 0;
 
@@ -813,17 +882,42 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         }
       }
 
-      if (aim.kind === "none" && (input.pressed.has("anchorL") || input.pressed.has("anchorR"))) findAim(input, true);
+      const unlatch = (btn: Action) => {
+        let any = false;
+        for (let i = 0; i < 2; i++) {
+          const h = hooks[i];
+          if (h.latch && h.button === btn && (h.state === "fly" || h.state === "on")) {
+            release(i);
+            any = true;
+          }
+        }
+        return any;
+      };
+      const hookBtns: Action[] = ["anchorL", "anchorR", "autoHook"];
+      const fresh = new Set<Action>();
+      for (const btn of hookBtns) {
+        if (!input.pressed.has(btn)) continue;
+        if (unlatch(btn)) continue;
+        if (btn === "autoHook") unlatch("anchorL") || unlatch("anchorR");
+        pressT.set(btn, time);
+        fresh.add(btn);
+      }
+      if (aim.kind === "none" && (fresh.has("anchorL") || fresh.has("anchorR"))) findAim(input, true);
       for (let i = 0; i < 2; i++) {
         const btn: Action = i ? "anchorR" : "anchorL";
-        if (!input.pressed.has(btn)) continue;
+        if (!fresh.has(btn)) continue;
         if (aim.kind === "none") {
           fire(i, btn, null, null, null, null, input.look);
           say(aim.blocked ? "No clear line" : "Out of range");
         }
         else fire(i, btn, aim.point, aim.obj, aim.titan, aim.kind === "world" ? aim.normal : null, input.look);
       }
-      if (input.pressed.has("autoHook")) autoHook(input);
+      if (fresh.has("autoHook")) autoHook(input);
+      for (const btn of hookBtns) {
+        if (!input.released.has(btn) || time - (pressT.get(btn) ?? -9) > TAP) continue;
+        pressT.delete(btn);
+        for (const h of hooks) if (h.button === btn && (h.state === "fly" || h.state === "on")) h.latch = true;
+      }
       updateHooks(dt, input);
 
       if (input.pressed.has("swap") && !slash.on) {
@@ -895,6 +989,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       hud.supply = inSupply;
       hud.dead = mode === "dead";
       hud.combo = combo;
+      hud.hint = hint();
       return hud;
     },
     cameraView() {

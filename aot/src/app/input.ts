@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Action, Controls, Input } from "./contracts";
+import type { Action, Controls, Input, VirtualPad } from "./contracts";
 
 const KEYS: Record<string, Action> = {
   Space: "gas",
@@ -20,7 +20,9 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
   const pressed = new Set<Action>();
   const released = new Set<Action>();
   const since = new Map<Action, number>();
+  const by = new Map<Action, Set<string>>();
   const codes = new Set<string>();
+  const stick = { x: 0, y: 0 };
   let enabled = false;
   let dx = 0;
   let dy = 0;
@@ -40,23 +42,24 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
     },
   };
 
-  const down = (a: Action) => {
+  const down = (a: Action, src: string) => {
+    if (a === "cycle") return tap(a);
+    const s = by.get(a) ?? new Set<string>();
+    by.set(a, s);
+    s.add(src);
     if (held.has(a)) return;
     held.add(a);
     pressed.add(a);
     since.set(a, performance.now());
   };
-  const up = (a: Action) => {
-    if (!held.delete(a)) return;
-    released.add(a);
+  const up = (a: Action, src: string) => {
+    const s = by.get(a);
+    if (!s?.delete(src) || s.size) return;
+    if (held.delete(a)) released.add(a);
   };
   const tap = (a: Action) => {
     pressed.add(a);
     released.add(a);
-  };
-  const keyHeld = (a: Action) => {
-    for (const c of codes) if (KEYS[c] === a) return true;
-    return false;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -69,24 +72,23 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
     if (a || MOVE.has(e.code)) e.preventDefault();
     if (e.repeat) return;
     if (a || MOVE.has(e.code)) codes.add(e.code);
-    if (a === "cycle") tap(a);
-    else if (a) down(a);
+    if (a) down(a, e.code);
   };
   const onKeyUp = (e: KeyboardEvent) => {
     codes.delete(e.code);
     const a = KEYS[e.code];
-    if (a && a !== "cycle" && !keyHeld(a)) up(a);
+    if (a) up(a, e.code);
   };
   const onMouseDown = (e: MouseEvent) => {
     const a = BUTTONS[e.button];
     if (enabled && a) {
       e.preventDefault();
-      down(a);
+      down(a, `m${e.button}`);
     }
   };
   const onMouseUp = (e: MouseEvent) => {
     const a = BUTTONS[e.button];
-    if (a) up(a);
+    if (a) up(a, `m${e.button}`);
   };
   const onMouseMove = (e: MouseEvent) => {
     if (!enabled) return;
@@ -106,7 +108,24 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
   const clear = () => {
     for (const a of held) released.add(a);
     held.clear();
+    by.clear();
     codes.clear();
+    stick.x = stick.y = 0;
+  };
+  const virtual: VirtualPad = {
+    down: (a) => enabled && down(a, "v"),
+    up: (a) => up(a, "v"),
+    stick(x, y) {
+      const on = enabled && Math.hypot(x, y) > 0.15;
+      stick.x = on ? x : 0;
+      stick.y = on ? y : 0;
+    },
+    look(x, y) {
+      if (!enabled) return;
+      dx += x;
+      dy += y;
+      if (x || y) lastMouse = performance.now();
+    },
   };
 
   window.addEventListener("keydown", onKeyDown);
@@ -120,6 +139,7 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
 
   return {
     state,
+    virtual,
     get enabled() {
       return enabled;
     },
@@ -141,8 +161,8 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
       const fx = Math.sin(yaw);
       const fz = Math.cos(yaw);
       const has = (a: string, b: string) => codes.has(a) || codes.has(b);
-      const f = (has("KeyW", "ArrowUp") ? 1 : 0) - (has("KeyS", "ArrowDown") ? 1 : 0);
-      const r = (has("KeyD", "ArrowRight") ? 1 : 0) - (has("KeyA", "ArrowLeft") ? 1 : 0);
+      const f = (has("KeyW", "ArrowUp") ? 1 : 0) - (has("KeyS", "ArrowDown") ? 1 : 0) + stick.y;
+      const r = (has("KeyD", "ArrowRight") ? 1 : 0) - (has("KeyA", "ArrowLeft") ? 1 : 0) + stick.x;
       const w = state.wish.set(fx * f - fz * r, 0, fz * f + fx * r);
       if (w.lengthSq() > 0) w.normalize();
       state.look.set(fx * Math.cos(pitch), Math.sin(pitch), fz * Math.cos(pitch));

@@ -16,6 +16,7 @@ export type Hook = {
   titan: TitanView | null;
   len: number;
   t: number;
+  latch: boolean;
 };
 
 export function createWires(scene: THREE.Scene) {
@@ -26,7 +27,7 @@ export function createWires(scene: THREE.Scene) {
   const headGeo = new THREE.ConeGeometry(0.07, 0.26, 6).rotateX(Math.PI / 2);
   const headMat = toon({ color: "#9aa3b0" });
   for (let i = 0; i < 2; i++) {
-    hooks.push({ state: "idle", button: i ? "anchorR" : "anchorL", hit: false, head: new THREE.Vector3(), point: new THREE.Vector3(), local: new THREE.Vector3(), normal: new THREE.Vector3(), obj: null, titan: null, len: 0, t: 0 });
+    hooks.push({ state: "idle", button: i ? "anchorR" : "anchorL", hit: false, head: new THREE.Vector3(), point: new THREE.Vector3(), local: new THREE.Vector3(), normal: new THREE.Vector3(), obj: null, titan: null, len: 0, t: 0, latch: false });
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(new Float32Array((SEG + 1) * 3), 3));
     const line = new THREE.Line(g, lineMat);

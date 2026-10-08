@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Anton, Noto_Serif_JP, Oswald, Yuji_Syuku } from "next/font/google";
 import "./globals.css";
 
@@ -23,6 +23,15 @@ export const metadata: Metadata = {
     description,
   },
   twitter: { card: "summary", title, description },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#0b0807",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -6,12 +6,14 @@ Everything is procedural: three.js geometry, canvas textures, and Web Audio musi
 
 ## Play
 
-- Hold left or right click to fire the left or right anchor. Holding reels you in. Let go at speed to slingshot.
-- Hold Space to boost with gas. Shift dashes. WASD steers swings and runs on walls.
-- Q locks on to a titan. Tab or the mouse wheel picks the part: nape, eyes, arms, legs. F fires both anchors at it.
-- Hold E to charge and let go to strike. Let go in the perfect window for a critical hit.
-- Only a nape cut kills. Hit faster to cut deeper. Cut legs to make a titan kneel, cut eyes to blind it, cut arms to stop a grab.
-- If a titan grabs you, mash E. R swaps blades. Green smoke marks supply depots.
+Quick start: Q locks on a titan, F hooks it, hold E and release to strike the nape.
+
+- Mouse: LMB and RMB fire the left and right anchors. Hold to reel and swing, let go at speed to slingshot.
+- Trackpad or keyboard only: F fires both anchors at the locked titan, or at the crosshair.
+- Space adds gas speed while anchored. Gas cannot lift you without an anchor. Shift dashes.
+- Tab or the mouse wheel picks the part: nape, eyes, arms, legs. R swaps blades.
+- Only a nape cut kills. Cut legs to make a titan kneel, eyes to blind it, arms to stop a grab. Mash E or Space when grabbed.
+- Phone or tablet: play in landscape. Use the left stick to move, drag to look, and the right buttons for anchors, gas, slash, and dash.
 - Wave 4 brings the Female Titan. Her nape stays hardened until you cut two limbs.
 
 ## Run
@@ -22,7 +24,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000/aot. A desktop browser with a keyboard and mouse is needed.
+Open http://localhost:3000/aot. It works with a mouse, a trackpad, or a touch screen.
 
 ## Code
 
