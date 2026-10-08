@@ -8,7 +8,7 @@ import { ControlsPanel, Menu, SettingsPanel, type MenuItem, type Panel } from ".
 
 type Screen = "title" | "playing" | "pause";
 
-const KEY = "titan-settings";
+const KEY = "aot-settings";
 const POP_MS = { toast: 2800, score: 1900, hurt: 700 } as const;
 
 function loadSettings(): Settings {

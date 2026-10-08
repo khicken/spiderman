@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
-// kalebkim.com rewrites /titan to this app
+// kalebkim.com rewrites /aot to this app
 const nextConfig: NextConfig = {
-  basePath: "/titan",
+  basePath: "/aot",
 };
 
 export default nextConfig;

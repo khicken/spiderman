@@ -21,7 +21,7 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 
 ## Performance
 
-- Merge static geometry per material with `mergeGeometries`. The titan town has about 1,000 houses in 6 draw calls.
+- Merge static geometry per material with `mergeGeometries`. The town in aot has about 1,000 houses in 6 draw calls.
 - Compute UVs from world position, so one tiling texture fits boxes of all sizes.
 - Share geometries and materials between repeated actors.
 - Do not allocate objects in the frame loop. Reuse module-level scratch vectors.

@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const title = "titan";
+const title = "aot";
 const description = "slay titans with ODM gear";
 
 export const metadata: Metadata = {
   title,
   description,
   metadataBase: new URL("https://kalebkim.com"),
-  alternates: { canonical: "/titan" },
+  alternates: { canonical: "/aot" },
   openGraph: {
     type: "website",
-    url: "https://kalebkim.com/titan",
+    url: "https://kalebkim.com/aot",
     siteName: "Kaleb Kim",
     title,
     description,

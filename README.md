@@ -5,17 +5,17 @@
 | Game | Folder | Play |
 | --- | --- | --- |
 | Spider-Man web swinging | [spiderman](spiderman) | [kalebkim.com/spiderman](https://kalebkim.com/spiderman) |
-| Attack on Titan | [titan](titan) | [kalebkim.com/titan](https://kalebkim.com/titan) |
+| Attack on Titan | [aot](aot) | [kalebkim.com/aot](https://kalebkim.com/aot) |
 
 ## Run a game
 
 ```
-cd titan
+cd aot
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000/titan.
+Open http://localhost:3000/aot.
 
 Read [AGENTS.md](AGENTS.md) before you change or add a game.
 

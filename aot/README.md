@@ -1,6 +1,6 @@
-# titan
+# aot
 
-A 3D Attack on Titan game in the browser. Fly through a walled town with ODM gear and cut titan napes. Play it at [kalebkim.com/titan](https://kalebkim.com/titan).
+A 3D Attack on Titan game in the browser. Fly through a walled town with ODM gear and cut titan napes. Play it at [kalebkim.com/aot](https://kalebkim.com/aot).
 
 Everything is procedural: three.js geometry, canvas textures, and Web Audio music. There are no asset files.
 
@@ -17,12 +17,12 @@ Everything is procedural: three.js geometry, canvas textures, and Web Audio musi
 ## Run
 
 ```
-cd titan
+cd aot
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000/titan. A desktop browser with a keyboard and mouse is needed.
+Open http://localhost:3000/aot. A desktop browser with a keyboard and mouse is needed.
 
 ## Code
 
