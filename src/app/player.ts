@@ -233,14 +233,14 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const idealUp = THREE.MathUtils.clamp(13 + speed * 0.15, 12, 22);
     const minAhead = speed < 8 ? 3 : 8;
     cands.length = 0;
-    const consider = (x: number, y: number, z: number, nx: number, nz: number, low = false) => {
+    const consider = (x: number, y: number, z: number, nx: number, nz: number) => {
       if (cands.length >= POOL) return;
       const dx = x - p.x;
       const dy = y - p.y;
       const dz = z - p.z;
       const ahead = dx * heading.x + dz * heading.z;
       const side = dx * right.x + dz * right.z;
-      if (ahead < minAhead || ahead > 40 || dy < (low ? -20 : 2) || Math.abs(side) > 26) return;
+      if (ahead < minAhead || ahead > 40 || dy < 4 || Math.abs(side) > 26) return;
       if (dx * dx + dy * dy + dz * dz > 55 * 55) return;
       const fwd = Math.max(0, 1 - Math.abs(ahead - idealAhead) / 22);
       const alt = lastSide === 0 ? 0.7 : Math.sign(side) === -lastSide ? 1 : 0.35;
@@ -251,13 +251,12 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       c.p.set(x, y, z);
       c.n.set(nx, 0, nz);
       c.side = side;
-      c.score = (fwd * 0.5 + sidePref * 0.3 + fit * 0.2) * (low ? 0.5 : 1);
+      c.score = fwd * 0.5 + sidePref * 0.3 + fit * 0.2;
       cands.push(c);
     };
     for (const b of city.near(p.x, p.z, 55)) {
-      const low = b.maxY < p.y + 2;
-      if (low && (b.maxY < p.y - 20 || b.maxY < 12)) continue;
-      const lo = low ? b.maxY - 0.2 : Math.max(b.maxY * 0.6, p.y + 2);
+      if (b.maxY < p.y + 4) continue;
+      const lo = Math.max(b.maxY * 0.6, p.y + 4);
       const hi = b.maxY - 0.2;
       if (lo > hi) continue;
       const y = THREE.MathUtils.clamp(p.y + idealUp, lo, hi);
@@ -275,8 +274,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
           const ix = p.x + heading.x * idealAhead * k;
           const iz = p.z + heading.z * idealAhead * k;
           const along = THREE.MathUtils.clamp(xFace ? iz : ix, a0, a1);
-          if (xFace) consider(fixed, y, along, nx, nz, low);
-          else consider(along, y, fixed, nx, nz, low);
+          if (xFace) consider(fixed, y, along, nx, nz);
+          else consider(along, y, fixed, nx, nz);
         }
       }
     }
@@ -307,8 +306,6 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     lastSide = Math.sign(c.side) || 1;
     webHand = lastSide > 0 ? "R" : "L";
     pivot.copy(anchor).addScaledVector(right, -0.9 * c.side);
-    // Low anchors swing around a raised pivot, like Insomniac's latch onto buildings below.
-    pivot.y = Math.max(pivot.y, p.y + 10);
     const dist = p.distanceTo(pivot);
     swingFloor = groundAt(city, pivot.x, pivot.z, pivot.y);
     ropeGoal = Math.max(5, Math.min(THREE.MathUtils.clamp(dist, ROPE_MIN, ROPE_MAX), pivot.y - swingFloor - 3));
@@ -792,7 +789,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       } else if (mode === "launch") {
         if (launchArrived) highLaunch(look);
         else if (launchT * LAUNCH > launchLen - 14) launchBuffered = true;
+      } else if (airborne && dashCd <= 0 && raycast(city, p, look, 40, tmp2) < 0) {
+        sfx("whiff", 0.6);
+        dashCd = 0.3;
       } else if (airborne && dashCd <= 0) {
+        const hitT = raycast(city, p, look, 40, tmp2);
         tmp.set(look.x, 0, look.z).normalize();
         const s = Math.max(30, Math.hypot(v.x, v.z) + 6);
         v.copy(tmp).multiplyScalar(s);
@@ -800,7 +801,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         mode = "air";
         dashCd = DASH_CD;
         dashT = 0.3;
-        dashTo.copy(p).addScaledVector(tmp, 22).addScaledVector(UP, 3);
+        dashTo.copy(p).addScaledVector(look, hitT);
         webHand = webHand === "R" ? "L" : "R";
         webGrow = 0;
         trick = null;
@@ -830,13 +831,12 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
     if (mode === "perch" && wish.lengthSq() > 0) mode = "ground";
 
-    // Holding swing in the air chains swings. Each swing keeps one anchor.
-    if (inp.held.has("swing") && mode === "air" && airTime > 0.15 && retryT <= 0 && sinceRelease > 0.3) {
-      retryT = 0.12;
-      dove = !attach(look, false);
+    // A new web needs a new press. Holding swing in the air with no anchor in reach dives toward the roofs.
+    if (inp.held.has("swing") && mode === "air" && airTime > 0.15 && retryT <= 0) {
+      retryT = 0.2;
+      dove = findAnchor(look) === null;
     }
     diveAssist = dove && inp.held.has("swing") && mode === "air";
-    if (mode === "swing" && inp.held.has("swing") && v.y > 0 && pastBottom() > 38 * DEG) release(false, false);
     if (mode === "swing" && swingT > 4) release(false, false);
   };
 
