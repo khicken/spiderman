@@ -4,12 +4,18 @@ import type { HudState, Input, Marker } from "./contracts";
 import type { Bounds, CombatCtx, Hit, HitResult, Hittable, Threat } from "./combat";
 import * as BM from "./boss-models";
 
-export type BossName = "kingpin" | "shocker" | "vulture";
+export type BossName = "kingpin" | "shocker" | "vulture" | "rhino";
 
 export const BOSSES: Record<BossName, { name: string; title: string; level: number; place: string; intro: string; phase2: string; phase3: string }> = {
   kingpin: { name: "KINGPIN", title: "Wilson Fisk", level: 2, place: "Holiday Plaza rink", intro: "Disable the turrets, then Fisk", phase2: "Dodge his charge into the boards", phase3: "Goons incoming. Clear them first" },
   shocker: { name: "SHOCKER", title: "Herman Schultz", level: 4, place: "Harlem crossing", intro: "Web him when his gauntlets vent", phase2: "Dodge the beam sideways", phase3: "Jump the double shockwaves" },
   vulture: { name: "VULTURE", title: "Adrian Toomes", level: 6, place: "Midtown rooftop", intro: "Strike him when he pauses", phase2: "Watch for feather volleys", phase3: "He called in gunmen" },
+  rhino: { name: "RHINO", title: "Aleksei Sytsevich", level: 8, place: "Times Square", intro: "Dodge his charge into a wall", phase2: "Jump the slam shockwave", phase3: "Mash LMB when he grabs you" },
+};
+
+export const bossText = (name: BossName, phase: number) => {
+  const d = BOSSES[name];
+  return phase >= 3 ? d.phase3 : phase === 2 ? d.phase2 : d.intro;
 };
 
 const lineAt = (k: number) => -HALF + k * PERIOD;
@@ -32,7 +38,19 @@ const vultureRoof = (city: City): Box => {
   return roofs.find(clear) ?? roofs[0];
 };
 
+// Times Square plaza (block 6, 8) south of the bleachers, walled by towers east and west.
+const rhinoYard = () => {
+  const x = (lineAt(6) + lineAt(7)) / 2;
+  const z0 = lineAt(8) + STREET / 2 + 4 + 27;
+  const z1 = lineAt(9) - STREET / 2 - 4;
+  return { x, z0, z1, half: 12 };
+};
+
 export function bossArena(city: City, name: BossName) {
+  if (name === "rhino") {
+    const y = rhinoYard();
+    return new THREE.Vector3(y.x, 0, (y.z0 + y.z1) / 2);
+  }
   if (name === "kingpin") {
     const lm = city.landmarks.find((l) => l.name === "Holiday Plaza");
     return lm ? new THREE.Vector3(lm.pos.x, 0, lm.pos.z - 11) : rinkCenter();
@@ -42,6 +60,7 @@ export function bossArena(city: City, name: BossName) {
   return new THREE.Vector3((r.minX + r.maxX) / 2, r.maxY, (r.minZ + r.maxZ) / 2);
 }
 
+type Load = { st: "hang" | "fall" | "down" | "gone"; t: number; webs: number; x: number; z: number; center: THREE.Vector3; model: ReturnType<typeof BM.girderModel>; hit: Hittable };
 type Turret = { st: "on" | "off" | "flying" | "gone"; base: THREE.Vector3; center: THREE.Vector3; webs: number; t: number; aim: number; cd: number; threat: Threat; from: THREE.Vector3; model: ReturnType<typeof BM.turretModel>; hit: Hittable };
 
 export function createBosses(ctx: CombatCtx) {
@@ -51,7 +70,8 @@ export function createBosses(ctx: CombatCtx) {
   const fisk = BM.kingpinModel();
   const shock = BM.shockerModel();
   const vult = BM.vultureModel();
-  const models = { kingpin: fisk, shocker: shock, vulture: vult };
+  const rhino = BM.rhinoModel();
+  const models = { kingpin: fisk, shocker: shock, vulture: vult, rhino };
   for (const m of Object.values(models)) {
     m.root.visible = false;
     root.add(m.root);
@@ -94,6 +114,8 @@ export function createBosses(ctx: CombatCtx) {
     goons: [] as number[],
     waves: 0,
     nextMove: "dive",
+    stunLen: 4,
+    mash: 0,
     threat: { at: 0, sensed: false } as Threat,
   };
   const done = new Set<number>();
@@ -142,10 +164,50 @@ export function createBosses(ctx: CombatCtx) {
   };
   const turrets = [turretAt(0), turretAt(1)];
 
+  const GANTRY_Y = 9;
+  const barriers = BM.barrierRow(rhinoYard().half * 2);
+  barriers.visible = false;
+  root.add(barriers);
+  const loadAt = (i: number): Load => {
+    const model = BM.girderModel();
+    model.root.visible = false;
+    root.add(model.root);
+    const l: Load = { st: "gone", t: 0, webs: 0, x: 0, z: 0, center: new THREE.Vector3(), model, hit: null as unknown as Hittable };
+    const drop = () => {
+      if (l.st !== "hang") return false;
+      l.st = "fall";
+      l.t = 0;
+      ctx.events.push({ type: "sfx", name: "metal" });
+      return true;
+    };
+    l.hit = {
+      center: l.center,
+      radius: 1,
+      targetable: () => B.active && B.name === "rhino" && l.st === "hang",
+      airborne: () => true,
+      yaw: () => 0,
+      hit: () => "none",
+      web: (n) => {
+        if (l.st !== "hang") return false;
+        l.webs += n;
+        if (l.webs >= 2) drop();
+        return true;
+      },
+      yank: () => drop(),
+      finishable: () => false,
+      finishCost: () => 1,
+      finish: () => {},
+      hint: () => (l.st === "hang" ? { key: "RMB", label: "Web the girders down" } : null),
+    };
+    void i;
+    return l;
+  };
+  const loads = [loadAt(0), loadAt(1)];
+
   const body: Hittable = {
     center: B.center,
     get radius() {
-      return B.name === "kingpin" ? 1.25 : 0.9;
+      return B.name === "kingpin" ? 1.25 : B.name === "rhino" ? 1.4 : 0.9;
     },
     targetable: () => B.active && B.st !== "intro" && B.st !== "defeat",
     airborne: () => B.pos.y > B.floorY + 1.5,
@@ -165,6 +227,7 @@ export function createBosses(ctx: CombatCtx) {
     hint: () => null,
   };
   const kingpinTargets = [body, turrets[0].hit, turrets[1].hit];
+  const rhinoTargets = [body, ...loads.map((l) => l.hit)];
   const soloTargets = [body];
   const none: Hittable[] = [];
 
@@ -191,9 +254,9 @@ export function createBosses(ctx: CombatCtx) {
     return hitWall;
   };
 
+  const goonsUp = () => B.name === "kingpin" && B.phase === 3 && (B.waves < 2 || B.goons.some((g) => !ctx.groupDone(g)));
   const damage = (n: number) => {
-    let floor = 1;
-    if (B.name === "kingpin" && B.phase === 3 && (B.waves < 2 || B.goons.some((g) => !ctx.groupDone(g)))) floor = 5;
+    const floor = goonsUp() ? 5 : 1;
     B.hp = Math.max(floor, B.hp - n);
     const ph = B.hp > 66.6 ? 1 : B.hp > 33.3 ? 2 : 3;
     if (ph > B.phase) {
@@ -219,6 +282,10 @@ export function createBosses(ctx: CombatCtx) {
     } else if (B.name === "shocker") {
       B.seq = 0;
       set("move");
+    } else if (B.name === "rhino") {
+      B.seq = 0;
+      set("roar");
+      ctx.events.push({ type: "sfx", name: "charge" });
     } else if (B.name === "vulture") {
       set("recover");
       if (ph === 3) B.goons.push(ctx.spawnGroup("gunner", _v.copy(B.home).setY(B.floorY), 2, { aware: true, radius: 8 }));
@@ -229,26 +296,30 @@ export function createBosses(ctx: CombatCtx) {
     (B.name === "kingpin" && B.st === "stunned") ||
     (B.name === "shocker" && (B.st === "stunned" || B.st === "vent")) ||
     (B.name === "vulture" && (B.st === "pause" || B.st === "grounded")) ||
+    (B.name === "rhino" && B.st === "stunned") ||
     B.st === "beaten";
+
+  const armor = () => (B.name === "rhino" ? 0.7 : B.name === "kingpin" ? 0.75 : 1);
 
   const onHit = (h: Hit): HitResult => {
     if (!B.active || B.st === "defeat" || B.st === "intro") return "none";
+    if (B.st === "grab") return "none";
     if (!vulnerable() || B.st === "beaten") {
       ctx.burst(_v.copy(B.center).addScaledVector(h.dir, -0.6), 4, 4, 1.2, 1.8, 3);
       return "block";
     }
     if (B.takedown) return "hit";
-    const base = B.name === "shocker" && B.st === "vent" ? 0.4 : 0.9;
+    const base = (B.name === "shocker" && B.st === "vent" ? 0.6 : 1.3) * armor();
     const dmg = base * h.dmg * (h.behind ? 1.5 : 1) * (h.kind === "strike" ? 1.2 : 1);
     B.hits++;
     damage(dmg);
-    if (B.hits >= 6 && !B.takedown && B.st !== "vent") B.takedown = true;
+    if (B.hits >= 5 && !B.takedown && B.st !== "vent") B.takedown = true;
     return "hit";
   };
 
   const onWeb = (n: number) => {
     if (!B.active) return false;
-    if (B.name === "kingpin" && B.st === "stunned") {
+    if ((B.name === "kingpin" || B.name === "rhino") && B.st === "stunned") {
       B.webs += n;
       if (B.webs <= 2) B.t -= 0.8;
       return true;
@@ -283,7 +354,7 @@ export function createBosses(ctx: CombatCtx) {
       defeat();
       return;
     }
-    damage(6);
+    damage(10 * armor());
     if (B.st === "beaten") return;
     set("recover");
   };
@@ -338,6 +409,23 @@ export function createBosses(ctx: CombatCtx) {
       });
     } else if (name === "shocker") {
       B.bounds = { minX: pos.x - 12.5, maxX: pos.x + 12.5, minZ: pos.z - 12.5, maxZ: pos.z + 12.5 };
+    } else if (name === "rhino") {
+      const y = rhinoYard();
+      const m = 1.6;
+      B.bounds = { minX: y.x - y.half + m, maxX: y.x + y.half - m, minZ: y.z0 + m, maxZ: y.z1 - m };
+      B.pos.z = y.z0 + 5;
+      B.mash = 0;
+      barriers.position.set(y.x, pos.y, y.z1 + 0.4);
+      barriers.visible = true;
+      loads.forEach((l, i) => {
+        const s = i ? 1 : -1;
+        l.x = y.x + s * (y.half - 3.6);
+        l.z = pos.z + (i ? 5 : -3);
+        l.model.root.position.set(l.x, pos.y + GANTRY_Y, l.z);
+        l.model.root.rotation.y = i ? Math.PI : 0;
+        l.model.root.visible = true;
+        hang(l);
+      });
     } else {
       const r = vultureRoof(ctx.city);
       B.bounds = { minX: r.minX + 2, maxX: r.maxX - 2, minZ: r.minZ + 2, maxZ: r.maxZ - 2 };
@@ -366,7 +454,7 @@ export function createBosses(ctx: CombatCtx) {
           tu.model.root.visible = false;
           ctx.events.push({ type: "sfx", name: "explosion" }, { type: "shake", strength: 0.8 });
           ctx.burst(B.center, 22, 11, 4, 2, 0.5);
-          damage(17);
+          damage(12);
           if (B.phase === 1) set("stagger");
         }
         continue;
@@ -402,6 +490,17 @@ export function createBosses(ctx: CombatCtx) {
     }
   };
 
+  // Moves along B.dir, hurts the player once on contact, returns true on a wall hit.
+  const chargeStep = (dt: number, speed: number, reach: number, margin: number) => {
+    B.pos.addScaledVector(B.dir, speed * dt);
+    if (!B.hurtDone && P().pos.distanceTo(_w.copy(B.pos).setY(B.pos.y + 1)) < reach) {
+      B.hurtDone = true;
+      ctx.unwarn(B.threat);
+      ctx.hurt(25, B.pos, 12);
+    }
+    return keepIn(margin);
+  };
+
   const updateKingpin = (dt: number) => {
     const p = P();
     toPlayer(_v);
@@ -419,7 +518,7 @@ export function createBosses(ctx: CombatCtx) {
         break;
       case "idle":
         faceP(dt, 3);
-        if (B.phase > 1) set("stalk");
+        if ((B.phase > 1 || turrets.every((tu) => tu.st === "gone")) && !goonsUp()) set("stalk");
         else if (B.t > 4.5) {
           set("slam");
           ctx.warn(B.threat, ctx.now() + 0.9);
@@ -438,6 +537,10 @@ export function createBosses(ctx: CombatCtx) {
         break;
       case "stalk": {
         faceP(dt, 4);
+        if (goonsUp()) {
+          set("idle");
+          break;
+        }
         if (d > 3) {
           _w.copy(_v).normalize().multiplyScalar(2.6 * dt);
           B.pos.add(_w);
@@ -446,9 +549,14 @@ export function createBosses(ctx: CombatCtx) {
         if (d < 3.6 && B.t > 0.6) {
           set("swipe");
           ctx.warn(B.threat, ctx.now() + 0.7);
-        } else if (B.t > (B.phase === 3 ? 2 : 2.8)) {
-          set("paw");
-          ctx.warn(B.threat, ctx.now() + 1 + d / 22);
+        } else if (B.t > (B.phase === 3 ? 3.4 : 4.2)) {
+          if (B.seq++ % 2) {
+            set("slam");
+            ctx.warn(B.threat, ctx.now() + 0.9);
+          } else {
+            set("paw");
+            ctx.warn(B.threat, ctx.now() + 1 + d / 22);
+          }
         }
         break;
       }
@@ -476,13 +584,7 @@ export function createBosses(ctx: CombatCtx) {
         }
         break;
       case "charge": {
-        B.pos.addScaledVector(B.dir, (B.phase === 3 ? 25 : 22) * dt);
-        if (!B.hurtDone && p.pos.distanceTo(_w.copy(B.pos).setY(B.pos.y + 1)) < 2.1) {
-          B.hurtDone = true;
-          ctx.unwarn(B.threat);
-          ctx.hurt(25, B.pos, 12);
-        }
-        if (keepIn(1.3)) {
+        if (chargeStep(dt, B.phase === 3 ? 25 : 22, 2.1, 1.3)) {
           set("stunned");
           B.hits = 0;
           B.webs = 0;
@@ -505,6 +607,214 @@ export function createBosses(ctx: CombatCtx) {
         }
         if (B.t > 1) set("stalk");
         break;
+    }
+  };
+
+
+  const HANG = 2.2;
+  const hang = (l: Load) => {
+    l.st = "hang";
+    l.t = 0;
+    l.webs = 0;
+    l.model.cable.visible = true;
+    l.model.cable.scale.y = HANG;
+    l.model.bundle.position.set(0, -HANG - 0.75, 0);
+    l.model.bundle.visible = true;
+    l.center.set(l.x, B.floorY + GANTRY_Y - HANG - 0.75, l.z);
+  };
+  // The dropped bundle is a 4.6 x 1.1 box on the floor; r grows it by the boss radius.
+  const inPile = (l: Load, x: number, z: number, r: number) => l.st === "down" && Math.abs(x - l.x) < 2.3 + r && Math.abs(z - l.z) < 0.55 + r;
+  const pushOutOfPiles = () => {
+    for (const l of loads) {
+      if (!inPile(l, B.pos.x, B.pos.z, 1.2)) continue;
+      const ox = 3.5 - Math.abs(B.pos.x - l.x);
+      const oz = 1.75 - Math.abs(B.pos.z - l.z);
+      if (ox < oz) B.pos.x += Math.sign(B.pos.x - l.x || 1) * ox;
+      else B.pos.z += Math.sign(B.pos.z - l.z || 1) * oz;
+    }
+  };
+  const smashPile = (l: Load) => {
+    l.st = "gone";
+    l.t = 0;
+    l.model.bundle.visible = false;
+    ctx.burst(_u.set(l.x, B.floorY + 0.8, l.z), 26, 10, 2.2, 1.1, 0.5);
+    ctx.events.push({ type: "sfx", name: "metal" }, { type: "sfx", name: "explosion", volume: 0.6 });
+  };
+
+  const updateLoads = (dt: number) => {
+    for (const l of loads) {
+      l.t += dt;
+      if (l.st === "hang") {
+        l.model.bundle.rotation.z = Math.sin(l.t * 1.3 + l.x) * 0.04;
+        continue;
+      }
+      if (l.st === "fall") {
+        l.model.cable.visible = false;
+        const top = GANTRY_Y - HANG - 0.75;
+        const y = Math.max(0.25, top - 0.5 * 30 * l.t * l.t);
+        l.model.bundle.position.y = y - GANTRY_Y;
+        l.center.y = B.floorY + y;
+        if (y <= 0.25) {
+          l.st = "down";
+          l.t = 0;
+          l.model.bundle.rotation.z = 0;
+          ctx.events.push({ type: "sfx", name: "bigLand" }, { type: "sfx", name: "metal" }, { type: "shake", strength: 0.5 });
+          ctx.burst(_u.set(l.x, B.floorY + 0.3, l.z), 16, 6, 1.6, 1.5, 1.3);
+          if (inPile(l, B.pos.x, B.pos.z, 1.4) && B.st !== "stunned") {
+            smashPile(l);
+            crash(true);
+          }
+        }
+        continue;
+      }
+      if (l.st === "gone" && l.t > 14 && B.st !== "defeat" && B.st !== "beaten") hang(l);
+    }
+  };
+
+  const crash = (big: boolean) => {
+    if (big) {
+      damage(6);
+      if (B.st === "beaten") return;
+    }
+    set("stunned");
+    B.hits = 0;
+    B.webs = 0;
+    B.stunLen = big ? 5.5 : 4.2;
+    ctx.events.push({ type: "sfx", name: "bigLand" }, { type: "sfx", name: "metal" }, { type: "shake", strength: big ? 1 : 0.8 }, { type: "toast", title: "STUNNED", text: "Hit him now" });
+    ctx.burst(_w.copy(B.pos).addScaledVector(B.dir, 1.4).setY(B.floorY + 1.8), 18, 9, 2.4, 2.4, 2.4);
+  };
+
+  const RHINO_SEQ = [["paw"], ["paw", "rear"], ["paw", "grab", "paw", "rear"]];
+  const front = (out: THREE.Vector3, k: number) => out.set(B.pos.x + Math.sin(B.yaw) * k, B.floorY, B.pos.z + Math.cos(B.yaw) * k);
+
+  const updateRhino = (dt: number, input: Input) => {
+    const p = P();
+    toPlayer(_v);
+    const d = _v.length();
+    updateLoads(dt);
+    switch (B.st) {
+      case "intro":
+      case "roar":
+        faceP(dt, 3);
+        if (B.t > (B.st === "intro" ? 2.5 : 1.4)) set("stalk");
+        break;
+      case "stalk": {
+        faceP(dt, 4);
+        if (d > 3.2) {
+          B.pos.addScaledVector(_w.copy(_v).normalize(), 3.2 * dt);
+          pushOutOfPiles();
+          keepIn(0);
+        }
+        if (B.t > (B.phase === 1 ? 3.2 : B.phase === 2 ? 2.6 : 2.2)) {
+          const seq = RHINO_SEQ[B.phase - 1];
+          let next = seq[B.seq % seq.length];
+          B.seq++;
+          if (next === "grab" && d > 10) next = "paw";
+          set(next === "grab" ? "grabWind" : next);
+          if (next === "paw") {
+            ctx.warn(B.threat, ctx.now() + 1.2 + d / 25);
+            ctx.events.push({ type: "sfx", name: "charge" });
+          } else if (next === "rear") ctx.warn(B.threat, ctx.now() + 1);
+          else ctx.warn(B.threat, ctx.now() + 0.5 + d / 10);
+        }
+        break;
+      }
+      case "paw":
+        faceP(dt, 5);
+        if (rnd() < dt * 6) ctx.burst(front(_w, 0.8).setY(B.floorY + 0.1), 2, 3, 1.5, 1.5, 1.5);
+        if (B.t > 1.2) {
+          B.dir.set(Math.sin(B.yaw), 0, Math.cos(B.yaw));
+          set("charge");
+          ctx.warn(B.threat, ctx.now() + Math.max(0.2, d / 25));
+          ctx.events.push({ type: "sfx", name: "whoosh" });
+        }
+        break;
+      case "charge": {
+        if (rnd() < dt * 10) ctx.burst(_w.copy(B.pos).setY(B.floorY + 0.2), 2, 3, 1.5, 1.5, 1.5);
+        const wall = chargeStep(dt, B.phase === 3 ? 27 : 24, 2.5, 0);
+        const pile = loads.find((l) => inPile(l, B.pos.x + B.dir.x, B.pos.z + B.dir.z, 1.2));
+        if (pile) {
+          smashPile(pile);
+          crash(true);
+        } else if (wall) crash(false);
+        else if (B.t > 2.5) set("stalk");
+        break;
+      }
+      case "stunned":
+        if (rnd() < dt * 6) ctx.burst(_w.copy(B.pos).setY(B.floorY + 3.9), 1, 2, 4, 3.4, 0.6);
+        if (B.t > B.stunLen) {
+          B.takedown = false;
+          set("recover");
+        }
+        break;
+      case "recover":
+        if (B.t < dt * 1.5) {
+          ctx.ring(_w.copy(B.pos).setY(B.floorY), 14, 7, 0, 2.4, 2.2, 2);
+          ctx.events.push({ type: "sfx", name: "bigLand" });
+        }
+        if (B.t > 1) set("stalk");
+        break;
+      case "rear":
+        faceP(dt, 3);
+        if (B.t > 1) {
+          ctx.unwarn(B.threat);
+          ctx.ring(_w.copy(B.pos).setY(B.floorY), 13, 17, 14, 2.6, 1.8, 0.9);
+          ctx.events.push({ type: "sfx", name: "bigLand" }, { type: "sfx", name: "charge", volume: 0.6 }, { type: "shake", strength: 0.7 });
+          ctx.burst(front(_w, 1.6).setY(B.floorY + 0.2), 20, 8, 1.6, 1.5, 1.3);
+          set("slamEnd");
+        }
+        break;
+      case "slamEnd":
+        if (B.t > 0.9) set("stalk");
+        break;
+      case "grabWind":
+        faceP(dt, 8);
+        if (B.t > 0.5) {
+          B.dir.copy(_v).normalize();
+          B.yaw = Math.atan2(B.dir.x, B.dir.z);
+          set("grabRush");
+          ctx.warn(B.threat, ctx.now() + Math.max(0.15, (d - 2) / 11));
+        }
+        break;
+      case "grabRush":
+        B.pos.addScaledVector(B.dir, 11 * dt);
+        pushOutOfPiles();
+        keepIn(0);
+        front(_w, 1.5);
+        if (Math.hypot(p.pos.x - _w.x, p.pos.z - _w.z) < 1.9 && Math.abs(feet() - B.floorY) < 2 && ctx.hurt(4, B.pos, 0)) {
+          set("grab");
+          B.mash = 0;
+          ctx.events.push({ type: "sfx", name: "charge" }, { type: "shake", strength: 0.5 }, { type: "toast", title: "GRABBED", text: "Mash LMB to break free" });
+        } else if (B.t > 0.8) set("stalk");
+        break;
+      case "grab": {
+        if (ctx.downed()) {
+          set("slamEnd");
+          break;
+        }
+        front(_w, 1.7).y = B.floorY + 2.4;
+        p.teleport(_w);
+        p.face(_u.set(-Math.sin(B.yaw), 0, -Math.cos(B.yaw)));
+        p.busy = true;
+        p.act("grabbed", Math.min(1, B.t / 3.2));
+        if (input.pressed.has("attack") || input.pressed.has("swing")) {
+          B.mash++;
+          ctx.events.push({ type: "sfx", name: "punch", volume: 0.5 }, { type: "shake", strength: 0.12 });
+        }
+        if (B.mash >= 10) {
+          set("stunned");
+          B.stunLen = 3.5;
+          B.hits = 0;
+          B.webs = 0;
+          p.push(_u.set(Math.sin(B.yaw) * 4, 3, Math.cos(B.yaw) * 4));
+          ctx.events.push({ type: "sfx", name: "punchHeavy" }, { type: "toast", title: "BROKE FREE", text: "Hit him now" }, { type: "shake", strength: 0.5 });
+        } else if (B.t > 3.2) {
+          set("slamEnd");
+          ctx.hurt(22, B.pos, 14);
+          ctx.events.push({ type: "sfx", name: "bigLand" });
+        }
+        break;
+      }
     }
   };
 
@@ -738,19 +1048,27 @@ export function createBosses(ctx: CombatCtx) {
     }
   };
 
+  const hideAll = () => {
+    for (const m of Object.values(models)) m.root.visible = false;
+    for (const tu of turrets) {
+      tu.st = "gone";
+      tu.model.root.visible = false;
+    }
+    barriers.visible = false;
+    for (const l of loads) {
+      l.st = "gone";
+      l.model.root.visible = false;
+    }
+  };
+
   const update = (dt: number, t: number, input: Input) => {
-    void input;
     if (!B.active) return;
     B.t += dt;
     if (B.st === "defeat") {
       if (B.t > 6) {
         B.active = false;
         done.add(B.id);
-        for (const m of Object.values(models)) m.root.visible = false;
-        for (const tu of turrets) {
-          tu.st = "gone";
-          tu.model.root.visible = false;
-        }
+        hideAll();
       }
       if (B.name === "vulture") updateVulture(dt);
       return;
@@ -758,11 +1076,12 @@ export function createBosses(ctx: CombatCtx) {
     if (B.st === "beaten") {
       faceP(dt, 2);
       if (B.name === "vulture") updateVulture(dt);
-      if (rnd() < dt * 5) ctx.burst(_w.copy(B.pos).setY(B.pos.y + (B.name === "kingpin" ? 3.6 : 2.1)), 1, 2, 4, 3.4, 0.6);
+      if (rnd() < dt * 5) ctx.burst(_w.copy(B.pos).setY(B.pos.y + (B.name === "kingpin" ? 3.6 : B.name === "rhino" ? 3.9 : 2.1)), 1, 2, 4, 3.4, 0.6);
       return;
     }
     if (B.name === "kingpin") updateKingpin(dt);
     else if (B.name === "shocker") updateShocker(dt);
+    else if (B.name === "rhino") updateRhino(dt, input);
     else updateVulture(dt);
     void t;
   };
@@ -863,6 +1182,64 @@ export function createBosses(ctx: CombatCtx) {
       const hot = st === "vent" || st === "stunned";
       for (const g of shock.glows) (g.material as THREE.MeshBasicMaterial).color.setRGB(hot ? 4 : 0.8, hot ? 1.2 : 2.5, hot ? 0.3 : 4).multiplyScalar(st === "defeat" ? 0.2 : 1);
       B.center.set(B.pos.x, B.pos.y + 1.2, B.pos.z);
+    } else if (B.name === "rhino") {
+      const m = rhino;
+      m.root.position.copy(B.pos);
+      m.root.rotation.set(0, B.yaw, 0);
+      const gait = st === "stalk" ? Math.sin(t * 5) : st === "charge" ? Math.sin(t * 14) : st === "grabRush" ? Math.sin(t * 11) : 0;
+      m.legL.rotation.x = gait * (st === "charge" ? 0.8 : 0.5);
+      m.legR.rotation.x = -gait * (st === "charge" ? 0.8 : 0.5);
+      let aL = -0.2;
+      let aR = -0.2;
+      let sp = 0.3;
+      let lean = 0.15;
+      let nod = 0;
+      if (st === "intro" || st === "roar") {
+        sp = 1.1;
+        aL = aR = -0.6;
+        lean = -0.25;
+        nod = -0.35;
+      } else if (st === "paw") {
+        lean = 0.55;
+        nod = 0.3;
+        aL = aR = 0.4;
+        m.legR.rotation.x = Math.sin(t * 14) * 0.35 - 0.35;
+      } else if (st === "charge") {
+        lean = 0.75;
+        nod = 0.45;
+        aL = aR = 0.7;
+      } else if (st === "rear") {
+        const u = Math.min(1, k / 0.8);
+        lean = -0.35 * u;
+        aL = aR = -2.8 * u;
+        sp = 0.35;
+      } else if (st === "slamEnd") {
+        const u = Math.max(0, 1 - k / 0.9);
+        lean = 0.6 * u;
+        aL = aR = -1.1 * u;
+      } else if (st === "grabWind" || st === "grabRush") {
+        lean = 0.35;
+        aL = aR = -1.45;
+        sp = st === "grabWind" ? 0.9 : 0.5;
+      } else if (st === "grab") {
+        lean = 0.1;
+        aL = aR = -1.5;
+        sp = 0.15 + Math.sin(t * 9) * 0.05;
+      } else if (st === "stunned" || st === "beaten") {
+        lean = -0.2 + Math.sin(t * 3) * 0.08;
+        nod = -0.2;
+        aL = aR = 0.15;
+        sp = 0.55;
+      }
+      if (st === "defeat") {
+        m.root.rotation.x = -Math.min(1, k / 1.2) * (Math.PI / 2 - 0.2);
+        m.root.position.y = B.floorY + 0.5 * Math.min(1, k / 1.2);
+      } else m.root.rotation.x = 0;
+      m.body.rotation.x = lean;
+      m.head.rotation.x = nod;
+      m.armL.rotation.set(aL, 0, sp);
+      m.armR.rotation.set(aR, 0, -sp);
+      B.center.set(B.pos.x, B.pos.y + 2.2, B.pos.z);
     } else {
       const m = vult;
       m.root.position.copy(B.pos);
@@ -886,11 +1263,7 @@ export function createBosses(ctx: CombatCtx) {
     for (const g of B.goons) if (!ctx.groupDone(g)) ctx.clearGroup(g);
     B.goons.length = 0;
     B.active = false;
-    for (const m of Object.values(models)) m.root.visible = false;
-    for (const tu of turrets) {
-      tu.st = "gone";
-      tu.model.root.visible = false;
-    }
+    hideAll();
   };
 
   return {
@@ -898,7 +1271,7 @@ export function createBosses(ctx: CombatCtx) {
     cancel,
     update,
     render,
-    targets: () => (!B.active ? none : B.name === "kingpin" ? kingpinTargets : soloTargets),
+    targets: () => (!B.active ? none : B.name === "kingpin" ? kingpinTargets : B.name === "rhino" ? rhinoTargets : soloTargets),
     active: () => B.active,
     done: (id: number) => done.has(id),
     hud: (): HudState["boss"] => {
@@ -912,7 +1285,7 @@ export function createBosses(ctx: CombatCtx) {
     prompts: (out: { key: string; label: string }[]) => {
       if (!B.active || B.st === "defeat") return;
       if (B.takedown) out.push({ key: "X", label: "Takedown" });
-      else if (B.name === "kingpin" && B.phase === 1) {
+      else if (B.name === "kingpin" && B.phase === 1 && turrets.some((tu) => tu.st !== "gone")) {
         if (turrets.some((tu) => tu.st === "off")) out.push({ key: "F", label: "Hold to yank the turret" });
         else out.push({ key: "RMB", label: "Web a turret" });
       } else if (B.name === "kingpin" && B.st === "stunned") out.push({ key: "LMB", label: "Hit him now" });
@@ -920,10 +1293,18 @@ export function createBosses(ctx: CombatCtx) {
       else if (B.name === "shocker" && B.st === "vent") out.push({ key: "RMB", label: "Web him while he vents" });
       else if (B.name === "shocker" && (B.st === "quake" || B.st === "quake2")) out.push({ key: "Space", label: "Jump the shockwave" });
       else if (B.name === "vulture" && B.st === "pause") out.push({ key: "F", label: "Web strike to him" });
+      else if (B.name === "rhino") {
+        if (B.st === "grab") out.push({ key: "LMB", label: "Mash to break free" });
+        else if (B.st === "stunned") out.push({ key: "LMB", label: "Hit him now" });
+        else if (B.st === "paw") out.push({ key: "Q", label: "Dodge the charge" });
+        else if (B.st === "rear") out.push({ key: "Space", label: "Jump the shockwave" });
+        else if (B.st === "grabWind" || B.st === "grabRush") out.push({ key: "Q", label: "Dodge the grab" });
+        else if (loads.some((l) => l.st === "hang")) out.push({ key: "RMB", label: "Web the girders down" });
+      }
     },
     onPlayerDown: () => {
       if (!B.active || B.st === "defeat" || B.st === "beaten") return;
-      set(B.name === "kingpin" ? (B.phase === 1 ? "idle" : "stalk") : B.name === "shocker" ? "move" : "recover");
+      set(B.name === "kingpin" ? (B.phase === 1 ? "idle" : "stalk") : B.name === "shocker" ? "move" : B.name === "rhino" ? "stalk" : "recover");
     },
     setDetail: (level: number) => {
       detail = level;

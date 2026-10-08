@@ -235,3 +235,103 @@ export function vultureModel() {
   }
   return { ...r, wings };
 }
+
+export function rhinoModel() {
+  const plate = "#9a9fa6";
+  const hide = "#767a81";
+  const seam = "#4a4d53";
+  const skin = "#c99a7e";
+  const horn = "#e2dccd";
+  const bands = (lo: string, hi: string, k: number) => (p: THREE.Vector3) => (Math.sin(p.y * k + Math.abs(p.x) * 2) > -0.55 ? hi : lo);
+  const rot = (g: THREE.BufferGeometry, rx: number, x: number, y: number, z: number) => g.rotateX(rx).translate(x, y, z);
+  const r = rig(litMat(0.5, 0.12), glowMat(), {
+    hip: 1.45,
+    hipX: 0.48,
+    shoulder: [1.18, 2.7],
+    neck: 2.95,
+    body: [
+      tint(new THREE.SphereGeometry(1.08, 20, 16).scale(1.18, 1, 0.95).translate(0, 2.1, 0.05), bands(seam, plate, 7)),
+      tint(new THREE.SphereGeometry(0.85, 16, 12).scale(1.12, 0.85, 0.9).translate(0, 1.45, 0), bands(seam, hide, 9)),
+      paint(rot(new THREE.BoxGeometry(1.5, 0.48, 0.26), -0.3, 0, 2.45, 0.9), plate),
+      paint(rot(new THREE.BoxGeometry(1.42, 0.42, 0.26), -0.1, 0, 2.0, 0.98), plate),
+      paint(rot(new THREE.BoxGeometry(1.2, 0.36, 0.24), 0.08, 0, 1.6, 0.86), hide),
+      paint(rot(new THREE.BoxGeometry(1.8, 0.7, 0.32), 0.35, 0, 2.55, -0.9), plate),
+      paint(rot(new THREE.BoxGeometry(1.6, 0.6, 0.3), 0.15, 0, 1.95, -1.0), hide),
+      sph(0.66, 1.15, 0.8, 1.05, 1.05, 2.72, 0, plate),
+      sph(0.66, 1.15, 0.8, 1.05, -1.05, 2.72, 0, plate),
+      cyl(1.0, 1.0, 0.2, 0, 1.2, 0, seam),
+      cyl(0.5, 0.62, 0.45, 0, 2.95, 0.25, hide),
+    ],
+    head: [
+      tint(new THREE.SphereGeometry(0.52, 16, 12).scale(1, 0.95, 1.2).translate(0, 0.2, 0.42), bands(seam, plate, 11)),
+      box(0.44, 0.34, 0.1, 0, 0.12, 0.98, skin),
+      sph(0.05, 1, 1, 0.6, 0.11, 0.22, 1.03, "#151515"),
+      sph(0.05, 1, 1, 0.6, -0.11, 0.22, 1.03, "#151515"),
+      box(0.5, 0.08, 0.12, 0, 0.32, 1.0, hide),
+      box(0.26, 0.05, 0.05, 0, 0.0, 1.03, "#6b3a2e"),
+      paint(new THREE.ConeGeometry(0.2, 1.05, 12).rotateX(Math.PI / 2 - 0.55).translate(0, 0.62, 1.22), horn),
+      paint(new THREE.ConeGeometry(0.11, 0.42, 10).rotateX(Math.PI / 2 - 0.9).translate(0, 0.72, 0.72), horn),
+      sph(0.14, 0.7, 1.3, 0.7, 0.46, 0.5, 0.25, plate),
+      sph(0.14, 0.7, 1.3, 0.7, -0.46, 0.5, 0.25, plate),
+    ],
+    arm: (s) => [
+      tint(new THREE.CapsuleGeometry(0.4, 0.8, 4, 12).translate(0, -0.55, 0), bands(seam, hide, 10)),
+      sph(0.42, 1.1, 0.7, 1.1, 0.05 * s, -0.35, 0, plate),
+      cyl(0.46, 0.4, 0.75, 0, -1.2, 0, plate),
+      cyl(0.48, 0.48, 0.1, 0, -0.88, 0, seam),
+      sph(0.36, 1.1, 0.9, 1.15, 0, -1.68, 0.05, hide),
+      box(0.5, 0.16, 0.2, 0, -1.7, 0.32, plate),
+    ],
+    leg: () => [
+      tint(new THREE.CapsuleGeometry(0.44, 0.75, 4, 12).translate(0, -0.55, 0), bands(seam, hide, 10)),
+      sph(0.26, 1.2, 1, 0.7, 0, -0.75, 0.34, plate),
+      cyl(0.42, 0.48, 0.45, 0, -1.08, 0, plate),
+      box(0.62, 0.32, 0.92, 0, -1.3, 0.14, seam),
+    ],
+  });
+  r.head.position.z = 0.1;
+  return r;
+}
+
+export function girderModel() {
+  const root = new THREE.Group();
+  root.add(new THREE.Mesh(merge([
+    box(3.6, 0.35, 0.5, -1.8, 0, 0, "#c9a227"),
+    paint(new THREE.BoxGeometry(0.2, 2.6, 0.2).rotateZ(-0.95).translate(-2.4, -0.9, 0), "#c9a227"),
+    box(0.3, 0.3, 0.3, 0, -0.3, 0, "#2a2c30"),
+  ]), litMat(0.6, 0.5)));
+  const cable = new THREE.Mesh(paint(new THREE.CylinderGeometry(0.04, 0.04, 1, 6).translate(0, -0.5, 0), "#1a1a1a"), litMat(0.6));
+  root.add(cable);
+  const beam = (y: number, z: number) => [
+    box(4.6, 0.06, 0.34, 0, y + 0.15, z, "#8a3a22"),
+    box(4.6, 0.06, 0.34, 0, y - 0.15, z, "#8a3a22"),
+    box(4.6, 0.26, 0.06, 0, y, z, "#7a321d"),
+  ];
+  const bundle = new THREE.Mesh(merge([
+    ...beam(0, -0.36), ...beam(0, 0), ...beam(0, 0.36), ...beam(0.36, -0.18), ...beam(0.36, 0.18),
+    box(0.12, 0.85, 1.1, -1.4, 0.18, 0, "#2a2c30"),
+    box(0.12, 0.85, 1.1, 1.4, 0.18, 0, "#2a2c30"),
+    paint(new THREE.TorusGeometry(0.22, 0.05, 6, 12).translate(0, 0.75, 0), "#2a2c30"),
+  ]), litMat(0.7, 0.4));
+  bundle.castShadow = true;
+  root.add(bundle);
+  return { root, cable, bundle };
+}
+
+export function barrierRow(len: number) {
+  const parts: THREE.BufferGeometry[] = [];
+  const n = Math.max(1, Math.round(len / 2));
+  const w = len / n;
+  for (let k = 0; k < n; k++) {
+    const x = -len / 2 + w * (k + 0.5);
+    parts.push(
+      box(w - 0.05, 0.35, 0.62, x, 0.175, 0, "#bdbab3"),
+      box(w - 0.05, 0.55, 0.32, x, 0.62, 0, "#c9c6bf"),
+      box(w - 0.08, 0.14, 0.3, x, 0.82, 0, k % 2 ? "#e06a1a" : "#f0efe9"),
+    );
+  }
+  const m = new THREE.Mesh(merge(parts), litMat(0.85));
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}

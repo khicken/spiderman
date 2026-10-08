@@ -49,14 +49,18 @@ export function MapPanel({ h, onClose }: { h: HudState; onClose: () => void }) {
               const hh = lineAt(d.j1 + 1) - STREET / 2 - y;
               const pct = pctOf(h, d.name);
               return (
-                <g key={d.name}>
-                  <rect x={x - 4} y={y - 4} width={w + 8} height={hh + 8} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth={2} strokeDasharray="10 8" />
+                <g key={d.name} data-done={pct !== undefined && pct >= 100 ? "" : undefined}>
+                  {pct !== undefined && pct >= 100 ? (
+                    <rect x={x - 4} y={y - 4} width={w + 8} height={hh + 8} fill="rgba(226,35,26,0.14)" stroke="#e2231a" strokeWidth={4} />
+                  ) : (
+                    <rect x={x - 4} y={y - 4} width={w + 8} height={hh + 8} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth={2} strokeDasharray="10 8" />
+                  )}
                   <text x={x + w / 2} y={y + hh / 2 - 4} textAnchor="middle" fill="rgba(255,255,255,0.75)" fontSize={d.name.length > 14 ? 22 : 26} fontWeight={900} fontStyle="italic" className="font-cond uppercase" style={{ paintOrder: "stroke", stroke: "#07090d", strokeWidth: 6 }}>
                     {d.name}
                   </text>
                   {pct !== undefined && (
-                    <text x={x + w / 2} y={y + hh / 2 + 22} textAnchor="middle" fill={pct >= 100 ? "#e2231a" : "rgba(255,255,255,0.55)"} fontSize={20} fontWeight={800} className="font-cond" style={{ paintOrder: "stroke", stroke: "#07090d", strokeWidth: 6 }}>
-                      {pct}%
+                    <text x={x + w / 2} y={y + hh / 2 + 22} textAnchor="middle" fill={pct >= 100 ? "#ff5a4f" : "rgba(255,255,255,0.55)"} fontSize={20} fontWeight={800} className="font-cond uppercase" style={{ paintOrder: "stroke", stroke: "#07090d", strokeWidth: 6 }}>
+                      {pct >= 100 ? "\u2713 Complete" : `${pct}%`}
                     </text>
                   )}
                 </g>
@@ -163,7 +167,7 @@ export function JournalPanel({ h, onClose }: { h: HudState; onClose: () => void 
               <div key={d.name} className="grid grid-cols-[8.5rem_1fr_2.5rem] items-center gap-3 text-sm">
                 <span className="truncate font-cond font-bold uppercase">{d.name}</span>
                 <div className="h-1.5 bg-white/15">
-                  <div className="h-full bg-white" style={{ width: `${Math.min(100, d.pct)}%` }} />
+                  <div className={`h-full ${d.pct >= 100 ? "bg-spider" : "bg-white"}`} style={{ width: `${Math.min(100, d.pct)}%` }} />
                 </div>
                 <span className="text-right font-cond tabular-nums text-white/70">{Math.round(d.pct)}%</span>
               </div>

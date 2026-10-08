@@ -4,7 +4,8 @@ import { SHOP_H, SHOP_W, type Atlas } from "./city-textures";
 import { FACADES, STYLE } from "./city-facades";
 import { massDetail } from "./city-detail";
 
-export type Box = { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number };
+// minY is the underside; absent means the box stands on the ground.
+export type Box = { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number; minY?: number };
 
 export type Ctx = {
   r: () => number;
@@ -22,7 +23,7 @@ export type Ctx = {
   roofSpots: THREE.Vector3[];
   streetSpots: THREE.Vector3[];
   landmarks: { name: string; pos: THREE.Vector3 }[];
-  trees: { x: number; z: number; s: number; lit: boolean }[];
+  trees: { x: number; z: number; s: number; lit: boolean; w?: number; anchor?: boolean }[];
   pines: { x: number; z: number; s: number }[];
   anchors: THREE.Vector3[];
   loads: { x: number; y: number; z: number; len: number; ry: number }[];
@@ -185,6 +186,8 @@ export function waterTower(c: Ctx, x: number, z: number, y: number) {
   cyl(c.solid, UNIT.cyl8, x, y + 3.7 * s, z, 2.1 * s, 4.4 * s, 0x6a4a33);
   c.solid.add(UNIT.tube, mat(x, y + 3.7 * s + 2.8 * s, z, 2.14 * s, 0.12, 2.14 * s), IRON);
   c.solid.add(UNIT.cone8, mat(x, y + 8.1 * s + 0.9 * s, z, 2.35 * s, 1.8 * s, 2.35 * s), 0xdfe6ee);
+  const t = 1.6 * s;
+  c.boxes.push({ minX: x - t, maxX: x + t, minZ: z - t, maxZ: z + t, maxY: y + 8.1 * s, minY: y + 3.6 * s });
 }
 
 function offCenter(x0: number, x1: number, z0: number, z1: number, x: number, z: number): [number, number] {
@@ -281,7 +284,7 @@ export function roofKit(c: Ctx, x0: number, x1: number, z0: number, z1: number, 
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, w = x1 - x0, d = z1 - z0;
   if (w < 6 || d < 6) return;
   if (kind === "res") {
-    if (r() < 0.45 && w > 9 && d > 9) waterTower(c, ...offCenter(x0, x1, z0, z1, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6)), y);
+    if (r() < (y > 24 ? 0.8 : 0.45) && w > 9 && d > 9) waterTower(c, ...offCenter(x0, x1, z0, z1, x0 + 3 + r() * (w - 6), z0 + 3 + r() * (d - 6)), y);
     if (r() < 0.6) bulkhead(c, x0 + 2.5, z1 - 2.5, y, 0x6e4636);
     acUnits(c, x0, x1, z0, z1, y, 1 + Math.floor(r() * 3));
     if (r() < 0.12 && w > 12 && d > 12) garden(c, x0 + 1, x1 - 1, z0 + 1, z1 - 1, y);
@@ -409,7 +412,8 @@ export function genHarlem(c: Ctx, b: Block) {
     const L = (b.z1 - b.z0) / n;
     for (let k = 0; k < n; k++) {
       const style = r() < 0.7 ? STYLE.brick : STYLE.limestone;
-      tenement(c, b, ax0, ax1, b.z0 + k * L, b.z0 + (k + 1) * L, 3 + Math.floor(r() * 4), style);
+      const nf = k !== 1 && r() < 0.75 ? 8 + Math.floor(r() * 4) : 3 + Math.floor(r() * 4);
+      tenement(c, b, ax0, ax1, b.z0 + k * L, b.z0 + (k + 1) * L, nf, style);
     }
   }
   const rx0 = b.x0 + d + 0.01, rx1 = b.x1 - d - 0.01;

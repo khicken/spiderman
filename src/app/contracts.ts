@@ -36,12 +36,14 @@ export type HeroPose =
   | "idle" | "run" | "sprint" | "air" | "dive" | "swing" | "zip" | "crouch" | "wall" | "flip" | "spin" | "kick" | "land"
   | "perch" | "launch" | "wings"
   | "punch1" | "punch2" | "punch3" | "punch4" | "uppercut" | "airPunch" | "dodge" | "webShoot" | "yank" | "throw" | "finisher" | "hurt" | "down"
-  | "wave" | "fistBump" | "selfie";
+  | "wave" | "fistBump" | "selfie" | "handshake" | "hug"
+  | "swim" | "backflip" | "corkscrew" | "split" | "takedown" | "counter" | "grabbed";
 
 export type Sfx =
   | "thwip" | "zip" | "land" | "bigLand" | "collect" | "checkpoint" | "hit" | "ko" | "whoosh" | "trick" | "complete" | "fail" | "start" | "levelUp" | "countdown" | "go" | "siren" | "ui"
   | "punch" | "punchHeavy" | "dodge" | "perfectDodge" | "spiderSense" | "webShot" | "webImpact" | "whiff" | "glide" | "finisher" | "hurt" | "heal" | "focusFull"
-  | "bossIntro" | "bossPhase" | "bossDefeat" | "cheer" | "gasp" | "photo" | "gunshot" | "rocket" | "explosion" | "shock" | "metal" | "fistBump" | "ping";
+  | "bossIntro" | "bossPhase" | "bossDefeat" | "cheer" | "gasp" | "photo" | "gunshot" | "rocket" | "explosion" | "shock" | "metal" | "fistBump" | "ping"
+  | "takedown" | "alert" | "unlock" | "shutter" | "charge";
 
 export type MusicState = "menu" | "explore" | "swing" | "combat" | "boss" | "race" | "stealth" | "victory";
 
@@ -53,7 +55,15 @@ export type GameEvent =
   | { type: "slowmo"; scale: number; duration: number }
   | { type: "hurt"; amount: number } // damage to the player, fraction of max health 0..1
   | { type: "penalty"; reason: string } // a civilian was endangered; costs XP
-  | { type: "music"; state: MusicState; duration: number }; // force a music state for a while (boss intro, victory)
+  | { type: "music"; state: MusicState; duration: number } // force a music state for a while (boss intro, victory)
+  | { type: "token"; amount: number; reason: string }; // suit tokens, spent in the suit menu
+
+// Modules with progress implement this. game.ts stores every snapshot under one localStorage key.
+// restore() gets what snapshot() returned in an earlier session, or garbage from an old version: validate it.
+export interface Saveable {
+  snapshot(): unknown;
+  restore(data: unknown): void;
+}
 
 // The player as other modules see it. player.ts implements it.
 export interface PlayerApi {
@@ -99,6 +109,9 @@ export type HudState = {
   prompts: { key: string; label: string }[];
   markers: Marker[];
   combo: number;
+  tokens: number;
+  clock: number; // time of day in hours, 0..24
+  stealth: null | { hidden: boolean; alert: number }; // set while unaware enemies are near; alert 0..1 is the highest suspicion
   progress: {
     level: number;
     levelProgress: number;

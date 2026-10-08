@@ -7,6 +7,7 @@ import { cartGeometry, dogMesh } from "./crowd-body";
 import { EMO, createEmotes } from "./crowd-emote";
 import { buildNav } from "./crowd-nav";
 import { ACC, RIG, personMaterial, personMesh } from "./crowd-person";
+import { SKY } from "./sky-state";
 import {
   ADULT, BLINK, BROW, BUMP, CH, CHAT, CHEER, COWER, CUSTOMER, DODGE, ELDER, FIVE, FLEE, FOLLOW, GREET, HUG, IDLE_CROSS, IDLE_PHONE,
   IDLE_POCKET, IDLE_SHIFT, JUMP, KID, LOOK, NONE, PHOTO, POINT, Ped, SELFIE, SHAKE, STAND, STUMBLE, SWAY, VENDOR, WALK, WATCH, WAVE, pose,
@@ -117,7 +118,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   const steamPos = new Float32Array(MAX_CARTS * 2 * STEAM * 3);
   const steamGeo = new THREE.BufferGeometry();
   steamGeo.setAttribute("position", new THREE.BufferAttribute(steamPos, 3).setUsage(THREE.DynamicDrawUsage));
-  const steam = new THREE.Points(steamGeo, new THREE.PointsMaterial({ size: 0.75, map: dot, color: 0xdfe6ee, transparent: true, opacity: 0.32, depthWrite: false }));
+  const steam = new THREE.Points(steamGeo, Object.assign(new THREE.PointsMaterial({ size: 0.75, map: dot, transparent: true, opacity: 0.3, depthWrite: false }), { color: SKY.steam }));
   steam.frustumCulled = false;
   group.add(steam);
 
@@ -125,7 +126,12 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   const flashLife = new Float32Array(MAX_FLASH);
   const flashGeo = new THREE.BufferGeometry();
   flashGeo.setAttribute("position", new THREE.BufferAttribute(flashPos, 3).setUsage(THREE.DynamicDrawUsage));
-  const flash = new THREE.Points(flashGeo, new THREE.PointsMaterial({ size: 1.6, map: dot, color: new THREE.Color(6, 6, 6.5), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  const flashMat = new THREE.PointsMaterial({ size: 1.6, map: dot, color: new THREE.Color(1.8, 1.8, 1.95), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+  // Cap at about 40 CSS px; size already carries the pixel ratio (1.6 * pr).
+  flashMat.onBeforeCompile = (s) => {
+    s.vertexShader = s.vertexShader.replace("#include <fog_vertex>", "gl_PointSize = min(gl_PointSize, size * 25.0);\n#include <fog_vertex>");
+  };
+  const flash = new THREE.Points(flashGeo, flashMat);
   flash.frustumCulled = false;
   group.add(flash);
 
@@ -1259,7 +1265,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     const reason = ["Fist bump", "High five", "Selfie with a fan", "Handshake", "Hug from a little fan"][k];
     return {
       events: [{ type: "xp", amount: 10, reason }],
-      pose: k === BUMP || k === SHAKE ? "fistBump" : k === FIVE ? "wave" : k === SELFIE ? "selfie" : "crouch",
+      pose: k === BUMP ? "fistBump" : k === SHAKE ? "handshake" : k === FIVE ? "wave" : k === SELFIE ? "selfie" : "hug",
     };
   };
 

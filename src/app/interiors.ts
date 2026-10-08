@@ -292,6 +292,9 @@ export function createInteriors(scene: THREE.Scene, city: City, keep: THREE.Obje
     get inside() {
       return room !== null;
     },
+    get door() {
+      return room ? entered?.pos ?? null : null;
+    },
     reset(player: Player) {
       if (!room) return;
       room.group.visible = false;

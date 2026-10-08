@@ -8,6 +8,7 @@ const FOV_REST = 60;
 const FOV_FAST = 78;
 const ROLL_MAX = 6 * (Math.PI / 180);
 const BASE_SENS = 0.0022;
+const FREE_RANGE = 30;
 
 export type CameraTarget = {
   pos: THREE.Vector3;
@@ -29,6 +30,10 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
   let invertY = false;
   let ready = false;
   let menu = 1;
+  let free = false;
+  let freeFov = FOV_REST;
+  const freePos = new THREE.Vector3();
+  const flyMove = new THREE.Vector3();
   const offset = new THREE.Vector3();
   const velLP = new THREE.Vector3();
   const wallN = new THREE.Vector3();
@@ -55,10 +60,33 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
       yaw -= dx * k;
       pitch = THREE.MathUtils.clamp(pitch - dy * k * (invertY ? -1 : 1), -1.25, 0.9);
     },
+    get freeFov() {
+      return freeFov;
+    },
+    setFree(on: boolean) {
+      if (on && !free) {
+        freePos.copy(camera.position);
+        freeFov = fov;
+      }
+      free = on;
+    },
+    setFov(v: number) {
+      freeFov = THREE.MathUtils.clamp(v, 20, 100);
+    },
+    fly(forward: number, side: number, up: number) {
+      look.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+      right.set(-look.z, 0, look.x).normalize();
+      flyMove.copy(look).multiplyScalar(forward).addScaledVector(right, side).addScaledVector(UP, up);
+      freePos.add(flyMove);
+    },
     addShake(s: number) {
       shake = Math.max(shake, s);
     },
     update(dt: number, p: CameraTarget, playing: boolean, mouseIdle: number) {
+      if (free) {
+        updateFree(p);
+        return;
+      }
       const speed = p.vel.length();
       const flatSpeed = Math.hypot(p.vel.x, p.vel.z);
       if (!playing) yaw += dt * 0.07;
@@ -126,6 +154,24 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
       camera.fov = fov;
       camera.updateProjectionMatrix();
     },
+  };
+  const updateFree = (p: CameraTarget) => {
+    focus.copy(p.pos).addScaledVector(UP, 0.9);
+    dir.copy(freePos).sub(focus);
+    if (dir.length() > FREE_RANGE) dir.setLength(FREE_RANGE);
+    const len = dir.length();
+    if (len > 1e-3) {
+      dir.divideScalar(len);
+      const hit = raycast(city, focus, dir, len + 0.4);
+      freePos.copy(focus).addScaledVector(dir, hit >= 0 ? Math.max(0.3, Math.min(len, hit - 0.4)) : len);
+    }
+    if (freePos.y < 0.4) freePos.y = 0.4;
+    camera.position.copy(freePos);
+    look.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+    camera.up.copy(UP);
+    camera.lookAt(tmp.copy(freePos).add(look));
+    camera.fov = freeFov;
+    camera.updateProjectionMatrix();
   };
   return rig;
 }

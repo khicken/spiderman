@@ -2,16 +2,20 @@ import * as THREE from "three";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
-const glsl = (v: THREE.Vector3 | THREE.Color) => `vec3(${[...v.toArray()].map((x) => x.toFixed(4)).join(", ")})`;
+// Shared typed arrays: UniformsUtils.clone copies them by reference, so every fog material sees updates.
+export const FOG_SUN = new Float32Array([0, -1, 1]);
+export const FOG_WARM = new Float32Array([0.85, 0.64, 0.49]);
 
 // Patches the global fog chunks, so every material with fog gets height fog and sun tint.
-export function patchFog(sunDir: THREE.Vector3, warm: THREE.Color) {
+export function patchFog() {
   const C = THREE.ShaderChunk;
   if (C.fog_fragment.includes("vFogPos")) return;
-  const sun = new THREE.Vector3(sunDir.x, 0, sunDir.z).normalize();
+  const extra = { uFogSun: { value: FOG_SUN }, uFogWarm: { value: FOG_WARM } };
+  Object.assign(THREE.UniformsLib.fog, extra);
+  for (const sh of Object.values(THREE.ShaderLib)) if ("fogColor" in sh.uniforms) Object.assign(sh.uniforms, extra);
   C.fog_pars_vertex = "#ifdef USE_FOG\n varying float vFogDepth;\n varying vec3 vFogPos;\n#endif";
   C.fog_vertex = "#ifdef USE_FOG\n vFogDepth = - mvPosition.z;\n vFogPos = transpose( mat3( viewMatrix ) ) * mvPosition.xyz;\n#endif";
-  C.fog_pars_fragment = "#ifdef USE_FOG\n uniform vec3 fogColor;\n varying float vFogDepth;\n varying vec3 vFogPos;\n #ifdef FOG_EXP2\n  uniform float fogDensity;\n #else\n  uniform float fogNear;\n  uniform float fogFar;\n #endif\n#endif";
+  C.fog_pars_fragment = "#ifdef USE_FOG\n uniform vec3 fogColor;\n uniform vec3 uFogSun;\n uniform vec3 uFogWarm;\n varying float vFogDepth;\n varying vec3 vFogPos;\n #ifdef FOG_EXP2\n  uniform float fogDensity;\n #else\n  uniform float fogNear;\n  uniform float fogFar;\n #endif\n#endif";
   C.fog_fragment = /* glsl */ `
 #ifdef USE_FOG
   #ifdef FOG_EXP2
@@ -22,8 +26,8 @@ export function patchFog(sunDir: THREE.Vector3, warm: THREE.Color) {
     float fogFactor = smoothstep( fogNear, fogFar, vFogDepth * mix( 0.55, 1.12, fogH ) );
     fogFactor = max( fogFactor, smoothstep( fogFar * 0.82, fogFar, vFogDepth ) );
   #endif
-  float fogSun = pow( max( dot( normalize( vFogPos.xz + 1e-4 ), ${glsl(sun)}.xz ), 0.0 ), 6.0 );
-  gl_FragColor.rgb = mix( gl_FragColor.rgb, mix( fogColor, ${glsl(warm)}, fogSun * 0.6 ), fogFactor );
+  float fogSun = pow( max( dot( normalize( vFogPos.xz + 1e-4 ), uFogSun.xy ), 0.0 ), 6.0 ) * uFogSun.z;
+  gl_FragColor.rgb = mix( gl_FragColor.rgb, mix( fogColor, uFogWarm, fogSun * 0.6 ), fogFactor );
 #endif`;
 }
 
@@ -83,6 +87,7 @@ const _v = new THREE.Vector3();
 const _f = new THREE.Vector3();
 
 export class FinalPass extends ShaderPass {
+  glow = 1;
   constructor(private sunDir: THREE.Vector3) {
     super(FinalShader);
   }
@@ -92,7 +97,7 @@ export class FinalPass extends ShaderPass {
     u.uAspect.value = camera.aspect;
     camera.getWorldDirection(_f);
     const facing = _f.dot(this.sunDir);
-    u.uSunGlow.value = THREE.MathUtils.smoothstep(facing, 0.35, 0.85);
+    u.uSunGlow.value = THREE.MathUtils.smoothstep(facing, 0.35, 0.85) * this.glow;
     if (facing > 0) {
       _v.copy(camera.position).addScaledVector(this.sunDir, 1000).project(camera);
       u.uSunUv.value.set(_v.x * 0.5 + 0.5, _v.y * 0.5 + 0.5);

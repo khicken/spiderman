@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { HALF, PERIOD, STREET, rng, type Box, type City } from "./city";
-import type { GameEvent, Input, Marker, Objective, PlayerApi } from "./contracts";
+import type { GameEvent, Input, Marker, Objective, PlayerApi, Saveable } from "./contracts";
 import * as A from "./activities-models";
 import { raceStarts, taskBoard } from "./missions";
 
@@ -45,6 +45,13 @@ const REQUESTS = [
 const LIGHT_SEG = 14;
 const LOCK_DIST = 7;
 const AVOID_R = 40;
+const SIGNAL_COOL = 120;
+const SIGNAL_GAP = 45;
+const BEAM_K = 0.45;
+const BULB_PX = 18;
+const TOKENS = { photo: 1, cache: 1, request: 1, pigeons: 2, district: 3 };
+const medalTokens = (m: number) => (m < 3 ? 3 - m : 0);
+const bools = (v: unknown, n: number) => Array.from({ length: n }, (_, i) => Array.isArray(v) && v[i] === true);
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -398,7 +405,11 @@ export function createActivities(scene: THREE.Scene, city: City) {
   bulbGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * LIGHT_SEG * 3), 3));
   bulbGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(3 * LIGHT_SEG * 3), 3));
   const dot = A.dotTexture();
-  const bulbs = new THREE.Points(bulbGeo, new THREE.PointsMaterial({ size: 2.2, map: dot, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  const bulbMat = new THREE.PointsMaterial({ size: 1.2, map: dot, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  bulbMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace("#include <fog_vertex>", `#include <fog_vertex>\n\tgl_PointSize = min(gl_PointSize, ${BULB_PX.toFixed(1)});`);
+  };
+  const bulbs = new THREE.Points(bulbGeo, bulbMat);
   bulbs.frustumCulled = false;
   bulbs.visible = false;
   group.add(wire, bulbs);
@@ -420,9 +431,16 @@ export function createActivities(scene: THREE.Scene, city: City) {
   let lastY = 0;
   let lastT = 0;
   let player0: THREE.Vector3 | null = null;
+  const cacheCool = caches.map(() => 0);
+  let signalAt = -Infinity;
+  let distT = 0;
+  const districtsDone = new Set<string>();
   const ev: GameEvent[] = [];
   const toast = (title: string, text?: string) => ev.push(text ? { type: "toast", title, text } : { type: "toast", title });
   const xp = (amount: number, reason: string) => ev.push({ type: "xp", amount, reason });
+  const token = (amount: number, reason: string) => {
+    if (amount > 0) ev.push({ type: "token", amount, reason });
+  };
   const sfx = (name: Extract<GameEvent, { type: "sfx" }>["name"], pan = 0, volume = 1) => ev.push({ type: "sfx", name, pan, volume });
 
   const begin = (kind: Kind, i: number, t: number) => {
@@ -492,6 +510,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
     sfx("cheer", 0, 0.6);
     toast("REQUEST COMPLETE", REQUESTS[q.type].title);
     xp(REQUESTS[q.type].xp, REQUESTS[q.type].title);
+    token(TOKENS.request, REQUESTS[q.type].title);
     finish(t, null);
   };
   const failRequest = (t: number, why: string) => {
@@ -516,6 +535,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
       ev.push({ type: "music", state: "victory", duration: 4 });
       if (medal < c.best) {
         xp(MEDAL_XP[medal] - (c.best < 3 ? MEDAL_XP[c.best] : 0), `${c.name} ${MEDALS[medal].toLowerCase()}`);
+        token(medalTokens(medal) - medalTokens(c.best), c.name);
         c.best = medal;
       } else if (first) xp(100, c.name);
     } else {
@@ -532,6 +552,31 @@ export function createActivities(scene: THREE.Scene, city: City) {
     const R = Math.min(b.r0 + tau * 1.3, 42);
     const y = f.home.y + 1 + Math.min(tau * 5, 16 + b.h0) + 3 * Math.sin(tau * 0.9 + b.phase);
     return out.set(f.home.x + Math.cos(a) * R, y, f.home.z + Math.sin(a) * R);
+  };
+
+  const districtCounts = () => {
+    const done = districts.map(() => [0, 0]);
+    for (const it of items) {
+      done[it.district][1]++;
+      if (it.done) done[it.district][0]++;
+    }
+    for (const sp of taskBoard.missionSpots) {
+      const d = districtOf(sp.x, sp.z);
+      done[d][1]++;
+      if (sp.done) done[d][0]++;
+    }
+    return done;
+  };
+  const checkDistricts = () => {
+    if (!taskBoard.missionSpots.length) return;
+    const done = districtCounts();
+    districts.forEach((d, i) => {
+      if (districtsDone.has(d.name) || !done[i][1] || done[i][0] < done[i][1]) return;
+      districtsDone.add(d.name);
+      sfx("complete");
+      toast("DISTRICT COMPLETE", d.name);
+      token(TOKENS.district, d.name);
+    });
   };
 
   const update = (dt: number, t: number, input: Input, player: PlayerApi, camera: THREE.Camera): GameEvent[] => {
@@ -567,19 +612,21 @@ export function createActivities(scene: THREE.Scene, city: City) {
       sfx("photo");
       toast("PHOTO OP", ph.name);
       xp(150, `Photo: ${ph.name}`);
+      token(TOKENS.photo, ph.name);
       photoNear = -1;
       photoFacing = false;
       stillT = 0;
     }
 
     if (free) {
-      for (let i = 0; i < caches.length && !act; i++) {
+      for (let i = 0; i < caches.length && !act && !taskBoard.busy && t - signalAt > SIGNAL_GAP; i++) {
         const c = caches[i];
-        if (!c.item.done && P.distanceTo(c.box) < CACHE_R * 0.9 && !(lock && lock === c.box)) {
+        if (!c.item.done && t >= cacheCool[i] && P.distanceTo(c.box) < CACHE_R * 0.9 && !(lock && lock === c.box)) {
           begin("cache", i, t);
           zoneR = CACHE_R;
+          signalAt = t;
           sfx("spiderSense");
-          toast("SIGNAL DETECTED", "Track the signal to the hidden cache");
+          toast("SIGNAL DETECTED", "Track the signal to the cache");
           pingText = "Press V to ping the signal";
         }
       }
@@ -613,6 +660,10 @@ export function createActivities(scene: THREE.Scene, city: City) {
       }
     }
 
+    if (act?.kind === "cache" && taskBoard.mission) {
+      cacheCool[act.i] = t + SIGNAL_COOL;
+      finish(t, null);
+    }
     const a = act as Active;
     if (a?.kind === "cache") {
       const c = caches[a.i];
@@ -634,10 +685,14 @@ export function createActivities(scene: THREE.Scene, city: City) {
         sfx("complete");
         toast("CACHE FOUND", "Signal hunt complete");
         xp(200, "Signal cache");
+        token(TOKENS.cache, "Signal cache");
         finish(t, null);
       } else if (d > CACHE_R * 1.6) {
-        sfx("fail");
-        toast("SIGNAL LOST");
+        if (!taskBoard.busy) {
+          sfx("fail");
+          toast("SIGNAL LOST");
+        }
+        cacheCool[a.i] = t + SIGNAL_COOL;
         finish(t, c.box);
       }
     } else if (a?.kind === "request") {
@@ -727,6 +782,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
         sfx("complete");
         toast("FLOCK CAUGHT", "All pigeons are safe");
         xp(200, "Pigeons");
+        token(TOKENS.pigeons, "Pigeons");
         finish(t, null);
       } else if (flockT <= 0) {
         sfx("fail");
@@ -777,6 +833,11 @@ export function createActivities(scene: THREE.Scene, city: City) {
     }
 
     taskBoard.activity = act !== null && act.kind !== "cache";
+    distT -= dt;
+    if (distT <= 0) {
+      distT = 0.5;
+      checkDistricts();
+    }
     draw(t, P, player);
     return ev;
   };
@@ -787,7 +848,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
     return _m.compose(_p.set(x, y, z), _q.setFromEuler(_e), _s.setScalar(s));
   };
   const beam = (x: number, y: number, z: number, rad: number, rr: number, g: number, b: number, t: number) => {
-    const fade = clamp((Math.hypot(x - _cam.x, z - _cam.z) - rad - 2) / 60, 0, 1) ** 2;
+    const fade = BEAM_K * clamp((Math.hypot(x - _cam.x, z - _cam.z) - rad - 2) / 60, 0, 1) ** 2;
     rr *= fade;
     g *= fade;
     b *= fade;
@@ -869,7 +930,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
         for (let k = 0; k < 3; k++) {
           const p = q.pts[k];
           const ok = (rq.fixed >> k) & 1;
-          fuses.add(placeYaw(p.x, p.y, p.z, k, 1.8), ok ? 0.3 : 4, ok ? 3 : 1.6, ok ? 0.6 : 0.2);
+          fuses.add(placeYaw(p.x, p.y, p.z, k, 1.8), ok ? 0.15 : 1.6, ok ? 1.2 : 0.7, ok ? 0.3 : 0.1);
           if (!ok) {
             const fl = Math.random() < 0.3 ? 2 : 0.6;
             halos.add(billboard(p.x, p.y + 0.5, p.z, 1.2 + fl * 0.4), 3 * fl, 1.8 * fl, 0.4 * fl);
@@ -1072,20 +1133,12 @@ export function createActivities(scene: THREE.Scene, city: City) {
       }
     }
 
-    const done = districts.map(() => [0, 0]);
+    const done = districtCounts();
     const completed: Record<string, number> = { photos: 0, caches: 0, requests: 0, pigeons: 0, challenges: 0 };
     const plural = (k: Kind) => (k === "pigeon" ? "pigeons" : k === "cache" ? "caches" : `${k}s`);
     for (const it of items) {
-      done[it.district][1]++;
       completed[`total:${plural(it.kind)}`] = (completed[`total:${plural(it.kind)}`] ?? 0) + 1;
-      if (!it.done) continue;
-      done[it.district][0]++;
-      completed[plural(it.kind)]++;
-    }
-    for (const sp of taskBoard.missionSpots) {
-      const d = districtOf(sp.x, sp.z);
-      done[d][1]++;
-      if (sp.done) done[d][0]++;
+      if (it.done) completed[plural(it.kind)]++;
     }
     return {
       objective,
@@ -1111,11 +1164,44 @@ export function createActivities(scene: THREE.Scene, city: City) {
     dot.dispose();
   };
 
+  const save: Saveable = {
+    snapshot: () => ({
+      v: 1,
+      photos: photos.map((p) => p.item.done),
+      caches: caches.map((c) => c.item.done),
+      requests: reqs.map((q) => q.item.done),
+      pigeons: flocks.map((f) => f.birds.map((b) => b.caught)),
+      flocks: flocks.map((f) => f.item.done),
+      challenges: chals.map((c) => ({ name: c.name, done: c.item.done, best: c.best })),
+      districts: [...districtsDone],
+    }),
+    restore: (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      bools(d.photos, photos.length).forEach((v, i) => (photos[i].item.done = v));
+      bools(d.caches, caches.length).forEach((v, i) => (caches[i].item.done = v));
+      bools(d.requests, reqs.length).forEach((v, i) => (reqs[i].item.done = v));
+      bools(d.flocks, flocks.length).forEach((v, i) => (flocks[i].item.done = v));
+      const birds = Array.isArray(d.pigeons) ? d.pigeons : [];
+      flocks.forEach((f, i) => bools(birds[i], f.birds.length).forEach((v, k) => (f.birds[k].caught = v || f.item.done)));
+      const cs = Array.isArray(d.challenges) ? d.challenges : [];
+      for (const c of chals) {
+        const e = cs.find((x): x is Record<string, unknown> => !!x && typeof x === "object" && (x as Record<string, unknown>).name === c.name);
+        c.item.done = e?.done === true;
+        c.best = typeof e?.best === "number" && [0, 1, 2, 3].includes(e.best) ? e.best : 3;
+      }
+      districtsDone.clear();
+      const names = new Set(districts.map((x) => x.name));
+      if (Array.isArray(d.districts)) for (const n of d.districts) if (typeof n === "string" && names.has(n)) districtsDone.add(n);
+    },
+  };
+
   return {
     update,
     hud,
     setDetail,
     dispose,
+    ...save,
     // A signal hunt runs in the background, so it does not take the objective slot from a mission.
     activeSince: () => (act && act.kind !== "cache" ? act.t0 : null),
     debug: { photos, caches, reqs, flocks, chals, items, districts, group, birdPos, state: () => ({ act, rq, ch }) },

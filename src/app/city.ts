@@ -228,7 +228,7 @@ export function createCity(seed = 7) {
 
   const parkB = [blockAt(5, 2), blockAt(8, 4)];
   for (const t of c.trees) {
-    if (t.s > 1.2 && t.x > parkB[0].x0 && t.x < parkB[1].x1 && t.z > parkB[0].z0 && t.z < parkB[1].z1) c.anchors.push(new THREE.Vector3(t.x, 5.6 * t.s, t.z));
+    if (t.s > 1.2 && t.x > parkB[0].x0 && t.x < parkB[1].x1 && t.z > parkB[0].z0 && t.z < parkB[1].z1) t.anchor = true;
   }
   const loads = c.loads;
   const [cables, hooks] = loadMeshes(loads.length, solidMat);
@@ -344,6 +344,7 @@ export function createCity(seed = 7) {
     landmarks: c.landmarks,
     anchors: c.anchors,
     districts,
+    bounds: { minX: lineAt(-OUT) - 10, maxX: FAR + 4 * PERIOD + 10, minZ: lineAt(-OUT) - 10, maxZ: lineAt(BLOCKS + OUT) + 10 },
     updateTraffic,
     setTraffic,
     carsNear: traffic.near,

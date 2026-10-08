@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { Bucket, UNIT, beam, box, cyl, mat } from "./city-kit";
 import { IRON, SNOW, face, fbox, fquad, type Block, type Ctx, type Face } from "./city-build";
 import { bakeCar, signal, type ModelName } from "./city-cars";
+import { SKY } from "./sky-state";
 
 const pick = <T,>(r: () => number, a: readonly T[]) => a[Math.floor(r() * a.length)];
 const LUMP = new THREE.SphereGeometry(1, 6, 2, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -237,9 +238,11 @@ export function treeMeshes(c: Ctx, tile: number, origin: number) {
   const r = c.r;
   const geo = new Bucket();
   const lights: number[] = [];
+  const top = new THREE.Vector3(0, -1, 0);
   const bark = 0x2e2420;
   const branch = (x: number, y: number, z: number, dx: number, dy: number, dz: number, len: number, rad: number, depth: number) => {
     const ex = x + dx * len, ey = y + dy * len, ez = z + dz * len;
+    if (depth === 1 && ey > top.y) top.set(ex, ey, ez);
     beam(geo, x, y, z, ex, ey, ez, rad, bark, 1, undefined, depth === 0 ? UNIT.tube : UNIT.prism);
     if (depth < 2) beam(geo, x, y + rad * 0.9, z, ex, ey + rad * 0.7, ez, rad * 0.6, SNOW, 1, undefined, UNIT.prism);
     if (depth >= 1) {
@@ -273,8 +276,9 @@ export function treeMeshes(c: Ctx, tile: number, origin: number) {
   const meshes = [...tiles.values()].map((list) => {
     const mesh = new THREE.InstancedMesh(tree, treeMat, list.length);
     list.forEach((t, i) => {
-      const m = mat(t.x, 0, t.z, t.s, t.s * (0.9 + r() * 0.3), t.s, r() * Math.PI * 2);
+      const m = mat(t.x, 0, t.z, t.w ?? t.s, t.s * (0.9 + r() * 0.3), t.w ?? t.s, r() * Math.PI * 2);
       mesh.setMatrixAt(i, m);
+      if (t.anchor) c.anchors.push(top.clone().applyMatrix4(m));
       if (!t.lit) return;
       const multi = r() < 0.4;
       for (let k = 0; k < lights.length; k += 3) {
@@ -320,6 +324,18 @@ export function parkBlock(c: Ctx, b: Block, park: Bucket, pond: boolean) {
       const x = F.ox + F.dx * a - F.nx * 0.25, z = F.oz + F.dz * a - F.nz * 0.25;
       box(c.solid, x, 0.8, z, 0.7, 1.6, 0.7, 0x6f6a62);
       c.glow.add(UNIT.sphere, mat(x, 1.95, z, 0.28, 0.28, 0.28), LAMP, 3.5);
+    }
+  }
+  // Old elms along the drives give swing lines over the park.
+  for (let f = 0; f < 4; f++) {
+    const F = face(f, b.x0, b.x1, b.z0, b.z1);
+    for (const a of [10, 33, 50]) {
+      const s = 6 + r() * 1.2;
+      const w = s * 0.5;
+      const x = F.ox + F.dx * a - F.nx * 6, z = F.oz + F.dz * a - F.nz * 6;
+      c.trees.push({ x, z, s, lit: false, w });
+      const t = 0.3 * w;
+      c.boxes.push({ minX: x - t, maxX: x + t, minZ: z - t, maxZ: z + t, maxY: 3.4 * s * 0.9 });
     }
   }
   const ring = 18;
@@ -409,18 +425,20 @@ export function steam(c: Ctx, vents: { x: number; z: number; stack: boolean }[],
       }`,
     fragmentShader: `
       uniform sampler2D uMap;
+      uniform vec3 uSteam;
       varying float vA;
       #include <fog_pars_fragment>
       void main() {
         float a = texture2D(uMap, gl_PointCoord).a * vA;
         if (a < 0.01) discard;
-        gl_FragColor = vec4(vec3(0.86, 0.85, 0.9), a);
+        gl_FragColor = vec4(vec3(0.86, 0.85, 0.9) * uSteam, a);
         #include <fog_fragment>
       }`,
     transparent: true,
     depthWrite: false,
     fog: true,
   });
+  mat.uniforms.uSteam = { value: SKY.steam };
   const points = new THREE.Points(g, mat);
   points.frustumCulled = false;
   const size = new THREE.Vector2();

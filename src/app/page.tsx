@@ -5,7 +5,9 @@ import type { HudState } from "./contracts";
 import { SUITS } from "./hero";
 import { QUALITIES, startGame, type Quality, type Settings, type UiEvent } from "./game";
 import { Hud, type Pop } from "./ui-hud";
-import { ControlsPanel, Menu, SettingsPanel, type MenuItem, type Panel } from "./ui-menu";
+import { ControlsPanel, Menu, SettingsPanel, suitCost, type MenuItem, type Panel, type Wallet } from "./ui-menu";
+import { PhotoPanel } from "./ui-photo";
+import type { Photo } from "./photo";
 import { JournalPanel, MapPanel } from "./ui-map";
 import { Tips } from "./ui-tips";
 
@@ -13,7 +15,8 @@ type Game = ReturnType<typeof startGame>;
 type Screen = "title" | "playing" | "pause";
 
 const KEY = "spiderman-settings";
-const POP_MS = { toast: 2800, penalty: 2800, xp: 1900, hurt: 700 } as const;
+const POP_MS = { toast: 2800, penalty: 2800, xp: 1900, hurt: 700, token: 2200 } as const;
+const TOKEN_TOAST = /^\+(\d+) TOKENS?$/;
 
 function loadSettings(): Settings {
   const s: Settings = { quality: "medium", suit: SUITS[0].id, muted: false, volume: 0.8, sensitivity: 1, invertY: false };
@@ -43,6 +46,7 @@ export default function SpidermanPage() {
   const [started, setStarted] = useState(false);
   const [touch, setTouch] = useState(false);
   const [pops, setPops] = useState<Pop[]>([]);
+  const [photo, setPhoto] = useState<Photo | null>(null);
 
   const setScreen = (s: Screen) => {
     screenRef.current = s;
@@ -56,12 +60,13 @@ export default function SpidermanPage() {
     let id = 0;
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const onEvent = (e: UiEvent) => {
-      const pop = { ...e, id: ++id } as Pop;
-      setPops((list) => [...list.filter((p) => p.type !== e.type || e.type === "xp").slice(-6), pop]);
+      const tok = e.type === "toast" ? TOKEN_TOAST.exec(e.title) : null;
+      const pop = (tok && e.type === "toast" ? { type: "token", amount: Number(tok[1]), reason: e.text ?? "", id: ++id } : { ...e, id: ++id }) as Pop;
+      setPops((list) => [...list.filter((p) => p.type !== pop.type || pop.type === "xp").slice(-6), pop]);
       const h = setTimeout(() => {
         timers.delete(h);
         setPops((list) => list.filter((p) => p.id !== pop.id));
-      }, POP_MS[e.type]);
+      }, POP_MS[pop.type]);
       timers.add(h);
     };
     const onHud = (h: HudState) => {
@@ -73,9 +78,16 @@ export default function SpidermanPage() {
         setPanel(null);
       }
     };
-    const game = startGame(canvasRef.current!, onHud, onEvent, initial);
+    const game: Game = startGame(canvasRef.current!, onHud, onEvent, initial);
     gameRef.current = game;
+    const offPhoto = game.photo.onChange((on) => setPhoto(on ? game.photo : null));
+    const worn = SUITS.find((x) => x.id === initial.suit);
+    if (worn && suitCost(worn) > 0 && !game.unlocks.owned.has(worn.id)) {
+      game.setSettings({ suit: SUITS[0].id });
+      setSettingsState((s) => (s ? { ...s, suit: SUITS[0].id } : s));
+    }
     return () => {
+      offPhoto?.();
       timers.forEach(clearTimeout);
       game.dispose();
       gameRef.current = null;
@@ -132,14 +144,21 @@ export default function SpidermanPage() {
           { id: "controls", label: "Controls", onSelect: () => toggle("controls") },
         ];
 
+  const unlocks = gameRef.current?.unlocks;
+  const wallet: Wallet | undefined = unlocks && {
+    tokens: unlocks.tokens,
+    owned: (id) => unlocks.owned.has(id),
+    buy: (id) => unlocks.buy(id),
+  };
+
   const showVitals = !!hud && (hud.inCombat || hud.health < 0.999 || performance.now() - combatAt.current < 5000);
 
   return (
     <main className="fixed inset-0 select-none overflow-hidden bg-black text-white">
       <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" />
 
-      {screen === "playing" && hud && <Hud h={hud} pops={pops} showVitals={showVitals} />}
-      {screen === "playing" && hud && <Tips h={hud} />}
+      {screen === "playing" && hud && !photo && <Hud h={hud} pops={pops} showVitals={showVitals} tip={<Tips h={hud} />} />}
+      {screen === "playing" && photo && <PhotoPanel photo={photo} />}
 
       {screen !== "playing" && (
         <div className={`absolute inset-0 overflow-y-auto ${screen === "pause" ? "bg-black/45 backdrop-blur-md" : ""}`}>
@@ -163,7 +182,7 @@ export default function SpidermanPage() {
             </div>
             {panel && settings && (
               <div key={panel} className={`w-full ${panel === "map" ? "lg:max-w-[880px]" : "lg:max-w-[680px]"}`}>
-                {panel === "settings" && <SettingsPanel s={settings} set={update} onClose={() => setPanel(null)} />}
+                {panel === "settings" && <SettingsPanel s={settings} set={update} onClose={() => setPanel(null)} wallet={wallet} />}
                 {panel === "controls" && <ControlsPanel onClose={() => setPanel(null)} />}
                 {panel === "map" && hud && <MapPanel h={hud} onClose={() => setPanel(null)} />}
                 {panel === "journal" && hud && <JournalPanel h={hud} onClose={() => setPanel(null)} />}

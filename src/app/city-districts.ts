@@ -76,11 +76,13 @@ export function genChinatown(c: Ctx, b: Block) {
   for (const L of lots(b, 16, 7, 12, r)) {
     const style = pick(r, [STYLE.painted, STYLE.painted, STYLE.brick, STYLE.tanbrick]);
     const st = FACADES[style];
-    const nf = 3 + Math.floor(r() * 5);
+    const sf0 = streetFaces(b, L.x0, L.x1, L.z0, L.z1);
+    const corner = (sf0 & (sf0 - 1)) !== 0;
+    const nf = (corner && r() < 0.8) || r() < 0.2 ? 8 + Math.floor(r() * 5) : 3 + Math.floor(r() * 5);
     const h = floors(style, SHOP_H, nf);
     const tint = style === STYLE.painted ? new THREE.Color(pick(r, PAINTS)) : new THREE.Color().setHSL(0.05, 0.1, 0.9 + r() * 0.15);
     mass(c, L.x0, L.x1, L.z0, L.z1, 0, h, { style, tint, shop: r() < 0.5 ? 0 : 1, vBase: SHOP_H, parapet: null });
-    const sf = streetFaces(b, L.x0, L.x1, L.z0, L.z1);
+    const sf = sf0;
     cornice(c, L.x0, L.x1, L.z0, L.z1, h + 0.8, sf, pick(r, [0x2a2a2c, 0x7a2a1e, 0x1f5a3a, 0x6b5c4c]), 0.6, 0.9);
     for (let f = 0; f < 4; f++) {
       if (!(sf & (1 << f))) continue;
@@ -100,7 +102,7 @@ export function genChinatown(c: Ctx, b: Block) {
 export function genGreenwich(c: Ctx, b: Block) {
   const r = c.r;
   const d = 14;
-  const corner = r() < 0.6;
+  const corner = r() < 0.95;
   const cw = corner ? 12 : 0;
   rowHouses(c, b, b.x0 + cw, b.x1 - cw, b.z0, b.z0 + d, 0);
   rowHouses(c, b, b.x0 + cw, b.x1 - cw, b.z1 - d, b.z1, 2);
@@ -108,7 +110,7 @@ export function genGreenwich(c: Ctx, b: Block) {
   rowHouses(c, b, b.x1 - d, b.x1, b.z0 + d + 0.02, b.z1 - d - 0.02, 1);
   if (corner) {
     for (const [x0, x1, z0, z1] of [[b.x0, b.x0 + cw - 0.02, b.z0, b.z0 + d], [b.x1 - cw + 0.02, b.x1, b.z0, b.z0 + d], [b.x0, b.x0 + cw - 0.02, b.z1 - d, b.z1], [b.x1 - cw + 0.02, b.x1, b.z1 - d, b.z1]]) {
-      if (r() < 0.75) tenement(c, b, x0, x1, z0, z1, 3 + Math.floor(r() * 3), pick(r, [STYLE.brick, STYLE.painted, STYLE.tanbrick]));
+      if (r() < 0.9) tenement(c, b, x0, x1, z0, z1, r() < 0.9 ? 8 + Math.floor(r() * 4) : 3 + Math.floor(r() * 3), pick(r, [STYLE.brick, STYLE.painted, STYLE.tanbrick]));
       else rowHouses(c, b, x0, x1, z0, z1, z0 <= b.z0 ? 0 : 2);
     }
   }
@@ -119,7 +121,9 @@ export function genHellsKitchen(c: Ctx, b: Block) {
   const r = c.r;
   for (const L of lots(b, 17, 8, 14, r)) {
     const style = pick(r, [STYLE.brick, STYLE.brick, STYLE.painted, STYLE.tanbrick, STYLE.brownstone]);
-    tenement(c, b, L.x0, L.x1, L.z0, L.z1, 4 + Math.floor(r() * 4), style === STYLE.brownstone ? STYLE.brick : style);
+    const sf = streetFaces(b, L.x0, L.x1, L.z0, L.z1);
+    const tall = ((sf & (sf - 1)) !== 0 && r() < 0.8) || r() < 0.25;
+    tenement(c, b, L.x0, L.x1, L.z0, L.z1, tall ? 8 + Math.floor(r() * 5) : 4 + Math.floor(r() * 4), style === STYLE.brownstone ? STYLE.brick : style);
     const F = face(L.front, L.x0, L.x1, L.z0, L.z1);
     if (r() < 0.07) sidewalkShed(c, F, 0.3, F.len - 0.3);
     else if (r() < 0.05) scaffold(c, F, 0.5, F.len - 0.5, 0, 12, pick(r, [0x2f6a3a, 0x2a4f8a]));
@@ -284,7 +288,7 @@ export function genLES(c: Ctx, b: Block) {
   tower(c, b.x0 + 4, tx1 - 4, b.z0 + 6, b.z1 - 6, ph, 70 + r() * 90, pick(r, [STYLE.modern, STYLE.greenglass, STYLE.modern, STYLE.glass]), pick(r, ["slab", "octo", "round", "slant"] as TowerKind[]));
   if (half) {
     for (const [z0, z1] of [[b.z0, (b.z0 + b.z1) / 2 - 0.2], [(b.z0 + b.z1) / 2 + 0.2, b.z1]]) {
-      tenement(c, b, (b.x0 + b.x1) / 2 + 0.3, b.x1, z0, z1, 4 + Math.floor(r() * 3), pick(r, [STYLE.brick, STYLE.painted]));
+      tenement(c, b, (b.x0 + b.x1) / 2 + 0.3, b.x1, z0, z1, r() < 0.7 ? 8 + Math.floor(r() * 4) : 4 + Math.floor(r() * 3), pick(r, [STYLE.brick, STYLE.painted]));
     }
   }
 }

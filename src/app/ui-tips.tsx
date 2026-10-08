@@ -57,14 +57,14 @@ export function Tips({ h }: { h: HudState }) {
 
   if (!tip) return null;
   return (
-    <div key={tip.id} className="panel-in pointer-events-none absolute left-4 top-[72px] max-w-[min(340px,calc(100%-32px))] sm:left-6">
+    <div key={tip.id} className="panel-in pointer-events-none w-full" data-hud="tip">
       <div className="border-l-4 border-spider bg-black/70 px-3 py-2.5 shadow-[4px_4px_0_rgba(0,0,0,0.5)] backdrop-blur-sm">
         <div className="mb-1.5 font-cond text-[10px] font-black uppercase tracking-[0.3em] text-spider">Tip</div>
         <div className="flex flex-col gap-1.5">
           {tip.keys.map(([k, label]) => (
             <div key={k + label} className="flex items-center gap-2">
               {k && <Key>{k}</Key>}
-              <span className="text-sm font-semibold leading-snug">{label}</span>
+              <span className="text-[13px] font-semibold leading-snug sm:text-sm">{label}</span>
             </div>
           ))}
         </div>

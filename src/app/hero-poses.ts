@@ -1197,6 +1197,280 @@ const selfie = P({
   peaceL: 1,
 });
 
+const shakeReach = P({
+  ground: 1,
+  hips: [0.02, -0.08, 0],
+  spine: [0.14, -0.12, 0],
+  head: [-0.12, 0.08, 0],
+  shR: [-0.6, 0, -0.05],
+  elR: [-1.0, 0.25, 0],
+  waR: [0, -1.3, 0],
+  shL: [0.05, 0, 0.2],
+  elL: [-0.35, 0, 0],
+  hipL: [-0.25, 0.12, 0.11],
+  knL: [0.25, 0, 0],
+  hipR: [0.08, -0.12, -0.1],
+  knR: [0.12, 0, 0],
+  fistR: 0.35,
+  fistL: 0.4,
+});
+
+const hugOpen = P({
+  ground: 1,
+  spine: [0.0, 0, 0],
+  head: [-0.15, 0, 0],
+  shL: [-1.1, 0, 0.95],
+  elL: [-0.45, -1.57, 0],
+  shR: [-1.1, 0, -0.95],
+  elR: [-0.45, 1.57, 0],
+  hipL: [-0.15, 0.12, 0.11],
+  knL: [0.2, 0, 0],
+  hipR: [0.05, -0.12, -0.1],
+  knR: [0.12, 0, 0],
+  fistL: 0,
+  fistR: 0,
+});
+const hugHold = P({
+  ground: 1,
+  hips: [0.06, 0, 0],
+  spine: [0.2, 0, 0.04],
+  head: [0.05, 0.45, 0.12],
+  shL: [-1.35, 0, 0.5],
+  elL: [-1.15, -1.57, 0],
+  waL: [0, 0, -0.3],
+  shR: [-1.2, 0, -0.42],
+  elR: [-1.1, 1.57, 0],
+  waR: [0, 0, 0.3],
+  hipL: [-0.3, 0.12, 0.11],
+  knL: [0.35, 0, 0],
+  hipR: [0.1, -0.12, -0.1],
+  knR: [0.25, 0, 0],
+  fistL: 0.2,
+  fistR: 0.2,
+});
+
+const swimBase = P({
+  pitch: 1.5,
+  head: [-0.45, 0, 0],
+  hipL: [0, 0, 0.05],
+  hipR: [0, 0, -0.05],
+  ftL: [0.9, 0, 0],
+  ftR: [0.9, 0, 0],
+  fistL: 0.15,
+  fistR: 0.15,
+});
+
+const arch = P({
+  spine: [-0.45, 0, 0],
+  head: [-0.55, 0, 0],
+  shL: [-2.9, 0, 0.35],
+  shR: [-2.9, 0, -0.35],
+  elL: [-0.2, 0, 0],
+  elR: [-0.2, 0, 0],
+  hipL: [0.2, 0, 0.06],
+  hipR: [0.2, 0, -0.06],
+  knL: [0.5, 0, 0],
+  knR: [0.5, 0, 0],
+  ftL: [0.6, 0, 0],
+  ftR: [0.6, 0, 0],
+  fistL: 0.3,
+  fistR: 0.3,
+});
+
+const pencil = P({
+  spine: [0.05, 0, 0],
+  head: [-0.2, 0, 0],
+  shL: [-0.7, 0, -0.35],
+  elL: [-2.1, 0, 0],
+  shR: [-0.6, 0, 0.35],
+  elR: [-2.2, 0, 0],
+  hipL: [-0.1, 0, -0.03],
+  hipR: [-0.05, 0, 0.03],
+  knL: [0.1, 0, 0],
+  knR: [0.25, 0, 0],
+  ftL: [0.8, 0, 0],
+  ftR: [0.8, 0, 0],
+  fistL: 1,
+  fistR: 1,
+});
+
+const splitPose = P({
+  pitch: -0.15,
+  spine: [0.1, 0, 0],
+  head: [-0.3, 0, 0],
+  shL: [-0.2, 0, 1.75],
+  elL: [-0.15, 0, 0],
+  shR: [-0.2, 0, -1.75],
+  elR: [-0.15, 0, 0],
+  hipL: [-0.35, 0, 1.45],
+  knL: [0.02, 0, 0],
+  hipR: [-0.35, 0, -1.45],
+  knR: [0.02, 0, 0],
+  ftL: [0.75, 0, 0],
+  ftR: [0.75, 0, 0],
+  fistL: 0,
+  fistR: 0,
+  thwipL: 1,
+  thwipR: 1,
+});
+
+const tdShoot = P({
+  ground: 1,
+  hips: [0.4, 0, 0],
+  spine: [0.45, 0, 0],
+  head: [-0.5, 0, 0],
+  hipL: [-2.0, 0.4, 0.55],
+  knL: [2.5, 0, 0],
+  hipR: [-2.0, -0.4, -0.55],
+  knR: [2.5, 0, 0],
+  shL: [-1.15, 0, 0.15],
+  elL: [-0.05, 0, 0],
+  waL: [0, -1.5, 1.2],
+  shR: [-1.15, 0, -0.15],
+  elR: [-0.05, 0, 0],
+  waR: [0, 1.5, -1.2],
+  fistL: 1,
+  fistR: 1,
+  thwipL: 1,
+  thwipR: 1,
+});
+const tdPull = P({
+  ground: 1,
+  hips: [0.1, 0, 0],
+  spine: [-0.15, 0, 0],
+  head: [-0.25, 0, 0],
+  hipL: [-1.7, 0.35, 0.5],
+  knL: [2.2, 0, 0],
+  hipR: [-1.7, -0.35, -0.5],
+  knR: [2.2, 0, 0],
+  shL: [0.2, 0, 0.45],
+  elL: [-1.9, 0, 0],
+  shR: [0.2, 0, -0.45],
+  elR: [-1.9, 0, 0],
+  fistL: 1,
+  fistR: 1,
+});
+const tdStrike = P({
+  ground: 1,
+  hips: [0.35, 0.3, 0],
+  spine: [0.5, 0.35, 0],
+  head: [-0.55, -0.3, 0],
+  hipL: [-1.6, 0.3, 0.4],
+  knL: [2.0, 0, 0],
+  hipR: [-2.1, -0.3, -0.5],
+  knR: [2.55, 0, 0],
+  shR: [-1.45, 0, 0.05],
+  elR: [-0.05, 0, 0],
+  waR: [0, -1.4, 0],
+  shL: [0.5, 0, 0.5],
+  elL: [-1.5, 0, 0],
+  fistL: 1,
+  fistR: 1,
+});
+
+const counterLoad = P({
+  ...fists,
+  hips: [0.25, 0.5, 0],
+  spine: [0.45, 0.45, 0.1],
+  head: [-0.45, -0.6, 0],
+  shL: [-0.8, 0, 0.8],
+  elL: [-1.8, 0, 0],
+  shR: [-1.2, 0, -0.2],
+  elR: [-2.1, 0, 0],
+  hipL: [-1.3, 0.3, 0.35],
+  knL: [1.8, 0, 0],
+  hipR: [-0.9, -0.3, -0.35],
+  knR: [1.5, 0, 0],
+});
+const counterHit = P({
+  ...fists,
+  ground: 0.6,
+  hips: [0, 0, 0],
+  spine: [-0.05, 0, -0.55],
+  head: [-0.1, 0, 0.4],
+  shL: [-0.4, 0, 1.4],
+  elL: [-0.9, 0, 0],
+  shR: [0.6, 0, -1.2],
+  elR: [-0.6, 0, 0],
+  hipL: [-0.15, 0, 0.2],
+  knL: [0.35, 0, 0],
+  hipR: [-0.95, 0, -1.4],
+  knR: [0.05, 0, 0],
+  ftR: [0.7, 0, 0],
+});
+
+const grabbedBase = P({
+  spine: [-0.3, 0, 0],
+  head: [-0.55, 0, 0],
+  shL: [-0.6, 0, 0.45],
+  elL: [-1.6, -1.2, 0],
+  waL: [0.3, 0, 0],
+  shR: [-0.6, 0, -0.45],
+  elR: [-1.6, 1.2, 0],
+  waR: [0.3, 0, 0],
+  hipL: [-0.35, 0, 0.12],
+  knL: [0.7, 0, 0],
+  hipR: [-0.1, 0, -0.12],
+  knR: [0.5, 0, 0],
+  ftL: [0.5, 0, 0],
+  ftR: [0.5, 0, 0],
+  fistL: 1,
+  fistR: 1,
+});
+
+export const SWIM_WRAP = [JI.shL, JI.shR];
+
+// Front crawl. Shoulder x turns a full circle, so hero.ts wraps those channels while swimming.
+function swim(out: Pose, t: number, speed: number) {
+  out.set(swimBase);
+  const a = t * TAU * (0.55 + 0.25 * sstep(0, 6, speed));
+  for (let s = 0; s < 2; s++) {
+    const ph = a + s * Math.PI;
+    const u = ph / TAU - Math.floor(ph / TAU);
+    const pull = u < 0.55;
+    const k = pull ? u / 0.55 : (u - 0.55) / 0.45;
+    const side = s === 0 ? 1 : -1;
+    const sh = s === 0 ? "shL" : "shR";
+    const el = s === 0 ? "elL" : "elR";
+    if (pull) {
+      add(out, sh, -Math.PI + Math.PI * easeIO(k), 0, side * 0.12);
+      add(out, el, -0.75 * Math.sin(Math.PI * k));
+    } else {
+      add(out, sh, Math.PI * k, 0, side * 0.45 * Math.sin(Math.PI * k));
+      add(out, el, -1.5 * Math.sin(Math.PI * k));
+    }
+  }
+  const r = Math.sin(a);
+  add(out, "hips", 0, 0.32 * r, 0);
+  add(out, "spine", 0, 0.18 * r, 0);
+  add(out, "head", 0, -0.5 * r - 0.6 * Math.max(0, Math.sin(a * 0.5 - 0.6)) * Math.max(0, r), 0);
+  const kick = Math.sin(a * 3);
+  add(out, "hipL", 0.28 * kick);
+  add(out, "hipR", -0.28 * kick);
+  add(out, "knL", 0.22 + 0.2 * Math.max(0, -kick));
+  add(out, "knR", 0.22 + 0.2 * Math.max(0, kick));
+  return out;
+}
+
+function grabbed(out: Pose, t: number) {
+  out.set(grabbedBase);
+  const k = Math.sin(t * 9);
+  const k2 = Math.sin(t * 9 + 1.9);
+  add(out, "hipL", -0.45 * k);
+  add(out, "knL", 0.45 * Math.max(0, k));
+  add(out, "hipR", -0.45 * k2);
+  add(out, "knR", 0.45 * Math.max(0, k2));
+  const w = Math.sin(t * 3.3);
+  add(out, "spine", 0.08 * Math.sin(t * 6.1), 0.2 * w, 0.1 * Math.sin(t * 2.3));
+  add(out, "head", 0.1 * Math.sin(t * 5.3), -0.3 * w, 0);
+  add(out, "shL", 0.15 * Math.sin(t * 7.1), 0, 0);
+  add(out, "shR", 0.15 * Math.sin(t * 7.1 + 2), 0, 0);
+  add(out, "elL", 0.2 * Math.sin(t * 7.1 + 1), 0, 0);
+  add(out, "elR", 0.2 * Math.sin(t * 7.1 + 3), 0, 0);
+  out[CH.roll] = 0.12 * w;
+  return out;
+}
+
 const tmpA = new Float32Array(NCH);
 
 function idle(out: Pose, t: number) {
@@ -1378,8 +1652,56 @@ export function poseTarget(out: Pose, state: HeroPose, c: Ctx): number {
       add(out, "hips", 0, 0, 0.03 * Math.sin(c.t * 6) * bell(p, 0.25, 0.8, 0.1));
       return 1.5;
     }
+    case "handshake": {
+      seq(out, [relaxed, shakeReach, shakeReach, shakeReach, relaxed], [0, 0.22, 0.5, 0.78, 1], p);
+      const k = bell(p, 0.3, 0.72, 0.06);
+      add(out, "shR", 0.13 * Math.sin(c.t * 15) * k);
+      add(out, "elR", -0.08 * Math.sin(c.t * 15) * k);
+      return 1.6;
+    }
+    case "hug": {
+      seq(out, [relaxed, hugOpen, hugHold, hugHold, relaxed], [0, 0.2, 0.36, 0.8, 1], p);
+      const k = bell(p, 0.4, 0.78, 0.06);
+      add(out, "hips", 0, 0, 0.06 * Math.sin(c.t * 3) * k);
+      add(out, "waL", 0, 0, 0.25 * Math.max(0, Math.sin(c.t * 9)) * k);
+      return 1.4;
+    }
+    case "swim":
+      swim(out, c.t, c.speed);
+      return 1.4;
+    case "backflip": {
+      seq(out, [fall, arch, tuck, tuck, fall], [0, 0.14, 0.34, 0.7, 1], p);
+      out[CH.pitch] = -TAU * easeIO(sstep(0.06, 0.86, p));
+      return 2.1;
+    }
+    case "corkscrew": {
+      mix(out, fall, pencil, bell(p, 0.1, 0.8, 0.1));
+      out[CH.pitch] = 1.15 * bell(p, 0.12, 0.78, 0.14);
+      out[CH.yaw] = 2 * TAU * easeIO(sstep(0.05, 0.88, p));
+      return 2.2;
+    }
+    case "split": {
+      mix(out, fall, splitPose, bell(p, 0.12, 0.72, 0.12));
+      out[CH.pitch] = -0.25 * bell(p, 0.15, 0.7, 0.1);
+      return 2.2;
+    }
+    case "takedown":
+      seq(out, [perch, tdShoot, tdShoot, tdPull, tdStrike, tdStrike, perch], [0, 0.12, 0.26, 0.42, 0.56, 0.8, 1], p);
+      return 2.2;
+    case "counter": {
+      seq(out, [guard, counterLoad, counterHit, counterHit, guard], [0, 0.2, 0.48, 0.7, 1], p);
+      out[CH.yaw] = TAU * easeIO(sstep(0.12, 0.62, p));
+      out[CH.lift] = 0.25 * bell(p, 0.3, 0.6, 0.12);
+      return 2.3;
+    }
+    case "grabbed":
+      grabbed(out, c.t);
+      return 1.8;
+    default: {
+      const never: never = state;
+      void never;
+    }
   }
   idle(out, c.t);
   return 1;
 }
-

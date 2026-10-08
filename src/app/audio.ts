@@ -29,6 +29,8 @@ const SENDS: Record<Ch, [number, number]> = {
   fx: [0.4, 0],
 };
 const LOW: Record<Ch, number> = { drums: 0.5, bass: 0.8, keys: 1, pad: 0.9, lead: 0, str: 0.3, perc: 0.4, fx: 0.5 };
+// Explore mix at full night: softer beat, more pad.
+const NIGHT: Record<Ch, number> = { drums: 0.45, bass: 0.8, keys: 0.9, pad: 1.35, lead: 1, str: 1.4, perc: 0.5, fx: 1.2 };
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
@@ -145,6 +147,7 @@ export function createAudio() {
   let state: MusicState = "menu";
   let energy = 0;
   let bossPhase = 0;
+  let night = 0;
   let roamIdx = Math.floor(Math.random() * ROAM.length);
   let roamSince = 0;
   let rotate = false;
@@ -258,7 +261,7 @@ export function createAudio() {
     const roam = state === "explore" || state === "swing";
     for (const c of CHANNELS) {
       let x = 1;
-      if (state === "explore") x = LOW[c];
+      if (state === "explore") x = LOW[c] * (1 + (NIGHT[c] - 1) * night);
       else if (state === "swing") {
         if (c === "lead") x = 0.55 + 0.45 * energy;
         else if (c === "str") x = 0.75 + 0.25 * energy;
@@ -272,7 +275,7 @@ export function createAudio() {
       }
     }
     const tone =
-      state === "explore" ? 4500 : state === "swing" ? 7000 + 9000 * energy : state === "stealth" ? 3200 : state === "menu" ? 7000 : 16000;
+      state === "explore" ? 4500 - 1800 * night : state === "swing" ? 7000 + 9000 * energy : state === "stealth" ? 3200 : state === "menu" ? 7000 : 16000;
     if (Math.abs(tone - lastTone) > 150) {
       lastTone = tone;
       musicTone.frequency.setTargetAtTime(tone, t, 0.4);
@@ -330,6 +333,9 @@ export function createAudio() {
       }
     },
     swell,
+    setNight(n: number) {
+      night = clamp01(n);
+    },
     setBossPhase(phase: number) {
       bossPhase = Math.max(0, Math.floor(phase));
     },
@@ -739,6 +745,40 @@ export function createAudio() {
         N(t, 0.03, 0.25, "bandpass", 1500, 1500, 1, 0.001);
         bell(t + 0.08, 84, 0.07, 0.5);
         bell(t + 0.15, 91, 0.07, 0.6);
+        break;
+      case "takedown":
+        N(t, 0.1, 0.4, "bandpass", 4200, 1200, 2.5, 0.002);
+        T(t, "triangle", 1500, 600, 0.05, 0.12, 0.001, 0.05);
+        T(t + 0.12, "sine", 110, 40, 0.2, 0.75, 0.002, 0.3);
+        N(t + 0.12, 0.16, 0.4, "lowpass", 520, 160, 0.7, 0.002);
+        break;
+      case "alert":
+        wet.gain.value = 0.5;
+        duckMusic(0.35, 0.6);
+        horn(t, [62, 74], 0.1, 0.07, 1);
+        horn(t + 0.14, [68, 80], 0.35, 0.08, 1);
+        T(t, "triangle", mtof(86), mtof(86), 0, 0.05, 0.002, 0.1);
+        T(t + 0.14, "triangle", mtof(92), mtof(92), 0, 0.06, 0.002, 0.3);
+        break;
+      case "unlock":
+        wet.gain.value = 0.7;
+        [72, 76, 79, 84, 88].forEach((m, i) => bell(t + i * 0.07, m, 0.11 - i * 0.012, 1.1));
+        N(t, 0.5, 0.08, "bandpass", 3000, 9000, 1.5, 0.2);
+        break;
+      case "shutter":
+        N(t, 0.006, 0.7, "highpass", 4500, 4500, 0.7, 0.0003);
+        N(t + 0.004, 0.02, 0.35, "bandpass", 1600, 1600, 3, 0.0005);
+        N(t + 0.05, 0.012, 0.5, "bandpass", 2800, 2800, 2.5, 0.0003);
+        T(t + 0.05, "square", 220, 160, 0.02, 0.04, 0.0005, 0.03);
+        break;
+      case "charge":
+        wet.gain.value = 0.4;
+        N(t, 0.2, 0.55, "bandpass", 950, 450, 1.6, 0.015);
+        N(t + 0.24, 0.26, 0.45, "bandpass", 800, 380, 1.6, 0.02);
+        T(t + 0.1, "sine", 42, 62, 1, 0.6, 0.15, 0.9);
+        T(t + 0.1, "sawtooth", 40, 55, 1, 0.07, 0.15, 0.9);
+        sweep(t + 0.1, [[0, 110], [0.7, 260], [1.1, 120]], [[0.25, 0.5], [0.8, 0.45], [1.2, 0]], 0.9, "lowpass");
+        debris(t + 0.4, t + 1, 5, 0.06);
         break;
       case "ping":
         wet.gain.value = 0.6;

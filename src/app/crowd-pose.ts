@@ -355,12 +355,12 @@ function greetPose(p: Ped, T: number, t: number, o: Float32Array) {
       break;
     }
     case SHAKE: {
-      const e = sstep(0.15, 0.4, T) * (1 - sstep(0.95, 1.15, T));
-      const pump = 0.13 * Math.sin((T - 0.45) * 20) * bell(0.45, 0.9, 0.08, T);
+      const e = sstep(0.15, 0.38, T) * (1 - sstep(1.15, 1.35, T));
+      const pump = 0.13 * Math.sin((T - 0.48) * 15) * bell(0.48, 1.15, 0.08, T);
       o[7] = 1.15 * e + pump;
       o[8] = -0.22 * e;
       o[9] = 0.35 * e;
-      const e2 = sstep(0.45, 0.6, T) * (1 - sstep(0.9, 1.05, T));
+      const e2 = sstep(0.45, 0.6, T) * (1 - sstep(1.05, 1.2, T));
       o[4] = 0.95 * e2;
       o[5] = -0.5 * e2;
       o[6] = 0.95 * e2;

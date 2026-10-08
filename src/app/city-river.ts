@@ -33,7 +33,7 @@ export function bridge(c: Ctx, x0: number, x1: number, z: number) {
     box(c.solid, (d0 + d1) / 2, deckY - 3.2, z + s * dw, d1 - d0, 1.0, 0.3, 0x2b2e33);
     for (let x = d0; x < d1; x += 2.5) box(c.solid, x, deckY + 0.5, z + s * (dw - 0.2), 0.06, 1.0, 0.06, IRON);
   }
-  c.boxes.push({ minX: d0, maxX: d1, minZ: z - dw, maxZ: z + dw, maxY: deckY });
+  c.boxes.push({ minX: d0, maxX: d1, minZ: z - dw, maxZ: z + dw, maxY: deckY, minY: deckY - 3.7 });
   for (let x = d0 + 20; x < d1 - 10; x += 40) c.roofSpots.push(new THREE.Vector3(x, deckY, z));
   const mid = (d0 + d1) / 2;
   const half = (d1 - d0) / 2;
