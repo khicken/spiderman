@@ -78,7 +78,7 @@ export type Marker = {
   kind: "race" | "crime" | "chase" | "collectible" | "checkpoint" | "enemy" | "boss" | "photo" | "cache" | "request" | "pigeon" | "hideout" | "challenge" | "civilian";
 };
 
-export type Objective = { title: string; text: string; timer?: number; progress?: string; medal?: string };
+export type Objective = { title: string; text: string; timer?: number; progress?: string; medal?: string; target?: { x: number; y: number; z: number } };
 
 export type HudState = {
   playing: boolean;
