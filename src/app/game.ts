@@ -6,11 +6,14 @@ import { createMissions } from "./missions";
 import { createCombat } from "./combat";
 import { createActivities } from "./activities";
 import { createCrowd } from "./crowd";
-import type { GameEvent, HudState, MusicState } from "./contracts";
+import type { GameEvent, HeroPose, HudState, MusicState } from "./contracts";
 import { createInput } from "./input";
 import { createPlayer, raycast, R, type PlayerHooks } from "./player";
 import { createCameraRig } from "./camera";
 import { createRender, QUALITIES, type Quality } from "./render";
+import { createWater, riverFloor } from "./water";
+import { createInteriors } from "./interiors";
+import { createFade } from "./interiors-fade";
 
 export { QUALITIES, type Quality };
 
@@ -94,13 +97,15 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     carHit: (from, speed) => {
       combat.hurtPlayer(Math.min(25, 6 + speed), from, 0);
     },
+    floorAt: riverFloor,
+    extraBoxes: (x, z) => interiors.boxes(x, z),
   };
   const updateModules = (dt: number, t: number) => {
     route(missions.update(dt, t, { pos: player.pos, vel: player.vel, mode: player.mode, camera: view.camera }));
     routeExternal(activities.update(dt, t, input.state, player, view.camera));
   };
   const danger: { pos: THREE.Vector3; radius: number }[] = [];
-  let greet: { pose: "fistBump" | "wave" | "selfie"; t: number } | null = null;
+  let greet: { pose: HeroPose; t: number } | null = null;
   const moduleHud = () => {
     const c = combat.hud();
     const m = missions.hud();
@@ -116,7 +121,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       race: m.race,
       objective: useActivity ? a.objective : m.objective,
       prompts: [...c.prompts, ...m.prompts, ...a.prompts, ...(greetPrompt ? [greetPrompt] : [])],
-      markers: [...m.markers, ...a.markers.filter((k) => k.kind !== "request" || Math.hypot(k.x - player.pos.x, k.z - player.pos.z) < 250), ...c.markers],
+      markers: [...m.markers, ...a.markers, ...c.markers],
       combo: c.combo || m.combo,
       progress: { ...m.progress, completed: { ...m.progress.completed, ...a.completed }, districts: a.districts },
     };
@@ -125,6 +130,16 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
 
   const player = createPlayer(view.scene, city, hero, spawn, spawnDir, hooks);
   const rig = createCameraRig(view.camera, city);
+
+  // --- Water and interiors ---
+  const fade = createFade(view.scene);
+  const water = createWater(view.scene, city);
+  const interiors = createInteriors(view.scene, city, [hero.root, fade.mesh], spawn, {
+    heal: (amount) => combat.healPlayer(amount),
+    // The rig has no yaw setter, so feed the difference through its mouse input.
+    setYaw: (yaw) => rig.mouse((rig.yaw - yaw) / (0.0022 * cur.sensitivity), 0),
+  });
+  // --- end water and interiors ---
 
   const pause = () => {
     playing = false;
@@ -137,7 +152,10 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       cur.muted = !cur.muted;
       audio?.setMuted(cur.muted);
       onEvent({ type: "toast", title: cur.muted ? "Sound off" : "Sound on" });
-    } else if (code === "KeyR") player.reset();
+    } else if (code === "KeyR") {
+      interiors.reset(player);
+      player.reset();
+    }
   });
 
   const applySettings = (s: Partial<Settings>, first = false) => {
@@ -199,7 +217,9 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     input.takeMouse(mouse);
     rig.mouse(mouse.x, mouse.y);
     input.aim(rig.yaw, rig.pitch, view.camera.position);
-    if (playing && !greet && input.state.pressed.has("launch") && player.grounded && !inCombat) {
+    fade.update(real);
+    if (playing) route(interiors.update(dt, t, input.state, player, fade, inCombat));
+    if (playing && !greet && !player.blockE && input.state.pressed.has("launch") && player.grounded && !inCombat) {
       const r = crowd.interact();
       if (r) {
         routeExternal(r.events);
@@ -216,8 +236,11 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         player.act(greet.pose, greet.t);
       }
     }
+    if (fade.busy) player.busy = true;
     if (playing || !everPlayed) route(player.update(dt, input.state, t));
+    if (playing) route(water.update(dt, input.state, player, fade));
     rig.update(real, player, playing, input.mouseIdle);
+    interiors.fixCamera(view.camera, player.pos);
     view.frame(t, player.pos);
 
     if (playing) updateModules(dt, t);
@@ -239,7 +262,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         if (phase >= 0) audio?.setBossPhase(phase);
       }
       if (forcedMusic === "race" && !mh.race && activities.activeSince() === null) forcedMusic = null;
-      shownMusic = !playing ? "menu" : forcedMusic ?? (mh.c.boss ? "boss" : mh.race ? "race" : inCombat ? "combat" : speed > 20 ? "swing" : "explore");
+      shownMusic = !playing ? "menu" : interiors.inside ? "explore" : forcedMusic ?? (mh.c.boss ? "boss" : mh.race ? "race" : inCombat ? "combat" : speed > 20 ? "swing" : "explore");
       onHud({
         playing,
         fps,
@@ -256,13 +279,15 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         boss: mh.c.boss,
         gadget: mh.c.gadget,
         objective: mh.objective,
-        prompts: [...(mh.greet ? player.prompts.filter((p) => p.key !== "E") : player.prompts), ...mh.prompts],
+        prompts: interiors.prompts.length
+          ? [...interiors.prompts, ...player.prompts.filter((p) => p.key !== "E"), ...mh.prompts.filter((p) => p.key !== "E")]
+          : [...(mh.greet ? player.prompts.filter((p) => p.key !== "E") : player.prompts), ...mh.prompts],
         markers: mh.markers,
         combo: mh.combo,
         progress: mh.progress,
       });
     }
-    audio?.update(dt, playing ? speed : 0, shownMusic as Parameters<Audio["update"]>[2]);
+    audio?.update(dt, playing && !interiors.inside ? speed : 0, shownMusic as Parameters<Audio["update"]>[2]);
 
     view.render();
   };
@@ -295,6 +320,9 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       crowd.dispose();
       missions.dispose();
       player.dispose();
+      interiors.dispose();
+      water.dispose();
+      fade.dispose();
       // City and hero have no dispose of their own.
       view.scene.traverse((o) => {
         const m = o as THREE.Mesh;

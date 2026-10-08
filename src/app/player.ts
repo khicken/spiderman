@@ -20,6 +20,8 @@ const ROPE_MAX = 35;
 const DASH_CD = 0.8;
 const PROMPT_RANGE = 30;
 const PERCH_HOLD = 0.28;
+const SWIM = 4.2;
+const SWIM_FAST = 7;
 const DEG = Math.PI / 180;
 const UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -95,6 +97,10 @@ export type PlayerHooks = {
   enemyNear: (pos: THREE.Vector3) => boolean;
   inCombat: () => boolean;
   carHit: (from: THREE.Vector3, speed: number) => void;
+  // Height the feet rest on where no box is below (0 = street). Below -0.5 the hero swims.
+  floorAt?: (x: number, z: number) => number;
+  // Colliders outside the city grid (room walls, roof doors).
+  extraBoxes?: (x: number, z: number) => readonly Box[];
 };
 const ZIP_RANGE = 60;
 
@@ -110,6 +116,9 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let grounded = false;
   let airTime = 0;
   let sprinting = false;
+  let swimming = false;
+  let ceiling = Infinity;
+  let blockE = false;
 
   // Swing state. The anchor is locked from attach to release.
   const anchor = new THREE.Vector3();
@@ -502,50 +511,61 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
   };
 
+  const collideBox = (b: Box) => {
+    const x0 = b.minX - R;
+    const x1 = b.maxX + R;
+    const z0 = b.minZ - R;
+    const z1 = b.maxZ + R;
+    const top = b.maxY + R;
+    if (p.x <= x0 || p.x >= x1 || p.z <= z0 || p.z >= z1 || p.y >= top) return;
+    const up = top - p.y;
+    let m = 0;
+    let pen = p.x - x0;
+    if (x1 - p.x < pen) [m, pen] = [1, x1 - p.x];
+    if (p.z - z0 < pen) [m, pen] = [2, p.z - z0];
+    if (z1 - p.z < pen) [m, pen] = [3, z1 - p.z];
+    const stepUp = (mode === "ground" || mode === "air") && up < 1.0 && v.y <= 1;
+    if (up < pen || stepUp) {
+      p.y = top;
+      if (v.y < 0) v.y = 0;
+      grounded = true;
+      swimming = false;
+      return;
+    }
+    if (m === 0) p.x = x0;
+    else if (m === 1) p.x = x1;
+    else if (m === 2) p.z = z0;
+    else p.z = z1;
+    const n = tmp.set(m === 0 ? -1 : m === 1 ? 1 : 0, 0, m === 2 ? -1 : m === 3 ? 1 : 0);
+    const vn = v.dot(n);
+    if (mode === "ground" && sprinting && up < 2.6 && vn < -6) {
+      v.y = 8;
+      vaultT = 0.45;
+      mode = "air";
+      sfx("whoosh", 0.4);
+    }
+    if (vn < 0) v.addScaledVector(n, -vn);
+    wallContact = true;
+    wallN.copy(n);
+    wallBox = b;
+  };
+
   const collide = () => {
     grounded = false;
     wallContact = false;
-    if (p.y < R) {
-      p.y = R;
+    swimming = false;
+    const fl = hooks.floorAt?.(p.x, p.z) ?? 0;
+    if (p.y < fl + R) {
+      p.y = fl + R;
       if (v.y < 0) v.y = 0;
       grounded = true;
+      swimming = fl < -0.5;
     }
-    for (const b of city.near(p.x, p.z, 8)) {
-      const x0 = b.minX - R;
-      const x1 = b.maxX + R;
-      const z0 = b.minZ - R;
-      const z1 = b.maxZ + R;
-      const top = b.maxY + R;
-      if (p.x <= x0 || p.x >= x1 || p.z <= z0 || p.z >= z1 || p.y >= top) continue;
-      const up = top - p.y;
-      let m = 0;
-      let pen = p.x - x0;
-      if (x1 - p.x < pen) [m, pen] = [1, x1 - p.x];
-      if (p.z - z0 < pen) [m, pen] = [2, p.z - z0];
-      if (z1 - p.z < pen) [m, pen] = [3, z1 - p.z];
-      const stepUp = (mode === "ground" || mode === "air") && up < 1.0 && v.y <= 1;
-      if (up < pen || stepUp) {
-        p.y = top;
-        if (v.y < 0) v.y = 0;
-        grounded = true;
-        continue;
-      }
-      if (m === 0) p.x = x0;
-      else if (m === 1) p.x = x1;
-      else if (m === 2) p.z = z0;
-      else p.z = z1;
-      const n = tmp.set(m === 0 ? -1 : m === 1 ? 1 : 0, 0, m === 2 ? -1 : m === 3 ? 1 : 0);
-      const vn = v.dot(n);
-      if (mode === "ground" && sprinting && up < 2.6 && vn < -6) {
-        v.y = 8;
-        vaultT = 0.45;
-        mode = "air";
-        sfx("whoosh", 0.4);
-      }
-      if (vn < 0) v.addScaledVector(n, -vn);
-      wallContact = true;
-      wallN.copy(n);
-      wallBox = b;
+    for (const b of city.near(p.x, p.z, 8)) collideBox(b);
+    if (hooks.extraBoxes) for (const b of hooks.extraBoxes(p.x, p.z)) collideBox(b);
+    if (p.y > ceiling - R) {
+      p.y = ceiling - R;
+      if (v.y > 0) v.y = 0;
     }
   };
 
@@ -553,9 +573,9 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const held = inp.held;
     switch (mode) {
       case "ground": {
-        const target = sprinting ? SPRINT : RUN;
+        const target = swimming ? (sprinting ? SWIM_FAST : SWIM) : sprinting ? SPRINT : RUN;
         const flat = Math.hypot(v.x, v.z);
-        const k = 1 - Math.exp(-(flat > target + 2 ? 3 : 10) * h);
+        const k = 1 - Math.exp(-(flat > target + 2 ? 3 : swimming ? 3 : 10) * h);
         v.x += (wish.x * target - v.x) * k;
         v.z += (wish.z * target - v.z) * k;
         v.y -= G * h;
@@ -716,7 +736,9 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       mode = "air";
     }
     if (grounded && (mode === "air" || mode === "swing" || mode === "wings" || (mode === "wall" && v.y <= 0.1 && !wallContact))) {
-      if (fall > 28) {
+      if (swimming) {
+        // The water module plays the splash.
+      } else if (fall > 28) {
         events.push(...hooks.strikeHit(p, 2));
         sfx("bigLand");
         shake(0.7);
@@ -731,7 +753,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       if (mode === "swing" || mode === "wings") {
         mode = "air";
         v.addScaledVector(wallN, 3);
-      } else if (into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? Math.min(pre, 12) : 0);
+      } else if (ceiling === Infinity && into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? Math.min(pre, 12) : 0);
     }
     if (mode === "wall") {
       if (!wallContact) {
@@ -750,7 +772,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const look = inp.look;
     const airborne = mode === "air" || mode === "wings";
 
-    if (pressed.has("launch")) {
+    if (pressed.has("launch") && !blockE) {
       eT = 0;
       eFired = false;
     }
@@ -775,7 +797,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
     if (pressed.has("jump")) {
       if (mode === "ground") {
-        v.y = JUMP + (sprinting ? 3 : 0);
+        v.y = swimming ? JUMP + 2 : JUMP + (sprinting ? 3 : 0);
         mode = "air";
       } else if (mode === "swing") release(true, true);
       else if (mode === "wall") {
@@ -873,6 +895,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       pose = actPose;
       progress = actProgress;
       orient(UP, facing, dt);
+    } else if (mode === "ground" && swimming) {
+      // Stroke when moving, tread water upright when still.
+      const stroke = THREE.MathUtils.clamp(flat / SWIM, 0, 1);
+      pose = flat > 0.8 ? "run" : "air";
+      phase += flat * dt * 0.45;
+      progress = pose === "run" ? phase : t * 0.5;
+      orient(ou.copy(UP).lerp(facing, 0.82 * stroke), of.copy(facing).lerp(DOWN, 0.82 * stroke), dt);
     } else if (mode === "ground") {
       pose = landT < 1 ? "land" : flat > 14 ? "sprint" : flat > 0.5 ? "run" : "idle";
       phase += flat * dt * 0.85;
@@ -912,6 +941,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       orient(UP, zipDir, dt);
     }
     hero.root.position.copy(p);
+    if (swimming) hero.root.position.y += Math.sin(t * 2.6) * 0.06;
     hero.animate(pose as Parameters<Hero["animate"]>[0], progress, webHand, t, dt);
     hero.root.updateMatrixWorld(true);
 
@@ -942,7 +972,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
     const gy = groundAt(city, p.x, p.z, p.y);
     const hgt = p.y - R - gy;
-    blob.visible = hgt < 14 && mode !== "wall";
+    blob.visible = hgt < 14 && mode !== "wall" && !swimming;
     if (blob.visible) {
       blob.position.set(p.x, gy + 0.04, p.z);
       const s = 0.7 + hgt * 0.06;
@@ -989,6 +1019,24 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     },
     get airTime() {
       return airTime;
+    },
+    get swimming() {
+      return swimming;
+    },
+    // Room height above the floor. Finite indoors: caps jumps and turns off wall runs.
+    get ceiling() {
+      return ceiling;
+    },
+    set ceiling(y: number) {
+      ceiling = y;
+    },
+    // True while another module owns E (doors), so E does not launch.
+    get blockE() {
+      return blockE;
+    },
+    set blockE(b: boolean) {
+      blockE = b;
+      if (b) eT = -1;
     },
     busy: false,
     act(pose: HeroPose, progress: number) {

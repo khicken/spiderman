@@ -2094,6 +2094,9 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     update,
     hud,
     hurtPlayer: hurt,
+    healPlayer: (amount: number) => {
+      health = Math.min(1, health + amount);
+    },
     spawnGroup,
     groupDone,
     clearGroup,
