@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { armorPlates, beastFur, furColor, PLATE } from "./titan-gear";
 import { toon } from "./toon";
 
 export const BN = {
@@ -9,8 +10,8 @@ export const BN = {
 } as const;
 const PARENT = [-1, 0, 1, 2, 3, 4, 5, 5, 5, 3, 9, 10, 11, 3, 13, 14, 15, 1, 17, 18, 1, 20, 21];
 
-export type Body = "normal" | "lanky" | "chubby" | "muscular" | "child" | "elderly" | "female";
-export type Face = "grin" | "stare" | "bulge" | "gape" | "smirk" | "female";
+export type Body = "normal" | "lanky" | "chubby" | "muscular" | "child" | "elderly" | "female" | "armored" | "beast" | "runner";
+export type Face = "grin" | "stare" | "bulge" | "gape" | "smirk" | "female" | "armored" | "beast" | "smile";
 export type Hair = "none" | "short" | "bowl" | "long" | "wild" | "bob" | "sparse";
 export type Spec = { body: Body; face: Face; hair: Hair; hairColor: number; skin: number; beard?: boolean; seed: number };
 export type Limb = "armL" | "armR" | "legL" | "legR";
@@ -28,8 +29,8 @@ export type Variant = {
   bind: THREE.Vector3[];
 };
 
-type Col = number | ((p: THREE.Vector3) => number);
-type Wt = (p: THREE.Vector3) => [number, number, number];
+export type Col = number | ((p: THREE.Vector3) => number);
+export type Wt = (p: THREE.Vector3) => [number, number, number];
 
 export function rand(seed: number) {
   let s = seed >>> 0;
@@ -49,6 +50,9 @@ const BASE: Record<Body, Partial<Dims> & { pw: number; pd: number; hipW: number;
   muscular: { hh: 0.125, hw: 0.05, hd: 0.058, nl: 0.04, nr: 0.038, shW: 0.14, cw: 0.13, cd: 0.08, ww: 0.085, wd: 0.065, pw: 0.095, pd: 0.07, hipW: 0.054, th: 0.24, sh: 0.22, ua: 0.17, fa: 0.155, hand: 0.1, ar: 0.042, lr: 0.062, muscle: 1, droop: 0, belly: 0 },
   child: { hh: 0.22, hw: 0.085, hd: 0.088, nl: 0.025, nr: 0.035, shW: 0.1, cw: 0.098, cd: 0.074, ww: 0.095, wd: 0.082, pw: 0.09, pd: 0.075, hipW: 0.048, th: 0.17, sh: 0.16, ua: 0.14, fa: 0.12, hand: 0.075, ar: 0.034, lr: 0.05, muscle: 0, droop: 0.2, belly: 0.65 },
   elderly: { hh: 0.14, hw: 0.048, hd: 0.058, nl: 0.045, nr: 0.025, shW: 0.105, cw: 0.088, cd: 0.058, ww: 0.07, wd: 0.058, pw: 0.08, pd: 0.058, hipW: 0.046, th: 0.235, sh: 0.225, ua: 0.18, fa: 0.16, hand: 0.105, ar: 0.023, lr: 0.037, muscle: 0, droop: 1, belly: 0.35 },
+  armored: { hh: 0.12, hw: 0.054, hd: 0.06, nl: 0.035, nr: 0.045, shW: 0.15, cw: 0.14, cd: 0.088, ww: 0.09, wd: 0.07, pw: 0.1, pd: 0.074, hipW: 0.056, th: 0.24, sh: 0.22, ua: 0.17, fa: 0.16, hand: 0.1, ar: 0.045, lr: 0.066, muscle: 1, droop: 0, belly: 0 },
+  beast: { hh: 0.11, hw: 0.055, hd: 0.065, nl: 0.03, nr: 0.05, shW: 0.16, cw: 0.15, cd: 0.1, ww: 0.11, wd: 0.09, pw: 0.1, pd: 0.08, hipW: 0.065, th: 0.18, sh: 0.16, ua: 0.27, fa: 0.26, hand: 0.13, ar: 0.05, lr: 0.07, muscle: 0.8, droop: 0.3, belly: 0.3 },
+  runner: { hh: 0.1, hw: 0.038, hd: 0.048, nl: 0.04, nr: 0.02, shW: 0.088, cw: 0.072, cd: 0.046, ww: 0.05, wd: 0.042, pw: 0.065, pd: 0.048, hipW: 0.04, th: 0.28, sh: 0.27, ua: 0.17, fa: 0.16, hand: 0.09, ar: 0.019, lr: 0.032, muscle: 0, droop: 0, belly: 0 },
   female: { hh: 0.12, hw: 0.044, hd: 0.054, nl: 0.045, nr: 0.026, shW: 0.115, cw: 0.098, cd: 0.062, ww: 0.064, wd: 0.054, pw: 0.094, pd: 0.066, hipW: 0.052, th: 0.26, sh: 0.24, ua: 0.18, fa: 0.16, hand: 0.095, ar: 0.029, lr: 0.05, muscle: 0.75, droop: 0, belly: 0 },
 };
 
@@ -127,7 +131,7 @@ export function buildVariant(spec: Spec): Variant {
     v3(), v3(),
   ];
   const eyeY = hb + hh * (spec.body === "child" ? 0.5 : 0.56);
-  const er = hh * ({ grin: 0.11, stare: 0.135, bulge: 0.17, gape: 0.125, smirk: 0.12, female: 0.118 } as const)[spec.face];
+  const er = hh * ({ grin: 0.11, stare: 0.135, bulge: 0.17, gape: 0.125, smirk: 0.12, female: 0.118, armored: 0.1, beast: 0.1, smile: 0.12 } as const)[spec.face];
   d.er = er;
   const faceZ = (x: number, y: number) => {
     const dy = (y - (hb + hh * 0.42)) / (hh * 0.32), dx = x / (hw * 0.9);
@@ -145,6 +149,7 @@ export function buildVariant(spec: Spec): Variant {
   const B = (i: number) => bind[i];
 
   const parts: THREE.BufferGeometry[] = [];
+  const fur = spec.body === "beast" ? furColor(d) : null;
   const limbParts: Record<Limb, THREE.BufferGeometry[]> = { armL: [], armR: [], legL: [], legR: [] };
   const tmp = v3();
   const add = (g: THREE.BufferGeometry, m: THREE.Matrix4 | null, col: Col, w: Wt, limb?: Limb) => {
@@ -157,7 +162,8 @@ export function buildVariant(spec: Spec): Variant {
     const cc = new THREE.Color();
     for (let i = 0; i < n; i++) {
       tmp.fromBufferAttribute(pos, i);
-      cc.setHex(typeof col === "number" ? col : col(tmp));
+      const hex = typeof col === "number" ? col : col(tmp);
+      cc.setHex(fur && (hex === skin || hex === skinDark) ? fur(tmp, hex) : hex);
       c[i * 3] = cc.r; c[i * 3 + 1] = cc.g; c[i * 3 + 2] = cc.b;
       const [a, bb, wb] = w(tmp);
       si[i * 4] = a; si[i * 4 + 1] = bb;
@@ -235,17 +241,22 @@ export function buildVariant(spec: Spec): Variant {
   if (spec.body === "chubby") add(sph(hw * 0.75, hh * 0.13, hd * 0.6), mat(0, hb + hh * 0.08, hd * 0.25), skin, one(BN.jaw));
 
   const my = hb + hh * 0.27;
-  const mouthW = hw * ({ grin: 0.9, stare: 0.32, bulge: 0.5, gape: 0.55, smirk: 0.6, female: 0.82 } as const)[spec.face];
-  const toothH = hh * ({ grin: 0.075, stare: 0.04, bulge: 0.06, gape: 0.065, smirk: 0.055, female: 0.06 } as const)[spec.face];
-  const showTeeth = spec.face !== "stare";
+  const mouthW = hw * ({ grin: 0.9, stare: 0.32, bulge: 0.5, gape: 0.55, smirk: 0.6, female: 0.82, armored: 0.8, beast: 0.45, smile: 0.95 } as const)[spec.face];
+  const toothH = hh * ({ grin: 0.075, stare: 0.04, bulge: 0.06, gape: 0.065, smirk: 0.055, female: 0.06, armored: 0.085, beast: 0.05, smile: 0.06 } as const)[spec.face];
+  const showTeeth = spec.face !== "stare" && spec.face !== "smile";
   const mouthCol = (p: THREE.Vector3, lower: boolean) => {
     if (p.z < -hd * 0.2) return skin;
     const ax = Math.abs(p.x);
     const inW = ax < mouthW * (spec.face === "smirk" ? (p.x > 0 ? 1.1 : 0.7) : 1);
     if (!inW) return skin;
     const dy = p.y - my;
+    if (spec.face === "smile") {
+      const u = ax / mouthW, dc = Math.abs(dy - toothH * 2.4 * u * u);
+      return dc < toothH * 0.22 ? mouthDark : dc < toothH * 0.7 ? lip : skin;
+    }
     if (fem && Math.abs(dy) < toothH * 2.2) return ax < mouthW * 0.42 ? (Math.abs(dy) < toothH * 0.12 ? mouthDark : lip) : muscleC;
     if (lower ? dy > -toothH * 0.15 : dy < toothH * 0.15) return mouthDark;
+    if (spec.face === "armored") return lower ? (dy > -toothH * 1.5 ? mouthDark : skin) : dy < toothH * 1.5 ? mouthDark : skin;
     if (spec.face === "grin") {
       if (lower ? dy > -toothH * 1.4 : dy < toothH * 1.5) return gum;
     }
@@ -266,6 +277,12 @@ export function buildVariant(spec: Spec): Variant {
   add(sph(hw * 0.15 * nose, hh * 0.035, hd * 0.09 * nose), mat(0, hb + hh * 0.385, faceZ(0, hb + hh * 0.385)), skinDark, one(BN.head));
   add(sph(hw * 0.8, hh * (fem ? 0.055 : 0.038), hd * 0.22), mat(0, eyeY + er * 1.1, faceZ(0, eyeY + er) - hd * 0.1, 0.25), skin, one(BN.head));
 
+  if (spec.face === "smile")
+    for (let k = -7; k <= 7; k++) {
+      const x = (mouthW * k) / 7.5, u = x / mouthW;
+      const y = my + toothH * 2.4 * u * u;
+      add(new THREE.BoxGeometry(mouthW / 6.2, hh * 0.026, hd * 0.06), mat(x, y, faceZ(x, y) - hd * 0.01, 0, Math.asin(Math.min(0.9, x / hw)), Math.atan(toothH * 4.8 * u / mouthW)), mouthDark, one(BN.head));
+    }
   if (showTeeth) {
     const ax = hw * 0.9 * Math.sqrt(1 - ((my - (hb + hh * 0.42)) / (hh * 0.32)) ** 2);
     const az = faceZ(0, my) - hd * 0.12;
@@ -282,8 +299,8 @@ export function buildVariant(spec: Spec): Variant {
     }
   }
 
-  const iris = spec.face === "female" ? 0x4a8fa8 : spec.face === "stare" ? 0x3a2a20 : 0x5a3b26;
-  const pupilK = spec.face === "stare" ? 0.16 : spec.face === "bulge" ? 0.22 : 0.3;
+  const iris = spec.face === "female" ? 0x4a8fa8 : spec.face === "armored" ? 0xd8c27a : spec.face === "beast" ? 0x9a8a3c : spec.face === "stare" ? 0x3a2a20 : 0x5a3b26;
+  const pupilK = spec.face === "stare" || spec.face === "smile" ? 0.16 : spec.face === "armored" ? 0.12 : spec.face === "bulge" ? 0.22 : 0.3;
   for (const s of [1, -1]) {
     const e = BN[s > 0 ? "eyeL" : "eyeR"];
     const c = B(e);
@@ -291,7 +308,7 @@ export function buildVariant(spec: Spec): Variant {
     if (fem) add(sph(er * 1.45, er * 1.25, er * 0.5), mat(c.x, c.y, c.z - er * 0.2), muscleC2, one(BN.head));
     add(sph(er * (pupilK + 0.18), er * (pupilK + 0.18), er * 0.2), mat(c.x, c.y, c.z + er * 0.9), iris, one(e));
     add(sph(er * pupilK, er * pupilK, er * 0.2), mat(c.x, c.y, c.z + er * 0.97), 0x0e0a08, one(e));
-    const lid = { grin: 0.75, stare: -0.2, bulge: -0.5, gape: 0.25, smirk: 0.6, female: 0.42 }[spec.face];
+    const lid = { grin: 0.75, stare: -0.2, bulge: -0.5, gape: 0.25, smirk: 0.6, female: 0.42, armored: 0.65, beast: 0.5, smile: -0.25 }[spec.face];
     if (lid > -0.4) add(new THREE.SphereGeometry(er * 1.12, 14, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), mat(c.x, c.y, c.z, lid, 0, s * (spec.face === "grin" ? -0.25 : 0.1)), fem ? skinDark : skin, one(BN.head));
     if (spec.face === "bulge" || spec.face === "stare" || spec.body === "elderly")
       add(new THREE.SphereGeometry(er * 1.08, 14, 5, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), mat(c.x, c.y, c.z, 0.35), skinDark, one(BN.head));
@@ -359,6 +376,10 @@ export function buildVariant(spec: Spec): Variant {
     if (fem) for (let k = 0; k < 4; k++) add(sph(lr * 0.18, d.th * 0.33, lr * 0.25), mat(hp.x + s * lr * (0.75 - k * 0.05), hp.y - d.th * 0.4, hp.z + lr * (0.35 - k * 0.3)), k % 2 ? muscleC : muscleC2, one(it));
   }
 
+  const gear = { add, B, d, one };
+  if (spec.body === "armored") armorPlates(gear);
+  if (spec.body === "beast") beastFur(gear, spec.hairColor);
+
   const geo = mergeGeometries(parts);
   geo.computeBoundingSphere();
   for (const p of parts) p.dispose();
@@ -395,6 +416,11 @@ function crystal() {
   }
   return new THREE.Mesh(crystalGeo, crystalMat!);
 }
+
+let pGeo: THREE.BufferGeometry | null = null;
+let pMat: THREE.Material | null = null;
+const plateGeo = () => (pGeo ??= new THREE.BoxGeometry(1, 1, 0.35).translate(0, 0, -0.1));
+const plateMat = () => (pMat ??= toon({ color: PLATE[0], emissive: 0x1a1d22 }));
 
 export function makeRig(v: Variant, tint: THREE.Color): Rig {
   const bones: THREE.Bone[] = [];
@@ -433,10 +459,18 @@ export function makeRig(v: Variant, tint: THREE.Color): Rig {
       bones[h].add(c);
       crystals.push(c);
     }
-    for (const c of crystals) {
-      c.visible = false;
-      c.castShadow = true;
-    }
+  }
+  if (v.spec.body === "armored") {
+    const d = v.d;
+    const nape = new THREE.Mesh(plateGeo(), plateMat());
+    nape.position.set(0, d.nl * 0.7, -d.nr * 1.05);
+    nape.scale.set(d.nr * 2.6, d.nl * 2.2, d.nr * 0.9);
+    bones[BN.neck].add(nape);
+    crystals.push(nape);
+  }
+  for (const c of crystals) {
+    c.visible = false;
+    c.castShadow = true;
   }
   return { group, mesh, bones, mat: m, crystals };
 }

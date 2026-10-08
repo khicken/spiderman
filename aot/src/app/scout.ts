@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { toon } from "./toon";
+import type { ScoutLook } from "./progression-chars";
 
 export type ScoutAnim = "idle" | "run" | "air" | "flip" | "reel" | "charge" | "slash" | "wall" | "held" | "dead" | "roll" | "swap" | "dash";
 
@@ -71,13 +72,17 @@ function emblem() {
   return tex;
 }
 
-export function createScout() {
+const CADET: ScoutLook = { hair: "#2b2320", hairStyle: "cadet", eyes: "#20303a", skin: "#f2cfae", scale: 1 };
+
+export function createScout(look: ScoutLook = CADET) {
   const mats = {
-    skin: toon({ color: "#f2cfae" }),
-    hair: toon({ color: "#2b2320" }),
+    skin: toon({ color: look.skin }),
+    hair: toon({ color: look.hair }),
+    scarf: toon({ color: look.scarf ?? "#b3202a" }),
+    shave: toon({ color: new THREE.Color(look.hair).lerp(new THREE.Color(look.skin), 0.55) }),
     jacket: toon({ color: "#8c5a34" }),
     jacketIn: toon({ color: "#8c5a34", side: THREE.DoubleSide }),
-    eye: toon({ color: "#20303a", outline: false }),
+    eye: toon({ color: look.eyes, outline: false }),
     shirt: toon({ color: "#f4f1ea" }),
     pants: toon({ color: "#ebe5d6" }),
     strap: toon({ color: "#1b1a1f" }),
@@ -110,6 +115,7 @@ export function createScout() {
   const root = new THREE.Group();
   const spin = joint(root, 0, 0, 0);
   const model = joint(spin, 0, -SCOUT_HALF, 0);
+  model.scale.setScalar(look.scale);
   const pelvis = joint(model, 0, 0.94, 0);
   mesh(new THREE.CapsuleGeometry(0.13, 0.08, 3, 10), mats.pants, pelvis, 0, -0.02, 0).scale.set(1.15, 1, 0.85);
   mesh(new THREE.TorusGeometry(0.145, 0.02, 4, 16), mats.strap, pelvis, 0, 0.04, 0).rotation.x = Math.PI / 2;
@@ -137,6 +143,17 @@ export function createScout() {
   }
   band(spine, 0.165, 0.2, 0.035);
   mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.08, 8), mats.skin, spine, 0, 0.52, 0);
+  if (look.scarf) {
+    mesh(new THREE.TorusGeometry(0.065, 0.032, 6, 14), mats.scarf, spine, 0, 0.51, 0.005).rotation.x = Math.PI / 2 - 0.15;
+    const tail = mesh(new THREE.BoxGeometry(0.07, 0.2, 0.025), mats.scarf, spine, 0.05, 0.4, 0.1);
+    tail.rotation.set(-0.15, 0, 0.12);
+  }
+  if (look.cravat) {
+    mesh(new THREE.TorusGeometry(0.056, 0.02, 6, 12), mats.shirt, spine, 0, 0.505, 0.005).rotation.x = Math.PI / 2 - 0.15;
+    const knot = mesh(new THREE.ConeGeometry(0.05, 0.13, 6), mats.shirt, spine, 0, 0.43, 0.13);
+    knot.rotation.x = Math.PI + 0.25;
+    knot.scale.z = 0.5;
+  }
 
   const head = joint(spine, 0, 0.57, 0);
   mesh(new THREE.SphereGeometry(0.11, 16, 12), mats.skin, head, 0, 0.09, 0.01).scale.set(0.95, 1.08, 1);
@@ -146,18 +163,47 @@ export function createScout() {
     const brow = mesh(new THREE.BoxGeometry(0.045, 0.008, 0.01), mats.hair, head, sx * 0.045, 0.118, 0.103);
     brow.rotation.z = sx * -0.25;
   }
-  const hair = mesh(new THREE.SphereGeometry(0.12, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), mats.hair, head, 0, 0.11, -0.01);
-  hair.scale.set(1, 1.05, 1.08);
-  hair.rotation.x = -0.42;
-  for (let i = 0; i < 7; i++) {
-    const a = -0.9 + i * 0.3;
-    const spike = mesh(new THREE.ConeGeometry(0.035, 0.12, 4), mats.hair, head, Math.sin(a) * 0.1, 0.12, Math.cos(a) * 0.08 + 0.02);
-    spike.rotation.set(Math.PI * 0.62, 0, -a * 0.6);
-  }
-  for (let i = 0; i < 5; i++) {
-    const a = Math.PI + (-0.8 + i * 0.4);
-    const spike = mesh(new THREE.ConeGeometry(0.04, 0.12, 4), mats.hair, head, Math.sin(a) * 0.09, 0.07, Math.cos(a) * 0.09);
-    spike.rotation.set(-Math.PI * 0.7, 0, a * 0.2);
+  if (look.hairStyle === "cadet" || look.hairStyle === "spiky") {
+    const big = look.hairStyle === "spiky" ? 1.15 : 1;
+    const hair = mesh(new THREE.SphereGeometry(0.12, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), mats.hair, head, 0, 0.11, -0.01);
+    hair.scale.set(1, 1.05, 1.08);
+    hair.rotation.x = -0.42;
+    for (let i = 0; i < 7; i++) {
+      const a = -0.9 + i * 0.3;
+      const spike = mesh(new THREE.ConeGeometry(0.035 * big, 0.12 * big, 4), mats.hair, head, Math.sin(a) * 0.1, 0.12, Math.cos(a) * 0.08 + 0.02);
+      spike.rotation.set(Math.PI * 0.62, 0, -a * 0.6);
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = Math.PI + (-0.8 + i * 0.4);
+      const spike = mesh(new THREE.ConeGeometry(0.04 * big, 0.12 * big, 4), mats.hair, head, Math.sin(a) * 0.09, 0.07, Math.cos(a) * 0.09);
+      spike.rotation.set(-Math.PI * 0.7, 0, a * 0.2);
+    }
+  } else if (look.hairStyle === "bob") {
+    const cap = mesh(new THREE.SphereGeometry(0.128, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), mats.hair, head, 0, 0.11, -0.015);
+    cap.scale.set(1.05, 1.08, 1.1);
+    cap.rotation.x = -0.45;
+    const back = mesh(new THREE.CylinderGeometry(0.128, 0.138, 0.13, 16, 1, true, Math.PI * 0.62, Math.PI * 0.76), mats.hair, head, 0, 0.05, -0.01);
+    back.scale.set(1.05, 1, 1.1);
+    for (let i = 0; i < 5; i++) {
+      const x = -0.07 + i * 0.035;
+      const fringe = mesh(new THREE.ConeGeometry(0.026, 0.07, 4), mats.hair, head, x, 0.165, 0.098);
+      fringe.rotation.set(Math.PI * 0.86, 0, x * 2);
+    }
+    for (const sx of [-1, 1]) {
+      const lock = mesh(new THREE.BoxGeometry(0.035, 0.15, 0.08), mats.hair, head, sx * 0.112, 0.05, 0.035);
+      lock.rotation.z = sx * 0.08;
+    }
+  } else {
+    const shave = mesh(new THREE.SphereGeometry(0.115, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.72), mats.shave, head, 0, 0.09, 0.0);
+    shave.scale.set(0.99, 1.07, 1.02);
+    const top = mesh(new THREE.SphereGeometry(0.126, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.42), mats.hair, head, 0, 0.115, -0.005);
+    top.scale.set(1.04, 1.1, 1.08);
+    top.rotation.x = -0.18;
+    for (const sx of [-1, 1])
+      for (let i = 0; i < 3; i++) {
+        const strand = mesh(new THREE.ConeGeometry(0.024, 0.1, 4), mats.hair, head, sx * (0.025 + i * 0.03), 0.15, 0.1 - i * 0.01);
+        strand.rotation.set(Math.PI * 0.85, 0, sx * (0.25 + i * 0.15));
+      }
   }
   const hood = mesh(new THREE.TorusGeometry(0.12, 0.05, 6, 14, Math.PI * 1.2), mats.hood, spine, 0, 0.48, -0.08);
   hood.rotation.set(-1.3, 0, Math.PI * 0.9);

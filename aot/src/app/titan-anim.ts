@@ -25,6 +25,7 @@ export type Pose = {
   stomp: number;
   limp: number;
   blind: number;
+  climb: number;
   curl: [number, number];
   ik: [THREE.Vector3, THREE.Vector3];
   ikW: [number, number];
@@ -34,7 +35,7 @@ export type Pose = {
 export function newPose(seed: number): Pose {
   return {
     t: 0, seed, phase: seed * 6, walk: 0, run: 0, crawl: 0, kneel: 0, lean: 0, hunch: 0, twist: 0, lookYaw: 0, lookPitch: 0, tilt: 0, jaw: 0,
-    roar: 0, flail: 0, reach: 0, crouch: 0, air: 0, kick: 0, stomp: 0, limp: 0, blind: 0, curl: [0.3, 0.3],
+    roar: 0, flail: 0, reach: 0, crouch: 0, air: 0, kick: 0, stomp: 0, limp: 0, blind: 0, climb: 0, curl: [0.3, 0.3],
     ik: [new THREE.Vector3(), new THREE.Vector3()], ikW: [0, 0], sev: [1, 1, 1, 1],
   };
 }
@@ -74,7 +75,7 @@ export function pose(rig: Rig, d: Dims, p: Pose, cp: number) {
 
   const pel = b[BN.pelvis].rotation, spi = b[BN.spine].rotation, che = b[BN.chest].rotation;
   pel.set(cr * cp * 0.75 - p.kick * 0.35 + kn * 0.1, p.twist * 0.4 + 0.1 * w * s, 0.05 * w * s + li * 0.1);
-  spi.set(cr * cp * 0.12 + p.lean * 0.5 + kn * 0.25 + cro * 0.45 + air * 0.3 - p.roar * 0.15, p.twist * 0.3 - 0.06 * w * s, 0);
+  spi.set(cr * cp * 0.12 + p.climb * 0.25 + p.lean * 0.5 + kn * 0.25 + cro * 0.45 + air * 0.3 - p.roar * 0.15, p.twist * 0.3 - 0.06 * w * s, 0);
   che.set(cr * cp * 0.13 + p.lean * 0.4 + p.hunch - p.roar * 0.3 + 0.03 * run, p.twist * 0.3 - 0.1 * w * s, -0.03 * w * s);
 
   const comp = pel.x + spi.x + che.x;
@@ -117,6 +118,9 @@ export function pose(rig: Rig, d: Dims, p: Pose, cp: number) {
     }
     tx = mix(tx, 0, li);
     kx = mix(kx, 0.25, li);
+    const cl = Math.sin(p.t * 3.2 + i * Math.PI);
+    tx = mix(tx, -0.95 + 0.55 * cl, p.climb);
+    kx = mix(kx, 1.35 - 0.45 * cl, p.climb);
     b[th].rotation.set(tx, 0, side * (0.03 + li * 0.18 + cr * 0.12));
     b[sh].rotation.set(kx, 0, 0);
     b[ft].rotation.set(fx, 0, 0);
@@ -146,6 +150,9 @@ export function pose(rig: Rig, d: Dims, p: Pose, cp: number) {
     fxx = mix(fxx, -0.2, air);
     ax = mix(ax, -0.3, li);
     az = mix(az, side * 1.25, li);
+    ax = mix(ax, -2.75 - 0.4 * cl, p.climb);
+    az = mix(az, side * 0.3, p.climb);
+    fxx = mix(fxx, -0.35 + 0.3 * cl, p.climb);
     b[ar].rotation.set(ax, 0, az);
     b[fo].rotation.set(fxx, 0, 0);
     b[hd].rotation.set(0, 0, 0);

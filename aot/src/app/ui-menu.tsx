@@ -4,7 +4,7 @@ import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import type { QUALITIES, Quality, Settings } from "./game";
 import { Brush, Emblem } from "./ui-art";
 
-export type Panel = "settings" | "controls" | null;
+export type Panel = "settings" | "controls" | "characters" | null;
 export type MenuItem = {
   id: string;
   label: string;
@@ -19,7 +19,8 @@ const CONTROLS: { group: string; jp: string; keys: [string[], string][] }[] = [
     jp: "立体機動装置",
     keys: [
       [["F"], "Both anchors at the crosshair or lock"],
-      [["LMB", "RMB"], "Left or right anchor"],
+      [["LMB", "C"], "Left anchor"],
+      [["RMB", "V"], "Right anchor"],
       [["Space"], "Gas boost, jump on the ground"],
       [["Shift"], "Gas dash"],
       [["W", "A", "S", "D"], "Move and steer"],
@@ -34,6 +35,7 @@ const CONTROLS: { group: string; jp: string; keys: [string[], string][] }[] = [
       [["Q"], "Lock on"],
       [["Tab", "Wheel"], "Next part"],
       [["R"], "Swap blades"],
+      [["G"], "Squad: attack my target or regroup"],
     ],
   },
   {

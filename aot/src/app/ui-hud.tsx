@@ -1,12 +1,15 @@
 "use client";
 
 import { useId } from "react";
-import type { HudState, TitanBlip, TitanPart } from "./contracts";
+import type { HudState, TitanBlip, TitanKind, TitanPart } from "./contracts";
 import type { UiEvent } from "./game";
+import type { Character } from "./progression-chars";
+import { BOSS, isBoss } from "./titan-waves";
 import { Brush, SHIELD_PATH, TitanIcon } from "./ui-art";
 import { Key } from "./ui-menu";
 
 export type Pop = UiEvent & { id: number };
+export type Msgs = { banner: Pop | null; radio: Pop | null; callout: Pop | null };
 type Lock = NonNullable<HudState["lock"]>;
 
 const PERFECT = 0.85;
@@ -39,33 +42,43 @@ function arc(r: number, from: number, to: number) {
 export function Hud({
   h,
   pops,
+  msgs,
+  touch,
+  who,
+  final,
   onSkip,
 }: {
   h: HudState;
   pops: Pop[];
+  msgs: Msgs;
+  touch: boolean;
+  who: Character | null;
+  final: boolean;
   onSkip: () => void;
 }) {
   if (h.intro) return <Intro onSkip={onSkip} />;
-  const kill = [...pops].reverse().find((p) => p.type === "kill");
+  const b = msgs.banner;
+  const free = !h.dead && h.escape === null;
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden font-cond text-bone">
       <Vignettes h={h} pops={pops} />
-      <Compass blips={h.blips} />
+      <Compass blips={h.blips} depots={h.depots} />
       {h.boss && <BossBar boss={h.boss} />}
       <WavePanel h={h} />
       <KillPanel h={h} />
-      {!h.dead && h.escape === null && <Crosshair h={h} />}
-      {!h.dead && h.escape === null && <Prompt h={h} />}
-      <Toasts pops={pops} />
+      {free && <Crosshair h={h} />}
+      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} />}
+      {free && <Prompt h={h} touch={touch} />}
+      <Toasts pops={pops} touch={touch} />
       <ScorePops pops={pops} />
       {h.combo > 1 && <Combo n={h.combo} />}
-      <GearPanel h={h} />
+      <GearPanel h={h} who={who} />
       <SpeedPanel h={h} />
-      {h.escape !== null && !h.dead && <Grab escape={h.escape} />}
-      {kill && kill.type === "kill" && (
-        <KillBanner key={kill.id} height={kill.height} speed={kill.speed} />
-      )}
-      {h.dead && <Dead />}
+      {msgs.radio?.type === "radio" && <Radio key={msgs.radio.id} who={msgs.radio.who} text={msgs.radio.text} />}
+      {h.escape !== null && !h.dead && <Grab escape={h.escape} touch={touch} />}
+      {b?.type === "kill" && <KillBanner key={b.id} height={b.height} speed={b.speed} kind={b.kind} />}
+      {b?.type === "banner" && <Banner key={b.id} jp={b.jp} en={b.en} text={b.text} />}
+      {h.dead && <Dead final={final} />}
     </div>
   );
 }
@@ -94,8 +107,9 @@ function Intro({ onSkip }: { onSkip: () => void }) {
           <div className="brush-in font-display text-[clamp(2.4rem,8vh,5.5rem)] uppercase leading-[0.95] tracking-[0.04em] ink-shadow">
             Shiganshina District
           </div>
-          <div className="slow-fade mt-2 font-jp text-[clamp(1rem,2.8vh,1.75rem)] italic tracking-[0.25em] text-bone/85 ink-shadow">
-            Year 845
+          <div className="slow-fade mt-2 flex items-baseline gap-3 text-[clamp(1rem,2.8vh,1.75rem)] text-bone/85 ink-shadow">
+            <span className="font-jp font-bold tracking-[0.2em]">845年</span>
+            <span className="font-display tracking-[0.12em]">Year 845</span>
           </div>
         </div>
       </div>
@@ -128,7 +142,8 @@ function Vignettes({ h, pops }: { h: HudState; pops: Pop[] }) {
 
 const SPAN = (100 * Math.PI) / 180;
 
-function Compass({ blips }: { blips: TitanBlip[] }) {
+function Compass({ blips, depots }: { blips: TitanBlip[]; depots: HudState["depots"] }) {
+  const depot = [...depots].sort((a, b) => a.dist - b.dist)[0];
   const near = [...blips].sort((a, b) => a.dist - b.dist).slice(0, 3);
   return (
     <div className="hud-z absolute left-1/2 top-3 -translate-x-1/2">
@@ -151,6 +166,24 @@ function Compass({ blips }: { blips: TitanBlip[] }) {
         >
           <path d="M0 0h10L5 6Z" fill="currentColor" />
         </svg>
+        {depots.map((d, i) => {
+          const behind = Math.abs(d.bearing) > SPAN;
+          const x = 50 + (Math.max(-SPAN, Math.min(SPAN, -d.bearing)) / SPAN) * 47;
+          return (
+            <div
+              key={`d${i}`}
+              className="absolute bottom-[4px] flex -translate-x-1/2 flex-col items-center"
+              style={{ left: `${x}%`, opacity: behind ? 0.4 : 0.95 }}
+            >
+              <svg viewBox="0 0 10 14" className="h-3.5 w-2.5 text-[#6fdc8c] drop-shadow-[0_0_3px_rgba(80,220,120,0.9)]">
+                <path d="M5 0C8 3 9 5 7 8C9 9 8 13 5 14C2 13 1 9 3 8C1 5 2 3 5 0Z" fill="currentColor" />
+              </svg>
+              <span className={`mt-px font-cond text-[9px] leading-none tabular-nums ${d === depot ? "text-[#bff0c8]" : "text-transparent"}`}>
+                {Math.round(d.dist)}m
+              </span>
+            </div>
+          );
+        })}
         {blips.map((b, i) => {
           const behind = Math.abs(b.bearing) > SPAN;
           const x =
@@ -199,7 +232,7 @@ function BossBar({ boss }: { boss: NonNullable<HudState["boss"]> }) {
       <div className="flex items-end justify-between px-1">
         <div className="flex items-baseline gap-3">
           <span className="font-jp text-sm font-black tracking-[0.2em] text-ember">
-            巨人
+            {isBoss(boss.kind) ? BOSS[boss.kind].jp : "巨人"}
           </span>
           <span className="font-display text-2xl uppercase tracking-wide ink-shadow">
             {boss.name}
@@ -374,12 +407,53 @@ function Crosshair({ h }: { h: HudState }) {
   );
 }
 
-function Prompt({ h }: { h: HudState }) {
+function Prompt({ h, touch }: { h: HudState; touch: boolean }) {
   const hint = h.hint;
   if (!hint) return null;
   return (
-    <div className="hud-z absolute left-1/2 top-[calc(50%+78px)] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap text-xs uppercase tracking-[0.2em] ink-shadow">
-      <Key>{hint.key}</Key> {hint.text}
+    <div className="hud-z prompt plate absolute left-1/2 top-[calc(50%+120px)] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap border-l-4 border-brass bg-ink/80 py-1.5 pl-3 pr-4 text-sm uppercase tracking-[0.15em]">
+      {!touch && hint.key && <Key>{hint.key}</Key>}
+      {touch ? (hint.touch ?? hint.text) : hint.text}
+    </div>
+  );
+}
+
+function Callout({ text }: { text: string }) {
+  return (
+    <div
+      className="toast-in hud-z absolute left-1/2 top-[calc(50%-96px)] -translate-x-1/2 whitespace-nowrap font-display text-2xl uppercase tracking-wide text-[#ffd27a] ink-shadow"
+      style={{ animationDuration: "1.6s" }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function Radio({ who, text }: { who: string; text: string }) {
+  return (
+    <div
+      className="toast-in hud-z radio absolute bottom-[84px] left-1/2 -translate-x-1/2 whitespace-nowrap bg-ink/60 px-3 py-1 text-sm ink-shadow"
+      style={{ animationDuration: "3.2s" }}
+    >
+      <span className="mr-2 font-semibold uppercase tracking-[0.2em] text-[#8fd6a0]">{who}</span>
+      {text}
+    </div>
+  );
+}
+
+function Banner({ jp, en, text }: { jp: string; en: string; text?: string }) {
+  return (
+    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2">
+      <div className="kill-banner" style={{ animationDuration: "2.8s" }}>
+        <div className="relative">
+          <Brush className="brush-in absolute -inset-x-8 -inset-y-6 h-[calc(100%+3rem)] w-[calc(100%+4rem)]" />
+          <div className="relative flex items-center justify-center gap-5 py-3">
+            <span className="font-jp text-5xl font-black leading-none text-black">{jp}</span>
+            <span className="font-display text-6xl uppercase leading-none tracking-wide text-bone [text-shadow:4px_4px_0_#000]">{en}</span>
+          </div>
+        </div>
+        {text && <div className="mt-4 text-center font-display text-xl uppercase tracking-widest ink-shadow">{text}</div>}
+      </div>
     </div>
   );
 }
@@ -436,14 +510,14 @@ export function LockReticle({ lock }: { lock: Lock | null }) {
           </span>
         </div>
         <div className="mt-1 text-[10px] uppercase tracking-[0.25em] text-bone/70">
-          {lock.name} · {Math.round(lock.height)}m
+          {lock.name} · {Math.round(lock.height)} m tall
         </div>
       </div>
     </div>
   );
 }
 
-function Toasts({ pops }: { pops: Pop[] }) {
+function Toasts({ pops, touch }: { pops: Pop[]; touch: boolean }) {
   return (
     <div className="hud-z absolute left-4 top-[34%] flex w-[300px] origin-left flex-col gap-2">
       {pops.map((p) =>
@@ -455,8 +529,8 @@ function Toasts({ pops }: { pops: Pop[] }) {
             <div className="font-display text-lg uppercase leading-tight tracking-wide">
               {p.title}
             </div>
-            {p.text && (
-              <div className="text-sm leading-snug text-bone/75">{p.text}</div>
+            {(touch ? (p.touch ?? p.text) : p.text) && (
+              <div className="text-sm leading-snug text-bone/75">{touch ? (p.touch ?? p.text) : p.text}</div>
             )}
           </div>
         ) : null,
@@ -550,7 +624,7 @@ function Canister({ level }: { level: number }) {
   );
 }
 
-function GearPanel({ h }: { h: HudState }) {
+function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
   const hp = clamp01(h.health);
   const hpColor = hp > 0.5 ? "#4f8a5b" : hp > 0.25 ? "#d79a2b" : "#c3161c";
   const gas = clamp01(h.gas);
@@ -559,6 +633,26 @@ function GearPanel({ h }: { h: HudState }) {
     sharp > 0.5 ? "#dfe8ee" : sharp > 0.2 ? "#e9a23b" : "#e23a2a";
   return (
     <div className="hud-z absolute bottom-4 left-4 origin-bottom-left">
+      <div className="plate mb-2 inline-flex items-baseline gap-3 bg-ink/75 py-1 pl-2 pr-3">
+        {who && (
+          <span className="flex items-baseline gap-2">
+            <span className="font-jp text-xs font-bold text-ember">{who.jp}</span>
+            <span className="font-display text-lg uppercase leading-none tracking-wide">{who.name}</span>
+          </span>
+        )}
+        {h.squad.max > 0 && (
+          <span className="flex items-baseline gap-1.5 text-xs uppercase tracking-[0.2em] text-bone/80">
+            <span className="font-jp text-bone/60">分隊</span>
+            <span className="font-display text-base tabular-nums tracking-normal text-bone">
+              {h.squad.alive}/{h.squad.max}
+            </span>
+            <span className={h.squad.order === "attack" ? "text-ember" : "text-[#8fd6a0]"}>
+              {h.squad.order === "attack" ? "Attack" : "Regroup"}
+            </span>
+            <span data-keyhint className="ml-1"><Key>G</Key></span>
+          </span>
+        )}
+      </div>
       {h.supply && (
         <div className="blink mb-2 inline-flex items-center gap-2 border border-[#6fbf7f]/60 bg-corps/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-[#bff0c8]">
           <span className="font-jp">補給</span> Resupplying
@@ -609,9 +703,9 @@ function GearPanel({ h }: { h: HudState }) {
         <div className="flex flex-col">
           <div className="mb-1 flex items-baseline justify-between">
             <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-bone/70">
-              Blades
+              Spares
             </span>
-            <span className="font-display text-sm">{h.blades}/8</span>
+            <span className="font-display text-sm">{h.blades}</span>
           </div>
           <div className="grid grid-cols-4 gap-x-1.5 gap-y-1">
             {Array.from({ length: 8 }, (_, i) => (
@@ -636,11 +730,6 @@ function GearPanel({ h }: { h: HudState }) {
           </div>
         </div>
       </div>
-      {sharp < 0.15 && h.blades > 0 && (
-        <div className="blink mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.2em] ink-shadow">
-          <Key>R</Key> Swap blades
-        </div>
-      )}
     </div>
   );
 }
@@ -680,7 +769,7 @@ function SpeedPanel({ h }: { h: HudState }) {
   );
 }
 
-function Grab({ escape }: { escape: number }) {
+function Grab({ escape, touch }: { escape: number; touch: boolean }) {
   return (
     <div className="hud-z absolute left-1/2 top-[62%] w-[360px] -translate-x-1/2 text-center">
       <div className="font-jp text-lg font-black tracking-[0.3em] text-ember ink-shadow">
@@ -688,10 +777,10 @@ function Grab({ escape }: { escape: number }) {
       </div>
       <div className="mt-1 flex items-center justify-center gap-4">
         <span className="font-display text-5xl uppercase tracking-wider ink-shadow">
-          Mash
+          {touch ? "Tap Slash" : "Mash"}
         </span>
         <span className="pulse inline-flex h-14 w-14 items-center justify-center border-2 border-bone bg-blood font-display text-4xl shadow-[0_0_20px_rgba(255,40,20,0.8)]">
-          E
+          {touch ? <span className="font-jp font-black">斬</span> : "E"}
         </span>
       </div>
       <div className="mx-auto mt-3 h-3 w-[300px] -skew-x-[20deg] border border-black bg-black/70 shadow-[0_0_0_1px_rgba(201,162,90,0.5)]">
@@ -704,7 +793,8 @@ function Grab({ escape }: { escape: number }) {
   );
 }
 
-function KillBanner({ height, speed }: { height: number; speed: number }) {
+function KillBanner({ height, speed, kind }: { height: number; speed: number; kind: TitanKind }) {
+  if (isBoss(kind)) return <Banner jp={`${BOSS[kind].jp} 討伐`} en={`${BOSS[kind].name} down`} text={`${Math.round(speed)} km/h`} />;
   return (
     <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2">
       <div className="kill-banner">
@@ -720,7 +810,7 @@ function KillBanner({ height, speed }: { height: number; speed: number }) {
           </div>
         </div>
         <div className="mt-4 flex justify-center gap-6 font-display text-xl uppercase tracking-widest ink-shadow">
-          <span>{Math.round(height)}m class</span>
+          <span>{Math.round(height)} m class</span>
           <span className="text-brass">{Math.round(speed)} km/h</span>
         </div>
       </div>
@@ -728,18 +818,20 @@ function KillBanner({ height, speed }: { height: number; speed: number }) {
   );
 }
 
-function Dead() {
+function Dead({ final }: { final: boolean }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(60,0,0,0.55),rgba(0,0,0,0.92))]">
       <div className="rise-in font-brush text-[clamp(6rem,22vh,13rem)] leading-none text-blood [text-shadow:0_0_40px_rgba(195,22,28,0.6)]">
         戦死
       </div>
       <div className="mt-2 font-display text-[clamp(2rem,6vh,3.5rem)] uppercase tracking-[0.12em] text-bone">
-        Killed in action
+        Fallen in the line of duty
       </div>
-      <div className="slow-fade mt-3 text-sm uppercase tracking-[0.35em] text-parch/70">
-        Returning to a supply depot
-      </div>
+      {!final && (
+        <div className="slow-fade mt-3 text-sm uppercase tracking-[0.35em] text-parch/70">
+          Returning to a supply depot
+        </div>
+      )}
     </div>
   );
 }

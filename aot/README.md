@@ -14,7 +14,9 @@ Quick start: Q locks on a titan, F hooks it, hold E and release to strike the na
 - Tab or the mouse wheel picks the part: nape, eyes, arms, legs. R swaps blades.
 - Only a nape cut kills. Cut legs to make a titan kneel, eyes to blind it, arms to stop a grab. Mash E or Space when grabbed.
 - Phone or tablet: play in landscape. Use the left stick to move, drag to look, and the right buttons for anchors, gas, slash, and dash.
-- Wave 4 brings the Female Titan. Her nape stays hardened until you cut two limbs.
+- Bosses: the Female Titan (wave 4), the Armored Titan (wave 7), and the Beast Titan (wave 10). Waves never end after wave 10.
+- A Survey Corps squad fights with you. G orders them to attack your target or regroup. C and V fire single anchors.
+- Pick Eren, Mikasa, Levi, Armin, or a cadet under Soldiers. Ranks unlock Mikasa and Levi.
 
 ## Run
 
@@ -38,6 +40,8 @@ Open http://localhost:3000/aot. It works with a mouse, a trackpad, or a touch sc
 | src/app/player*.ts, scout.ts, camera.ts, input.ts | ODM gear, combat, scout model, camera, controls |
 | src/app/fx.ts | Steam, blood, gas, dust, slash arcs |
 | src/app/audio*.ts | Procedural battle music and sound effects |
-| src/app/page.tsx, ui-*.tsx | Title screen and HUD |
+| src/app/allies*.ts | Survey Corps squad AI |
+| src/app/progression*.ts | Characters, ranks, run results |
+| src/app/page.tsx, ui-*.tsx | Title screen, character select, HUD, touch controls |
 
 Fan project. Not affiliated with Hajime Isayama, Kodansha, or Wit Studio.

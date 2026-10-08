@@ -10,10 +10,12 @@ const KEYS: Record<string, Action> = {
   Tab: "cycle",
   KeyF: "autoHook",
   KeyR: "swap",
+  KeyC: "anchorL",
+  KeyV: "anchorR",
 };
 const BUTTONS: Record<number, Action> = { 0: "anchorL", 2: "anchorR" };
 const MOVE = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-const SYSTEM = new Set(["Escape", "Enter", "KeyM"]);
+const SYSTEM = new Set(["Escape", "Enter", "KeyM", "KeyG"]);
 
 export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) => void): Controls {
   const held = new Set<Action>();

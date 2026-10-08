@@ -5,7 +5,7 @@ import type * as THREE from "three";
 
 export type Quality = "low" | "medium" | "high";
 
-export type TitanKind = "normal" | "abnormal" | "crawler" | "female";
+export type TitanKind = "normal" | "abnormal" | "crawler" | "female" | "armored" | "beast" | "smiler" | "runner" | "climber";
 export type TitanPart = "nape" | "eyes" | "armL" | "armR" | "legL" | "legR";
 export type HitZone = TitanPart | "body";
 
@@ -43,7 +43,10 @@ export type Stinger = "wave" | "waveClear" | "kill" | "bossIntro" | "bossDown" |
 export type GameEvent =
   | { type: "sfx"; name: Sfx; volume?: number; at?: THREE.Vector3 } // `at` makes game.ts pan and fade it by distance
   | { type: "stinger"; name: Stinger }
-  | { type: "toast"; title: string; text?: string }
+  | { type: "toast"; title: string; text?: string; touch?: string; low?: boolean } // touch: text for touch screens, low: drop when busy
+  | { type: "banner"; jp: string; en: string; text?: string } // big center card: waves and bosses
+  | { type: "radio"; who: string; text: string } // squad callout line
+  | { type: "callout"; text: string } // short line at the crosshair
   | { type: "score"; amount: number; reason: string }
   | { type: "shake"; strength: number }
   | { type: "hitstop"; duration: number } // freeze the simulation, keep rendering
@@ -140,7 +143,7 @@ export interface Titans {
   struggle(): GameEvent[]; // one mash while held
   readonly escape: number | null; // 0..1 while held
   pushOut(pos: THREE.Vector3, radius: number, vel: THREE.Vector3): void;
-  boss(): { name: string; health: number; hardened: boolean } | null;
+  boss(): { name: string; kind: TitanKind; health: number; hardened: boolean } | null;
   dispose(): void;
 }
 
@@ -184,7 +187,7 @@ export interface CameraRig {
 // ---- player.ts: createPlayer(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Player
 export type PlayerMode = "ground" | "air" | "reel" | "wall" | "held" | "dead";
 export type Lock = { titan: TitanView; part: TitanPart };
-export type Hint = { key: string; text: string };
+export type Hint = { key: string; text: string; touch?: string }; // key "" shows no key cap
 export type PlayerHud = {
   hint: Hint | null; // the next useful action for a new player
   health: number;
@@ -212,6 +215,7 @@ export interface Player {
   hud(): PlayerHud;
   cameraView(): CameraView;
   setVisible(on: boolean): void;
+  setCharacter(id: string): void; // swaps the model and stats
   dispose(): void;
 }
 
@@ -223,6 +227,18 @@ export interface Audio {
   setMuted(m: boolean): void;
   setVolume(v: number): void;
   resume(): Promise<void>;
+  dispose(): void;
+}
+
+// ---- allies.ts: createAllies(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Allies
+export type SquadOrder = "attack" | "regroup";
+export type SquadHud = { alive: number; max: number; order: SquadOrder };
+export type SquadLead = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; lock: Lock | null };
+export interface Allies {
+  update(dt: number, t: number, lead: SquadLead, yaw: number): GameEvent[]; // yaw: camera yaw for clock callouts
+  order(o: SquadOrder): GameEvent[];
+  toggle(): GameEvent[]; // attack my target <-> regroup
+  hud(): SquadHud;
   dispose(): void;
 }
 
@@ -240,6 +256,8 @@ export type HudState = {
   breakT: number;
   escape: number | null;
   lock: { part: TitanPart; health: number; height: number; kind: TitanKind; name: string } | null;
-  boss: { name: string; health: number; hardened: boolean } | null;
+  boss: { name: string; kind: TitanKind; health: number; hardened: boolean } | null;
   blips: TitanBlip[];
+  depots: { bearing: number; dist: number }[];
+  squad: SquadHud;
 } & PlayerHud;

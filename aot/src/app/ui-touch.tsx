@@ -46,7 +46,7 @@ const at = (right: number, bottom: number, size: number) => ({
   height: `calc(var(--u) * ${size})`,
 });
 
-export function TouchControls({ pad, h, onPause }: { pad: VirtualPad; h: HudState; onPause: () => void }) {
+export function TouchControls({ pad, h, onPause, onOrder }: { pad: VirtualPad; h: HudState; onPause: () => void; onOrder: () => void }) {
   const base = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
   const touches = useRef(new Map<number, { stick: boolean; x0: number; y0: number; x: number; y: number }>());
@@ -134,7 +134,7 @@ export function TouchControls({ pad, h, onPause }: { pad: VirtualPad; h: HudStat
         <Face jp="斬" en={held ? "Mash" : "Slash"} />
       </HoldButton>
       <HoldButton pad={pad} kind="gas" style={at(188, 50, 78)}>
-        <Face jp="噴" en="Gas" />
+        <Face jp="ガス" en="Gas" />
       </HoldButton>
       <HoldButton pad={pad} kind="anchorL" style={at(170, 150, 68)} lit={h.hooks[0]}>
         <Face jp="L" en="Anchor" latin />
@@ -149,13 +149,31 @@ export function TouchControls({ pad, h, onPause }: { pad: VirtualPad; h: HudStat
         <Face jp="翔" en="Dash" small />
       </HoldButton>
 
-      <LockButton pad={pad} locked={!!h.lock} label={lockLabel} style={at(34, 268, 54)} />
-      <HoldButton pad={pad} kind="autoHook" style={at(98, 272, 48)} small>
-        <Face jp="鉤" en="Hook" small />
+      <LockButton pad={pad} locked={!!h.lock} label={lockLabel} style={at(34, 248, 54)} />
+      <HoldButton pad={pad} kind="autoHook" style={at(108, 250, 48)} small>
+        <Face jp="アンカー" en="Hook" small />
       </HoldButton>
-      <HoldButton pad={pad} kind="swap" style={at(160, 262, 44)} small>
-        <Face jp="刃" en={`${h.blades}`} small />
+      <HoldButton pad={pad} kind="swap" style={at(168, 246, 44)} small>
+        <Face jp="刃" en={`Swap ${h.blades}`} small />
       </HoldButton>
+      {h.squad.max > 0 && (
+        <div
+          role="button"
+          aria-label="order"
+          className="touch-btn text-[calc(var(--u)*13)]"
+          data-lit={h.squad.order === "attack" ? "1" : undefined}
+          style={at(226, 236, 44)}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onOrder();
+          }}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+        >
+          <Face jp={h.squad.order === "attack" ? "攻撃" : "集合"} en="Squad" small />
+        </div>
+      )}
 
       <button
         aria-label="Pause"
@@ -176,7 +194,7 @@ export function TouchControls({ pad, h, onPause }: { pad: VirtualPad; h: HudStat
 function Face({ jp, en, latin, small }: { jp: string; en: string; latin?: boolean; small?: boolean }) {
   return (
     <span className="pointer-events-none relative flex flex-col items-center leading-none">
-      <span className={`${latin ? "font-display" : "font-jp font-black"} ${small ? "text-[1.05em]" : "text-[1.6em]"}`}>{jp}</span>
+      <span className={`${latin ? "font-display" : "font-jp font-black"} whitespace-nowrap ${!latin && jp.length > 3 ? "text-[0.62em]" : small ? "text-[1.05em]" : "text-[1.6em]"}`}>{jp}</span>
       <span className="mt-[0.2em] text-[0.55em] font-semibold uppercase tracking-[0.15em] text-bone/70">{en}</span>
     </span>
   );
@@ -291,15 +309,17 @@ export function RotateHint() {
 const TOUCH_HELP: [string, string][] = [
   ["Left side", "Drag to move"],
   ["Right side", "Drag to look"],
-  ["L / R", "Hold to anchor and reel"],
+  ["L / R", "Tap to latch, hold to reel"],
   ["L+R", "Fire both anchors"],
   ["Gas", "Hold to boost, tap on ground to jump"],
   ["Dash", "Gas dash"],
   ["Slash", "Hold to charge, release to strike"],
   ["Lock", "Tap to lock, tap again for next part"],
-  ["Lock hold", "Release the lock"],
+  ["Lock hold", "Hold to drop the lock"],
   ["Hook", "Anchor to the locked titan"],
-  ["Blades", "Swap blades"],
+  ["Swap", "Swap blades"],
+  ["Squad", "Attack my target or regroup"],
+  ["Grabbed", "Tap Slash fast"],
 ];
 
 export function TouchHelp({ onClose }: { onClose: () => void }) {

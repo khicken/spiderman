@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import type { Action, Blade, TitanHit, CameraView, Fx, GameEvent, Input, Lock, Player, PlayerHud, PlayerMode, Sfx, TitanPart, TitanView, Titans, World, Hint } from "./contracts";
 import { createWires, type Hook } from "./player-wire";
+import { getCharacter, type CharStats } from "./progression-chars";
+import { isBoss } from "./titan-waves";
 import { createScout, SCOUT_HALF, type ScoutAnim, type ScoutFrame } from "./scout";
 
 const G = 24;
@@ -22,7 +24,11 @@ const UP = new THREE.Vector3(0, 1, 0);
 type Act = { name: ScoutAnim | null; t: number; dur: number };
 
 export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Player {
-  const scout = createScout();
+  let scout = createScout();
+  let st: CharStats = getCharacter("cadet").stats;
+  let charId = "cadet";
+  const drain = () => st.gasDrain / st.tank;
+  const chargeFull = () => CHARGE_T * st.chargeTime;
   scene.add(scout.root);
   const wires = createWires(scene);
   const hooks = wires.hooks;
@@ -66,21 +72,49 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const pressT = new Map<Action, number>();
   const lastLook = new THREE.Vector3(0, 0, 1);
   const hv = new THREE.Vector3();
-  const hint = (): Hint | null => {
+  const used = new Map<string, number>();
+  let shown: (Hint & { acts: Action[]; rel?: boolean }) | null = null;
+  const tip = (acts: Action[], key: string, text: string, touch: string, rel = false) => ((used.get(text) ?? 0) >= 3 ? null : { acts, key, text, touch, rel });
+  const hint = () => {
     if (mode === "dead" || mode === "held") return null;
-    if (charging) return { key: "E", text: "Release to strike" };
-    if (sharp <= 0) return blades > 0 ? { key: "R", text: "Swap blades" } : null;
-    if (lock && titans.partPos(lock.titan, lock.part, hv) && hv.distanceTo(pos) < 32) return { key: "E", text: "Hold, release to strike" };
-    const ti = titans.nearest(pos, lastLook, 22);
-    if (ti && titans.partPos(ti, "nape", hv)) return { key: "E", text: "Hold, release to strike" };
+    if (charging) return tip(["attack"], "E", "Release to strike", "Release Slash to strike", true);
+    if (sharp <= 0) return blades > 0 ? tip(["swap"], "R", "Swap blades", "Tap Swap for fresh blades") : null;
+    const near = (lock && titans.partPos(lock.titan, lock.part, hv) && hv.distanceTo(pos) < 32) || ((ti) => ti && titans.partPos(ti, "nape", hv))(titans.nearest(pos, lastLook, 22));
+    if (near) {
+      const b = lock?.part === "nape" && isBoss(lock.titan.kind) ? titans.boss() : null;
+      if (b?.hardened) return lock!.titan.kind === "armored" ? tip(["cycle"], "Tab", "Target a leg", "Tap Lock to target a leg") : tip(["cycle"], "Tab", "Target a limb", "Tap Lock to target a limb");
+      if (vel.length() < 12) return tip(["gas"], "", "Swing in fast, then strike", "Swing in fast with Gas, then Slash");
+      return tip(["attack"], "E", "Hold, release to strike", "Hold Slash, release to strike");
+    }
     const on = hooks.some((h) => h.state === "on");
-    if (on && hooks.some((h) => h.state === "on" && h.titan)) return { key: "Space", text: "Gas to close in" };
-    if (on) return hooks.some((h) => h.latch) ? { key: "F", text: "Let go" } : null;
-    if (aim.kind === "titan" || (lock && hv.distanceTo(pos) < RANGE) || (!lock && titans.nearest(pos, lastLook, RANGE))) return { key: "F", text: "Hook the titan" };
-    if (!lock && titans.nearest(pos, lastLook, 170)) return { key: "Q", text: "Lock on a titan" };
-    if (lock) return { key: "F", text: "Anchor toward the titan" };
-    if (aim.kind === "world") return { key: "F", text: "Anchor where you aim" };
-    return null;
+    if (on && hooks.some((h) => h.state === "on" && h.titan)) return tip(["gas"], "Space", "Gas to close in", "Hold Gas to close in");
+    if (on) return hooks.some((h) => h.latch) ? tip(["gas"], "", "Space to boost, F to let go", "Hold Gas to boost, tap Hook to let go") : null;
+    const seen = !lock && ((ti) => ti && titans.partPos(ti, "nape", hv) && reach(hv) < 0)(titans.nearest(pos, lastLook, RANGE));
+    if (aim.kind === "titan" || (lock && hv.distanceTo(pos) < RANGE) || seen) return tip(["autoHook"], "F", "Hook the titan", "Tap Hook to anchor the titan");
+    if (!lock && titans.nearest(pos, lastLook, RANGE)) return tip(["lock"], "Q", "Lock on a titan", "Tap Lock to target a titan");
+    if (lock) return tip(["autoHook"], "F", "Anchor toward the titan", "Tap Hook to fly toward it");
+    return tip(["anchorL", "anchorR"], "", "Click to anchor, Space for gas", "Tap L or R, hold Gas");
+  };
+  const countHint = (input: Input) => {
+    if (shown && shown.acts.some((a) => (shown!.rel ? input.released : input.pressed).has(a))) used.set(shown.text, (used.get(shown.text) ?? 0) + 1);
+  };
+  let gasWarn = 0;
+  let dullWarn = false;
+  const warn = () => {
+    if (gas > 0.5) gasWarn = 0;
+    if (gas < 0.2 && gasWarn < 1) {
+      gasWarn = 1;
+      out.push({ type: "toast", title: "Gas low", text: "Land at the green smoke" });
+    }
+    if (gas <= 0 && gasWarn < 2) {
+      gasWarn = 2;
+      out.push({ type: "toast", title: "Out of gas", text: "Refill at the green smoke" });
+    }
+    if (sharp >= 0.5) dullWarn = false;
+    if (sharp < 0.2 && sharp > 0 && blades > 0 && !dullWarn) {
+      dullWarn = true;
+      out.push({ type: "toast", title: "Blades dull. Swap now", text: "Press R", touch: "Tap Swap" });
+    }
   };
   const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, hint: null };
   const lockPoint = new THREE.Vector3();
@@ -166,7 +200,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const say = (title: string) => {
     if (time - toastT < 1.5) return;
     toastT = time;
-    out.push({ type: "toast", title });
+    out.push({ type: "toast", title, low: true });
   };
 
   const findAim = (input: Input, assist = false) => {
@@ -347,7 +381,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     slash.struck = true;
     blade.pos.copy(pos).addScaledVector(slash.dir, 0.9);
     blade.dir.copy(slash.dir);
-    blade.speed = Math.max(vel.length(), slash.speed);
+    blade.speed = Math.max(vel.length(), slash.speed) * st.damage;
     blade.charge = slash.charge;
     blade.radius = 2.5 + 1.5 * slash.charge;
     const r = titans.strike(blade, slash.titan ? { titan: slash.titan, part: slash.part } : null);
@@ -360,9 +394,11 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     t3.copy(blade.pos).addScaledVector(rightV, 2.4 * slash.side).addScaledVector(UP, 0.9);
     fx.slash(t1, t2, t3);
     if (!r.zone) return;
-    sharp -= slash.charge >= 1 ? 0.08 : 0.14;
-    combo = comboT > 0 ? combo + 1 : 1;
-    comboT = 4;
+    sharp -= (slash.charge >= 1 ? 0.08 : 0.14) * st.wear;
+    if (r.zone !== "nape" || r.killed) {
+      combo = comboT > 0 ? combo + 1 : 1;
+      comboT = 4;
+    }
     vel.multiplyScalar(0.25).addScaledVector(slash.dir, -6).addScaledVector(UP, 11);
     for (let i = 0; i < 2; i++) if (hooks[i].latch) release(i, true);
     slash.on = false;
@@ -370,13 +406,12 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (sharp <= 0) {
       sharp = 0;
       sfx("bladeBreak");
-      out.push({ type: "toast", title: "Blades broken", text: "Press R to swap" });
     }
   };
 
   const startSlash = (input: Input) => {
-    const c = Math.min(1, chargeT / CHARGE_T);
-    const perfect = chargeT >= PERFECT[0] && chargeT <= PERFECT[1];
+    const c = Math.min(1, chargeT / chargeFull());
+    const perfect = chargeT >= PERFECT[0] * st.chargeTime && chargeT <= PERFECT[1] * st.chargeTime;
     slash.on = true;
     slash.t = 0;
     slash.struck = false;
@@ -400,7 +435,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     t2.copy(vel).addScaledVector(slash.dir, -along).multiplyScalar(0.35);
     vel.copy(slash.dir).multiplyScalar(Math.max(along, lunge)).add(t2);
     slash.speed = vel.length();
-    gas = Math.max(0, gas - 0.02);
+    gas = Math.max(0, gas - 0.02 * drain());
     frame.side = slash.side;
     startAct("slash", SLASH_T);
     sfx("slash", 0.7 + 0.3 * slash.charge);
@@ -478,10 +513,10 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (near && !inSupply && (gas < 0.99 || blades < SPARE || sharp < 1 || health < 1)) sfx("resupply");
     inSupply = near;
     if (!near) return;
-    gas = Math.min(1, gas + 0.4 * dt);
+    gas = Math.min(1, gas + 0.4 * st.refill * dt);
     health = Math.min(1, health + 0.2 * dt);
     supplyT += dt;
-    if (supplyT > 0.5) {
+    if (supplyT > 0.5 / st.refill) {
       supplyT = 0;
       if (sharp < 1) sharp = 1;
       else if (blades < SPARE) blades++;
@@ -535,9 +570,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         t1.divideScalar(d);
         const ramp = Math.min(1, reelT / 0.45);
         const curve = 0.3 + 0.7 * ramp * ramp * (3 - 2 * ramp);
-        const power = (n === 2 ? 72 : 50) * curve * (gas > 0 ? 1 : 0.4) * (boosting ? 1.25 : 1);
+        const power = (n === 2 ? 72 : 50) * st.reel * curve * (gas > 0 ? 1 : 0.4) * (boosting ? 1.25 : 1);
         const vr = vel.dot(t1);
-        const cap = n === 2 ? 58 : 46;
+        const cap = (n === 2 ? 58 : 46) * st.reel;
         if (vr < cap) a.addScaledVector(t1, power * Math.min(1, (cap - vr) / 10));
         a.y += G * 0.35;
         if (grounded) {
@@ -548,7 +583,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         a.addScaledVector(t2, 26);
         if (d < 3.2 && vr > 0) vel.addScaledVector(t1, -vr * Math.min(1, 9 * dt));
         if (d < 2.4) a.addScaledVector(t1, -a.dot(t1));
-        gas = Math.max(0, gas - 0.012 * n * dt);
+        gas = Math.max(0, gas - 0.012 * n * drain() * dt);
         if (gas > 0 && !boosting) gasPuff(t2.copy(t1).negate(), 0.25 + 0.2 * ramp, dt, 0.07);
       }
     }
@@ -573,9 +608,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     }
 
     if (grounded && !n) {
-      t2.copy(wish).multiplyScalar(RUN);
+      t2.copy(wish).multiplyScalar(RUN * st.run);
       const k = 1 - Math.exp(-(wish.lengthSq() > 0 ? 9 : 12) * dt);
-      if (speed < RUN * 1.2 || wish.lengthSq() === 0) {
+      if (speed < RUN * st.run * 1.2 || wish.lengthSq() === 0) {
         vel.x += (t2.x - vel.x) * k;
         vel.z += (t2.z - vel.z) * k;
       } else {
@@ -596,14 +631,14 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       a.addScaledVector(t1, (n ? 34 : 26) * Math.max(0.3, 1 - Math.max(0, along) / 48));
       if (n) a.y += 6;
       else if (vel.y < 0) a.y += 3;
-      gas = Math.max(0, gas - 0.09 * dt);
+      gas = Math.max(0, gas - 0.09 * drain() * dt);
       gasPuff(t2.copy(t1).negate(), 1, dt);
     }
 
     dashCd -= dt;
     if (input.pressed.has("dash") && dashCd <= 0 && gas > 0.02 && mode !== "held") {
       dashCd = 0.45;
-      gas = Math.max(0, gas - 0.05);
+      gas = Math.max(0, gas - 0.05 * drain());
       if (wish.lengthSq() > 0) t2.copy(wish).addScaledVector(UP, grounded ? 0.12 : 0.18).normalize();
       else if (n) t2.copy(look);
       else t2.copy(look).setY(0).normalize().addScaledVector(UP, 0.12).normalize();
@@ -628,7 +663,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     vel.addScaledVector(a, dt);
     if (!grounded) vel.multiplyScalar(1 - Math.min(0.5, 0.0021 * speed * dt));
     const sp = vel.length();
-    if (sp > MAX_SPEED) vel.multiplyScalar(MAX_SPEED / sp);
+    if (sp > MAX_SPEED * st.maxSpeed) vel.multiplyScalar((MAX_SPEED * st.maxSpeed) / sp);
     pos.addScaledVector(vel, dt);
 
     for (let i = 0; i < 2; i++) {
@@ -756,7 +791,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     frame.t += dt;
     frame.k = act.name ? Math.min(1, act.t / act.dur) : 0;
     frame.speed = mode === "ground" || mode === "wall" ? hsp : speed;
-    frame.charge = charging ? Math.min(1, chargeT / CHARGE_T) : 0;
+    frame.charge = charging ? Math.min(1, chargeT / chargeFull()) : 0;
     frame.broken = sharp <= 0;
 
     if (hsp > 0.5) facing.set(vel.x / hsp, 0, vel.z / hsp);
@@ -926,7 +961,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
           sharp = 1;
           sfx("bladeSwap");
           startAct("swap", 0.45);
-        } else if (blades === 0) out.push({ type: "toast", title: "No blades left", text: "Find a supply depot" });
+        } else if (blades === 0) out.push({ type: "toast", title: "No blades left", text: "Resupply at the green smoke" });
       }
 
       if (input.pressed.has("attack") && !slash.on) {
@@ -936,7 +971,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       }
       if (charging) {
         chargeT = input.holdTime("attack");
-        if (!flashed && chargeT >= PERFECT[0]) {
+        if (!flashed && chargeT >= PERFECT[0] * st.chargeTime) {
           flashed = true;
           sfx("charge");
         }
@@ -946,7 +981,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
           else if (time - brokeToast > 2) {
             brokeToast = time;
             sfx("clang", 0.6);
-            out.push({ type: "toast", title: "Blades broken", text: "Press R to swap" });
           }
         }
       }
@@ -955,6 +989,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       if (slash.on) updateSlash(dt);
       pickMode();
       supply(dt);
+      warn();
+      countHint(input);
       animate(dt, input);
       return out;
     },
@@ -983,23 +1019,36 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       hud.sharp = sharp;
       hud.hooks[0] = hooks[0].state === "on";
       hud.hooks[1] = hooks[1].state === "on";
-      hud.charge = charging ? Math.min(1, chargeT / CHARGE_T) : null;
+      hud.charge = charging ? Math.min(1, chargeT / chargeFull()) : null;
       hud.aim = aim.kind;
       hud.aimDist = aim.dist;
       hud.supply = inSupply;
       hud.dead = mode === "dead";
       hud.combo = combo;
-      hud.hint = hint();
+      shown = hint();
+      hud.hint = shown;
       return hud;
     },
     cameraView() {
       view.mode = mode;
-      view.charge = charging ? Math.min(1, chargeT / CHARGE_T) : 0;
+      view.charge = charging ? Math.min(1, chargeT / chargeFull()) : 0;
       view.lockPoint = lock && titans.partPos(lock.titan, lock.part, lockPoint) ? lockPoint : null;
       return view;
     },
     setVisible(on) {
       scout.root.visible = on;
+    },
+    setCharacter(id) {
+      const ch = getCharacter(id);
+      st = ch.stats;
+      if (ch.id === charId) return;
+      charId = ch.id;
+      const vis = scout.root.visible;
+      scene.remove(scout.root);
+      scout.dispose();
+      scout = createScout(ch.look);
+      scout.root.visible = vis;
+      scene.add(scout.root);
     },
     dispose() {
       scene.remove(scout.root);
@@ -1007,5 +1056,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       wires.dispose();
     },
   };
+  if (process.env.NODE_ENV !== "production") Object.defineProperty(player, "stats", { get: () => ({ id: charId, ...st }) });
   return player;
 }
