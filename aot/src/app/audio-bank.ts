@@ -37,6 +37,7 @@ export const INSTS = {
   bass: { fn: I.bass, lo: 26, hi: 50, step: 3, dur: 0.4, sr: 24000 },
   gtrMute: { fn: I.gtrMute, lo: 33, hi: 48, step: 3, dur: 0.3, sr: 32000 },
   gtrOpen: { fn: I.gtrOpen, lo: 33, hi: 48, step: 3, dur: 1.7, sr: 32000 },
+  gtrLead: { fn: I.gtrLead, lo: 50, hi: 74, step: 4, dur: 1.7, sr: 32000 },
   choirOh: { fn: I.choirOh, lo: 43, hi: 79, step: 4, dur: 5.6, sr: 24000 },
   strLong: { fn: I.strLong, lo: 38, hi: 86, step: 4, dur: 5.4, sr: 24000 },
   piano: { fn: I.piano, lo: 50, hi: 90, step: 3, dur: 2.7, sr: 32000 },
@@ -72,7 +73,7 @@ export function createBank(rate: number) {
   (["chant", "choirAh", "strStac", "brassStab", "brassLong", "horn"] as InstName[]).forEach(instJob);
   FIRST_SFX.forEach(sfxJob);
   (Object.keys(SFX) as Sfx[]).filter((k) => !FIRST_SFX.includes(k)).forEach(sfxJob);
-  (["bass", "gtrMute", "gtrOpen", "choirOh", "strLong", "piano", "bell"] as InstName[]).forEach(instJob);
+  (["bass", "gtrMute", "gtrOpen", "choirOh", "strLong", "piano", "bell", "gtrLead"] as InstName[]).forEach(instJob);
 
   return {
     get: (key: string) => bufs.get(key),

@@ -1,7 +1,8 @@
+import type { Boost } from "./contracts";
 import { CHARACTERS, type Character, type Rank } from "./progression-chars";
 
-export type Career = { score: number; kills: number; runs: number; bestScore: number };
-export type RunStats = { kills: number; bestSpeed: number; bestCombo: number; score: number; deaths: number };
+export type Career = { score: number; kills: number; runs: number; bestScore: number; xp: number };
+export type RunStats = { kills: number; bestSpeed: number; bestCombo: number; score: number; deaths: number; xp: number; level: number; objectives: number; objectiveCount: number };
 
 const KEY = "aot-career";
 
@@ -14,7 +15,7 @@ export const RANKS: { rank: Rank; jp: string; score: number; kills: number }[] =
 ];
 
 export function loadCareer(): Career {
-  const c: Career = { score: 0, kills: 0, runs: 0, bestScore: 0 };
+  const c: Career = { score: 0, kills: 0, runs: 0, bestScore: 0, xp: 0 };
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Career>;
     for (const k of Object.keys(c) as (keyof Career)[]) if (typeof s[k] === "number" && s[k]! >= 0) c[k] = s[k]!;
@@ -27,6 +28,7 @@ export function bankRun(run: RunStats): Career {
   c.score += run.score;
   c.kills += run.kills;
   c.runs += 1;
+  c.xp += run.xp;
   c.bestScore = Math.max(c.bestScore, run.score);
   try {
     localStorage.setItem(KEY, JSON.stringify(c));
@@ -55,4 +57,22 @@ export function unlocked(ch: Character, c: Career) {
 
 export function newlyUnlocked(before: Career, after: Career) {
   return CHARACTERS.filter((ch) => !unlocked(ch, before) && unlocked(ch, after));
+}
+
+export const GEAR = [
+  { name: "Mk I", jp: "一型" },
+  { name: "Mk II", jp: "二型" },
+  { name: "Mk III", jp: "三型" },
+  { name: "Mk IV", jp: "四型" },
+];
+
+export const gearTier = (c: Career) => Math.min(GEAR.length - 1, rankIndex(c));
+
+export function gearBoost(t: number): Boost {
+  return { tank: 1 + 0.05 * t, reel: 1 + 0.03 * t, wear: 1 - 0.05 * t, damage: 1 + 0.03 * t, chargeTime: 1, health: 1, spare: t >= 3 ? 1 : 0 };
+}
+
+export function gearText(t: number) {
+  if (!t) return "Standard issue";
+  return `+${5 * t}% gas, +${3 * t}% reel and cut${t >= 3 ? ", +1 blade set" : ""}`;
 }

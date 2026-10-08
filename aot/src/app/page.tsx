@@ -27,6 +27,7 @@ import {
   type Results,
 } from "./ui-char";
 import { Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
+import { LevelUp } from "./ui-run";
 import {
   ControlsPanel,
   Disclaimer,
@@ -125,7 +126,7 @@ export default function TitanPage() {
     const initial = loadSettings();
     setSettingsState(initial);
     setCareer(loadCareer());
-    runRef.current = { kills: 0, bestSpeed: 0, bestCombo: 0, score: 0, deaths: 0, dead: false, over: false };
+    runRef.current = { kills: 0, bestSpeed: 0, bestCombo: 0, score: 0, deaths: 0, xp: 0, level: 1, objectives: 0, objectiveCount: 0, dead: false, over: false };
     const coarse = isTouch();
     setTouch(coarse);
     const portrait = window.matchMedia("(orientation: portrait)");
@@ -214,6 +215,10 @@ export default function TitanPage() {
         r.score = h.score;
         r.bestSpeed = Math.max(r.bestSpeed, h.speed);
         r.bestCombo = Math.max(r.bestCombo, h.combo);
+        r.xp = h.run.total;
+        r.level = h.run.level;
+        r.objectives = h.run.done;
+        r.objectiveCount = h.run.count;
         if (h.dead && !r.dead && ++r.deaths >= 3)
           timers.add(setTimeout(() => endRun("fallen"), 1600));
         r.dead = h.dead;
@@ -361,9 +366,15 @@ export default function TitanPage() {
           onPause={() => gameRef.current?.pause()}
         />
       )}
+      {screen === "playing" && hud?.run.choice && !hud.intro && (
+        <div className={touch ? "touch-hud" : undefined}>
+          <LevelUp run={hud.run} onPick={(i) => gameRef.current?.pick(i)} />
+        </div>
+      )}
 
       {screen !== "playing" && (
         <div
+          key={screen === "results" ? "results" : "menu"}
           className={`grain absolute inset-0 overflow-y-auto ${screen === "pause" ? "bg-ink/55 backdrop-blur-sm" : ""}`}
         >
           <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_70%_40%,transparent_20%,rgba(40,0,0,0.55)_70%,rgba(0,0,0,0.9)_100%)]" />

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { CHARACTERS, statBars } from "./progression-chars";
-import { RANKS, rankProgress, unlocked, type Career, type RunStats } from "./progression";
+import { GEAR, RANKS, gearText, gearTier, rankProgress, unlocked, type Career, type RunStats } from "./progression";
 import { Emblem } from "./ui-art";
 import { Portrait } from "./ui-char-portrait";
 
@@ -100,6 +100,20 @@ export function RankBadge({ career }: { career: Career }) {
       <div className="mt-1 font-cond text-[10px] uppercase tracking-wider text-bone/50">
         {p.next ? `Next: ${p.next.rank} at ${p.next.score.toLocaleString()} pts and ${p.next.kills} kills` : "Highest rank"}
       </div>
+      <Gear career={career} />
+    </div>
+  );
+}
+
+function Gear({ career, fresh }: { career: Career; fresh?: boolean }) {
+  const t = gearTier(career);
+  return (
+    <div data-gear={GEAR[t].name} className="mt-2 flex items-baseline justify-between gap-2 border-t border-brass/20 pt-1.5">
+      <span className="font-cond text-[10px] uppercase tracking-[0.25em] text-brass">{fresh ? "New gear" : "ODM gear"}</span>
+      <span className="font-display text-lg uppercase leading-none">
+        {GEAR[t].name} <span className="font-jp text-xs font-bold text-blood">{GEAR[t].jp}</span>
+      </span>
+      <span className="ml-auto truncate font-cond text-[10px] uppercase tracking-wider text-bone/50">{gearText(t)}</span>
     </div>
   );
 }
@@ -114,6 +128,10 @@ export function ResultsCard({ r, onClose }: { r: Results; onClose: () => void })
     ["Best speed", `${Math.round(r.run.bestSpeed)} km/h`],
     ["Best combo", `x${r.run.bestCombo}`],
     ["Score", r.run.score.toLocaleString()],
+    ["XP earned", r.run.xp.toLocaleString()],
+    ["Level", String(r.run.level)],
+    ["Objectives", `${r.run.objectives}/${r.run.objectiveCount}`],
+    ["Deaths", String(r.run.deaths)],
   ];
   return (
     <div className="max-w-[560px]">
@@ -137,12 +155,13 @@ export function ResultsCard({ r, onClose }: { r: Results; onClose: () => void })
             <Bar k={p.k} />
           </div>
           <div className="mt-1 font-cond text-[11px] uppercase tracking-wider text-bone/50">
-            Career: {r.after.score.toLocaleString()} pts, {r.after.kills} kills
+            Career: {r.after.score.toLocaleString()} pts, {r.after.kills} kills, {r.after.xp.toLocaleString()} XP
           </div>
+          <Gear career={r.after} fresh={gearTier(r.after) > gearTier(r.before)} />
           {r.unlocks.length > 0 && <div className="mt-2 font-display text-lg uppercase text-blood">Unlocked: {r.unlocks.join(", ")}</div>}
         </div>
         <button
-          autoFocus
+          ref={(el) => el?.focus({ preventScroll: true })}
           onClick={onClose}
           className="mt-4 w-full cursor-pointer border border-brass/50 bg-blood/80 py-2 font-display text-2xl uppercase tracking-wide hover:bg-blood"
         >

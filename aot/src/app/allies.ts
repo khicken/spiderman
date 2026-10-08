@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { ALLY_HALF, createFlares, createKit, type Pose, type Soldier } from "./allies-model";
 import type { Allies, Blade, Fx, GameEvent, SquadLead, SquadOrder, TitanPart, Titans, TitanView, World } from "./contracts";
 
-const MAX = 6;
+const MAX = 8;
 const BASE = 5;
 const NAMES = ["Petra", "Oluo", "Eld", "Gunther", "Nifa", "Moblit", "Thomas", "Mina", "Nac", "Mylius", "Ness", "Siss", "Lynne", "Henning", "Abel", "Keiji"];
 const SLOTS: [number, number, number][] = [[-5, 2, -6], [5, 2, -6], [-10, 3, -11], [10, 3, -11], [0, 4, -15], [-14, 3, -3]];
@@ -46,6 +46,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     run: 0, cd: 0, slash: 0, hooks: [hook(), hook()], hookT: 0, gasT: 0, acc: 0, skip: i, phase: (i / MAX) * Math.PI * 2, yaw: 0, heldT: 0, heldSide: "armL", heldBy: null,
   }));
   let order: SquadOrder = "attack";
+  let size = BASE;
   let lastWave = 0;
   let callT = 0;
   let spotT = 0;
@@ -88,10 +89,10 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   squad.forEach((a, i) => (i < BASE ? enlist(a, wallPoint(i, v1)) : a.s.hide()));
 
   const reinforce = (wave: number) => {
-    flares.fire(wallPoint(0, v1));
+    flares.fire(wallPoint(-15, v1));
     out.push({ type: "sfx", name: "gasBurst", at: v1.clone(), volume: 0.6 });
     const n = alive().length;
-    const add = wave <= 1 ? 0 : Math.min(MAX - n, Math.max(1, BASE - n));
+    const add = wave <= 1 ? 0 : Math.min(size + 1 - n, Math.max(1, size - n));
     if (!add) return say("Squad, move out!", "Command", true);
     let k = 0;
     for (const a of squad) if (a.mode === "dead" && k < add) enlist(a, wallPoint(k++, v2));
@@ -212,6 +213,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       a.heldBy = null;
       a.vel.set(0, 6, 0);
       a.cd = 3;
+      out.push({ type: "feat", name: "save", kind: t.kind });
       return say("Thanks for the save!", a.name, true);
     }
     const H = t.height;
@@ -375,8 +377,16 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     },
     order: command,
     toggle: () => command(order === "attack" ? "regroup" : "attack"),
+    grow() {
+      out.length = 0;
+      size = Math.min(MAX - 1, size + 1);
+      const a = squad.find((b) => b.mode === "dead");
+      if (a) enlist(a, wallPoint(0, v2));
+      say("Another soldier joins your squad!", "Command", true);
+      return out.slice();
+    },
     hud() {
-      return { alive: alive().length, max: MAX, order };
+      return { alive: alive().length, max: size + 1, order };
     },
     dispose() {
       kit.dispose();

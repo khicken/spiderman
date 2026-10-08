@@ -179,6 +179,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const out: GameEvent[] = [];
   const queued: GameEvent[] = [];
   let nextId = 1;
+  let lure: THREE.Vector3 | null = null;
   let wave = 0, kills = 0, quota = 0, spawned = 0, killedWave = 0, spawnT = 0, breakT = 0, toastT = 0, shallowT = 0;
   let bossPending: BossKind | null = null;
   const rocks = createRocks(scene, world, fx);
@@ -399,7 +400,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     const sv = new THREE.Vector3();
     fx.steamFollow(() => (ti.sev[k] > 0 && !ti.removed ? stump(ti, k, sv) : null), H * 0.07, 15);
     fx.steamFollow(() => (drop.t < 8 ? drop.pos : null), H * 0.06, 8);
-    events.push({ type: "sfx", name: "sever", at: _a.clone() }, { type: "sfx", name: "titanHurt", at: _a.clone(), volume: 0.8 });
+    events.push({ type: "sfx", name: "sever", at: _a.clone() }, { type: "sfx", name: "titanHurt", at: _a.clone(), volume: 0.8 }, { type: "feat", name: k >= 2 ? "tendon" : "sever", kind: ti.kind });
     if (ti.act === "grab" && ti.side === (k as 0 | 1)) startAct(ti, "flinch");
     if (k >= 2 && ti.kind !== "crawler") events.push({ type: "sfx", name: "titanFall", at: ti.pos.clone(), volume: 0.6 });
     if (ti.kind === "armored" && k >= 2 && ti.sev[5 - k] <= 0) events.push({ type: "toast", title: "Knee cut", text: "Now the other knee" });
@@ -495,6 +496,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     }
     t.flash = 1;
     let killed = false;
+    if (crit && part !== "body") events.push({ type: "feat", name: "perfect", kind: t.kind });
     if (part === "nape") {
       if (t.hardened) {
         events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 }, { type: "toast", title: "Hardened", text: t.kind === "female" ? "Cut two limbs" : "Cut a limb" });
@@ -1200,6 +1202,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       ti.goal.copy(ti.home);
       if (Math.hypot(ti.home.x - ti.pos.x, ti.home.z - ti.pos.z) < 6 && pl.alive) ti.goal.copy(ti.pos).addScaledVector(_a.copy(pl.pos).sub(ti.pos).setY(0).normalize(), 0.5);
     } else if (outside) ti.goal.copy(world.breach);
+    else if (lure && !isBoss(ti.kind) && ti.id % 2 === 0 && !(pl.alive && pl.pos.distanceTo(ti.pos) < 30)) ti.goal.copy(lure);
     else if (ti.blind > 0 || ti.ignore || !pl.alive) {
       if (ti.wanderT <= 0) {
         ti.wanderT = R(2, 6);
@@ -1233,6 +1236,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     if (ti.kind === "armored" && ti.downT > 0) tg.lean = 0.55;
     if (!outside && pl.alive && dist < H * (ti.kind === "crawler" ? 0.2 : 0.38) + 1 && ti.blind <= 0 && !ti.ignore) want = 0;
     if (kneeling) want = 0;
+    if (lure && dist < 5 + H * 0.3 && ti.goal.equals(lure)) want = 0;
     let heading = Math.atan2(_a.x, _a.z);
     if (ti.detourT > 0) {
       ti.detourT -= dt;
@@ -1485,6 +1489,9 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     },
     get left() {
       return wave === 0 ? 0 : Math.max(0, quota - killedWave);
+    },
+    lure(p) {
+      lure = p;
     },
     get breakT() {
       return Math.max(0, breakT);

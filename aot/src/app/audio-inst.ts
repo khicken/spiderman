@@ -227,6 +227,7 @@ const guitar = (c: C, o: AudioNode, f: number, dur: number, hold: number, rel: n
 };
 export const gtrMute: Recipe = (c, o, f) => guitar(c, o, f, 0.3, 0.05, 0.1, 1700);
 export const gtrOpen: Recipe = (c, o, f) => guitar(c, o, f, 1.6, 0.9, 0.5, 3600);
+export const gtrLead: Recipe = (c, o, f) => guitar(c, o, f, 1.6, 1.1, 0.45, 4400);
 
 export const bass: Recipe = (c, o, f) => {
   const sh = shaper(c, o, 2);

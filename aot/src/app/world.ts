@@ -111,6 +111,7 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
   }
 
   const flareTops: THREE.Vector3[] = [];
+  const depotDown = supplies.map(() => false);
   for (const s of supplies) {
     const yaw = Math.atan2(s.z, s.x) + Math.PI / 2;
     const d = depot(m, shapes, r, s.x, s.z, yaw);
@@ -372,7 +373,7 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
     flareAcc += dt;
     while (flareAcc > flareRate) {
       flareAcc -= flareRate;
-      for (const t of flareTops) flares.spawn(t.x + (r() - 0.5), t.y, t.z + (r() - 0.5), 1.2 + r(), 7 + r() * 2, 0.6, 2.6 + r() * 1.2, 1.5, 7.5, PUFF.flare, 0.25, -0.2);
+      for (let i = 0; i < flareTops.length; i++) if (!depotDown[i]) flares.spawn(flareTops[i].x + (r() - 0.5), flareTops[i].y, flareTops[i].z + (r() - 0.5), 1.2 + r(), 7 + r() * 2, 0.6, 2.6 + r() * 1.2, 1.5, 7.5, PUFF.flare, 0.25, -0.2);
     }
     flares.update(dt);
 
@@ -425,6 +426,7 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
     spawn,
     spawnYaw,
     supplies,
+    depotDown,
     titanSpawns,
     breach,
     colossalHead: COLOSSAL_HEAD,

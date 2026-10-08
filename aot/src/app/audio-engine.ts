@@ -2,15 +2,16 @@ import type { MusicState, Sfx, Stinger } from "./contracts";
 import type { Bank, HitName, InstName } from "./audio-bank";
 import { INSTS } from "./audio-bank";
 import { clamp, filter, gain, noiseBuffer } from "./audio-dsp";
-import { GENS, LAYERS, type Layer, type Note, TEMPO, fill, layerGains } from "./audio-music";
+import { LAYERS, type Layer, type Note, fill, layerGains } from "./audio-music";
+import { type MusicIn, THEMES, pickTheme } from "./audio-themes";
 import { SFX } from "./audio-sfx";
 
-export type EngineInput = { music: MusicState; speed: number; gas: boolean; danger: number };
+export type EngineInput = MusicIn & { speed: number; gas: boolean; danger: number; bossHealth?: number };
 type Voice = { s: AudioBufferSourceNode; v: GainNode; when: number; end: number };
 type Sn = { k: HitName | InstName; m?: number; dt: number; g: number; len?: number; pan?: number };
 
 const REL: Partial<Record<HitName | InstName, number>> = { choirAh: 0.8, choirOh: 0.8, strLong: 0.7, brassLong: 0.35, gtrOpen: 0.25, bass: 0.08 };
-const TRIM: Record<Layer, number> = { drums: 0.75, perc: 0.65, str: 2.1, brass: 1.7, choir: 2.3, gtr: 1.9, bass: 0.55, keys: 1.3, fx: 1 };
+const TRIM: Record<Layer, number> = { drums: 0.75, perc: 0.65, str: 2.1, brass: 1.7, choir: 2.3, gtr: 1.9, bass: 0.55, keys: 1.3, fx: 1, lead: 1.7 };
 const URGENT_TO: MusicState[] = ["intro", "defeat"];
 const URGENT_FROM: MusicState[] = ["title", "intro", "defeat"];
 
@@ -24,6 +25,8 @@ const STINGERS: Record<Stinger, { notes: Sn[]; duck: number; hold: number }> = {
   kill: { duck: 0.6, hold: 0.5, notes: [...chordSn("brassStab", [50, 57, 62, 65], 0, 0.3), ...chordSn("strStac", [38, 50], 0, 0.35), { k: "chant", m: 50, dt: 0, g: 0.55 }, { k: "kick", dt: 0, g: 0.8 }, { k: "taiko", dt: 0, g: 0.6 }, { k: "crash", dt: 0, g: 0.3 }] },
   bossIntro: { duck: 0.3, hold: 2.5, notes: [{ k: "impact", dt: 0, g: 0.9 }, { k: "horn", m: 38, dt: 0.1, g: 0.5 }, ...chordSn("choirAh", [50, 51, 57, 62, 63], 0, 0.17, 3), ...chordSn("brassLong", [38, 39], 0.1, 0.3, 2.5), { k: "boom", dt: 0, g: 0.7 }] },
   bossDown: { duck: 0.3, hold: 3, notes: [{ k: "impact", dt: 0, g: 0.9 }, ...chordSn("choirAh", [50, 54, 57, 62, 66], 0.05, 0.19, 4), ...chordSn("brassLong", [38, 50, 54, 57], 0.05, 0.27, 3.4), { k: "crash", dt: 0, g: 0.5 }, ...roll(0.6, 0.8, 10, 0.6), { k: "taiko", dt: 1.4, g: 0.9 }, { k: "crash", dt: 1.4, g: 0.4 }] },
+  levelUp: { duck: 0.45, hold: 1.8, notes: [...chordSn("brassLong", [50, 54, 57, 62], 0.12, 0.22, 1.4), ...chordSn("choirAh", [62, 66, 69], 0.12, 0.16, 1.8), ...chordSn("brassStab", [50, 54, 57], 0, 0.24), { k: "bell", m: 62, dt: 0.12, g: 0.3 }, { k: "anvil", dt: 0.12, g: 0.2 }, { k: "taiko", dt: 0, g: 0.6 }, { k: "taiko", dt: 0.12, g: 0.85 }, { k: "crash", dt: 0.12, g: 0.4 }] },
+  objective: { duck: 0.35, hold: 0.9, notes: [...chordSn("brassStab", [50, 55, 59, 62], 0, 0.24), ...chordSn("strStac", [43, 55], 0, 0.3), { k: "bell", m: 55, dt: 0, g: 0.25 }, { k: "taiko", dt: 0, g: 0.7 }, { k: "crash", dt: 0, g: 0.25 }] },
   death: { duck: 0.2, hold: 3.5, notes: [{ k: "boom", dt: 0, g: 0.7 }, ...chordSn("strLong", [50, 53, 57], 0, 0.17, 3.5), ...chordSn("choirOh", [45, 50, 53], 0.2, 0.2, 4), { k: "bell", m: 38, dt: 0, g: 0.4 }] },
 };
 
@@ -157,10 +160,14 @@ export function createEngine(ctx: BaseAudioContext, bank: Bank, live = false) {
     return true;
   }
 
-  let cur: MusicState | null = null;
+  let cur: string | null = null;
   let raw: MusicState = "title";
   let rawSince = 0;
-  let want: MusicState = "title";
+  let want = "title";
+  let filled = false;
+  let final = false;
+  let bossKey: string | null = null;
+  const kind = (t: string | null) => THEMES[t ?? want].kind;
   let n = 0;
   let beat = 0;
   let tBeat = 0;
@@ -185,13 +192,14 @@ export function createEngine(ctx: BaseAudioContext, bank: Bank, live = false) {
     }
   }
 
-  function switchTo(s: MusicState, at: number) {
+  function switchTo(s: string, at: number) {
     release(at);
     late = [];
     cur = s;
+    filled = false;
     n = 0;
     beat = 0;
-    spb = 60 / TEMPO[s] / 4;
+    spb = 60 / THEMES[s].tempo / 4;
     tBeat = at;
     if (s === "intro") {
       const pre: Note[] = [
@@ -210,6 +218,17 @@ export function createEngine(ctx: BaseAudioContext, bank: Bank, live = false) {
   function schedule(nt: Note, t: number, allowLate = false) {
     const ok = sound(nt.k, nt.m, t, nt.g, layers[nt.l], { pan: nt.pan, len: nt.len ? nt.len * spb : undefined, swell: nt.swell }, true);
     if (!ok && allowLate) late.push({ note: nt, t });
+  }
+
+  function addFill() {
+    const lo = beat * 4;
+    const t0 = tBeat - lo * spb;
+    bar = bar.filter((e) => e.st < lo || !(e.st >= 12 && (e.l === "drums" || e.l === "perc")));
+    for (const f of fill(spb, kind(want))) {
+      if (f.st >= lo) bar.push(f);
+      else late.push({ note: f, t: t0 + f.st * spb });
+    }
+    filled = true;
   }
 
   function retryLate(now: number) {
@@ -231,17 +250,16 @@ export function createEngine(ctx: BaseAudioContext, bank: Bank, live = false) {
     retryLate(now);
     for (let i = music.length - 1; i >= 0; i--) if (music[i].end < now) music.splice(i, 1);
     while (tBeat < until) {
-      if (want !== cur && (beat === 0 || URGENT_TO.includes(want) || URGENT_FROM.includes(cur!))) {
+      const urgent = URGENT_TO.includes(kind(want)) || URGENT_FROM.includes(kind(cur));
+      if (want !== cur && (urgent || (beat === 0 && filled))) {
         const at = tBeat;
         switchTo(want, at);
         if (tBeat > at) continue;
       }
       if (beat === 0) {
-        bar = GENS[cur!](n, intensity, spb);
-        if (raw !== cur && raw !== "intro") {
-          bar = bar.filter((e) => !(e.st >= 12 && (e.l === "drums" || e.l === "perc")));
-          bar.push(...fill(spb, raw));
-        }
+        bar = THEMES[cur!].gen(n, intensity, spb);
+        filled = false;
+        if (want !== cur) addFill();
       }
       const lo = beat * 4;
       const first = beat === 0 ? -Infinity : lo;
@@ -252,7 +270,7 @@ export function createEngine(ctx: BaseAudioContext, bank: Bank, live = false) {
         n++;
       }
     }
-    if (danger > 0.55 && cur && cur !== "title" && cur !== "defeat") {
+    if (danger > 0.55 && cur && kind(cur) !== "title" && kind(cur) !== "defeat") {
       heartT = Math.max(heartT, now + 0.05);
       while (heartT < until) {
         const b = bank.get("heart");
@@ -290,12 +308,23 @@ export function createEngine(ctx: BaseAudioContext, bank: Bank, live = false) {
         raw = s.music;
         rawSince = now;
       }
-      const calm = (raw === "explore" || raw === "battle") && (want === "explore" || want === "battle");
-      if (!calm || now - rawSince > 1.2) want = raw;
+      if (s.music !== "boss" || (s.boss ?? null) !== bossKey) {
+        final = false;
+        bossKey = s.boss ?? null;
+      }
+      if (s.music === "boss" && (s.bossHealth ?? 1) < 0.3) final = true;
+      const wk = kind(want);
+      const calm = (raw === "explore" || raw === "battle") && (wk === "explore" || wk === "battle");
+      const next = pickTheme(s, final);
+      if (next !== want && (!calm || now - rawSince > 1.2)) {
+        want = next;
+        if (cur && cur !== want && beat > 0 && !filled) addFill();
+      }
       danger = clamp(s.danger);
       const sp = clamp((s.speed - 10) / 40);
-      intensity = want === "boss" ? 1 : want === "battle" ? clamp(0.3 + 0.7 * danger + 0.25 * sp) : 0.5;
-      const lg = layerGains(cur ?? want, intensity, danger);
+      const k = kind(want);
+      intensity = k === "boss" ? 1 : k === "battle" ? clamp(0.3 + 0.7 * danger + 0.25 * sp) : 0.5;
+      const lg = layerGains(kind(cur), intensity, danger);
       for (const l of LAYERS) layers[l].gain.setTargetAtTime(lg[l] * TRIM[l], now, 0.4);
       if (wind) {
         const w = Math.pow(clamp((s.speed - 6) / 45), 1.4);

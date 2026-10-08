@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Action, Blade, TitanHit, CameraView, Fx, GameEvent, Input, Lock, Player, PlayerHud, PlayerMode, Sfx, TitanPart, TitanView, Titans, World, Hint } from "./contracts";
+import type { Action, Blade, Boost, TitanHit, CameraView, Fx, GameEvent, Input, Lock, Player, PlayerHud, PlayerMode, Sfx, TitanPart, TitanView, Titans, World, Hint } from "./contracts";
 import { createWires, type Hook } from "./player-wire";
 import { getCharacter, type CharStats } from "./progression-chars";
 import { isBoss } from "./titan-waves";
@@ -25,7 +25,14 @@ type Act = { name: ScoutAnim | null; t: number; dur: number };
 
 export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Player {
   let scout = createScout();
-  let st: CharStats = getCharacter("cadet").stats;
+  let base: CharStats = getCharacter("cadet").stats;
+  let st: CharStats = base;
+  let bo: Boost = { tank: 1, reel: 1, wear: 1, damage: 1, chargeTime: 1, health: 1, spare: 0 };
+  let spare = SPARE;
+  const mix = () => {
+    st = { ...base, tank: base.tank * bo.tank, reel: base.reel * bo.reel, maxSpeed: base.maxSpeed * (1 + (bo.reel - 1) / 2), wear: base.wear * bo.wear, damage: base.damage * bo.damage, chargeTime: base.chargeTime * bo.chargeTime };
+    spare = SPARE + bo.spare;
+  };
   let charId = "cadet";
   const drain = () => st.gasDrain / st.tank;
   const chargeFull = () => CHARGE_T * st.chargeTime;
@@ -476,7 +483,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const respawn = () => {
     let best = world.spawn;
     let bd = Infinity;
-    for (const s of world.supplies) {
+    for (const [i, s] of world.supplies.entries()) {
+      if (world.depotDown[i]) continue;
       const d = s.distanceToSquared(pos);
       if (d < bd) {
         bd = d;
@@ -488,7 +496,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     vel.set(0, 0, 0);
     health = 1;
     gas = 1;
-    blades = SPARE;
+    blades = spare;
     sharp = 1;
     mode = "ground";
     lock = null;
@@ -505,12 +513,14 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
 
   const supply = (dt: number) => {
     let near = false;
-    for (const s of world.supplies) {
+    for (let i = 0; i < world.supplies.length; i++) {
+      const s = world.supplies[i];
+      if (world.depotDown[i]) continue;
       const dx = s.x - pos.x;
       const dz = s.z - pos.z;
       if (dx * dx + dz * dz < 64 && Math.abs(pos.y - s.y) < 8) near = true;
     }
-    if (near && !inSupply && (gas < 0.99 || blades < SPARE || sharp < 1 || health < 1)) sfx("resupply");
+    if (near && !inSupply && (gas < 0.99 || blades < spare || sharp < 1 || health < 1)) sfx("resupply");
     inSupply = near;
     if (!near) return;
     gas = Math.min(1, gas + 0.4 * st.refill * dt);
@@ -519,7 +529,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (supplyT > 0.5 / st.refill) {
       supplyT = 0;
       if (sharp < 1) sharp = 1;
-      else if (blades < SPARE) blades++;
+      else if (blades < spare) blades++;
     }
   };
 
@@ -997,7 +1007,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     damage(amount, from) {
       if (mode === "dead") return [];
       const ev: GameEvent[] = [{ type: "sfx", name: "hurt" }, { type: "shake", strength: 0.35 + amount }];
-      health -= amount;
+      health -= amount / bo.health;
       if (from && mode !== "held") {
         t1.copy(pos).sub(from);
         t1.y = Math.max(0.3, t1.y);
@@ -1040,7 +1050,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     },
     setCharacter(id) {
       const ch = getCharacter(id);
-      st = ch.stats;
+      base = ch.stats;
+      mix();
       if (ch.id === charId) return;
       charId = ch.id;
       const vis = scout.root.visible;
@@ -1049,6 +1060,11 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       scout = createScout(ch.look);
       scout.root.visible = vis;
       scene.add(scout.root);
+    },
+    setBoost(b) {
+      blades = Math.max(0, blades + b.spare - bo.spare);
+      bo = { ...b };
+      mix();
     },
     dispose() {
       scene.remove(scout.root);

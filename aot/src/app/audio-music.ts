@@ -1,18 +1,15 @@
 import type { MusicState } from "./contracts";
 import type { HitName, InstName } from "./audio-bank";
 
-export type Layer = "drums" | "perc" | "str" | "brass" | "choir" | "gtr" | "bass" | "keys" | "fx";
+export type Layer = "drums" | "perc" | "str" | "brass" | "choir" | "gtr" | "bass" | "keys" | "fx" | "lead";
 export type Note = { k: HitName | InstName; m?: number; st: number; g: number; l: Layer; len?: number; pan?: number; swell?: boolean };
-type Chord = { r: number; minor: boolean };
+export type Chord = { r: number; minor: boolean };
 type Mel = [number, number, number][];
 
-export const TEMPO: Record<MusicState, number> = { title: 150, intro: 160, explore: 150, battle: 160, boss: 172, defeat: 100 };
-
-const m = (r: number): Chord => ({ r, minor: true });
-const M = (r: number): Chord => ({ r, minor: false });
-const BATTLE = [m(0), M(-4), M(-2), m(0), m(5), M(1), M(-2), M(7)];
+export const m = (r: number): Chord => ({ r, minor: true });
+export const M = (r: number): Chord => ({ r, minor: false });
 const BOSS = [m(0), M(1), m(0), M(-2), M(-4), M(-2), M(7), M(7)];
-const SLOW = [m(0), M(-4), m(5), M(7)];
+export const SLOW = [m(0), M(-4), m(5), M(7)];
 const TITLE = [m(0), M(-4), m(5), M(7), m(0), M(-4), M(-2), M(7)];
 
 const MEL: Mel[] = [
@@ -36,34 +33,34 @@ const BOSS_MEL: Mel[] = [
   [[0, 71, 16]],
 ];
 
-const ACC = [0, 3, 6, 8, 11, 14];
+export const ACC = [0, 3, 6, 8, 11, 14];
 const OST = [12, 0, 0, 12, 0, 0, 12, 0, 12, 0, 0, 12, 0, 0, 7, 12];
-const GALLOP = [0, 2, 3, 4, 6, 8, 10, 11, 12, 14];
+export const GALLOP = [0, 2, 3, 4, 6, 8, 10, 11, 12, 14];
 
 const tones = (c: Chord) => [0, c.minor ? 3 : 4, 7];
-const place = (n: number, lo: number) => {
+export const place = (n: number, lo: number) => {
   while (n < lo) n += 12;
   while (n >= lo + 12) n -= 12;
   return n;
 };
-const voicing = (c: Chord, key: number, lo: number) => tones(c).map((t) => place(key + c.r + t, lo)).sort((a, b) => a - b);
+export const voicing = (c: Chord, key: number, lo: number) => tones(c).map((t) => place(key + c.r + t, lo)).sort((a, b) => a - b);
 
 export type Gen = (n: number, i: number, spb: number) => Note[];
 
-function kit(e: Note[], hits: [HitName, number[], number, Layer?][]) {
+export function kit(e: Note[], hits: [HitName, number[], number, Layer?][]) {
   for (const [k, steps, g, l] of hits) for (const st of steps) e.push({ k, st, g, l: l ?? "drums" });
 }
-function chord(e: Note[], k: InstName, ms: number[], st: number, g: number, l: Layer, len?: number, swell?: boolean) {
+export function chord(e: Note[], k: InstName, ms: number[], st: number, g: number, l: Layer, len?: number, swell?: boolean) {
   ms.forEach((mm, j) => e.push({ k, m: mm, st, g, l, len, pan: ms.length > 1 ? (j / (ms.length - 1) - 0.5) * 0.7 : 0, swell }));
 }
-function ostinato(e: Note[], r: number, g: number) {
+export function ostinato(e: Note[], r: number, g: number) {
   OST.forEach((o, st) => e.push({ k: "strStac", m: r + o, st, g: g * (ACC.includes(st) ? 1 : 0.55), l: "str", pan: st % 2 ? 0.25 : -0.25 }));
 }
-function fillToms(e: Note[], from: number, g: number) {
+export function fillToms(e: Note[], from: number, g: number) {
   const seq: HitName[] = ["tomHi", "tomHi", "tomMid", "tomMid", "tomLo", "tomLo", "taiko", "taiko"];
   for (let st = from; st < 16; st++) e.push({ k: seq[Math.floor(((st - from) / (16 - from)) * 8)], st, g: g * (0.7 + (0.3 * (st - from)) / (16 - from)), l: "perc", pan: ((st % 3) - 1) * 0.4 });
 }
-const riserAt = (spb: number) => 32 - 2.6 / spb;
+export const riserAt = (spb: number) => 32 - 2.6 / spb;
 function melody(e: Note[], mel: Mel, shift: number, g: number) {
   for (const [st, mm, len] of mel) {
     e.push({ k: "brassLong", m: mm + shift, st, g, l: "brass", len });
@@ -71,30 +68,7 @@ function melody(e: Note[], mel: Mel, shift: number, g: number) {
   }
 }
 
-const battle: Gen = (n, i, spb) => {
-  const e: Note[] = [];
-  const c = BATTLE[n % 8];
-  const r = 38 + c.r;
-  const half = n % 16 >= 8;
-  kit(e, [["kick", i > 0.75 ? ACC : i > 0.45 ? [0, 6, 8, 14] : [0, 8], 0.9], ["snare", [4, 12], 0.75], ["taiko", [0, 8], 0.7, "perc"], ["taikoHi", [3, 6, 11, 14], 0.45, "perc"], ["hat", [0, 2, 4, 6, 8, 10, 12, 14], 0.12, "perc"]]);
-  if (i > 0.6) kit(e, [["snare", [7, 15], 0.18], ["hatOpen", [14], 0.12, "perc"]]);
-  if (n % 4 === 0) kit(e, [["crash", [0], 0.5]]);
-  if (n % 8 === 7) fillToms(e, 8, 0.8);
-  else if (n % 4 === 3) fillToms(e, 12, 0.7);
-  if (n % 8 === 6) e.push({ k: "riser", st: riserAt(spb), g: 0.35, l: "fx" });
-  ostinato(e, r, 0.32);
-  for (const st of ACC) e.push({ k: "bass", m: r, st, g: 0.4, l: "bass" });
-  GALLOP.forEach((st) => e.push({ k: "gtrMute", m: r, st, g: 0.28, l: "gtr", pan: -0.35 }));
-  if (n % 4 === 0) e.push({ k: "gtrOpen", m: r, st: 0, g: 0.3, l: "gtr", len: 8, pan: 0.35 });
-  chord(e, half ? "choirOh" : "choirAh", [place(r, 45), ...voicing(c, 38, 53)], 0, 0.2, "choir", 16);
-  if (!half) {
-    if (n % 2 === 1 || i > 0.75) for (const st of [0, 3, 6]) chord(e, "brassStab", voicing(c, 38, 53), st, st === 3 ? 0.18 : 0.22, "brass");
-    if (n % 2 === 0) e.push({ k: "chant", m: place(r, 45), st: 0, g: 0.45, l: "choir" });
-  } else melody(e, MEL[n % 8], 0, 0.36);
-  return e;
-};
-
-const boss: Gen = (n, i, spb) => {
+export const boss: Gen = (n, i, spb) => {
   const e: Note[] = [];
   const c = BOSS[n % 8];
   const r = 40 + c.r;
@@ -115,10 +89,14 @@ const boss: Gen = (n, i, spb) => {
   e.push({ k: "chant", m: place(r, 45), st: 8, g: 0.4, l: "choir" });
   if (n % 4 === 3) e.push({ k: "chant", m: place(r + 7, 45), st: 14, g: 0.45, l: "choir" });
   if (half) melody(e, BOSS_MEL[n % 8], 0, 0.38);
+  if (i > 1.2) {
+    kit(e, [["hatOpen", [2, 6, 10, 14], 0.1, "perc"], ["crash", n % 2 ? [] : [8], 0.3]]);
+    chord(e, "choirOh", v.map((x) => x + 12), 0, 0.13, "choir", 16);
+  }
   return e;
 };
 
-const explore: Gen = (n, i) => {
+export const explore: Gen = (n, i) => {
   const e: Note[] = [];
   const c = SLOW[(n >> 1) % 4];
   const r = 38 + c.r;
@@ -136,7 +114,7 @@ const explore: Gen = (n, i) => {
   return e;
 };
 
-const title: Gen = (n, _i, spb) => {
+export const title: Gen = (n, _i, spb) => {
   const e: Note[] = [];
   const ph = n < 16 ? n : 8 + ((n - 8) % 8);
   const c = TITLE[(ph >> 1) % 8];
@@ -161,7 +139,7 @@ const title: Gen = (n, _i, spb) => {
   return e;
 };
 
-const intro: Gen = (n) => {
+export const intro: Gen = (n) => {
   const e: Note[] = [];
   const c = [m(0), m(0), M(-4), M(7)][n % 4];
   const r = 38 + c.r;
@@ -179,7 +157,7 @@ const intro: Gen = (n) => {
   return e;
 };
 
-const defeat: Gen = (n) => {
+export const defeat: Gen = (n) => {
   const e: Note[] = [];
   const c = SLOW[(n >> 1) % 4];
   const r = 38 + c.r;
@@ -194,8 +172,6 @@ const defeat: Gen = (n) => {
   return e;
 };
 
-export const GENS: Record<MusicState, Gen> = { title, intro, explore, battle, boss, defeat };
-
 export function fill(spb: number, to: MusicState): Note[] {
   const e: Note[] = [{ k: "swell", st: 16 - 1.3 / spb, g: 0.4, l: "fx" }];
   if (to === "battle" || to === "boss") {
@@ -205,10 +181,10 @@ export function fill(spb: number, to: MusicState): Note[] {
   return e;
 }
 
-export const LAYERS: Layer[] = ["drums", "perc", "str", "brass", "choir", "gtr", "bass", "keys", "fx"];
+export const LAYERS: Layer[] = ["drums", "perc", "str", "brass", "choir", "gtr", "bass", "keys", "fx", "lead"];
 
 export function layerGains(s: MusicState, i: number, danger: number): Record<Layer, number> {
-  const g = { drums: 1, perc: 1, str: 1, brass: 1, choir: 1, gtr: 1, bass: 1, keys: 1, fx: 1 };
+  const g = { drums: 1, perc: 1, str: 1, brass: 1, choir: 1, gtr: 1, bass: 1, keys: 1, fx: 1, lead: 1 };
   if (s === "battle") {
     g.perc = 0.55 + 0.45 * i;
     g.brass = 0.7 + 0.3 * i;

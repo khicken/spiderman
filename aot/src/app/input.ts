@@ -15,7 +15,7 @@ const KEYS: Record<string, Action> = {
 };
 const BUTTONS: Record<number, Action> = { 0: "anchorL", 2: "anchorR" };
 const MOVE = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-const SYSTEM = new Set(["Escape", "Enter", "KeyM", "KeyG"]);
+const SYSTEM = new Set(["Escape", "Enter", "KeyM", "KeyG", "Digit1", "Digit2", "Digit3"]);
 
 export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) => void): Controls {
   const held = new Set<Action>();

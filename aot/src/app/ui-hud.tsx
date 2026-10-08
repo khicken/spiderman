@@ -7,6 +7,7 @@ import type { Character } from "./progression-chars";
 import { BOSS, isBoss } from "./titan-waves";
 import { Brush, SHIELD_PATH, TitanIcon } from "./ui-art";
 import { Key } from "./ui-menu";
+import { Tracker } from "./ui-run";
 
 export type Pop = UiEvent & { id: number };
 export type Msgs = { banner: Pop | null; radio: Pop | null; callout: Pop | null };
@@ -299,6 +300,7 @@ function WavePanel({ h }: { h: HudState }) {
             </span>
           </div>
         )}
+        {h.wave > 0 && <Tracker run={h.run} />}
       </div>
     </div>
   );

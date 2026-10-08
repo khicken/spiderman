@@ -249,7 +249,7 @@ export function createFlares(scene: THREE.Scene) {
       for (let i = 0; i < PUFFS; i++) {
         age[i] += dt;
         const k = age[i] / 12;
-        const s = k >= 1 ? 0 : (1.4 + k * 9) * (1 - k * k);
+        const s = k >= 1 ? 0 : (1 + k * 4) * (1 - k * k);
         pos[i].y += dt * 0.6;
         m.compose(pos[i], q, sc.setScalar(s));
         smoke.setMatrixAt(i, m);

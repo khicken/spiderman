@@ -38,7 +38,7 @@ export type Sfx =
   | "horn" | "bell" | "gateBreak" | "lightning" | "lock" | "lockCycle" | "ui";
 
 export type MusicState = "title" | "intro" | "explore" | "battle" | "boss" | "defeat";
-export type Stinger = "wave" | "waveClear" | "kill" | "bossIntro" | "bossDown" | "death";
+export type Stinger = "wave" | "waveClear" | "kill" | "bossIntro" | "bossDown" | "death" | "levelUp" | "objective";
 
 export type GameEvent =
   | { type: "sfx"; name: Sfx; volume?: number; at?: THREE.Vector3 } // `at` makes game.ts pan and fade it by distance
@@ -53,7 +53,10 @@ export type GameEvent =
   | { type: "slowmo"; scale: number; duration: number }
   | { type: "impact"; kind: "hit" | "crit" | "kill" } // anime impact frame in render
   | { type: "hurt"; amount: number; from?: THREE.Vector3 } // fraction of max health
-  | { type: "kill"; height: number; kind: TitanKind; speed: number };
+  | { type: "kill"; height: number; kind: TitanKind; speed: number }
+  | { type: "feat"; name: Feat; kind?: TitanKind }; // player feats for XP and objectives
+
+export type Feat = "sever" | "tendon" | "perfect" | "save";
 
 // ---- render.ts: createRender(canvas: HTMLCanvasElement): Render
 export interface Render {
@@ -107,6 +110,7 @@ export interface World {
   // Pushes a titan (feet at pos, y ignored) out of anything taller than maxStep. Titans step over lower things.
   pushTitan(pos: THREE.Vector3, radius: number, maxStep: number): void;
   inside(x: number, z: number): boolean; // inside the walls
+  readonly depotDown: boolean[]; // per supply depot: fallen, no refills
   kickGate(): GameEvent[]; // the Colossal Titan breaks the gate, once
   update(dt: number, t: number): GameEvent[];
   setQuality(q: Quality): void;
@@ -144,6 +148,7 @@ export interface Titans {
   readonly escape: number | null; // 0..1 while held
   pushOut(pos: THREE.Vector3, radius: number, vel: THREE.Vector3): void;
   boss(): { name: string; kind: TitanKind; health: number; hardened: boolean } | null;
+  lure(p: THREE.Vector3 | null): void; // half the titans march on this point
   dispose(): void;
 }
 
@@ -202,6 +207,7 @@ export type PlayerHud = {
   dead: boolean;
   combo: number;
 };
+export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; health: number; spare: number }; // multipliers, spare adds
 export interface Player {
   readonly pos: THREE.Vector3; // body center
   readonly vel: THREE.Vector3;
@@ -216,6 +222,7 @@ export interface Player {
   cameraView(): CameraView;
   setVisible(on: boolean): void;
   setCharacter(id: string): void; // swaps the model and stats
+  setBoost(b: Boost): void; // run upgrades and gear tier
   dispose(): void;
 }
 
@@ -223,7 +230,7 @@ export interface Player {
 export interface Audio {
   sfx(name: Sfx, o?: { volume?: number; pan?: number }): void;
   stinger(name: Stinger): void;
-  update(dt: number, s: { music: MusicState; speed: number; gas: boolean; danger: number }): void; // danger 0..1
+  update(dt: number, s: { music: MusicState; speed: number; gas: boolean; danger: number; wave?: number; boss?: TitanKind | null; bossHealth?: number; rest?: boolean }): void; // danger 0..1, rest is the break between waves
   setMuted(m: boolean): void;
   setVolume(v: number): void;
   resume(): Promise<void>;
@@ -238,6 +245,7 @@ export interface Allies {
   update(dt: number, t: number, lead: SquadLead, yaw: number): GameEvent[]; // yaw: camera yaw for clock callouts
   order(o: SquadOrder): GameEvent[];
   toggle(): GameEvent[]; // attack my target <-> regroup
+  grow(): GameEvent[]; // one more soldier in the squad
   hud(): SquadHud;
   dispose(): void;
 }
@@ -260,4 +268,20 @@ export type HudState = {
   blips: TitanBlip[];
   depots: { bearing: number; dist: number }[];
   squad: SquadHud;
+  run: RunHud;
 } & PlayerHud;
+
+export type UpgradeId = "tank" | "reel" | "blade" | "spare" | "damage" | "charge" | "health" | "squad";
+export type Upgrade = { id: UpgradeId; name: string; jp: string; text: string; level: number; max: number };
+export type Objective = { text: string; hint?: string; have: number; need: number; unit?: "%"; state: "on" | "done" | "failed"; bonus: boolean };
+export type RunHud = {
+  level: number;
+  xp: number; // toward the next level
+  need: number;
+  total: number;
+  objectives: Objective[];
+  choice: Upgrade[] | null; // level-up picks, the game is frozen while set
+  choiceT: number; // seconds until the first pick is taken
+  done: number;
+  count: number;
+};
