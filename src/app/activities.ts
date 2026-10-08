@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { HALF, PERIOD, STREET, rng, type Box, type City } from "./city";
 import type { GameEvent, Input, Marker, Objective, PlayerApi } from "./contracts";
 import * as A from "./activities-models";
+import { raceStarts, taskBoard } from "./missions";
 
 export type District = { name: string; minX: number; maxX: number; minZ: number; maxZ: number };
 type Kind = "photo" | "cache" | "request" | "pigeon" | "challenge";
@@ -43,6 +44,7 @@ const REQUESTS = [
 ];
 const LIGHT_SEG = 14;
 const LOCK_DIST = 7;
+const AVOID_R = 40;
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -147,6 +149,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
     }
     return null;
   };
+  const avoid = taskBoard.avoid.length ? taskBoard.avoid : raceStarts();
+  const crowded = (x: number, z: number, rad = AVOID_R) => avoid.some((v) => flat(v, x, z) < rad);
   const corners: THREE.Vector3[] = [];
   for (let i = 1; i < 14; i++) {
     for (let j = 1; j < 14; j++) {
@@ -154,7 +158,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
         for (const sz of [-1, 1]) {
           const x = lineAt(i) + sx * SIDEWALK;
           const z = lineAt(j) + sz * SIDEWALK;
-          if (topAt(x, z) === 0) corners.push(new THREE.Vector3(x, 0, z));
+          if (topAt(x, z) === 0 && !crowded(x, z)) corners.push(new THREE.Vector3(x, 0, z));
         }
       }
     }
@@ -178,6 +182,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
       break;
     }
   });
+  for (const ph of photos) ph.target.y = Math.max(ph.target.y, topAt(ph.target.x, ph.target.z) + 4);
 
   const caches: Cache[] = [];
   districts.forEach((_, di) => {
@@ -266,7 +271,10 @@ export function createActivities(scene: THREE.Scene, city: City) {
   {
     const plaza = city.landmarks.find((l) => l.name === "Holiday Plaza") ?? city.landmarks.find((l) => l.name === "Times Square");
     const start = plaza ? new THREE.Vector3(plaza.pos.x, 0, plaza.pos.z) : new THREE.Vector3(0, 0, 0);
-    if (topAt(start.x, start.z) > 0) start.copy(cornerIn(districtOf(start.x, start.z)));
+    if (topAt(start.x, start.z) > 0 || crowded(start.x, start.z, 70)) {
+      const free = corners.filter((c) => !crowded(c.x, c.z, 70));
+      start.copy(free.reduce((a, b) => (b.distanceTo(start) < a.distanceTo(start) ? b : a), free[0] ?? start));
+    }
     const pts: THREE.Vector3[] = [];
     for (let k = 0; k < DRONES; k++) {
       for (let tries = 0; tries < 60; tries++) {
@@ -322,7 +330,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
       const cx = (b.minX + b.maxX) / 2;
       const cz = (b.minZ + b.maxZ) / 2;
       for (const [x, z] of [[b.maxX + 3, cz], [b.minX - 3, cz], [cx, b.maxZ + 3], [cx, b.minZ - 3]]) {
-        if (topAt(x, z) === 0) {
+        if (topAt(x, z) === 0 && !crowded(x, z)) {
           start = new THREE.Vector3(x, 0, z);
           break;
         }
@@ -410,6 +418,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
   let flockT = 0;
   let zoneR = CACHE_R;
   let lastY = 0;
+  let lastT = 0;
+  let player0: THREE.Vector3 | null = null;
   const ev: GameEvent[] = [];
   const toast = (title: string, text?: string) => ev.push(text ? { type: "toast", title, text } : { type: "toast", title });
   const xp = (amount: number, reason: string) => ev.push({ type: "xp", amount, reason });
@@ -512,7 +522,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
       sfx("fail");
       toast("CHALLENGE FAILED", `${c.name}: ${detail}`);
     }
-    finish(t, c.kind === 2 ? null : c.start);
+    finish(t, c.start);
   };
 
   const birdPos = (f: Flock, b: Bird, t: number, out: THREE.Vector3) => {
@@ -534,7 +544,9 @@ export function createActivities(scene: THREE.Scene, city: City) {
     pingT = Math.max(0, pingT - dt);
     if (lock && flat(lock, P.x, P.z) > LOCK_DIST + 20) lock = null;
     lastY = P.y;
-    const free = t - ended > 1.5 && (!act || act.kind === "cache");
+    lastT = t;
+    player0 = P;
+    const free = t - ended > 1.5 && (!act || act.kind === "cache") && !taskBoard.mission;
 
     photoNear = -1;
     let bestFacing = 0.93;
@@ -547,7 +559,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
       if (facing > bestFacing) [bestFacing, photoNear] = [facing, i];
     }
     photoFacing = photoNear >= 0;
-    stillT = photoFacing && player.vel.lengthSq() < 0.36 ? stillT + dt : 0;
+    const idleNow = (!act || act.kind === "cache") && !taskBoard.mission;
+    stillT = photoFacing && idleNow && player.vel.lengthSq() < 0.36 ? stillT + dt : 0;
     if (photoFacing && (scan || stillT >= 1)) {
       const ph = photos[photoNear];
       ph.item.done = true;
@@ -573,7 +586,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
       const idle = () => !act || act.kind === "cache";
       for (let i = 0; i < reqs.length && idle(); i++) {
         const q = reqs[i];
-        if (!q.item.done && lock !== q.giver && flat(q.giver, P.x, P.z) < 3 && P.y < 5) startRequest(i, t);
+        if (!q.item.done && lock !== q.giver && flat(q.giver, P.x, P.z) < 4 && P.y < 5) startRequest(i, t);
       }
       for (let i = 0; i < flocks.length && idle(); i++) {
         const f = flocks[i];
@@ -763,6 +776,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
       }
     }
 
+    taskBoard.activity = act !== null && act.kind !== "cache";
     draw(t, P, player);
     return ev;
   };
@@ -811,7 +825,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
       if (hot && pingT > 0) beam(c.box.x, c.box.y, c.box.z, 1.2, 3 * pingT, 1.8 * pingT, 0.3 * pingT, t);
     }
 
-    const busy = a !== null;
+    const busy = (a !== null && a.kind !== "cache") || taskBoard.mission;
     for (let i = 0; i < reqs.length; i++) {
       const q = reqs[i];
       const mine = a?.kind === "request" && a.i === i;
@@ -955,66 +969,123 @@ export function createActivities(scene: THREE.Scene, city: City) {
 
   const hud = () => {
     const markers: Marker[] = [];
-    for (const ph of photos) if (!ph.item.done) markers.push({ x: ph.target.x, z: ph.target.z, kind: "photo" });
+    const mark = (x: number, z: number, kind: Marker["kind"], label?: string) => {
+      const m: Marker & { label?: string } = { x, z, kind };
+      if (label) m.label = label;
+      markers.push(m);
+    };
+    const at = (v: THREE.Vector3, dy = 0) => ({ x: v.x, y: v.y + dy, z: v.z });
+    const P = player0;
+    for (const ph of photos) if (!ph.item.done) mark(ph.target.x, ph.target.z, "photo", `Photo: ${ph.name}`);
     for (let i = 0; i < caches.length; i++) {
       const c = caches[i];
       if (c.item.done) continue;
       const k = act?.kind === "cache" && act.i === i ? zoneR / CACHE_R : 1;
-      markers.push({ x: c.box.x + c.off.x * k, z: c.box.z + c.off.z * k, kind: "cache" });
+      mark(c.box.x + c.off.x * k, c.box.z + c.off.z * k, "cache", "Signal Cache");
     }
-    for (const q of reqs) if (!q.item.done) markers.push({ x: q.giver.x, z: q.giver.z, kind: "request" });
-    for (const f of flocks) if (!f.item.done) markers.push({ x: f.home.x, z: f.home.z, kind: "pigeon" });
-    for (const c of chals) markers.push({ x: c.start.x, z: c.start.z, kind: "challenge" });
+    for (const q of reqs) if (!q.item.done) mark(q.giver.x, q.giver.z, "request", REQUESTS[q.type].title);
+    for (const f of flocks) if (!f.item.done) mark(f.home.x, f.home.z, "pigeon", "Pigeons");
+    for (const c of chals) mark(c.start.x, c.start.z, "challenge", c.name);
 
     let objective: Objective | null = null;
     const prompts: { key: string; label: string }[] = [];
     const a = act;
     if (a?.kind === "cache") {
       const c = caches[a.i];
-      objective = { title: "SIGNAL HUNT", text: pingText || "Find the hidden cache", progress: `Signal radius ${Math.round(zoneR)} m` };
+      const k = zoneR / CACHE_R;
+      objective = { title: "SIGNAL HUNT", text: pingText || "Search the signal zone", progress: `Zone ${Math.round(zoneR)} m`, target: { x: c.box.x + c.off.x * k, y: c.box.y, z: c.box.z + c.off.z * k } };
       prompts.push({ key: "V", label: "Ping the signal" });
     } else if (a?.kind === "request") {
       const q = reqs[a.i];
       const R = REQUESTS[q.type];
       const text =
-        q.type === 0 ? (rq.carried ? "Bring the cat back to its owner" : "Find the cat on the rooftop")
+        q.type === 0 ? (rq.carried ? "Bring the cat back to its owner" : "Grab the cat on the rooftop")
         : q.type === 1 ? "Deliver the pizza to the customer"
         : q.type === 2 ? (rq.carried ? "Bring the balloon back to the kid" : "Catch the floating balloon")
-        : q.type === 3 ? "Tag the purse snatcher"
+        : q.type === 3 ? "Catch the purse snatcher"
         : "Touch the 3 broken fuses";
       objective = { title: R.title.toUpperCase(), text };
       if (rq.timer > 0) objective.timer = rq.timer;
       if (q.type === 4) objective.progress = `${(rq.fixed & 1) + ((rq.fixed >> 1) & 1) + ((rq.fixed >> 2) & 1)}/3 fuses`;
-      const target = q.type === 0 ? (rq.carried ? q.giver : rq.item) : q.type === 1 ? q.dest : q.type === 2 ? (rq.carried ? q.giver : rq.item) : q.type === 3 ? rq.item : null;
-      if (target) markers.push({ x: target.x, z: target.z, kind: "checkpoint" });
-      if (q.type === 4) for (let k = 0; k < 3; k++) if (!((rq.fixed >> k) & 1)) markers.push({ x: q.pts[k].x, z: q.pts[k].z, kind: "checkpoint" });
+      let target = q.type === 0 ? (rq.carried ? q.giver : rq.item) : q.type === 1 ? q.dest : q.type === 2 ? (rq.carried ? q.giver : rq.item) : q.type === 3 ? rq.item : null;
+      if (target) mark(target.x, target.z, "checkpoint");
+      if (q.type === 4) {
+        let bd = Infinity;
+        for (let k = 0; k < 3; k++) {
+          if ((rq.fixed >> k) & 1) continue;
+          mark(q.pts[k].x, q.pts[k].z, "checkpoint");
+          const d = P ? P.distanceTo(q.pts[k]) : k;
+          if (d < bd) [bd, target] = [d, q.pts[k]];
+        }
+      }
+      if (target) objective.target = at(target, q.type === 4 ? 0.6 : 1);
     } else if (a?.kind === "pigeon") {
       const f = flocks[a.i];
       const n = f.birds.filter((b) => b.caught).length;
       objective = { title: "PIGEONS", text: "Catch the pigeons in mid-air", timer: Math.max(0, flockT), progress: `${n}/${FLOCK_SIZE}` };
+      let bd = Infinity;
+      for (const b of f.birds) {
+        if (b.caught) continue;
+        birdPos(f, b, lastT, _v);
+        const d = P ? P.distanceTo(_v) : 0;
+        if (d < bd) {
+          bd = d;
+          objective.target = { x: _v.x, y: _v.y, z: _v.z };
+        }
+      }
     } else if (a?.kind === "challenge") {
       const c = chals[a.i];
       const next = c.kind === 2 ? (ch.hit >= c.medals[0] - (c.pts.length - ch.next) ? 0 : 1) : medalOf(c, ch.t, false);
       if (c.kind === 0) {
         objective = { title: c.name.toUpperCase(), text: "Touch every drone", timer: c.limit - ch.t, progress: `${ch.next}/${c.pts.length} drones`, medal: next < 3 ? `${MEDALS[next]} ${fmt(c.medals[next])}` : undefined };
-        for (let k = 0; k < c.pts.length; k++) if (!(ch.hit & (1 << k))) markers.push({ x: c.pts[k].x, z: c.pts[k].z, kind: "checkpoint" });
+        let bd = Infinity;
+        for (let k = 0; k < c.pts.length; k++) {
+          if (ch.hit & (1 << k)) continue;
+          mark(c.pts[k].x, c.pts[k].z, "checkpoint");
+          const d = P ? P.distanceTo(c.pts[k]) : k;
+          if (d < bd) [bd, objective.target] = [d, at(c.pts[k])];
+        }
       } else if (c.kind === 1) {
-        objective = { title: c.name.toUpperCase(), text: "Climb to the roof", timer: c.limit - ch.t, progress: `${Math.max(0, Math.round((c.tower?.maxY ?? 0) - lastY))} m to go`, medal: next < 3 ? `${MEDALS[next]} ${fmt(c.medals[next])}` : undefined };
+        const tw = c.tower;
+        objective = { title: c.name.toUpperCase(), text: "Climb to the roof", timer: c.limit - ch.t, progress: `${Math.max(0, Math.round((tw?.maxY ?? 0) - lastY))} m to go`, medal: next < 3 ? `${MEDALS[next]} ${fmt(c.medals[next])}` : undefined };
+        if (tw) objective.target = { x: (tw.minX + tw.maxX) / 2, y: tw.maxY, z: (tw.minZ + tw.maxZ) / 2 };
       } else {
         objective = { title: c.name.toUpperCase(), text: ch.started ? "Dive through the rings" : "Jump off the roof", progress: `${ch.hit}/${c.pts.length} rings`, medal: `GOLD ${c.medals[0]} rings` };
         if (ch.started) objective.timer = c.limit - ch.t;
-        if (ch.next < c.pts.length) markers.push({ x: c.pts[ch.next].x, z: c.pts[ch.next].z, kind: "checkpoint" });
+        if (ch.next < c.pts.length) {
+          mark(c.pts[ch.next].x, c.pts[ch.next].z, "checkpoint");
+          objective.target = at(c.pts[ch.next]);
+        }
       }
     }
     if (photoNear >= 0 && photoFacing) prompts.push({ key: "V", label: `Photo: ${photos[photoNear].name}` });
+    if ((!a || a.kind === "cache") && P && !taskBoard.mission) {
+      for (const q of reqs) {
+        if (q.item.done || lock === q.giver || flat(q.giver, P.x, P.z) > 25 || P.y > 30) continue;
+        prompts.push({ key: "", label: `Walk up to help: ${REQUESTS[q.type].title}` });
+        break;
+      }
+      for (const c of chals) {
+        if (lock === c.start || flat(c.start, P.x, P.z) > 25 || Math.abs(P.y - c.start.y) > 30) continue;
+        prompts.push({ key: "", label: `Step into the purple beam: ${c.name}` });
+        break;
+      }
+    }
 
     const done = districts.map(() => [0, 0]);
     const completed: Record<string, number> = { photos: 0, caches: 0, requests: 0, pigeons: 0, challenges: 0 };
+    const plural = (k: Kind) => (k === "pigeon" ? "pigeons" : k === "cache" ? "caches" : `${k}s`);
     for (const it of items) {
       done[it.district][1]++;
+      completed[`total:${plural(it.kind)}`] = (completed[`total:${plural(it.kind)}`] ?? 0) + 1;
       if (!it.done) continue;
       done[it.district][0]++;
-      completed[it.kind === "pigeon" ? "pigeons" : it.kind === "cache" ? "caches" : `${it.kind}s`]++;
+      completed[plural(it.kind)]++;
+    }
+    for (const sp of taskBoard.missionSpots) {
+      const d = districtOf(sp.x, sp.z);
+      done[d][1]++;
+      if (sp.done) done[d][0]++;
     }
     return {
       objective,
@@ -1045,7 +1116,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
     hud,
     setDetail,
     dispose,
-    activeSince: () => (act ? act.t0 : null),
+    // A signal hunt runs in the background, so it does not take the objective slot from a mission.
+    activeSince: () => (act && act.kind !== "cache" ? act.t0 : null),
     debug: { photos, caches, reqs, flocks, chals, items, districts, group, birdPos, state: () => ({ act, rq, ch }) },
   };
 }

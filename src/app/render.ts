@@ -2,50 +2,29 @@ import * as THREE from "three";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import { FXAAPass } from "three/examples/jsm/postprocessing/FXAAPass.js";
+import { FinalPass, HalfBloomPass, patchFog } from "./render-post";
 
 export type Quality = "low" | "medium" | "high";
 
 export const QUALITIES: Record<
   Quality,
-  { label: string; detail: string; pixelRatio: number; shadow: number; range: number; post: 0 | 1 | 2; snow: number; cars: number; fog: number; env: boolean; detailLevel: 0 | 1 | 2 }
+  { label: string; detail: string; pixelRatio: number; shadow: number; range: number; post: 0 | 1 | 2; snow: number; cars: number; fog: number; env: boolean; detailLevel: 0 | 1 | 2; aniso: number }
 > = {
-  low: { label: "Performance", detail: "No shadows, short view, high frame rate", pixelRatio: 0.75, shadow: 0, range: 0, post: 0, snow: 0, cars: 80, fog: 650, env: false, detailLevel: 0 },
-  medium: { label: "Balanced", detail: "Soft shadows, snow, color grading, smooth edges", pixelRatio: 1, shadow: 2048, range: 90, post: 1, snow: 3000, cars: 180, fog: 1100, env: true, detailLevel: 1 },
-  high: { label: "Fidelity", detail: "Sharp shadows, bloom, heavy snow, far view", pixelRatio: 2, shadow: 4096, range: 160, post: 2, snow: 10000, cars: 320, fog: 1800, env: true, detailLevel: 2 },
+  low: { label: "Performance", detail: "No shadows, short view, high frame rate", pixelRatio: 0.75, shadow: 0, range: 0, post: 0, snow: 0, cars: 80, fog: 650, env: false, detailLevel: 0, aniso: 4 },
+  medium: { label: "Balanced", detail: "Soft shadows, snow, color grading, sharp edges", pixelRatio: 1, shadow: 2048, range: 90, post: 1, snow: 1800, cars: 180, fog: 1100, env: true, detailLevel: 1, aniso: 8 },
+  high: { label: "Fidelity", detail: "Sharp shadows, bloom, heavy snow, far view", pixelRatio: 2, shadow: 4096, range: 160, post: 2, snow: 3500, cars: 320, fog: 1800, env: true, detailLevel: 2, aniso: 16 },
 };
 
-const MAX_SNOW = 10000;
+const MAX_SNOW = 3500;
+const TEX_KEYS = ["map", "emissiveMap", "normalMap", "roughnessMap", "metalnessMap", "bumpMap", "alphaMap", "aoMap"] as const;
 const FOG = new THREE.Color("#6a6e7f");
 const WARM = new THREE.Color("#d9a27c");
 const SUN_ELEV = 4;
 const SUN_AZIM = 215;
 
-const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uVignette: { value: 0.9 }, uSat: { value: 1.08 } },
-  vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse; uniform float uVignette; uniform float uSat; varying vec2 vUv;
-    void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
-      vec3 col = c.rgb;
-      float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
-      col = mix(vec3(l), col, uSat);
-      col += vec3(-0.012, 0.0, 0.025) * (1.0 - l) * (1.0 - l);
-      col *= mix(vec3(1.0), vec3(1.04, 1.0, 0.95), l);
-      col = mix(col, col * col * (3.0 - 2.0 * col), 0.22);
-      vec2 d = vUv - 0.5;
-      col *= 1.0 - dot(d, d) * uVignette;
-      gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
-    }`,
-};
-
 function makeSnow() {
   const pos = new Float32Array(MAX_SNOW * 3);
-  for (let i = 0; i < MAX_SNOW; i++) pos.set([Math.random() * 120, Math.random() * 80, Math.random() * 120], i * 3);
+  for (let i = 0; i < MAX_SNOW; i++) pos.set([Math.random() * 90, Math.random() * 60, Math.random() * 90], i * 3);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
@@ -56,7 +35,7 @@ function makeSnow() {
     vertexShader: /* glsl */ `
       uniform float uTime; uniform vec3 uCam; uniform float uScale; varying float vA;
       void main() {
-        vec3 box = vec3(120.0, 80.0, 120.0);
+        vec3 box = vec3(90.0, 60.0, 90.0);
         float seed = fract(position.x * 0.137 + position.z * 0.071);
         vec3 p = position;
         p.y -= uTime * (1.6 + seed * 1.4);
@@ -64,15 +43,18 @@ function makeSnow() {
         p.z += cos(uTime * 0.5 + seed * 4.0) * 0.6;
         p = mod(p - uCam + box * 0.5, box) - box * 0.5 + uCam;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        gl_PointSize = 0.2 * uScale / -mv.z;
-        vA = smoothstep(60.0, 25.0, -mv.z) * smoothstep(0.4, 1.5, -mv.z);
-        gl_Position = projectionMatrix * mv;
+        float z = -mv.z;
+        gl_PointSize = min(0.24 * uScale / z, uScale * 0.03);
+        vA = smoothstep(44.0, 18.0, z) * smoothstep(1.5, 4.0, z);
+        if (vA < 0.01) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        else gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */ `
       varying float vA;
       void main() {
         float d = length(gl_PointCoord - 0.5);
-        gl_FragColor = vec4(vec3(1.0), smoothstep(0.5, 0.0, d) * vA * 0.9);
+        float a = smoothstep(0.5, 0.0, d);
+        gl_FragColor = vec4(vec3(1.0), a * a * vA);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -140,6 +122,7 @@ export function createRender(canvas: HTMLCanvasElement) {
   const envMap = pmrem.fromScene(skyScene).texture;
   scene.environmentIntensity = 0.6;
 
+  patchFog(sunDir, WARM);
   scene.fog = new THREE.Fog(FOG.clone(), 120, 1100);
   const haze = makeHaze((scene.fog as THREE.Fog).color, sunDir);
   scene.add(haze);
@@ -161,24 +144,25 @@ export function createRender(canvas: HTMLCanvasElement) {
 
   let quality: Quality = "medium";
   let composer: EffectComposer | null = null;
-  let bloom: UnrealBloomPass | null = null;
+  let bloom: HalfBloomPass | null = null;
+  let final: FinalPass | null = null;
 
   const buildComposer = () => {
     composer?.dispose();
     composer = null;
     bloom = null;
+    final = null;
     const post = QUALITIES[quality].post;
     if (!post) return;
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: post === 2 ? 4 : 0 });
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: post === 2 ? 2 : 4 });
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
     if (post === 2) {
-      bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.4, 1.4);
+      bloom = new HalfBloomPass(new THREE.Vector2(1, 1), 0.3, 0.45, 1.4);
       composer.addPass(bloom);
     }
-    composer.addPass(new OutputPass());
-    composer.addPass(new ShaderPass(GradeShader));
-    if (post === 1) composer.addPass(new FXAAPass());
+    final = new FinalPass(sunDir);
+    composer.addPass(final);
   };
 
   const resize = () => {
@@ -207,9 +191,20 @@ export function createRender(canvas: HTMLCanvasElement) {
       c.right = c.top = Q.range;
       c.updateProjectionMatrix();
     }
+    const aniso = Math.min(Q.aniso, renderer.capabilities.getMaxAnisotropy());
     scene.traverse((o) => {
       const m = (o as THREE.Mesh).material;
-      if (m) (Array.isArray(m) ? m : [m]).forEach((x) => (x.needsUpdate = true));
+      if (!m) return;
+      for (const x of Array.isArray(m) ? m : [m]) {
+        x.needsUpdate = true;
+        for (const k of TEX_KEYS) {
+          const t = (x as unknown as Record<string, THREE.Texture | null>)[k];
+          if (t?.isTexture && !(t instanceof THREE.DataTexture) && t.anisotropy !== aniso) {
+            t.anisotropy = aniso;
+            t.needsUpdate = true;
+          }
+        }
+      }
     });
     const fog = scene.fog as THREE.Fog;
     fog.far = Q.fog;
@@ -245,6 +240,7 @@ export function createRender(canvas: HTMLCanvasElement) {
   };
 
   const render = () => {
+    final?.update(renderer, camera);
     if (composer) composer.render();
     else renderer.render(scene, camera);
   };

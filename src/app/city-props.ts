@@ -367,7 +367,7 @@ export function parkBlock(c: Ctx, b: Block, park: Bucket, pond: boolean) {
 }
 
 export function steam(c: Ctx, vents: { x: number; z: number; stack: boolean }[], dot: THREE.Texture) {
-  const N = 20;
+  const N = 9;
   const pos = new Float32Array(vents.length * N * 3);
   const seed = new Float32Array(vents.length * N * 2);
   vents.forEach((v, i) => {
@@ -401,9 +401,10 @@ export function steam(c: Ctx, vents: { x: number; z: number; stack: boolean }[],
         p.z += cos(ph * 1.3 + uTime * 0.5) * age * 1.6;
         p.y += age * 11.0;
         vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        gl_PointSize = (1.2 + age * 6.0) * uScale / -mvPosition.z;
-        vA = smoothstep(0.0, 0.12, age) * (1.0 - age) * 0.5;
+        float z = -mvPosition.z;
+        gl_PointSize = min((1.8 + age * 8.5) * uScale / z, uScale * 0.35);
+        vA = smoothstep(0.0, 0.15, age) * (1.0 - age) * 0.55 * smoothstep(3.0, 12.0, z);
+        gl_Position = vA < 0.005 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mvPosition;
         #include <fog_vertex>
       }`,
     fragmentShader: `
