@@ -346,6 +346,8 @@ export function createCity(seed = 7) {
     districts,
     updateTraffic,
     setTraffic,
+    carsNear: traffic.near,
+    setCarObstacle: traffic.setObstacle,
     update,
     setDetail,
   };

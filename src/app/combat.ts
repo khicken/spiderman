@@ -1957,6 +1957,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
   return {
     update,
     hud,
+    hurtPlayer: hurt,
     spawnGroup,
     groupDone,
     clearGroup,

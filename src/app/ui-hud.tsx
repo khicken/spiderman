@@ -287,7 +287,7 @@ export function Hud({ h, pops, showVitals }: { h: HudState; pops: Pop[]; showVit
         <div className="absolute bottom-24 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-x-4 gap-y-2 px-4">
           {h.prompts.map((p) => (
             <div key={p.key + p.label} className="flex items-center gap-2 rounded-sm bg-black/55 py-1 pl-1 pr-3 backdrop-blur-sm">
-              <Key>{p.key}</Key>
+              {p.key && <Key>{p.key}</Key>}
               <span className="font-cond text-sm font-bold uppercase tracking-wide">{p.label}</span>
             </div>
           ))}

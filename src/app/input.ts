@@ -15,8 +15,9 @@ const KEYS: Record<string, Action> = {
   KeyH: "heal",
   KeyX: "finisher",
   KeyV: "scan",
+  KeyT: "trick",
 };
-const BUTTONS: Record<number, Action> = { 0: "attack", 2: "web" };
+const BUTTONS: Record<number, Action> = { 2: "web" };
 const MOVE = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 
 export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) => void) {
@@ -27,6 +28,8 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
   const sources = new Map<Action, Set<string>>();
   const codes = new Set<string>();
   let enabled = false;
+  let fight = false;
+  let leftAction: Action = "swing";
   let dx = 0;
   let dy = 0;
   let lastMouse = 0;
@@ -39,6 +42,7 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
     pressed,
     released,
     holdTime: (a) => (held.has(a) ? (performance.now() - (since.get(a) ?? 0)) / 1000 : 0),
+    swingFromMouse: false,
   };
 
   const down = (a: Action, src: string) => {
@@ -63,6 +67,7 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
     const a = KEYS[e.code];
     if (a || MOVE.has(e.code) || e.code === "Space") e.preventDefault();
     if (e.repeat) return;
+    if (a === "swing") state.swingFromMouse = false;
     if (a) down(a, e.code);
     else if (MOVE.has(e.code)) codes.add(e.code);
     else onSystem(e.code);
@@ -73,11 +78,14 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
     codes.delete(e.code);
   };
   const onMouseDown = (e: MouseEvent) => {
-    const a = BUTTONS[e.button];
-    if (enabled && a) down(a, `m${e.button}`);
+    if (e.button === 0) leftAction = fight ? "attack" : "swing";
+    const a = e.button === 0 ? leftAction : BUTTONS[e.button];
+    if (!enabled || !a) return;
+    down(a, `m${e.button}`);
+    if (a === "swing") state.swingFromMouse = sources.get("swing")!.size === 1;
   };
   const onMouseUp = (e: MouseEvent) => {
-    const a = BUTTONS[e.button];
+    const a = e.button === 0 ? leftAction : BUTTONS[e.button];
     if (a) up(a, `m${e.button}`);
   };
   const onMouseMove = (e: MouseEvent) => {
@@ -111,6 +119,9 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
       enabled = on;
       if (!on) clear();
       else lastMouse = performance.now();
+    },
+    set fight(on: boolean) {
+      fight = on;
     },
     get mouseIdle() {
       return (performance.now() - lastMouse) / 1000;

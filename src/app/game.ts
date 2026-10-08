@@ -91,6 +91,9 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     trick: (kind, airTime) => missions.trick(kind, airTime),
     enemyNear: (pos) => combat.nearEnemy(pos, 8),
     inCombat: () => combat.hud().inCombat,
+    carHit: (from, speed) => {
+      combat.hurtPlayer(Math.min(25, 6 + speed), from, 0);
+    },
   };
   const updateModules = (dt: number, t: number) => {
     route(missions.update(dt, t, { pos: player.pos, vel: player.vel, mode: player.mode, camera: view.camera }));
@@ -203,6 +206,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         greet = { pose: r.pose, t: 0 };
       }
     }
+    input.fight = inCombat || combat.nearEnemy(player.pos, 10);
     if (playing) route(combat.update(dt, t, input.state, player, view.camera));
     if (greet) {
       greet.t += dt / 1.4;
@@ -219,6 +223,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (playing) updateModules(dt, t);
     input.endFrame();
     routeExternal(crowd.update(dt, t, player, view.camera));
+    city.setCarObstacle(player.pos.x, player.pos.z, player.pos.y < 3);
     city.updateTraffic(dt);
     city.update(dt, t);
 

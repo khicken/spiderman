@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Box, City } from "./city";
+import type { CarBox } from "./city-cars";
 import type { Hero } from "./hero";
 import type { GameEvent, HeroPose, Input, PlayerApi, PlayerMode, Sfx } from "./contracts";
 
@@ -93,7 +94,9 @@ export type PlayerHooks = {
   trick: (kind: "flip" | "spin", airTime: number) => GameEvent[];
   enemyNear: (pos: THREE.Vector3) => boolean;
   inCombat: () => boolean;
+  carHit: (from: THREE.Vector3, speed: number) => void;
 };
+const ZIP_RANGE = 60;
 
 type Candidate = { p: THREE.Vector3; n: THREE.Vector3; side: number; score: number };
 const POOL = 400;
@@ -230,15 +233,15 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const idealUp = THREE.MathUtils.clamp(13 + speed * 0.15, 12, 22);
     const minAhead = speed < 8 ? 3 : 8;
     cands.length = 0;
-    const consider = (x: number, y: number, z: number, nx: number, nz: number) => {
+    const consider = (x: number, y: number, z: number, nx: number, nz: number, low = false) => {
       if (cands.length >= POOL) return;
       const dx = x - p.x;
       const dy = y - p.y;
       const dz = z - p.z;
       const ahead = dx * heading.x + dz * heading.z;
       const side = dx * right.x + dz * right.z;
-      if (ahead < minAhead || ahead > 30 || dy < 6 || Math.abs(side) > 20) return;
-      if (dx * dx + dy * dy + dz * dz > 42 * 42) return;
+      if (ahead < minAhead || ahead > 40 || dy < (low ? -20 : 2) || Math.abs(side) > 26) return;
+      if (dx * dx + dy * dy + dz * dz > 55 * 55) return;
       const fwd = Math.max(0, 1 - Math.abs(ahead - idealAhead) / 22);
       const alt = lastSide === 0 ? 0.7 : Math.sign(side) === -lastSide ? 1 : 0.35;
       const along = nx || nz ? 0.4 + 0.6 * (1 - Math.abs(nx * heading.x + nz * heading.z)) : 0.7;
@@ -248,12 +251,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       c.p.set(x, y, z);
       c.n.set(nx, 0, nz);
       c.side = side;
-      c.score = fwd * 0.5 + sidePref * 0.3 + fit * 0.2;
+      c.score = (fwd * 0.5 + sidePref * 0.3 + fit * 0.2) * (low ? 0.5 : 1);
       cands.push(c);
     };
-    for (const b of city.near(p.x, p.z, 45)) {
-      if (b.maxY < p.y + 6) continue;
-      const lo = Math.max(b.maxY * 0.75, p.y + 6);
+    for (const b of city.near(p.x, p.z, 55)) {
+      const low = b.maxY < p.y + 2;
+      if (low && (b.maxY < p.y - 20 || b.maxY < 12)) continue;
+      const lo = low ? b.maxY - 0.2 : Math.max(b.maxY * 0.6, p.y + 2);
       const hi = b.maxY - 0.2;
       if (lo > hi) continue;
       const y = THREE.MathUtils.clamp(p.y + idealUp, lo, hi);
@@ -271,13 +275,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
           const ix = p.x + heading.x * idealAhead * k;
           const iz = p.z + heading.z * idealAhead * k;
           const along = THREE.MathUtils.clamp(xFace ? iz : ix, a0, a1);
-          if (xFace) consider(fixed, y, along, nx, nz);
-          else consider(along, y, fixed, nx, nz);
+          if (xFace) consider(fixed, y, along, nx, nz, low);
+          else consider(along, y, fixed, nx, nz, low);
         }
       }
     }
     const extra = (city as { anchors?: THREE.Vector3[] }).anchors;
-    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < 45 && Math.abs(a.z - p.z) < 45) consider(a.x, a.y, a.z, 0, 0);
+    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < 55 && Math.abs(a.z - p.z) < 55) consider(a.x, a.y, a.z, 0, 0);
     cands.sort((a, b) => b.score - a.score);
     tmp.copy(p).addScaledVector(UP, 0.6);
     for (const c of cands) {
@@ -303,6 +307,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     lastSide = Math.sign(c.side) || 1;
     webHand = lastSide > 0 ? "R" : "L";
     pivot.copy(anchor).addScaledVector(right, -0.9 * c.side);
+    // Low anchors swing around a raised pivot, like Insomniac's latch onto buildings below.
+    pivot.y = Math.max(pivot.y, p.y + 10);
     const dist = p.distanceTo(pivot);
     swingFloor = groundAt(city, pivot.x, pivot.z, pivot.y);
     ropeGoal = Math.max(5, Math.min(THREE.MathUtils.clamp(dist, ROPE_MIN, ROPE_MAX), pivot.y - swingFloor - 3));
@@ -341,8 +347,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const startZip = (look: THREE.Vector3, camPos: THREE.Vector3) => {
     const skip = camPos.distanceTo(p);
-    const t = raycast(city, camPos, look, skip + 160, tmp);
-    if (t < skip) return false;
+    const t = raycast(city, camPos, look, skip + ZIP_RANGE, tmp);
+    if (t < skip || t - skip > ZIP_RANGE) {
+      sfx("whiff", 0.6);
+      return false;
+    }
     anchor.copy(camPos).addScaledVector(look, t);
     anchorN.copy(tmp);
     zipTarget.copy(anchor).addScaledVector(tmp, R + 0.2);
@@ -450,6 +459,52 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
   };
 
+  const carList: CarBox[] = [];
+  const carFrom = new THREE.Vector3();
+  let carCd = 0;
+  const collideCars = (h: number) => {
+    carCd -= h;
+    if (p.y > 6) return;
+    for (const b of city.carsNear(p.x, p.z, 4, carList)) {
+      const x0 = b.minX - 0.45;
+      const x1 = b.maxX + 0.45;
+      const z0 = b.minZ - 0.45;
+      const z1 = b.maxZ + 0.45;
+      const top = b.maxY + R;
+      if (p.x <= x0 || p.x >= x1 || p.z <= z0 || p.z >= z1 || p.y >= top) continue;
+      const up = top - p.y;
+      let m = 0;
+      let pen = p.x - x0;
+      if (x1 - p.x < pen) [m, pen] = [1, x1 - p.x];
+      if (p.z - z0 < pen) [m, pen] = [2, p.z - z0];
+      if (z1 - p.z < pen) [m, pen] = [3, z1 - p.z];
+      if (up < pen || (up < 0.8 && v.y <= 1)) {
+        p.y = top;
+        if (v.y < 0) v.y = 0;
+        p.x += b.vx * h;
+        p.z += b.vz * h;
+        grounded = true;
+        continue;
+      }
+      if (m === 0) p.x = x0;
+      else if (m === 1) p.x = x1;
+      else if (m === 2) p.z = z0;
+      else p.z = z1;
+      const n = tmp.set(m === 0 ? -1 : m === 1 ? 1 : 0, 0, m === 2 ? -1 : m === 3 ? 1 : 0);
+      const toward = b.vx * n.x + b.vz * n.z;
+      if (toward > 4 && carCd <= 0) {
+        carCd = 1;
+        v.copy(n).multiplyScalar(8 + toward * 0.6).addScaledVector(UP, 7);
+        if (mode !== "air") mode = "air";
+        carFrom.set((b.minX + b.maxX) / 2, p.y, (b.minZ + b.maxZ) / 2);
+        hooks.carHit(carFrom, toward);
+        continue;
+      }
+      const vn = v.dot(n) - Math.max(0, toward);
+      if (vn < 0) v.addScaledVector(n, -vn);
+    }
+  };
+
   const collide = () => {
     grounded = false;
     wallContact = false;
@@ -544,8 +599,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         const n = wallN;
         tmp.copy(wish).addScaledVector(n, -wish.dot(n));
         const into = -wish.dot(n);
-        const run = Math.max(held.has("swing") ? 20 : 13, wallMomentum);
-        wallMomentum = Math.max(0, wallMomentum - 10 * h);
+        const run = Math.max(held.has("swing") ? 12 : 8, wallMomentum);
+        wallMomentum = Math.max(0, wallMomentum - 20 * h);
         if (wish.lengthSq() === 0) {
           tmp2.copy(v).multiplyScalar(wallMomentum > 13 ? 1 : 0);
           if (wallMomentum > 13) tmp2.setLength(wallMomentum);
@@ -639,6 +694,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     nPre.copy(wallN);
     const boxPre = wallBox;
     collide();
+    collideCars(h);
     if (wasWall && wallContact && wallBox === boxPre && wallN.dot(nPre) < 0.5) {
       v.copy(vPre).addScaledVector(nPre, 3);
       wallN.copy(nPre);
@@ -675,8 +731,10 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (mode === "ground" && !grounded) mode = "air";
     if (wallContact && !(cornerT > 0 && wallBox === cornerBox) && mode !== "wall" && mode !== "zip" && mode !== "launch" && mode !== "perch") {
       const into = -wish.dot(wallN);
-      if (mode === "swing" || mode === "wings" || (mode === "air" && (pre > 9 || into > 0.2))) enterWall(pre);
-      else if (mode === "ground" && into > 0.6) enterWall(0);
+      if (mode === "swing" || mode === "wings") {
+        mode = "air";
+        v.addScaledVector(wallN, 3);
+      } else if (into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? Math.min(pre, 12) : 0);
     }
     if (mode === "wall") {
       if (!wallContact) {
@@ -709,6 +767,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
 
     if (pressed.has("swing") && airborne) attach(look, true);
+    else if (pressed.has("swing") && inp.swingFromMouse && (mode === "ground" || mode === "wall" || mode === "perch")) {
+      const from = mode;
+      if (attach(look, true)) {
+        if (from === "wall") v.copy(wallN).multiplyScalar(8).addScaledVector(UP, 6);
+        else v.y = Math.max(v.y, JUMP * 0.8);
+      }
+    }
     if (inp.released.has("swing") && mode === "swing") release(true, false);
 
     if (pressed.has("jump")) {
@@ -756,7 +821,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       } else if (mode === "wings") mode = "air";
     }
 
-    if (pressed.has("attack") && mode === "air" && !trick && !hooks.enemyNear(p)) {
+    if (pressed.has("trick") && mode === "air" && !trick) {
       trick = { kind: Math.random() < 0.5 ? "flip" : "spin", t: 0 };
       sfx("whoosh", 0.5);
     }
