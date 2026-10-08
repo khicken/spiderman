@@ -5,7 +5,9 @@ import type { HudState } from "./contracts";
 import { SUITS } from "./hero";
 import { QUALITIES, startGame, type Quality, type Settings, type UiEvent } from "./game";
 import { Hud, type Pop } from "./ui-hud";
-import { ControlsPanel, Menu, ProgressPanel, SettingsPanel, type MenuItem, type Panel } from "./ui-menu";
+import { ControlsPanel, Menu, SettingsPanel, type MenuItem, type Panel } from "./ui-menu";
+import { JournalPanel, MapPanel } from "./ui-map";
+import { Tips } from "./ui-tips";
 
 type Game = ReturnType<typeof startGame>;
 type Screen = "title" | "playing" | "pause";
@@ -111,9 +113,10 @@ export default function SpidermanPage() {
     screen === "pause"
       ? [
           { id: "resume", label: "Resume", onSelect: play },
+          { id: "map", label: "Map", onSelect: () => toggle("map") },
+          { id: "journal", label: "Journal", onSelect: () => toggle("journal") },
           { id: "settings", label: "Settings", onSelect: () => toggle("settings") },
           { id: "controls", label: "Controls", onSelect: () => toggle("controls") },
-          { id: "progress", label: "Progress", onSelect: () => toggle("progress") },
           {
             id: "quit",
             label: "Quit to title",
@@ -136,6 +139,7 @@ export default function SpidermanPage() {
       <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" />
 
       {screen === "playing" && hud && <Hud h={hud} pops={pops} showVitals={showVitals} />}
+      {screen === "playing" && hud && <Tips h={hud} />}
 
       {screen !== "playing" && (
         <div className={`absolute inset-0 overflow-y-auto ${screen === "pause" ? "bg-black/45 backdrop-blur-md" : ""}`}>
@@ -158,10 +162,11 @@ export default function SpidermanPage() {
               <Menu key={screen} items={items} active={panel} />
             </div>
             {panel && settings && (
-              <div key={panel} className="w-full lg:max-w-[680px]">
+              <div key={panel} className={`w-full ${panel === "map" ? "lg:max-w-[880px]" : "lg:max-w-[680px]"}`}>
                 {panel === "settings" && <SettingsPanel s={settings} set={update} onClose={() => setPanel(null)} />}
                 {panel === "controls" && <ControlsPanel onClose={() => setPanel(null)} />}
-                {panel === "progress" && hud && <ProgressPanel p={hud.progress} onClose={() => setPanel(null)} />}
+                {panel === "map" && hud && <MapPanel h={hud} onClose={() => setPanel(null)} />}
+                {panel === "journal" && hud && <JournalPanel h={hud} onClose={() => setPanel(null)} />}
               </div>
             )}
           </div>

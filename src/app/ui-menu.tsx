@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
-import type { HudState } from "./contracts";
 import { SUITS } from "./hero";
 import { QUALITIES, type Quality, type Settings } from "./game";
 
-export type Panel = "settings" | "controls" | "progress" | null;
+export type Panel = "settings" | "controls" | "map" | "journal" | null;
 export type MenuItem = { id: string; label: string; onSelect: () => void; disabled?: boolean };
 
 const SUIT_SWATCH: Record<string, string> = {
@@ -13,8 +12,6 @@ const SUIT_SWATCH: Record<string, string> = {
   classic: "linear-gradient(135deg,#d0142a 52%,#1d4fb8 52%)",
   symbiote: "linear-gradient(135deg,#050507 60%,#f2f2f2 60%)",
 };
-
-const pct = (v: number) => Math.min(100, v > 1 ? v : v * 100);
 
 const CONTROLS: { group: string; keys: [string[], string][] }[] = [
   {
@@ -49,7 +46,7 @@ const CONTROLS: { group: string; keys: [string[], string][] }[] = [
     group: "Other",
     keys: [
       [["E"], "Greet a civilian"],
-      [["V"], "Scan"],
+      [["V"], "Scan, ping a signal, take a photo"],
       [["M"], "Mute"],
       [["Esc"], "Pause"],
     ],
@@ -101,9 +98,9 @@ export function Menu({ items, active }: { items: MenuItem[]; active: string | nu
   );
 }
 
-export function PanelFrame({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function PanelFrame({ title, onClose, children, wide, xl }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; xl?: boolean }) {
   return (
-    <section className={`panel-in w-full ${wide ? "max-w-[680px]" : "max-w-[520px]"} border-t-4 border-spider bg-black/80 p-5 shadow-[8px_8px_0_rgba(0,0,0,0.6)] backdrop-blur-md sm:p-6`}>
+    <section className={`panel-in w-full ${xl ? "max-w-[880px]" : wide ? "max-w-[680px]" : "max-w-[520px]"} border-t-4 border-spider bg-black/80 p-5 shadow-[8px_8px_0_rgba(0,0,0,0.6)] backdrop-blur-md sm:p-6`}>
       <header className="mb-5 flex items-center justify-between">
         <h2 className="font-cond text-2xl font-black uppercase italic tracking-tight">{title}</h2>
         <button onClick={onClose} className="flex cursor-pointer items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/60 hover:text-white">
@@ -215,51 +212,6 @@ export function ControlsPanel({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
-    </PanelFrame>
-  );
-}
-
-export function ProgressPanel({ p, onClose }: { p: HudState["progress"]; onClose: () => void }) {
-  return (
-    <PanelFrame title="Progress" onClose={onClose}>
-      <div className="flex items-center gap-4">
-        <div className="-skew-x-12 bg-white px-3 py-1 font-cond text-4xl font-black italic leading-none text-black shadow-[4px_4px_0_#e2231a]">{p.level}</div>
-        <div className="flex-1">
-          <div className="flex justify-between font-cond text-xs font-bold uppercase tracking-[0.2em] text-white/50">
-            <span>Level {p.level}</span>
-            <span className="tabular-nums">{Math.round(p.levelProgress * 100)}%</span>
-          </div>
-          <div className="mt-1.5 h-2 -skew-x-12 bg-white/15">
-            <div className="h-full bg-spider" style={{ width: `${p.levelProgress * 100}%` }} />
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-3 gap-2">
-        {[["Tokens", `${p.collected}/${p.totalCollectibles}`] as const, ...Object.entries(p.completed).map(([k, v]) => [k, String(v)] as const)].map(([k, v]) => (
-          <div key={k} className="bg-white/5 px-3 py-2">
-            <div className="font-cond text-2xl font-black italic tabular-nums leading-none">{v}</div>
-            <div className="mt-1 font-cond text-[11px] font-bold uppercase tracking-widest text-white/50">{k}</div>
-          </div>
-        ))}
-      </div>
-
-      {p.districts.length > 0 && (
-        <div className="mt-5">
-          <Label>Districts</Label>
-          <div className="grid gap-2">
-            {p.districts.map((d) => (
-              <div key={d.name} className="grid grid-cols-[7rem_1fr_2.5rem] items-center gap-3 text-sm">
-                <span className="truncate font-cond font-bold uppercase">{d.name}</span>
-                <div className="h-1.5 bg-white/15">
-                  <div className="h-full bg-white" style={{ width: `${pct(d.pct)}%` }} />
-                </div>
-                <span className="text-right font-cond tabular-nums text-white/70">{Math.round(pct(d.pct))}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </PanelFrame>
   );
 }

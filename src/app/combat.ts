@@ -105,7 +105,9 @@ const MAX_E = 36;
 const MAX_P = 48;
 const MAX_R = 10;
 const MAX_LINES = 420;
-const SPARKS = 220;
+const SPARKS = 160;
+const SPARK_SCALE = [0, 0.6, 1];
+const SPARK_SIZE = [0.22, 0.28, 0.26];
 const FOCUS_MAX = 4;
 const FEET = 0.95;
 const STATS: Record<EnemyKind, { hp: number; web: number; scale: number; bulk: number; speed: number; reach: number; windup: number; dmg: number; knock: number; range: number; cd: number }> = {
@@ -122,7 +124,7 @@ const LOOK: Record<EnemyKind, { jackets: string[]; hat: "beanie" | "helmet" | "h
   shield: { jackets: ["#1f2c4a"], hat: "helmet", hats: ["#24345a"] },
   gunner: { jackets: ["#3b3b44", "#2a2a30"], hat: "beanie", hats: ["#b3161c"] },
   rocket: { jackets: ["#4b5a2a"], hat: "helmet", hats: ["#3c4a22"] },
-  sniper: { jackets: ["#1b1c22"], hat: "hood", hats: ["#24252c"] },
+  sniper: { jackets: ["#2a2e3a"], hat: "hood", hats: ["#3a1c22"] },
 };
 const SKINS = ["#e0b89a", "#a36f4f", "#6b4430", "#c99476"];
 const GADGETS = [
@@ -202,9 +204,18 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
   const mines = inst(EM.mineGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), 4, false);
   const orbs = inst(new THREE.IcosahedronGeometry(1, 2), EM.glow(), MAX_P, true);
   const ringMesh = inst(EM.ringGeometry(), EM.glow(THREE.DoubleSide), MAX_R, true);
+  const acc = EM.sniperAccentGeometries();
+  const accentMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, fog: false });
+  const visors = inst(acc.visor, accentMat, MAX_E, false);
+  const scopes = inst(acc.scope, accentMat, MAX_E, false);
+  const marks = inst(EM.markGeometry(), new THREE.MeshBasicMaterial({ toneMapped: false, fog: false }), MAX_E * 2, true);
+  const beams = inst(EM.beamGeometry(), EM.glow(THREE.DoubleSide), MAX_E, true);
+  marks.renderOrder = beams.renderOrder = 5;
+  const camPos = new THREE.Vector3();
+  let dodgeCue = false;
   const bodyMeshes = [torsos, heads, beanies, helmets, hoods, legs, arms, guns, shields, launchers, rifles, cocoons];
   for (const m of bodyMeshes) m.castShadow = true;
-  const allMeshes = [...bodyMeshes, pips, rockets, feathers, mines, orbs, ringMesh];
+  const allMeshes = [...bodyMeshes, pips, rockets, feathers, mines, orbs, ringMesh, visors, scopes, marks, beams];
 
   const linePos = new Float32Array(MAX_LINES * 6);
   const lineCol = new Float32Array(MAX_LINES * 6);
@@ -251,7 +262,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
   let sparkNext = 0;
   let sparksAlive = 0;
   const burst = (p: THREE.Vector3, n: number, speed: number, r: number, g: number, b: number) => {
-    if (detail === 0) n = Math.ceil(n / 3);
+    n = Math.round(n * SPARK_SCALE[detail]);
+    if (n <= 0) return;
     for (let k = 0; k < n; k++) {
       const i = sparkNext;
       sparkNext = (sparkNext + 1) % SPARKS;
@@ -264,6 +276,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       sparkLife[i] = 0.35 + rnd() * 0.35;
     }
     sparksAlive = 1;
+    sparks.visible = true;
   };
 
   const floorAt = (x: number, z: number, y: number) => {
@@ -354,7 +367,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     _u.y = Math.min(4, knock * 0.4);
     P.push(_u);
     events.push({ type: "hurt", amount: dmg / 100 }, { type: "sfx", name: "hurt" }, { type: "shake", strength: 0.25 + dmg / 50 });
-    burst(_v.copy(P.pos), 10, 6, 3, 0.4, 0.3);
+    burst(_v.copy(P.pos), 8, 6, 3, 0.4, 0.3);
     invuln = 0.45;
     if (health <= 0) {
       start("down", 2.2, "down");
@@ -438,7 +451,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     e.vel.y = 5 + power * 0.3;
     e.spin = 0;
     events.push({ type: "sfx", name: "ko" });
-    burst(e.center, 16, 9, 3, 2.4, 1.2);
+    burst(e.center, 12, 9, 3, 2.4, 1.2);
     queueXp(finisher ? 50 : 25, finisher ? "Finisher" : "Takedown");
     if (e.g) e.g.aware = true;
   };
@@ -454,7 +467,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     e.hp = 0;
     setState(e, "wall");
     events.push({ type: "sfx", name: "webImpact" });
-    burst(e.center, 12, 5, 2.4, 2.4, 2.6);
+    burst(e.center, 8, 5, 2.4, 2.4, 2.6);
     return true;
   };
 
@@ -541,7 +554,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       e.armed = false;
       setState(e, "stagger");
       events.push({ type: "sfx", name: "metal" });
-      burst(e.center, 10, 6, 2.5, 2.5, 2.5);
+      burst(e.center, 8, 6, 2.5, 2.5, 2.5);
       return true;
     }
     if (e.kind === "brute") {
@@ -602,6 +615,11 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         clampFloor(e);
         if (!blocked(g!.near, e.pos.x, e.pos.z, g!.floorY, 0.5)) break;
         e.pos.set(pos.x + (rnd() - 0.5) * 2, g!.floorY, pos.z + (rnd() - 0.5) * 2);
+      }
+      e.anchor.copy(e.pos);
+      if (kd === "sniper" && g!.roof) {
+        pickPerch(e, null);
+        e.pos.copy(e.anchor);
       }
       e.yaw = Math.atan2(pos.x - e.pos.x, pos.z - e.pos.z);
       const look = LOOK[kd];
@@ -687,7 +705,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         setState(e, "down");
         e.vel.set(0, 0, 0);
         events.push({ type: "sfx", name: "land", volume: 0.5 });
-        burst(_v.set(e.pos.x, g.floorY + 0.4, e.pos.z), 10, 4, 2.2, 2.2, 2.4);
+        burst(_v.set(e.pos.x, g.floorY + 0.4, e.pos.z), 6, 4, 2.2, 2.2, 2.4);
       } else {
         const wasSlam = e.vel.y < -12;
         e.vel.set(0, 0, 0);
@@ -695,7 +713,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         if (wasSlam) {
           e.hp -= 1;
           events.push({ type: "sfx", name: "punchHeavy" }, { type: "shake", strength: 0.4 });
-          burst(_v.set(e.pos.x, g.floorY + 0.2, e.pos.z), 16, 7, 2, 1.6, 1);
+          burst(_v.set(e.pos.x, g.floorY + 0.2, e.pos.z), 12, 7, 2, 1.6, 1);
           if (e.hp <= 0) {
             e.ko = true;
             queueXp(25, "Takedown");
@@ -736,7 +754,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       if (e.t > (e.kind === "brute" ? 5 : 6.5)) {
         e.web = 0;
         setState(e, "recover");
-        burst(e.center, 8, 4, 2, 2, 2.2);
+        burst(e.center, 6, 4, 2, 2, 2.2);
       }
       return;
     }
@@ -756,7 +774,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     const d = Math.hypot(dx, dz);
     const dy = feet - e.pos.y;
     if (!g.aware) {
-      if (d < (e.kind === "sniper" ? 75 : 26) && Math.abs(dy) < (e.kind === "sniper" ? 70 : 10)) g.aware = true;
+      if (d < (e.kind === "sniper" ? 88 : 26) && Math.abs(dy) < (e.kind === "sniper" ? 70 : 10)) g.aware = true;
       e.yaw = turn(e.yaw, Math.atan2(g.center.x - e.pos.x, g.center.z - e.pos.z), dt * 2);
       return;
     }
@@ -790,7 +808,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         } else {
           setState(e, "fire");
           e.shots = 0;
-          if (d < s.range + 10) hurt(s.dmg, e.pos, s.knock);
+          if (e.kind === "sniper") pickPerch(e, p.pos);
+          if (d < s.range + 10 && (e.kind !== "sniper" || sees(muzzle(e, _u), _w.set(p.pos.x, p.pos.y + 0.3, p.pos.z)))) hurt(s.dmg, e.pos, s.knock);
         }
         e.cd = s.cd * (0.8 + rnd() * 0.5);
       }
@@ -815,6 +834,23 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       if (d < 3.2 && e.cd <= 0 && meleeTokens < 2 && tokensFree && Math.abs(dy) < 1.6) {
         startWindup(e, 0.8);
         return;
+      }
+      if (e.kind === "sniper") {
+        _w.set(e.anchor.x - e.pos.x, 0, e.anchor.z - e.pos.z);
+        const ad = _w.length();
+        if (ad > 0.6) {
+          e.yaw = turn(e.yaw, Math.atan2(_w.x, _w.z), dt * 8);
+          moveEnemy(e, (_w.x / ad) * s.speed * 1.3, (_w.z / ad) * s.speed * 1.3, dt);
+          if (Math.hypot(e.anchor.x - e.pos.x, e.anchor.z - e.pos.z) > ad - s.speed * dt * 0.5) e.anchor.copy(e.pos);
+          return;
+        }
+        if (e.cd > 0) return;
+        for (const o of g.members) if (o !== e && o.kind === "sniper" && o.st === "aim") return;
+        if (!sees(muzzle(e, _u), _w.set(p.pos.x, p.pos.y + 0.3, p.pos.z))) {
+          pickPerch(e, p.pos);
+          e.cd = 0.8;
+          return;
+        }
       }
       if (e.cd <= 0 && rangedTokens < 2 && d < s.range && Math.abs(dy) < 60 && attackGap <= 0) {
         setState(e, "aim");
@@ -853,6 +889,44 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       const min = 1.1 * (STATS[e.kind].scale + STATS[o.kind].scale) * 0.5;
       if (od < min && od > 1e-3) moveEnemy(e, (ox / od) * 3, (oz / od) * 3, dt);
     }
+  };
+
+  const sees = (a: THREE.Vector3, b: THREE.Vector3) => {
+    const n = Math.ceil(a.distanceTo(b) / 3);
+    for (let k = 1; k < n; k++) {
+      const f = k / n;
+      const x = a.x + (b.x - a.x) * f;
+      const y = a.y + (b.y - a.y) * f;
+      const z = a.z + (b.z - a.z) * f;
+      for (const bx of city.near(x, z, 1)) if (bx.maxY > y && inBox(bx, x, z)) return false;
+    }
+    return true;
+  };
+
+  // Snipers perch near the roof edge that faces the player, so street level can see them. After a shot they relocate.
+  const pickPerch = (e: Enemy, toward: THREE.Vector3 | null) => {
+    const g = e.g!;
+    const r = g.roof;
+    for (let k = 0; k < 12; k++) {
+      let x = r ? r.minX + 1.2 + rnd() * Math.max(0, r.maxX - r.minX - 2.4) : g.center.x + (rnd() - 0.5) * 14;
+      let z = r ? r.minZ + 1.2 + rnd() * Math.max(0, r.maxZ - r.minZ - 2.4) : g.center.z + (rnd() - 0.5) * 14;
+      if (r) {
+        const hx = (r.maxX - r.minX) / 2;
+        const hz = (r.maxZ - r.minZ) / 2;
+        const dx = toward ? toward.x - (r.minX + hx) : rnd() - 0.5;
+        const dz = toward ? toward.z - (r.minZ + hz) : rnd() - 0.5;
+        const alongX = Math.abs(dx) / hx > Math.abs(dz) / hz !== rnd() < 0.2;
+        if (alongX) x = dx > 0 ? r.maxX - 1.2 : r.minX + 1.2;
+        else z = dz > 0 ? r.maxZ - 1.2 : r.minZ + 1.2;
+      }
+      const d = Math.hypot(x - e.pos.x, z - e.pos.z);
+      if (toward && (d < 3 || d > 26)) continue;
+      if (blocked(g.near, x, z, g.floorY, 0.5)) continue;
+      if (g.members.some((o) => o !== e && o.kind === "sniper" && Math.hypot(o.anchor.x - x, o.anchor.z - z) < 4)) continue;
+      e.anchor.set(x, g.floorY, z);
+      return;
+    }
+    e.anchor.copy(e.pos);
   };
 
   const startWindup = (e: Enemy, dur: number) => {
@@ -906,7 +980,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
 
   const explode = (pos: THREE.Vector3, radius: number, dmg: number, friendly: boolean) => {
     events.push({ type: "sfx", name: "explosion" }, { type: "shake", strength: 0.6 });
-    burst(pos, 30, 11, 4, 1.8, 0.4);
+    burst(pos, 22, 11, 4, 1.8, 0.4);
     ring(_u.copy(pos), 16, radius + 1, 0, 3, 1.4, 0.4);
     if (!friendly && P && P.pos.distanceTo(pos) < radius) hurt(dmg, pos, 9);
     if (friendly) {
@@ -938,7 +1012,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
             pr.tgt.hit(hitInfo);
             events.push({ type: "sfx", name: "webImpact" }, { type: "shake", strength: 0.3 });
           }
-          burst(pr.tgt.center, 10, 5, 2.4, 2.4, 2.6);
+          burst(pr.tgt.center, 6, 5, 2.4, 2.4, 2.6);
           continue;
         }
         pr.vel.copy(_v.normalize().multiplyScalar(pr.vel.length()));
@@ -952,7 +1026,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         _w.copy(pr.vel).normalize().lerp(_v, Math.min(1, dt * (pr.back ? 8 : 1.1))).normalize();
         pr.vel.copy(_w).multiplyScalar(speed);
         if (!pr.back) warn(pr.threat, now + d / speed);
-        if (detail > 0 && Math.floor(now * 30) % 2 === 0) burst(_u.copy(pr.pos).addScaledVector(_w, -0.5), 1, 1.5, 3, 1.2, 0.3);
+        if (detail > 0 && Math.floor(now * 30) % 3 === 0) burst(_u.copy(pr.pos).addScaledVector(_w, -0.5), 1, 1.5, 3, 1.2, 0.3);
         if (pr.back && pr.owner && d < 1.3) {
           pr.active = false;
           unwarn(pr.threat);
@@ -976,7 +1050,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         if (pr.kind === "rocket") explode(pr.pos, 3.2, pr.dmg, false);
         else {
           hurt(pr.dmg, _v.copy(pr.pos).addScaledVector(pr.vel, -0.1), 5);
-          burst(pr.pos, 10, 6, 1, 2.5, 4);
+          burst(pr.pos, 8, 6, 1, 2.5, 4);
         }
         continue;
       }
@@ -993,7 +1067,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         pr.active = false;
         unwarn(pr.threat);
         if (pr.kind === "rocket") explode(pr.pos, 3.2, pr.dmg, pr.back);
-        else burst(pr.pos, 6, 3, 1.5, 1.5, 1.8);
+        else burst(pr.pos, 4, 3, 1.5, 1.5, 1.8);
       }
     }
   };
@@ -1001,7 +1075,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
   const webBomb = (pos: THREE.Vector3) => {
     events.push({ type: "sfx", name: "webImpact" }, { type: "shake", strength: 0.25 });
     ring(_u.copy(pos), 14, 5.5, 0, 2.6, 2.6, 2.8);
-    burst(pos, 26, 9, 2.4, 2.4, 2.6);
+    burst(pos, 18, 9, 2.4, 2.4, 2.6);
     for (const h of targets()) if (h.center.distanceTo(pos) < 5.5) h.web(3);
     if (civilians && civilians.count(pos, 5.5) > 0) events.push({ type: "penalty", reason: "Web bomb hit civilians" });
   };
@@ -1049,7 +1123,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         e.vel.set((m.pos.x - e.pos.x) * 2, 3, (m.pos.z - e.pos.z) * 2);
         events.push({ type: "sfx", name: "webImpact" });
         ring(_u.copy(m.pos), 10, 3.5, 0, 2.4, 2.4, 2.8);
-        burst(_u.copy(m.pos).setY(m.pos.y + 0.5), 14, 6, 2.4, 2.4, 2.6);
+        burst(_u.copy(m.pos).setY(m.pos.y + 0.5), 10, 6, 2.4, 2.4, 2.6);
         break;
       }
     }
@@ -1133,7 +1207,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     const res = tgt.hit(hitInfo);
     if (res === "block") {
       events.push({ type: "sfx", name: "metal" });
-      burst(_v.copy(tgt.center).addScaledVector(hitInfo.dir, -0.4), 8, 5, 1.2, 1.8, 3);
+      burst(_v.copy(tgt.center).addScaledVector(hitInfo.dir, -0.4), 6, 5, 1.2, 1.8, 3);
       comboStep = 0;
       if (!p.grounded) return res;
       p.push(_v.copy(hitInfo.dir).multiplyScalar(-4));
@@ -1148,7 +1222,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     const heavy = kind !== "punch" && kind !== "air";
     events.push({ type: "sfx", name: heavy ? "punchHeavy" : "punch", volume: 0.8 }, { type: "shake", strength: heavy ? 0.35 : 0.12 });
     if (kind === "heavy" || kind === "slam") events.push({ type: "slowmo", scale: 0.35, duration: 0.07 });
-    burst(_v.copy(tgt.center).addScaledVector(hitInfo.dir, -0.3), heavy ? 16 : 8, heavy ? 8 : 5, 3, 2.2, 1);
+    burst(_v.copy(tgt.center).addScaledVector(hitInfo.dir, -0.3), heavy ? 12 : 6, heavy ? 8 : 5, 3, 2.2, 1);
     if (air) {
       const up = 3.2 - p.vel.y;
       if (up > 0) p.push(_v.set(0, up, 0));
@@ -1393,7 +1467,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
             _v.subVectors(tgt.center, p.pos).setY(0).normalize();
             tgt.finish(_v);
             events.push({ type: "sfx", name: "finisher" }, { type: "slowmo", scale: 0.25, duration: 0.55 }, { type: "shake", strength: 0.7 });
-            burst(tgt.center, 30, 10, 4, 3, 1.4);
+            burst(tgt.center, 22, 10, 4, 3, 1.4);
           }
           break;
         case "shoot":
@@ -1443,7 +1517,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       focus -= 1;
       health = Math.min(1, health + 0.4);
       events.push({ type: "sfx", name: "heal" });
-      burst(_v.copy(p.pos), 18, 4, 0.6, 3, 1);
+      burst(_v.copy(p.pos), 12, 4, 0.6, 3, 1);
       ring(_v.copy(p.pos).setY(p.pos.y - FEET + 0.1), 6, 3, 0, 0.6, 3, 1);
     }
     const free = act.kind === "none" || (act.kind === "punch" && act.hitDone && act.t > act.dur * 0.6) || act.kind === "gadget" && act.t > 0.2;
@@ -1514,9 +1588,54 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     return out.multiplyMatrices(parent, _m3);
   };
 
+  let markN = 0;
+  let beamN = 0;
+  const faceCam = (p: THREE.Vector3) => _q.setFromAxisAngle(UP, Math.atan2(camPos.x - p.x, camPos.z - p.z));
+
+  // Diamond above every live sniper, held near a constant screen size and unfogged so it reads at 100+ m.
+  const drawSniperMark = (e: Enemy, sc: number, t: number) => {
+    _v.set(e.pos.x, e.pos.y + 2.2 * sc, e.pos.z);
+    const dc = _v.distanceTo(camPos);
+    if (dc > 260 || markN >= MAX_E * 2) return;
+    const aiming = e.st === "aim";
+    const k = aiming ? Math.min(1, e.t / STATS.sniper.windup) : 0;
+    const flash = aiming && e.threat.at - now < 0.3;
+    const aware = e.g?.aware ?? false;
+    const pulse = 0.5 + 0.5 * Math.sin(t * (aiming ? 7 + 16 * k : aware ? 3.5 : 2) + e.phase);
+    const size = Math.max(0.22, dc * 0.0135) * (0.9 + 0.25 * pulse + (flash ? 0.3 : 0));
+    _v.y += size;
+    marks.setMatrixAt(markN, _m.compose(_v, faceCam(_v), _s.setScalar(size)));
+    const I = flash ? (Math.sin(t * 60) > 0 ? 3 : 1.4) : aiming ? 1 + 0.8 * k * pulse : aware ? 0.8 + 0.3 * pulse : 0.55 + 0.2 * pulse;
+    marks.setColorAt(markN++, flash ? _c.setRGB(I, I * 0.12, I * 0.08) : _c.setRGB(I, I * 0.03, I * 0.03));
+  };
+
+  // Scope glint plus a tapered beam toward the aim point. Width follows camera distance so the far end stays a few pixels wide.
+  const drawSniperAim = (e: Enemy, k: number, I: number, flash: boolean, strobe: boolean, t: number) => {
+    dodgeCue ||= e.threat.at - now < 0.6;
+    const dc = _v.distanceTo(camPos);
+    if (markN < MAX_E * 2) {
+      const gl = Math.max(0.1, dc * 0.007) * (0.5 + 0.9 * k) * (0.85 + 0.3 * Math.sin(t * 45 + e.i));
+      _w.copy(_v);
+      marks.setMatrixAt(markN, _m.compose(_w, faceCam(_w), _s.set(gl * 2.4, gl * 0.45, gl)));
+      marks.setColorAt(markN++, flash && strobe ? _c.setRGB(4, 1.2, 0.9) : _c.setRGB(1 + 1.6 * k, 0.15 + 0.35 * k, 0.1 + 0.25 * k));
+    }
+    _dir.subVectors(e.aim, _v);
+    const full = _dir.length();
+    const len = full - 1.2;
+    if (len < 1 || beamN >= MAX_E) return;
+    _dir.divideScalar(full);
+    const w = clamp(dc * 0.0028, 0.03, 0.45) * (flash ? 1.5 : 0.6 + 0.5 * k);
+    _q.setFromUnitVectors(FWD, _dir);
+    beams.setMatrixAt(beamN, _m.compose(_v, _q, _s.set(w, w, len)));
+    beams.setColorAt(beamN++, flash ? _c.setRGB(I * 0.6, I * 0.05, I * 0.03) : _c.setRGB(I * 0.45, I * 0.02, I * 0.015));
+  };
+
   const drawEnemies = (t: number) => {
+    markN = 0;
+    beamN = 0;
     let n = 0;
-    const counts = { beanie: 0, helmet: 0, hood: 0, gun: 0, shield: 0, launcher: 0, rifle: 0, cocoon: 0, pip: 0 };
+    const counts = { beanie: 0, helmet: 0, hood: 0, gun: 0, shield: 0, launcher: 0, rifle: 0, cocoon: 0, pip: 0, visor: 0, scope: 0, mark: 0, beam: 0 };
+    dodgeCue = false;
     for (const e of enemies) {
       if (!e.active) continue;
       const s = STATS[e.kind];
@@ -1665,10 +1784,14 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       arms.setColorAt(n * 2 + 1, _c);
       const armed = e.armed && !defeated(e) && e.st !== "webbed";
       if (armed && e.kind === "gunner") guns.setMatrixAt(counts.gun++, _arm);
-      if (armed && e.kind === "sniper") rifles.setMatrixAt(counts.rifle++, _arm);
+      if (armed && e.kind === "sniper") {
+        rifles.setMatrixAt(counts.rifle++, _arm);
+        scopes.setMatrixAt(counts.scope++, _arm);
+      }
       part(_m, _torso, 0, EM.HEAD_Y, 0, -lean * 0.5, 0);
       heads.setMatrixAt(n, _m);
       heads.setColorAt(n, _c.copy(e.skin).multiplyScalar(fl));
+      if (e.kind === "sniper" && !defeated(e)) visors.setMatrixAt(counts.visor++, _m);
       const hat = LOOK[e.kind].hat;
       const hm = hat === "beanie" ? beanies : hat === "helmet" ? helmets : hoods;
       const hi = counts[hat]++;
@@ -1689,7 +1812,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         _m3.makeScale(0.42 * k * s.bulk, (full ? 0.98 : 0.5) * k, 0.36 * k * s.bulk).setPosition(0, full ? 0.95 : 1.2, 0);
         cocoons.setMatrixAt(counts.cocoon++, _m.multiplyMatrices(_root, _m3));
       }
-      if (e.st === "windup" || e.st === "aim") {
+      if ((e.st === "windup" || e.st === "aim") && e.kind !== "sniper") {
         const left = e.threat.at - now;
         const red = left < 0.25 || e.kind === "brute";
         const pulse = 1 + 0.25 * Math.sin(t * 30);
@@ -1699,9 +1822,13 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       }
       if (e.st === "aim") {
         muzzle(e, _v);
-        const k = e.t / s.windup;
-        const flick = k > 0.75 && Math.sin(t * 50) > 0 ? 1.6 : 1;
-        line(_v, e.aim, 3.5 * flick, 0.15, 0.1);
+        const k = Math.min(1, e.t / s.windup);
+        const flash = e.threat.at - now < 0.3;
+        const strobe = Math.sin(t * 60) > 0;
+        const I = flash ? (strobe ? 6 : 3.5) : (0.6 + 2.6 * k * k) * (0.8 + 0.2 * Math.sin(t * 43 + e.i * 7) * Math.sin(t * 19 + e.i));
+        if (flash) line(_v, e.aim, I, I * 0.12, I * 0.08);
+        else line(_v, e.aim, I, I * 0.05, I * 0.04);
+        if (e.kind === "sniper") drawSniperAim(e, k, I, flash, strobe, t);
       }
       if (e.st === "fire" && e.t < 0.3 && Math.sin(t * 60) > 0) {
         muzzle(e, _v);
@@ -1718,6 +1845,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         line(e.center, e.anchor, 2, 2, 2.2);
         line(e.center, _w.copy(e.anchor).setY(e.anchor.y - 1.6), 2, 2, 2.2);
       }
+      if (e.kind === "sniper" && !defeated(e) && e.st !== "flying" && e.st !== "launched" && e.st !== "webbed") drawSniperMark(e, sc, t);
       n++;
     }
     torsos.count = heads.count = n;
@@ -1729,6 +1857,10 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     shields.count = counts.shield;
     launchers.count = counts.launcher;
     rifles.count = counts.rifle;
+    visors.count = counts.visor;
+    scopes.count = counts.scope;
+    marks.count = markN;
+    beams.count = beamN;
     return counts;
   };
 
@@ -1793,6 +1925,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         sparkCol[k + 2] = sparkBase[k + 2] * f;
       }
       sparksAlive = alive;
+      sparks.visible = alive > 0;
       sparkGeo.attributes.position.needsUpdate = true;
       sparkGeo.attributes.color.needsUpdate = true;
     }
@@ -1810,6 +1943,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
   const update = (dt: number, t: number, input: Input, player: PlayerApi, camera: THREE.Camera): GameEvent[] => {
     lineN = 0;
     P = player;
+    camPos.setFromMatrixPosition(camera.matrixWorld);
     now += dt;
     invuln -= dt;
     comboGap += dt;
@@ -1900,6 +2034,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         if (hint) prompts.push(hint);
       }
       if (health < 0.5 && focus >= 1) prompts.push({ key: "H", label: "Heal" });
+      if (dodgeCue && act.kind !== "dodge") prompts.unshift({ key: "Q", label: "Dodge the sniper" });
     }
     const g = GADGETS[gadget];
     return {
@@ -1933,7 +2068,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
 
   const setDetail = (level: 0 | 1 | 2) => {
     detail = level;
-    sparks.visible = level > 0;
+    sparks.visible = level > 0 && sparksAlive > 0;
+    (sparks.material as THREE.PointsMaterial).size = SPARK_SIZE[level];
     for (const m of bodyMeshes) m.castShadow = level === 2;
     bosses.setDetail(level);
   };
@@ -1968,6 +2104,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     spawnBoss: (name: BossName, pos: THREE.Vector3) => bosses.start(name, pos),
     bossDone: (id: number) => bosses.done(id),
     bossActive: () => bosses.active(),
+    cancelBoss: () => bosses.cancel(),
     strikeTarget,
     nearEnemy,
     takeXp,

@@ -121,7 +121,7 @@ export function createBosses(ctx: CombatCtx) {
           tu.t = 0;
           ctx.unwarn(tu.threat);
           ctx.events.push({ type: "sfx", name: "metal" }, { type: "toast", title: "TURRET JAMMED", text: "Hold F to yank it" });
-          ctx.burst(tu.center, 20, 7, 3, 2.4, 1);
+          ctx.burst(tu.center, 12, 7, 3, 2.4, 1);
         }
         return true;
       },
@@ -234,7 +234,7 @@ export function createBosses(ctx: CombatCtx) {
   const onHit = (h: Hit): HitResult => {
     if (!B.active || B.st === "defeat" || B.st === "intro") return "none";
     if (!vulnerable() || B.st === "beaten") {
-      ctx.burst(_v.copy(B.center).addScaledVector(h.dir, -0.6), 6, 4, 1.2, 1.8, 3);
+      ctx.burst(_v.copy(B.center).addScaledVector(h.dir, -0.6), 4, 4, 1.2, 1.8, 3);
       return "block";
     }
     if (B.takedown) return "hit";
@@ -300,7 +300,7 @@ export function createBosses(ctx: CombatCtx) {
       { type: "shake", strength: 0.9 },
     );
     ctx.xp(1500, `${def.name[0]}${def.name.slice(1).toLowerCase()} defeated`);
-    ctx.burst(B.center, 40, 12, 4, 3, 1.4);
+    ctx.burst(B.center, 28, 12, 4, 3, 1.4);
     for (const g of B.goons) if (!ctx.groupDone(g)) ctx.clearGroup(g);
   };
 
@@ -365,7 +365,7 @@ export function createBosses(ctx: CombatCtx) {
           tu.st = "gone";
           tu.model.root.visible = false;
           ctx.events.push({ type: "sfx", name: "explosion" }, { type: "shake", strength: 0.8 });
-          ctx.burst(B.center, 34, 11, 4, 2, 0.5);
+          ctx.burst(B.center, 22, 11, 4, 2, 0.5);
           damage(17);
           if (B.phase === 1) set("stagger");
         }
@@ -373,7 +373,7 @@ export function createBosses(ctx: CombatCtx) {
       }
       if (tu.st === "off") {
         tu.t += dt;
-        if (rnd() < dt * 3) ctx.burst(tu.center, 2, 3, 3, 2.4, 1);
+        if (rnd() < dt * 2) ctx.burst(tu.center, 2, 3, 3, 2.4, 1);
         if (tu.t > 9) {
           tu.st = "on";
           tu.webs = 0;
@@ -467,7 +467,7 @@ export function createBosses(ctx: CombatCtx) {
         break;
       case "paw":
         faceP(dt, 5);
-        if (rnd() < dt * 8) ctx.burst(_w.copy(B.pos).setY(B.floorY + 0.1), 2, 3, 1.5, 1.5, 1.5);
+        if (rnd() < dt * 5) ctx.burst(_w.copy(B.pos).setY(B.floorY + 0.1), 2, 3, 1.5, 1.5, 1.5);
         if (B.t > 1) {
           B.dir.set(Math.sin(B.yaw), 0, Math.cos(B.yaw));
           set("charge");
@@ -487,7 +487,7 @@ export function createBosses(ctx: CombatCtx) {
           B.hits = 0;
           B.webs = 0;
           ctx.events.push({ type: "sfx", name: "bigLand" }, { type: "sfx", name: "metal" }, { type: "shake", strength: 0.8 }, { type: "toast", title: "STUNNED", text: "Web him, then hit him" });
-          ctx.burst(_w.copy(B.pos).addScaledVector(B.dir, 1.2).setY(B.floorY + 1.5), 30, 9, 3, 3, 3);
+          ctx.burst(_w.copy(B.pos).addScaledVector(B.dir, 1.2).setY(B.floorY + 1.5), 18, 9, 3, 3, 3);
         } else if (B.t > 2.2) set("stalk");
         break;
       }
@@ -594,13 +594,13 @@ export function createBosses(ctx: CombatCtx) {
             ctx.unwarn(B.threat);
             ctx.hurt(25, _w, 10);
           }
-          if (rnd() < dt * 20) ctx.burst(_u.set(_w.x + Math.sin(a) * 28, B.floorY + 1, _w.z + Math.cos(a) * 28), 3, 5, 1, 2.6, 4);
+          if (rnd() < dt * 12) ctx.burst(_u.set(_w.x + Math.sin(a) * 28, B.floorY + 1, _w.z + Math.cos(a) * 28), 2, 5, 1, 2.6, 4);
         }
         if (B.t > 2.9) set("move");
         break;
       }
       case "vent":
-        if (rnd() < dt * 10) ctx.burst(hand(_w), 2, 3, 2, 2, 2);
+        if (rnd() < dt * 6) ctx.burst(hand(_w), 2, 3, 2, 2, 2);
         if (B.t > (B.phase === 3 ? 3 : 3.6)) set("move");
         break;
       case "stunned":
@@ -672,7 +672,7 @@ export function createBosses(ctx: CombatCtx) {
           B.pos.y = Math.max(B.pos.y, B.floorY + 1.2);
           keepIn(0);
           ctx.events.push({ type: "sfx", name: "bigLand", volume: 0.6 }, { type: "shake", strength: 0.4 });
-          ctx.burst(_w.copy(B.pos).setY(B.floorY + 0.2), 14, 6, 1.6, 1.6, 1.4);
+          ctx.burst(_w.copy(B.pos).setY(B.floorY + 0.2), 10, 6, 1.6, 1.6, 1.4);
           startPause();
         }
         break;
@@ -881,8 +881,21 @@ export function createBosses(ctx: CombatCtx) {
     }
   };
 
+  const cancel = () => {
+    if (!B.active || B.st === "defeat") return;
+    for (const g of B.goons) if (!ctx.groupDone(g)) ctx.clearGroup(g);
+    B.goons.length = 0;
+    B.active = false;
+    for (const m of Object.values(models)) m.root.visible = false;
+    for (const tu of turrets) {
+      tu.st = "gone";
+      tu.model.root.visible = false;
+    }
+  };
+
   return {
     start,
+    cancel,
     update,
     render,
     targets: () => (!B.active ? none : B.name === "kingpin" ? kingpinTargets : soloTargets),
