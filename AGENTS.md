@@ -17,7 +17,8 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 - `game.ts` owns the one `requestAnimationFrame` loop. Modules return `GameEvent[]`, and `game.ts` routes them to audio, camera, and UI.
 - React renders only the menu and the HUD. Push HUD state at 8 to 10 Hz.
 - For UI that must move every frame, such as a lock-on ring, write the style to a DOM ref. Do not use React state.
-- Put shared types in `contracts.ts`.
+- Put shared types in `contracts.ts`. Write the module interfaces there first. Then several agents can build modules in parallel without file conflicts.
+- When agents work in parallel, give each one a lab page at `src/app/lab/<area>/page.tsx` that mounts only its modules with mocks. Delete the lab pages before you commit.
 
 ## Performance
 
@@ -29,7 +30,8 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 - Clamp the frame time to 1/30 s. Use substeps for fast movement, so the player does not pass through thin walls.
 - Put all heavy settings in one quality preset table: pixel ratio, shadow map size, post passes, fog distance, and particle budget.
 - Snap the shadow camera to texels when it follows the player. This stops shadow shimmer.
-- Draw all particles from one `THREE.Points` pool with a ring buffer.
+- Draw all particles from one pool in one draw call.
+- For ink outlines on merged geometry, detect edges in screen space from depth. Outline meshes per object do not scale to a merged town.
 
 ## Traps
 
@@ -39,6 +41,8 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 - React Strict Mode mounts the page two times in development. `dispose()` must remove every listener and free every GPU resource.
 - Browsers block audio until a user gesture. Create the `AudioContext` when the player clicks Play.
 - Pointer lock fails in headless browsers. The game must keep running without it.
+- An `AudioScheduledSourceNode.stop()` before `start()` throws, and the throw stops the game loop. Catch errors inside the audio module.
+- A dev-only `window.__aot` handle lets test scripts read state and move the player. Keep it behind `NODE_ENV !== "production"`.
 
 ## Check a change
 

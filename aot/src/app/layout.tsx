@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
+import { Anton, Noto_Serif_JP, Oswald, Yuji_Syuku } from "next/font/google";
 import "./globals.css";
 
-const title = "aot";
-const description = "slay titans with ODM gear";
+const anton = Anton({ weight: "400", subsets: ["latin"], variable: "--font-anton" });
+const oswald = Oswald({ weight: ["400", "500", "600", "700"], subsets: ["latin"], variable: "--font-oswald" });
+const serifJp = Noto_Serif_JP({ weight: ["700", "900"], subsets: ["latin"], variable: "--font-serif-jp", preload: false });
+const brush = Yuji_Syuku({ weight: "400", subsets: ["latin"], variable: "--font-yuji", preload: false });
+
+const title = "Attack on Titan";
+const description = "Fly with ODM gear and cut titan napes";
 
 export const metadata: Metadata = {
   title,
@@ -21,8 +27,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-black text-white antialiased">{children}</body>
+    <html lang="en" className={`${anton.variable} ${oswald.variable} ${serifJp.variable} ${brush.variable}`}>
+      <body className="bg-ink text-bone antialiased">{children}</body>
     </html>
   );
 }

@@ -1,177 +1,736 @@
 import * as THREE from "three";
-import type { GameEvent, Input } from "./contracts";
-import type { Fx } from "./fx";
-import { createScout, FOOT, type ScoutPose } from "./scout";
-import type { Titan, Titans } from "./titans";
-import { raycast, type World } from "./world";
+import type { Action, Blade, CameraView, Fx, GameEvent, Input, Lock, Player, PlayerHud, PlayerMode, Sfx, TitanPart, TitanView, Titans, World } from "./contracts";
+import { createWires, type Hook } from "./player-wire";
+import { createScout, SCOUT_HALF, type ScoutAnim, type ScoutFrame } from "./scout";
 
-const G = 20;
-const RUN = 9;
-const JUMP = 8;
-const RANGE = 100;
-const HOOK_SPEED = 260;
-const REEL = 34;
-const BOOST = 36;
-const MAX_SPEED = 80;
-const HALF = 0.32;
-const HEAD = 0.85;
-const MAX_BLADES = 8;
+const G = 24;
+const RUN = 10.5;
+const JUMP = 9.5;
+const RANGE = 90;
+const HOOK_SPEED = 300;
+const RADIUS = 0.35;
+const HEIGHT = SCOUT_HALF * 2;
+const MAX_SPEED = 88;
+const SPARE = 8;
+const CHARGE_T = 0.6;
+const PERFECT = [0.5, 0.82] as const;
+const SLASH_T = 0.42;
+const PARTS: TitanPart[] = ["nape", "eyes", "armL", "armR", "legL", "legR"];
 const UP = new THREE.Vector3(0, 1, 0);
 
-type Hook = {
-  state: "idle" | "fly" | "on" | "back";
-  t: number;
-  dur: number;
-  len: number;
-  miss: boolean;
-  point: THREE.Vector3;
-  titan: Titan | null;
-  obj: THREE.Object3D | null;
-  local: THREE.Vector3;
-  end: THREE.Vector3;
-};
+type Act = { name: ScoutAnim | null; t: number; dur: number };
 
-export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, fx: Fx) {
+export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Player {
   const scout = createScout();
   scene.add(scout.root);
+  const wires = createWires(scene);
+  const hooks = wires.hooks;
+
   const pos = world.spawn.clone();
   const vel = new THREE.Vector3();
-  const facing = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
-  let mode: "ground" | "air" | "held" | "dead" = "ground";
+  const orient = new THREE.Quaternion().setFromAxisAngle(UP, world.spawnYaw);
+  let mode: PlayerMode = "ground";
+  let grounded = true;
   let health = 1;
   let gas = 1;
-  let blades = MAX_BLADES;
+  let blades = SPARE;
   let sharp = 1;
-  let slashT = 0;
-  let slashCd = 0;
-  let burstCd = 0;
-  let reloadT = 0;
+  let lock: Lock | null = null;
   let deadT = 0;
-  let hurtT = 10;
-  let phase = 0;
-  let supplyT = 0;
+  let dashCd = 0;
+  let gasPuffT = 0;
   let inSupply = false;
-  let boosting = false;
-  const pending: GameEvent[] = [];
+  let supplyT = 0;
+  let combo = 0;
+  let comboT = 0;
+  let time = 0;
+  let reelT = 0;
+  let wallT = 0;
+  let chargeT = 0;
+  let charging = false;
+  let flashed = false;
+  let brokeToast = 0;
+  let wasHeld = false;
+  let flipNext = false;
+  let toastT = -10;
+  const act: Act = { name: null, t: 0, dur: 0 };
+  const wallN = new THREE.Vector3();
+  const facing = new THREE.Vector3(Math.sin(world.spawnYaw), 0, Math.cos(world.spawnYaw));
 
-  const hooks: Hook[] = [0, 1].map(() => ({ state: "idle", t: 0, dur: 0, len: 0, miss: false, point: new THREE.Vector3(), titan: null, obj: null, local: new THREE.Vector3(), end: new THREE.Vector3() }));
-  const cableGeo = new THREE.CylinderGeometry(0.02, 0.02, 1, 5).translate(0, 0.5, 0);
-  const cableMat = new THREE.MeshStandardMaterial({ color: "#2b2b2b", roughness: 0.6, metalness: 0.5 });
-  const headGeo = new THREE.ConeGeometry(0.07, 0.22, 6);
-  const cables = hooks.map(() => {
-    const c = new THREE.Mesh(cableGeo, cableMat);
-    const h = new THREE.Mesh(headGeo, cableMat);
-    c.visible = h.visible = false;
-    c.frustumCulled = false;
-    scene.add(c, h);
-    return { c, h };
-  });
+  const slash = { on: false, t: 0, struck: false, charge: 0, side: 1, speed: 0, titan: null as TitanView | null, part: "nape" as TitanPart, dir: new THREE.Vector3() };
+  const blade: Blade = { pos: new THREE.Vector3(), dir: new THREE.Vector3(), speed: 0, charge: 0, radius: 2.5 };
 
-  const tmp = new THREE.Vector3();
-  const tmp2 = new THREE.Vector3();
-  const dir = new THREE.Vector3();
-  const from = new THREE.Vector3();
-  const nrm = new THREE.Vector3();
-  const inv = new THREE.Matrix4();
-  const turn = new THREE.Quaternion();
+  const aim = { kind: "none" as "none" | "world" | "titan", blocked: false, dist: 0, point: new THREE.Vector3(), normal: new THREE.Vector3(), obj: null as THREE.Object3D | null, titan: null as TitanView | null };
+  const frame: ScoutFrame = { anim: "idle", t: 0, k: 0, speed: 0, vel, charge: 0, side: 1, broken: false };
+  const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0 };
+  const lockPoint = new THREE.Vector3();
+  const view: CameraView = { pos, vel, mode, lockPoint: null, charge: 0 };
 
-  const anchor = (h: Hook, out: THREE.Vector3) => (h.obj ? out.copy(h.local).applyMatrix4(h.obj.matrixWorld) : out.copy(h.point));
+  const out: GameEvent[] = [];
+  const a = new THREE.Vector3();
+  const t1 = new THREE.Vector3();
+  const t2 = new THREE.Vector3();
+  const t3 = new THREE.Vector3();
+  const mid = new THREE.Vector3();
+  const fwd = new THREE.Vector3();
+  const bodyUp = new THREE.Vector3();
+  const rightV = new THREE.Vector3();
+  const prevVel = new THREE.Vector3();
+  const m4 = new THREE.Matrix4();
+  const qGoal = new THREE.Quaternion();
 
-  const sfx = (name: Extract<GameEvent, { type: "sfx" }>["name"], volume?: number) => pending.push({ type: "sfx", name, volume });
-
-  const release = (h: Hook) => {
-    if (h.state === "idle" || h.state === "back") return;
-    h.state = "back";
-    h.t = 0;
-    h.titan = null;
-    h.obj = null;
+  const sfx = (name: Sfx, volume?: number, at?: THREE.Vector3) => out.push(at ? { type: "sfx", name, volume, at: at.clone() } : { type: "sfx", name, volume });
+  const startAct = (name: ScoutAnim, dur: number) => {
+    act.name = name;
+    act.t = 0;
+    act.dur = dur;
   };
 
-  const fire = (side: number, inp: Input, lock: Titan | null) => {
-    const h = hooks[side];
-    dir.copy(inp.look).applyAxisAngle(UP, side ? -0.03 : 0.03);
-    const reachT = RANGE + inp.camPos.distanceTo(pos);
-    const tw = raycast(world, inp.camPos, dir, reachT, nrm);
-    const tt = titans.raycast(inp.camPos, dir, reachT);
-    h.titan = null;
-    h.obj = null;
-    h.miss = false;
-    // Locked hooks find the titan's body when the line from the player is clear.
-    let assist = lock && titans.nape(lock) && tt?.titan !== lock ? lock.m.spheres[side ? 2 : 3] : null;
-    if (assist) {
-      tmp.copy(assist.world).sub(pos);
-      const d = tmp.length();
-      if (d > RANGE || raycast(world, pos, tmp.divideScalar(d), d - 2) >= 0) assist = null;
-    }
-    if (assist && lock) {
-      h.point.copy(assist.world);
-      h.titan = lock;
-      h.obj = assist.obj;
-    } else if (tt && (tw < 0 || tt.t < tw)) {
-      h.point.copy(inp.camPos).addScaledVector(dir, tt.t);
-      h.titan = tt.titan;
-      h.obj = tt.sphere.obj;
-    } else if (tw >= 0) h.point.copy(inp.camPos).addScaledVector(dir, tw);
-    else h.miss = true;
-    if (!h.miss && h.point.distanceTo(pos) > RANGE) {
-      h.miss = true;
-      h.titan = null;
-      h.obj = null;
-    }
-    if (h.miss) h.point.copy(pos).addScaledVector(dir, RANGE * 0.6);
-    if (h.obj) {
-      h.obj.updateMatrixWorld();
-      h.local.copy(h.point).applyMatrix4(inv.copy(h.obj.matrixWorld).invert());
-    }
+  const hip = (i: number, o: THREE.Vector3) => o.set(i ? -0.22 : 0.22, -0.1, -0.12).applyQuaternion(orient).add(pos);
+
+  const fire = (i: number, button: Action, point: THREE.Vector3 | null, obj: THREE.Object3D | null, titan: TitanView | null, normal: THREE.Vector3 | null, dir: THREE.Vector3) => {
+    const h = hooks[i];
+    h.button = button;
     h.state = "fly";
+    hip(i, h.head);
+    h.hit = !!point;
+    h.obj = obj;
+    h.titan = titan;
     h.t = 0;
-    h.dur = Math.max(0.05, h.point.distanceTo(pos) / HOOK_SPEED);
-    sfx("hook");
+    if (point) {
+      h.point.copy(point);
+      if (obj) {
+        obj.updateWorldMatrix(true, false);
+        obj.worldToLocal(h.local.copy(point));
+      }
+      if (normal) h.normal.copy(normal);
+      else h.normal.set(0, 0, 0);
+    } else h.point.copy(pos).addScaledVector(dir, RANGE);
+    sfx("anchorFire", 0.8);
   };
-  const collide = () => {
-    let grounded = false;
-    if (pos.y - FOOT < 0) {
-      pos.y = FOOT;
-      if (vel.y < 0) vel.y = 0;
-      grounded = true;
-    }
-    for (const b of world.near(pos.x, pos.z, 3)) {
-      const ox = Math.min(pos.x + HALF - b.minX, b.maxX - (pos.x - HALF));
-      const oy = Math.min(pos.y + HEAD - b.minY, b.maxY - (pos.y - FOOT));
-      const oz = Math.min(pos.z + HALF - b.minZ, b.maxZ - (pos.z - HALF));
-      if (ox <= 0 || oy <= 0 || oz <= 0) continue;
-      if (oy <= ox && oy <= oz) {
-        if (pos.y > (b.minY + b.maxY) / 2) {
-          pos.y += b.maxY - (pos.y - FOOT);
-          if (vel.y < 0) vel.y = 0;
-          grounded = true;
-        } else {
-          pos.y -= pos.y + HEAD - b.minY;
-          if (vel.y > 0) vel.y = 0;
+
+  const release = (i: number, quiet = false) => {
+    const h = hooks[i];
+    if (h.state === "idle") return;
+    const wasOn = h.state === "on";
+    h.state = "back";
+    h.obj = null;
+    h.titan = null;
+    if (wasOn && !quiet) {
+      const sp = vel.length();
+      if (sp > 16) {
+        const other = hooks[1 - i].state === "on";
+        vel.multiplyScalar(1.07).addScaledVector(UP, 3.5);
+        sfx("release", Math.min(1, sp / 50));
+        if (!other && vel.y > 1 && sp > 22 && !slash.on) {
+          startAct("flip", 0.6);
+          frame.side = Math.random() < 0.5 ? -1 : 1;
         }
-      } else if (ox <= oz) {
-        const sgn = pos.x > (b.minX + b.maxX) / 2 ? 1 : -1;
-        pos.x += sgn * ox;
-        if (vel.x * sgn < 0) vel.x = 0;
-      } else {
-        const sgn = pos.z > (b.minZ + b.maxZ) / 2 ? 1 : -1;
-        pos.z += sgn * oz;
-        if (vel.z * sgn < 0) vel.z = 0;
       }
     }
-    titans.pushOut(pos, 0.5, vel);
-    return grounded;
+  };
+
+  const eye = new THREE.Vector3();
+  const rDir = new THREE.Vector3();
+  const rNorm = new THREE.Vector3();
+  const reach = (p: THREE.Vector3) => {
+    eye.copy(pos).addScaledVector(UP, 0.7);
+    rDir.copy(p).sub(eye);
+    const d = rDir.length();
+    if (d < 0.5) return -1;
+    rDir.divideScalar(d);
+    return world.raycast(eye, rDir, d - 0.4, rNorm);
+  };
+  const say = (title: string) => {
+    if (time - toastT < 1.5) return;
+    toastT = time;
+    out.push({ type: "toast", title });
+  };
+
+  const findAim = (input: Input, assist = false) => {
+    const o = input.camPos;
+    const d = input.look;
+    const ahead = t1.copy(pos).sub(o).dot(d);
+    const maxT = RANGE + Math.max(0, ahead) + 2;
+    aim.kind = "none";
+    aim.obj = null;
+    aim.titan = null;
+    aim.blocked = false;
+    let best = world.raycast(o, d, maxT, aim.normal);
+    if (best >= 0 && best > ahead) {
+      aim.kind = "world";
+      aim.point.copy(o).addScaledVector(d, best);
+    } else best = Infinity;
+    const th = titans.raycast(o, d, maxT);
+    if (th && th.t < best && th.t > ahead) {
+      best = th.t;
+      aim.kind = "titan";
+      aim.point.copy(th.point);
+      aim.obj = th.obj;
+      aim.titan = th.titan;
+    }
+    if (aim.kind !== "titan") {
+      let bestA = 0.06;
+      let found: TitanView | null = null;
+      for (const ti of titans.list()) {
+        if (!ti.alive || ti.pos.distanceTo(pos) > RANGE + 30) continue;
+        for (const p of PARTS) {
+          if (!titans.partPos(ti, p, t2)) continue;
+          if (t2.distanceTo(pos) > RANGE) continue;
+          t3.copy(t2).sub(o);
+          const along = t3.dot(d);
+          if (along <= ahead) continue;
+          const ang = t3.addScaledVector(d, -along).length() / along;
+          if (ang < bestA && along < best && reach(t2) < 0) {
+            bestA = ang;
+            found = ti;
+            mid.copy(t2);
+          }
+        }
+      }
+      if (found) {
+        t3.copy(mid).sub(pos).normalize();
+        const hit = titans.raycast(pos, t3, RANGE + 3);
+        if (hit) {
+          aim.kind = "titan";
+          aim.point.copy(hit.point);
+          aim.obj = hit.obj;
+          aim.titan = hit.titan;
+        }
+      }
+    }
+    if (aim.kind === "none" && assist) {
+      rightV.set(-d.z, 0, d.x).normalize();
+      bodyUp.crossVectors(rightV, d);
+      for (let ring = 1; ring <= 2 && aim.kind === "none"; ring++) {
+        for (let k = 0; k < 8; k++) {
+          const ang = (k / 8) * Math.PI * 2;
+          const r = ring * 0.045;
+          t3.copy(d).addScaledVector(rightV, Math.cos(ang) * r).addScaledVector(bodyUp, Math.sin(ang) * r).normalize();
+          const t = world.raycast(o, t3, maxT, aim.normal);
+          if (t > ahead && t >= 0) {
+            aim.point.copy(o).addScaledVector(t3, t);
+            if (aim.point.distanceTo(pos) <= RANGE && reach(aim.point) < 0) {
+              aim.kind = "world";
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (aim.kind !== "none") {
+      const b = reach(aim.point);
+      if (b >= 0 && b < 4) {
+        aim.kind = "none";
+        aim.blocked = true;
+      } else if (b >= 0) {
+        aim.kind = "world";
+        aim.obj = null;
+        aim.titan = null;
+        aim.point.copy(eye).addScaledVector(rDir, b);
+        aim.normal.copy(rNorm);
+      }
+    }
+    aim.dist = aim.kind === "none" ? 0 : aim.point.distanceTo(pos);
+    if (aim.dist > RANGE) aim.kind = "none";
+  };
+
+  const nextPart = (ti: TitanView, from: TitanPart, step: number): TitanPart | null => {
+    const s = PARTS.indexOf(from);
+    for (let k = step; k <= PARTS.length; k++) {
+      const p = PARTS[(s + k) % PARTS.length];
+      if (titans.partHealth(ti, p) > 0 && titans.partPos(ti, p, t2)) return p;
+    }
+    return null;
+  };
+
+  const acquire = (input: Input): Lock | null => {
+    const ti = titans.nearest(pos, input.look, 160);
+    if (!ti) return null;
+    const p = nextPart(ti, "nape", 0);
+    return p ? { titan: ti, part: p } : null;
+  };
+
+  const autoHook = (input: Input) => {
+    const target = lock ?? acquire(input);
+    if (!target || !titans.partPos(target.titan, target.part, mid)) {
+      sfx("anchorMiss", 0.6);
+      say("No titan in range");
+      return;
+    }
+    t1.copy(mid).sub(pos);
+    rightV.set(-t1.z, 0, t1.x).normalize();
+    let missed = 0;
+    for (let i = 0; i < 2; i++) {
+      t2.copy(mid).addScaledVector(rightV, i ? -1.6 : 1.6).addScaledVector(UP, 0.8).sub(pos);
+      const len = t2.length();
+      t2.divideScalar(len);
+      let hit = len < RANGE ? titans.raycast(pos, t2, len + 6) : null;
+      if (hit && reach(hit.point) >= 0) hit = null;
+      if (!hit) {
+        t2.copy(mid).sub(pos).normalize();
+        hit = titans.raycast(pos, t2, RANGE);
+        if (hit && reach(hit.point) >= 0) hit = null;
+      }
+      if (hit) fire(i, "autoHook", hit.point, hit.obj, hit.titan, null, t2);
+      else missed++;
+    }
+    if (missed) {
+      sfx("anchorMiss", 0.6);
+      say(mid.distanceTo(pos) > RANGE ? "Out of range" : "No clear line");
+    }
+  };
+
+  const strike = () => {
+    slash.struck = true;
+    blade.pos.copy(pos).addScaledVector(slash.dir, 0.9);
+    blade.dir.copy(slash.dir);
+    blade.speed = Math.max(vel.length(), slash.speed);
+    blade.charge = slash.charge;
+    blade.radius = 2.5 + 1.5 * slash.charge;
+    const r = titans.strike(blade, slash.titan ? { titan: slash.titan, part: slash.part } : null);
+    for (const e of r.events) out.push(e);
+    rightV.crossVectors(slash.dir, UP);
+    if (rightV.lengthSq() < 1e-4) rightV.set(1, 0, 0);
+    rightV.normalize();
+    t1.copy(blade.pos).addScaledVector(rightV, -2.4 * slash.side).addScaledVector(UP, -0.8);
+    t2.copy(blade.pos).addScaledVector(slash.dir, 1.6).addScaledVector(UP, 0.4);
+    t3.copy(blade.pos).addScaledVector(rightV, 2.4 * slash.side).addScaledVector(UP, 0.9);
+    fx.slash(t1, t2, t3);
+    if (!r.zone) return;
+    sharp -= slash.charge >= 1 ? 0.08 : 0.14;
+    combo = comboT > 0 ? combo + 1 : 1;
+    comboT = 4;
+    vel.multiplyScalar(0.25).addScaledVector(slash.dir, -6).addScaledVector(UP, 11);
+    slash.on = false;
+    flipNext = true;
+    if (sharp <= 0) {
+      sharp = 0;
+      sfx("bladeBreak");
+      out.push({ type: "toast", title: "Blades broken", text: "Press R to swap" });
+    }
+  };
+
+  const startSlash = (input: Input) => {
+    const c = Math.min(1, chargeT / CHARGE_T);
+    const perfect = chargeT >= PERFECT[0] && chargeT <= PERFECT[1];
+    slash.on = true;
+    slash.t = 0;
+    slash.struck = false;
+    slash.charge = perfect ? 1 : c * 0.85;
+    slash.side = Math.random() < 0.5 ? -1 : 1;
+    slash.titan = null;
+    if (lock && titans.partPos(lock.titan, lock.part, t1) && t1.distanceTo(pos) < 32) {
+      slash.titan = lock.titan;
+      slash.part = lock.part;
+    } else {
+      const ti = titans.nearest(pos, input.look, 22);
+      if (ti && titans.partPos(ti, "nape", t1)) {
+        slash.titan = ti;
+        slash.part = "nape";
+      }
+    }
+    if (slash.titan) slash.dir.copy(t1).sub(pos).normalize();
+    else slash.dir.copy(input.look);
+    const lunge = 22 + 22 * slash.charge;
+    const along = vel.dot(slash.dir);
+    t2.copy(vel).addScaledVector(slash.dir, -along).multiplyScalar(0.35);
+    vel.copy(slash.dir).multiplyScalar(Math.max(along, lunge)).add(t2);
+    slash.speed = vel.length();
+    gas = Math.max(0, gas - 0.02);
+    frame.side = slash.side;
+    startAct("slash", SLASH_T);
+    sfx("slash", 0.7 + 0.3 * slash.charge);
+    if (perfect) out.push({ type: "shake", strength: 0.25 });
+    fx.gas(pos, t1.copy(slash.dir).negate(), 1.2);
+  };
+
+  const updateSlash = (dt: number) => {
+    slash.t += dt;
+    if (slash.titan) {
+      if (!slash.titan.alive || !titans.partPos(slash.titan, slash.part, t1)) slash.titan = null;
+      else {
+        t1.sub(pos);
+        const d = t1.length();
+        t1.divideScalar(d);
+        slash.dir.lerp(t1, 1 - Math.exp(-14 * dt)).normalize();
+        const sp = Math.max(vel.length(), 20);
+        vel.lerp(t2.copy(slash.dir).multiplyScalar(sp), 1 - Math.exp(-10 * dt));
+        if (!slash.struck && d <= 2.5 + 1.5 * slash.charge + 1.2) strike();
+      }
+    } else if (!slash.struck && slash.t >= 0.16) strike();
+    if (slash.on && slash.t >= SLASH_T) {
+      if (!slash.struck && slash.titan && titans.partPos(slash.titan, slash.part, t1) && t1.distanceTo(pos) < 9) strike();
+      slash.on = false;
+    }
   };
 
   const die = () => {
     mode = "dead";
     deadT = 0;
     health = 0;
-    hooks.forEach(release);
-    pending.push({ type: "toast", title: "You died", text: "Respawning at a supply depot" }, { type: "sfx", name: "death" });
+    slash.on = false;
+    charging = false;
+    for (let i = 0; i < 2; i++) release(i, true);
+    out.push({ type: "sfx", name: "death" }, { type: "stinger", name: "death" });
   };
 
-  const api = {
+  const respawn = () => {
+    let best = world.spawn;
+    let bd = Infinity;
+    for (const s of world.supplies) {
+      const d = s.distanceToSquared(pos);
+      if (d < bd) {
+        bd = d;
+        best = s;
+      }
+    }
+    pos.copy(best);
+    if (best !== world.spawn) pos.y += SCOUT_HALF + 0.05;
+    vel.set(0, 0, 0);
+    health = 1;
+    gas = 1;
+    blades = SPARE;
+    sharp = 1;
+    mode = "ground";
+    lock = null;
+    slash.on = false;
+    act.name = null;
+    flipNext = false;
+    combo = 0;
+    for (const h of hooks) {
+      h.state = "idle";
+      h.obj = null;
+      h.titan = null;
+    }
+  };
+
+  const supply = (dt: number) => {
+    let near = false;
+    for (const s of world.supplies) {
+      const dx = s.x - pos.x;
+      const dz = s.z - pos.z;
+      if (dx * dx + dz * dz < 64 && Math.abs(pos.y - s.y) < 8) near = true;
+    }
+    if (near && !inSupply && (gas < 0.99 || blades < SPARE || sharp < 1 || health < 1)) sfx("resupply");
+    inSupply = near;
+    if (!near) return;
+    gas = Math.min(1, gas + 0.4 * dt);
+    health = Math.min(1, health + 0.2 * dt);
+    supplyT += dt;
+    if (supplyT > 0.5) {
+      supplyT = 0;
+      if (sharp < 1) sharp = 1;
+      else if (blades < SPARE) blades++;
+    }
+  };
+
+  const gasPuff = (dir: THREE.Vector3, strength: number, dt: number, every = 0.03) => {
+    gasPuffT -= dt;
+    if (gasPuffT > 0) return;
+    gasPuffT = every;
+    t3.set(0, -0.1, -0.22).applyQuaternion(orient).add(pos);
+    fx.gas(t3, dir, strength);
+  };
+
+  const orientTo = (f: THREE.Vector3, up: THREE.Vector3, rate: number, dt: number) => {
+    fwd.copy(f).addScaledVector(up, -f.dot(up));
+    if (fwd.lengthSq() < 1e-5) return;
+    fwd.normalize();
+    rightV.crossVectors(up, fwd);
+    m4.makeBasis(rightV, up, fwd);
+    qGoal.setFromRotationMatrix(m4);
+    orient.slerp(qGoal, 1 - Math.exp(-rate * dt));
+  };
+
+  const physics = (dt: number, input: Input) => {
+    const wish = input.wish;
+    const look = input.look;
+    const held = input.held;
+    prevVel.copy(vel);
+    a.set(0, -G, 0);
+    const speed = vel.length();
+
+    let n = 0;
+    mid.set(0, 0, 0);
+    for (let i = 0; i < 2; i++) {
+      const h = hooks[i];
+      if (h.state !== "on") continue;
+      wires.anchor(h, t1);
+      h.point.copy(t1);
+      mid.add(t1);
+      n++;
+    }
+    reelT = n ? reelT + dt : 0;
+    const boosting = held.has("gas") && !grounded && gas > 0;
+
+    if (n && !slash.on) {
+      mid.divideScalar(n);
+      t1.copy(mid).sub(pos);
+      const d = t1.length();
+      if (d > 1e-3) {
+        t1.divideScalar(d);
+        const ramp = Math.min(1, reelT / 0.45);
+        const curve = 0.3 + 0.7 * ramp * ramp * (3 - 2 * ramp);
+        const power = (n === 2 ? 72 : 50) * curve * (gas > 0 ? 1 : 0.4) * (boosting ? 1.25 : 1);
+        const vr = vel.dot(t1);
+        const cap = n === 2 ? 58 : 46;
+        if (vr < cap) a.addScaledVector(t1, power * Math.min(1, (cap - vr) / 10));
+        a.y += G * 0.35;
+        if (grounded) {
+          vel.y = Math.max(vel.y, 6 + Math.max(0, t1.y) * 6);
+          grounded = false;
+        }
+        t2.copy(wish).addScaledVector(t1, -wish.dot(t1));
+        a.addScaledVector(t2, 26);
+        if (d < 3.2 && vr > 0) vel.addScaledVector(t1, -vr * Math.min(1, 9 * dt));
+        if (d < 2.4) a.addScaledVector(t1, -a.dot(t1));
+        gas = Math.max(0, gas - 0.012 * n * dt);
+        if (gas > 0 && !boosting) gasPuff(t2.copy(t1).negate(), 0.25 + 0.2 * ramp, dt, 0.07);
+      }
+    }
+
+    if (mode === "wall") {
+      a.addScaledVector(wallN, -a.dot(wallN));
+      a.y *= 0.2;
+      a.addScaledVector(wallN, -6);
+      t2.copy(wish).addScaledVector(wallN, -wish.dot(wallN));
+      if (t2.lengthSq() > 1e-4) {
+        t2.normalize();
+        const along = vel.dot(t2);
+        if (along < 16) a.addScaledVector(t2, 40);
+      }
+      if (input.pressed.has("gas")) {
+        vel.addScaledVector(wallN, 13).addScaledVector(UP, 9).addScaledVector(look, 6);
+        wallT = 0;
+        sfx("gasBurst", 0.7);
+        startAct("flip", 0.55);
+        for (let i = 0; i < 2; i++) if (hooks[i].state === "on") release(i, true);
+      }
+    }
+
+    if (grounded && !n) {
+      t2.copy(wish).multiplyScalar(RUN);
+      const k = 1 - Math.exp(-(wish.lengthSq() > 0 ? 9 : 12) * dt);
+      if (speed < RUN * 1.2 || wish.lengthSq() === 0) {
+        vel.x += (t2.x - vel.x) * k;
+        vel.z += (t2.z - vel.z) * k;
+      } else {
+        vel.x *= 1 - 2.5 * dt;
+        vel.z *= 1 - 2.5 * dt;
+      }
+      if (input.pressed.has("gas")) {
+        vel.y = JUMP;
+        grounded = false;
+        sfx("land", 0.4);
+      }
+    } else if (!n && mode !== "wall") a.addScaledVector(wish, 9);
+
+    if (boosting && !input.pressed.has("gas")) {
+      const along = vel.dot(look);
+      a.addScaledVector(look, 34 * Math.max(0.3, 1 - Math.max(0, along) / 48));
+      a.y += 6;
+      gas = Math.max(0, gas - 0.09 * dt);
+      gasPuff(t2.copy(look).negate(), 1, dt);
+    }
+
+    dashCd -= dt;
+    if (input.pressed.has("dash") && dashCd <= 0 && gas > 0.02 && mode !== "held") {
+      dashCd = 0.45;
+      gas = Math.max(0, gas - 0.05);
+      if (wish.lengthSq() > 0) t2.copy(wish).addScaledVector(UP, grounded ? 0.12 : 0.18).normalize();
+      else t2.copy(look);
+      const along = vel.dot(t2);
+      vel.addScaledVector(t2, Math.max(16, 30 - Math.max(0, along) * 0.4));
+      startAct("dash", 0.28);
+      sfx("gasDash");
+      out.push({ type: "shake", strength: 0.12 });
+      rightV.crossVectors(t2, UP);
+      if (rightV.lengthSq() < 1e-4) rightV.set(1, 0, 0);
+      rightV.normalize();
+      bodyUp.crossVectors(rightV, t2);
+      for (let k = 0; k < 8; k++) {
+        const ang = (k / 8) * Math.PI * 2;
+        t3.copy(rightV).multiplyScalar(Math.cos(ang)).addScaledVector(bodyUp, Math.sin(ang)).addScaledVector(t2, -0.6);
+        t1.copy(pos).addScaledVector(t3, 0.5);
+        fx.gas(t1, t3, 0.9);
+      }
+      grounded = false;
+    }
+
+    vel.addScaledVector(a, dt);
+    if (!grounded) vel.multiplyScalar(1 - Math.min(0.5, 0.0021 * speed * dt));
+    const sp = vel.length();
+    if (sp > MAX_SPEED) vel.multiplyScalar(MAX_SPEED / sp);
+    pos.addScaledVector(vel, dt);
+
+    for (let i = 0; i < 2; i++) {
+      const h = hooks[i];
+      if (h.state !== "on") continue;
+      t1.copy(pos).sub(h.point);
+      const d = t1.length();
+      if (slash.on) h.len = Math.max(h.len, d);
+      else if (d > h.len && d > 1e-3) {
+        t1.divideScalar(d);
+        pos.copy(h.point).addScaledVector(t1, h.len);
+        const vr = vel.dot(t1);
+        if (vr > 0) vel.addScaledVector(t1, -vr);
+      } else h.len = Math.max(1.2, d);
+    }
+
+    const wasGrounded = grounded;
+    const fallV = -vel.y;
+    const hsp = Math.hypot(vel.x, vel.z);
+    const res = world.collide(pos, vel, RADIUS, HEIGHT);
+    titans.pushOut(pos, RADIUS + 0.1, vel);
+    grounded = res.grounded;
+    wallT -= dt;
+    if (res.wall && !grounded) {
+      wallN.copy(res.wall);
+      wallN.y = 0;
+      if (wallN.lengthSq() > 1e-4) {
+        wallN.normalize();
+        if (n) wallT = Math.max(wallT, 0.2);
+      }
+    }
+    if (grounded) wallT = 0;
+    if (grounded && !wasGrounded) {
+      if (fallV > 15 || hsp > 21) {
+        startAct("roll", 0.55);
+        sfx("roll");
+        fx.dust(t1.copy(pos).addScaledVector(UP, -SCOUT_HALF), 1.4);
+        vel.x *= 0.75;
+        vel.z *= 0.75;
+        out.push({ type: "shake", strength: Math.min(0.5, fallV / 60) });
+      } else if (fallV > 5) {
+        sfx("land", Math.min(1, fallV / 15));
+        if (fallV > 9) fx.dust(t1.copy(pos).addScaledVector(UP, -SCOUT_HALF), 0.7);
+      }
+    }
+    if (pos.y < -60) respawn();
+  };
+
+  const updateHooks = (dt: number, input: Input) => {
+    for (let i = 0; i < 2; i++) {
+      const h = hooks[i];
+      h.t += dt;
+      if (h.state === "fly") {
+        if (!input.held.has(h.button)) {
+          h.state = "back";
+          continue;
+        }
+        if (h.titan && !h.titan.alive) {
+          h.hit = false;
+          h.obj = null;
+          h.titan = null;
+        }
+        wires.anchor(h, t1);
+        t2.copy(t1).sub(h.head);
+        const d = t2.length();
+        const step = HOOK_SPEED * dt;
+        if (d <= step) {
+          h.head.copy(t1);
+          if (h.hit) {
+            h.state = "on";
+            h.len = Math.max(1.2, pos.distanceTo(t1));
+            sfx("anchorHit", 0.8, t1);
+            if (!h.titan) fx.dust(t1, 0.35);
+          } else {
+            h.state = "back";
+            sfx("anchorMiss", 0.5);
+          }
+        } else h.head.addScaledVector(t2, step / d);
+      } else if (h.state === "on") {
+        if (!input.held.has(h.button) || (h.titan && !h.titan.alive)) release(i);
+        else wires.anchor(h, h.head);
+      } else if (h.state === "back") {
+        hip(i, t1);
+        t2.copy(t1).sub(h.head);
+        const d = t2.length();
+        const step = HOOK_SPEED * 1.3 * dt;
+        if (d <= step) h.state = "idle";
+        else h.head.addScaledVector(t2, step / d);
+      }
+    }
+  };
+
+  const pickMode = () => {
+    if (mode === "dead" || mode === "held") return;
+    const on = hooks[0].state === "on" || hooks[1].state === "on";
+    if (wallT > 0 && !grounded) mode = "wall";
+    else if (on) mode = "reel";
+    else mode = grounded ? "ground" : "air";
+  };
+
+  const animate = (dt: number, input: Input | null) => {
+    const speed = vel.length();
+    if (act.name) {
+      act.t += dt;
+      if (act.t >= act.dur) {
+        act.name = null;
+        if (flipNext) startAct("flip", 0.5);
+        flipNext = false;
+      }
+    }
+    let anim: ScoutAnim;
+    const hsp = Math.hypot(vel.x, vel.z);
+    if (mode === "dead") anim = "dead";
+    else if (mode === "held") anim = "held";
+    else if (act.name === "slash" || act.name === "roll") anim = act.name;
+    else if (charging) anim = "charge";
+    else if (act.name) anim = act.name;
+    else if (mode === "wall") anim = "wall";
+    else if (mode === "reel") anim = "reel";
+    else if (mode === "ground") anim = hsp > 0.6 ? "run" : "idle";
+    else anim = "air";
+    if (frame.anim !== anim) frame.t = 0;
+    frame.anim = anim;
+    frame.t += dt;
+    frame.k = act.name ? Math.min(1, act.t / act.dur) : 0;
+    frame.speed = mode === "ground" || mode === "wall" ? hsp : speed;
+    frame.charge = charging ? Math.min(1, chargeT / CHARGE_T) : 0;
+    frame.broken = sharp <= 0;
+
+    if (hsp > 0.5) facing.set(vel.x / hsp, 0, vel.z / hsp);
+    if (anim === "dead") {
+      orientTo(UP, bodyUp.copy(facing), 6, dt);
+    } else if (anim === "wall") {
+      t1.copy(vel).addScaledVector(wallN, -vel.dot(wallN));
+      if (t1.lengthSq() < 0.5) t1.copy(facing).addScaledVector(wallN, -facing.dot(wallN));
+      bodyUp.copy(wallN).multiplyScalar(0.85).addScaledVector(UP, 0.35).normalize();
+      orientTo(t1, bodyUp, 12, dt);
+    } else if (anim === "charge") {
+      if (input && lock && titans.partPos(lock.titan, lock.part, t1)) t1.sub(pos);
+      else if (input) t1.copy(input.look);
+      else t1.copy(facing);
+      orientTo(t1, UP, 16, dt);
+    } else if (anim === "slash") {
+      bodyUp.copy(slash.dir).lerp(UP, 0.2).normalize();
+      t1.copy(UP);
+      if (Math.abs(bodyUp.y) > 0.9) t1.copy(facing);
+      orientTo(t1, bodyUp, 22, dt);
+    } else if (anim === "reel" || anim === "air" || anim === "dash" || anim === "flip") {
+      const fast = Math.min(1, speed / 40);
+      if (anim === "reel") {
+        t1.copy(mid).sub(pos).normalize();
+        bodyUp.copy(UP).lerp(t1, 0.55).normalize();
+        t2.copy(t1);
+      } else {
+        t2.copy(speed > 1 ? vel : facing).normalize();
+        bodyUp.copy(UP).lerp(t2, (anim === "dash" ? 0.7 : 0.45) * fast).normalize();
+      }
+      if (Math.abs(t2.dot(bodyUp)) > 0.98) t2.copy(facing);
+      orientTo(t2, bodyUp, 9, dt);
+    } else orientTo(facing, UP, mode === "held" ? 4 : 14, dt);
+
+    scout.root.position.copy(pos);
+    if (mode === "dead") scout.root.position.y -= SCOUT_HALF - 0.15;
+    scout.root.quaternion.copy(orient);
+    scout.update(dt, frame);
+    for (let i = 0; i < 2; i++) wires.draw(i, hip(i, t1), time);
+  };
+
+  const player: Player = {
     pos,
     vel,
     get mode() {
@@ -180,264 +739,178 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     get alive() {
       return mode !== "dead";
     },
-    setVisible(on: boolean) {
-      scout.root.visible = on;
+    get grounded() {
+      return grounded;
     },
-    hud() {
-      return {
-        health,
-        gas,
-        blades,
-        sharp,
-        supply: inSupply,
-        dead: mode === "dead",
-        hooks: [hooks[0].state === "on", hooks[1].state === "on"] as [boolean, boolean],
-      };
+    get lock() {
+      return lock;
     },
-    damage(amount: number) {
-      if (mode === "dead") return;
-      health -= amount;
-      hurtT = 0;
-      if (health <= 0) die();
-    },
-    respawn() {
-      let best = world.supplies[0];
-      for (const s of world.supplies) if (s.distanceTo(pos) < best.distanceTo(pos)) best = s;
-      pos.set(best.x, FOOT, best.z + 4);
-      vel.set(0, 0, 0);
-      health = 1;
-      gas = 1;
-      blades = Math.max(blades, 4);
-      sharp = 1;
-      mode = "ground";
-    },
-    update(dt: number, inp: Input, lock: Titan | null, playing: boolean): GameEvent[] {
-      const out = pending.splice(0);
-      slashCd -= dt;
-      burstCd -= dt;
-      reloadT -= dt;
-      slashT = Math.max(0, slashT - dt / 0.3);
-      hurtT += dt;
-      boosting = false;
+    update(dt, input, playing) {
+      out.length = 0;
+      time += dt;
+      if (!playing || dt <= 0) {
+        if (!playing) charging = false;
+        animate(dt, null);
+        return out;
+      }
+      findAim(input);
+      comboT -= dt;
+      if (comboT <= 0) combo = 0;
 
-      for (const h of hooks) if (h.titan && titans.gone(h.titan)) release(h);
-
-      const grip = titans.held();
       if (mode === "dead") {
         deadT += dt;
         vel.y -= G * dt;
+        vel.x *= 1 - 3 * dt;
+        vel.z *= 1 - 3 * dt;
         pos.addScaledVector(vel, dt);
-        collide();
-        vel.multiplyScalar(Math.exp(-3 * dt));
-        if (deadT > 3) api.respawn();
-      } else if (grip) {
-        if (mode !== "held") hooks.forEach(release);
+        grounded = world.collide(pos, vel, RADIUS, HEIGHT).grounded;
+        if (deadT > 3) respawn();
+        animate(dt, input);
+        return out;
+      }
+
+      const heldAt = titans.held();
+      if (heldAt) {
+        if (!wasHeld) {
+          for (let i = 0; i < 2; i++) release(i, true);
+          slash.on = false;
+          charging = false;
+          act.name = null;
+        }
+        wasHeld = true;
         mode = "held";
-        pos.copy(grip);
+        pos.copy(heldAt);
         vel.set(0, 0, 0);
-        if (playing && inp.pressed.has("slash") && slashCd <= 0) {
-          slashCd = 0.1;
-          slashT = 1;
-          const r = titans.slash(pos, 1, 0, sharp);
-          out.push(...r.events);
-          sharp = Math.max(0, sharp - 0.04);
-        }
-      } else {
-        if (mode === "held") {
-          mode = "air";
-          vel.set(Math.random() * 10 - 5, 12, Math.random() * 10 - 5);
-        }
-        if (playing) {
-          (["hookL", "hookR"] as const).forEach((a, side) => {
-            if (inp.pressed.has(a)) fire(side, inp, lock);
-            if (inp.released.has(a) && hooks[side].state !== "idle") {
-              release(hooks[side]);
-              sfx("retract", 0.5);
-            }
-          });
-
-          if (inp.pressed.has("jump")) {
-            if (mode === "ground") {
-              vel.y = JUMP;
-              mode = "air";
-            } else if (gas > 0.05 && burstCd <= 0) {
-              vel.addScaledVector(inp.look, 9).y += 6;
-              gas -= 0.05;
-              burstCd = 0.35;
-              sfx("burst");
-              fx.burst(tmp.copy(pos).addScaledVector(inp.look, -0.6), 12, { size: 0.4, grow: 5, life: 0.8, speed: 3, rise: 0 });
-            }
-          }
-          boosting = inp.held.has("boost") && gas > 0;
-
-          if (inp.pressed.has("reload") && blades > 0 && sharp < 1 && reloadT <= 0) {
-            blades--;
-            sharp = 1;
-            reloadT = 0.5;
-            sfx("reload");
-            out.push({ type: "toast", title: "Blades swapped", text: `${blades} sets left` });
-          }
-
-          if (inp.pressed.has("slash") && slashCd <= 0 && reloadT <= 0) {
-            slashCd = 0.4;
-            if (sharp <= 0) {
-              sfx("dull");
-              out.push({ type: "toast", title: blades ? "Blades dull" : "No blades left", text: blades ? "Press R to swap" : "Find a supply depot" });
-            } else {
-              slashT = 1;
-              const speed = vel.length();
-              tmp.copy(vel);
-              if (speed < 4) tmp.copy(inp.look);
-              tmp.normalize();
-              const r = titans.slash(tmp2.copy(pos).addScaledVector(tmp, 1.6), 2.6 + speed * 0.04, speed, sharp);
-              out.push(...r.events);
-              if (r.hit) sharp = Math.max(0, sharp - 0.15);
-              else sfx("slash");
-            }
-          }
-        }
-
-        for (const h of hooks) {
-          if (h.state === "fly") {
-            h.t += dt;
-            if (h.t >= h.dur) {
-              if (h.miss) {
-                h.state = "back";
-                h.t = 0;
-                sfx("hookMiss");
-              } else {
-                h.state = "on";
-                h.len = anchor(h, tmp).distanceTo(pos);
-                sfx("hookHit");
-              }
-            }
-          } else if (h.state === "back") {
-            h.t += dt;
-            if (h.t > 0.15) h.state = "idle";
-          }
-        }
-
-        const on = hooks.filter((h) => h.state === "on");
-        const N = 4;
-        const hs = dt / N;
-        let grounded = mode === "ground";
-        for (let i = 0; i < N; i++) {
-          if (grounded && !on.length && !boosting) {
-            tmp.copy(inp.wish).multiplyScalar(RUN);
-            vel.x += (tmp.x - vel.x) * (1 - Math.exp(-10 * hs));
-            vel.z += (tmp.z - vel.z) * (1 - Math.exp(-10 * hs));
-            vel.y -= G * hs;
-          } else {
-            vel.y -= G * hs;
-            if (on.length) {
-              tmp.set(0, 0, 0);
-              for (const h of on) tmp.add(anchor(h, tmp2));
-              tmp.divideScalar(on.length).sub(pos);
-              const d = tmp.length();
-              if (d > 2.5) vel.addScaledVector(tmp.divideScalar(d), REEL * (on.length === 2 ? 1.25 : 1) * hs);
-              tmp.copy(inp.wish);
-              vel.addScaledVector(tmp, 9 * hs);
-            } else {
-              const along = vel.x * inp.wish.x + vel.z * inp.wish.z;
-              if (along < 14) vel.addScaledVector(inp.wish, 7 * hs);
-            }
-            if (boosting) vel.addScaledVector(inp.look, BOOST * hs);
-            vel.multiplyScalar(Math.exp(-0.06 * hs));
-          }
-          if (vel.length() > MAX_SPEED) vel.setLength(MAX_SPEED);
-          pos.addScaledVector(vel, hs);
-          for (const h of on) {
-            anchor(h, tmp2);
-            tmp.copy(pos).sub(tmp2);
-            const d = tmp.length();
-            if (d > h.len && d > 1e-3) {
-              tmp.divideScalar(d);
-              pos.copy(tmp2).addScaledVector(tmp, h.len);
-              const radial = vel.dot(tmp);
-              if (radial > 0) vel.addScaledVector(tmp, -radial);
-            }
-            h.len = Math.max(1.5, Math.min(h.len, d));
-          }
-          grounded = collide();
-        }
-        if (grounded && vel.y <= 0.1 && !on.length) {
-          if (mode === "air" && vel.y < -0.1) sfx("land", 0.6);
-          mode = "ground";
-        } else mode = "air";
+        if (input.pressed.has("attack") || input.pressed.has("gas")) for (const e of titans.struggle()) out.push(e);
+        updateHooks(dt, input);
+        animate(dt, input);
+        return out;
+      }
+      if (wasHeld) {
+        wasHeld = false;
+        mode = "air";
+        grounded = false;
+        vel.set(facing.x * -6, 10, facing.z * -6);
+        startAct("flip", 0.6);
       }
 
-      if (boosting) {
-        gas = Math.max(0, gas - 0.11 * dt);
-        if (Math.random() < 0.8) fx.burst(tmp.copy(pos).addScaledVector(inp.look, -0.7).addScaledVector(UP, -0.3), 1, { size: 0.3, grow: 5, life: 0.6, speed: 1.5, rise: 0.2 });
+      if (lock) {
+        if (!lock.titan.alive) lock = acquire(input);
+        else if (!titans.partPos(lock.titan, lock.part, t1)) {
+          const p = nextPart(lock.titan, lock.part, 1);
+          lock = p ? { titan: lock.titan, part: p } : null;
+        }
+      }
+      if (input.pressed.has("lock")) {
+        lock = lock ? null : acquire(input);
+        sfx(lock ? "lock" : "ui", 0.6);
+      }
+      if (input.pressed.has("cycle") && lock) {
+        const p = nextPart(lock.titan, lock.part, 1);
+        if (p && p !== lock.part) {
+          lock = { titan: lock.titan, part: p };
+          sfx("lockCycle", 0.6);
+        }
       }
 
-      inSupply = mode !== "dead" && pos.y < 8 && world.supplies.some((s) => Math.hypot(s.x - pos.x, s.z - pos.z) < 8);
-      if (inSupply) {
-        const was = gas < 0.99 || blades < MAX_BLADES || sharp < 1 || health < 1;
-        gas = Math.min(1, gas + 0.4 * dt);
-        health = Math.min(1, health + 0.15 * dt);
-        supplyT += dt;
-        if (supplyT > 0.5) {
-          supplyT = 0;
-          if (blades < MAX_BLADES) blades++;
-          else if (sharp < 1) sharp = 1;
+      if (aim.kind === "none" && (input.pressed.has("anchorL") || input.pressed.has("anchorR"))) findAim(input, true);
+      for (let i = 0; i < 2; i++) {
+        const btn: Action = i ? "anchorR" : "anchorL";
+        if (!input.pressed.has(btn)) continue;
+        if (aim.kind === "none") {
+          fire(i, btn, null, null, null, null, input.look);
+          say(aim.blocked ? "No clear line" : "Out of range");
         }
-        if (was && gas >= 0.99 && blades >= MAX_BLADES && sharp >= 1 && health >= 1) sfx("refill");
-      } else if (hurtT > 6 && mode !== "dead") health = Math.min(1, health + 0.01 * dt);
-
-      const flat = Math.hypot(vel.x, vel.z);
-      let pose: ScoutPose = "idle";
-      let climb = 0;
-      if (mode === "dead") pose = "dead";
-      else if (mode === "held") pose = "held";
-      else if (mode === "ground") {
-        if (flat > 1) {
-          pose = "run";
-          phase += (flat / 2.4) * dt * Math.PI;
-          facing.slerp(turn.setFromAxisAngle(UP, Math.atan2(vel.x, vel.z)), 1 - Math.exp(-12 * dt));
-        }
-      } else {
-        pose = hooks.some((h) => h.state === "on") ? "hooked" : "air";
-        if (flat > 2) facing.slerp(turn.setFromAxisAngle(UP, Math.atan2(vel.x, vel.z)), 1 - Math.exp(-6 * dt));
-        climb = THREE.MathUtils.clamp(Math.atan2(flat, Math.max(1, Math.abs(vel.y))) * 0.5, 0, 0.9);
+        else fire(i, btn, aim.point, aim.obj, aim.titan, aim.kind === "world" ? aim.normal : null, input.look);
       }
-      phase += dt;
-      scout.root.position.copy(pos);
-      scout.root.quaternion.copy(facing);
-      scout.animate(pose, dt, { phase, speed: vel.length(), slash: slashT, climb });
-      scout.root.updateMatrixWorld(true);
+      if (input.pressed.has("autoHook")) autoHook(input);
+      updateHooks(dt, input);
 
-      hooks.forEach((h, i) => {
-        const { c, h: head } = cables[i];
-        if (h.state === "idle") {
-          c.visible = head.visible = false;
-          return;
+      if (input.pressed.has("swap") && !slash.on) {
+        if (blades > 0 && sharp < 1) {
+          blades--;
+          sharp = 1;
+          sfx("bladeSwap");
+          startAct("swap", 0.45);
+        } else if (blades === 0) out.push({ type: "toast", title: "No blades left", text: "Find a supply depot" });
+      }
+
+      if (input.pressed.has("attack") && !slash.on) {
+        charging = true;
+        flashed = false;
+        sfx("bladeDraw", 0.6);
+      }
+      if (charging) {
+        chargeT = input.holdTime("attack");
+        if (!flashed && chargeT >= PERFECT[0]) {
+          flashed = true;
+          sfx("charge");
         }
-        scout.launcher[i].getWorldPosition(from);
-        if (h.state === "on") anchor(h, h.end);
-        else if (h.state === "fly") h.end.copy(from).lerp(anchor(h, tmp), Math.min(1, h.t / h.dur));
-        else h.end.lerp(from, Math.min(1, h.t / 0.15));
-        tmp.copy(h.end).sub(from);
-        const len = tmp.length();
-        c.visible = head.visible = len > 0.05;
-        if (!c.visible) return;
-        tmp.divideScalar(len);
-        c.position.copy(from);
-        c.quaternion.setFromUnitVectors(UP, tmp);
-        c.scale.set(1, len, 1);
-        head.position.copy(h.end);
-        head.quaternion.copy(c.quaternion);
-      });
+        if (!input.held.has("attack")) {
+          charging = false;
+          if (sharp > 0) startSlash(input);
+          else if (time - brokeToast > 2) {
+            brokeToast = time;
+            sfx("clang", 0.6);
+            out.push({ type: "toast", title: "Blades broken", text: "Press R to swap" });
+          }
+        }
+      }
 
+      physics(dt, input);
+      if (slash.on) updateSlash(dt);
+      pickMode();
+      supply(dt);
+      animate(dt, input);
       return out;
     },
+    damage(amount, from) {
+      if (mode === "dead") return [];
+      const ev: GameEvent[] = [{ type: "sfx", name: "hurt" }, { type: "shake", strength: 0.35 + amount }];
+      health -= amount;
+      if (from && mode !== "held") {
+        t1.copy(pos).sub(from);
+        t1.y = Math.max(0.3, t1.y);
+        vel.addScaledVector(t1.normalize(), 14);
+      }
+      if (health <= 0) {
+        const saved = out.length;
+        die();
+        for (let i = saved; i < out.length; i++) ev.push(out[i]);
+        out.length = saved;
+      }
+      return ev;
+    },
+    respawn,
+    hud() {
+      hud.health = Math.max(0, health);
+      hud.gas = gas;
+      hud.blades = blades;
+      hud.sharp = sharp;
+      hud.hooks[0] = hooks[0].state === "on";
+      hud.hooks[1] = hooks[1].state === "on";
+      hud.charge = charging ? Math.min(1, chargeT / CHARGE_T) : null;
+      hud.aim = aim.kind;
+      hud.aimDist = aim.dist;
+      hud.supply = inSupply;
+      hud.dead = mode === "dead";
+      hud.combo = combo;
+      return hud;
+    },
+    cameraView() {
+      view.mode = mode;
+      view.charge = charging ? Math.min(1, chargeT / CHARGE_T) : 0;
+      view.lockPoint = lock && titans.partPos(lock.titan, lock.part, lockPoint) ? lockPoint : null;
+      return view;
+    },
+    setVisible(on) {
+      scout.root.visible = on;
+    },
     dispose() {
-      cableGeo.dispose();
-      headGeo.dispose();
-      cableMat.dispose();
+      scene.remove(scout.root);
+      scout.dispose();
+      wires.dispose();
     },
   };
-  return api;
+  return player;
 }
-
-export type Player = ReturnType<typeof createPlayer>;

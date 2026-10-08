@@ -1,28 +1,37 @@
 import * as THREE from "three";
-import { createAudio, type Audio } from "./audio";
+import { createAudio } from "./audio";
 import { createCameraRig } from "./camera";
-import type { GameEvent, HudState, MusicState, TitanBlip } from "./contracts";
+import type { Audio, GameEvent, HudState, MusicState, Quality, TitanBlip } from "./contracts";
 import { createFx } from "./fx";
 import { createInput } from "./input";
 import { createPlayer } from "./player";
-import { createRender, QUALITIES, type Quality } from "./render";
-import { createTitans, type Titan } from "./titans";
-import { createWorld, raycast } from "./world";
+import { createRender } from "./render";
+import { createTitans } from "./titans";
+import { createWorld } from "./world";
 
-export { QUALITIES, type Quality };
+export type { Quality };
+export const QUALITIES: Record<Quality, { label: string; detail: string }> = {
+  low: { label: "Performance", detail: "No shadows or outlines, high frame rate" },
+  medium: { label: "Balanced", detail: "Ink outlines, soft shadows, steam" },
+  high: { label: "Fidelity", detail: "Sharp shadows, bloom, heavy steam" },
+};
 
 export type Settings = { quality: Quality; muted: boolean; volume: number; sensitivity: number; invertY: boolean };
-export type UiEvent = { type: "toast"; title: string; text?: string } | { type: "score"; amount: number; reason: string } | { type: "hurt"; amount: number };
+export type UiEvent =
+  | { type: "toast"; title: string; text?: string }
+  | { type: "score"; amount: number; reason: string }
+  | { type: "hurt"; amount: number }
+  | { type: "kill"; height: number; speed: number };
+
+const INTRO = { kick: 2.6, titans: 5.5, end: 7.5 };
 
 export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => void, onEvent: (e: UiEvent) => void, settings: Settings) {
   const view = createRender(canvas);
-  const world = createWorld();
-  view.scene.add(world.group);
   const fx = createFx(view.scene);
+  const world = createWorld(view.scene, fx);
   const titans = createTitans(view.scene, world, fx);
   const player = createPlayer(view.scene, world, titans, fx);
   const rig = createCameraRig(view.camera, world);
-  fx.emit(() => world.colossalHead, 14, Infinity, { size: 6, grow: 4, life: 6, rise: 4, spread: 20, speed: 1 });
 
   let playing = false;
   let everPlayed = false;
@@ -30,24 +39,40 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   let cur: Settings = { ...settings };
   let timeScale = 1;
   let slowT = 0;
+  let stopT = 0;
   let score = 0;
-  let lock: Titan | null = null;
+  let introT = -1;
   let reticle: HTMLElement | null = null;
+  let music: MusicState = "title";
 
+  const listener = new THREE.Vector3();
+  const right = new THREE.Vector3();
   const route = (events: readonly GameEvent[]) => {
     for (const e of events) {
-      if (e.type === "sfx") audio?.sfx(e.name, { volume: e.volume, pan: e.pan });
+      if (e.type === "sfx") {
+        if (!audio) continue;
+        if (!e.at) audio.sfx(e.name, { volume: e.volume });
+        else {
+          const d = listener.copy(e.at).sub(view.camera.position);
+          const dist = d.length();
+          right.set(1, 0, 0).applyQuaternion(view.camera.quaternion);
+          audio.sfx(e.name, { volume: (e.volume ?? 1) * Math.min(1, 40 / Math.max(40, dist)), pan: dist > 0.01 ? THREE.MathUtils.clamp(d.dot(right) / dist, -1, 1) : 0 });
+        }
+      } else if (e.type === "stinger") audio?.stinger(e.name);
       else if (e.type === "shake") rig.addShake(e.strength);
+      else if (e.type === "hitstop") stopT = Math.max(stopT, e.duration);
       else if (e.type === "slowmo") {
         timeScale = e.scale;
         slowT = e.duration;
-      } else if (e.type === "hurt") {
-        player.damage(e.amount);
-        onEvent(e);
+      } else if (e.type === "impact") view.impact(e.kind);
+      else if (e.type === "hurt") {
+        route(player.damage(e.amount, e.from));
+        onEvent({ type: "hurt", amount: e.amount });
       } else if (e.type === "score") {
         score += e.amount;
         onEvent(e);
-      } else onEvent(e);
+      } else if (e.type === "kill") onEvent({ type: "kill", height: e.height, speed: e.speed });
+      else onEvent(e);
     }
   };
 
@@ -56,8 +81,22 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     input.enabled = false;
     if (document.pointerLockElement === canvas) document.exitPointerLock();
   };
+  const kickGate = () => {
+    route(world.kickGate());
+    view.impact("kill");
+  };
+  const endIntro = () => {
+    if (introT < 0) return;
+    if (!world.gateOpen) kickGate();
+    if (titans.wave === 0) titans.start();
+    introT = -1;
+    rig.cinematic(null);
+  };
   const input = createInput(canvas, (code) => {
-    if (code === "Escape") pause();
+    if (code === "Escape") {
+      if (introT >= 0) endIntro();
+      else pause();
+    } else if (code === "Enter" && introT >= 0) endIntro();
     else if (code === "KeyM") {
       cur.muted = !cur.muted;
       audio?.setMuted(cur.muted);
@@ -69,8 +108,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     cur = { ...cur, ...s };
     if (first || s.quality !== undefined) {
       view.setQuality(cur.quality);
-      fx.setBudget(QUALITIES[cur.quality].steam);
-      fx.resize(window.innerHeight);
+      fx.setQuality(cur.quality);
+      world.setQuality(cur.quality);
     }
     audio?.setMuted(cur.muted);
     audio?.setVolume(cur.volume);
@@ -78,32 +117,37 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   applySettings(cur, true);
 
-  const onResize = () => {
-    view.resize();
-    fx.resize(window.innerHeight);
-  };
+  const onResize = () => view.resize();
   const onLock = () => {
-    if (document.pointerLockElement !== canvas && playing) pause();
+    if (document.pointerLockElement !== canvas && playing && introT < 0) pause();
   };
   window.addEventListener("resize", onResize);
   document.addEventListener("pointerlockchange", onLock);
 
   const mouse = { x: 0, y: 0 };
   const proj = new THREE.Vector3();
-  const aimHit = new THREE.Vector3();
+  const camPos = new THREE.Vector3();
+  const camLook = new THREE.Vector3();
+  let t = 0;
   let frames = 0;
   let fps = 60;
   let fpsT = 0;
   let hudT = 0;
   let last = performance.now();
   let raf = 0;
-  let aim: HudState["aim"] = "none";
-  let aimDist = 0;
 
-  const setLock = (t: Titan | null) => {
-    if (lock) lock.m.napeMark.visible = false;
-    lock = t;
-    if (lock) lock.m.napeMark.visible = true;
+  const intro = (dt: number) => {
+    introT += dt;
+    const head = world.colossalHead;
+    const k = Math.min(1, introT / INTRO.end);
+    const e = k * k * (3 - 2 * k);
+    camPos.copy(world.spawn).lerp(head, 0.35 - 0.2 * e);
+    camPos.y = world.spawn.y + 6 - 4 * e;
+    camLook.copy(head).lerp(world.breach, Math.max(0, (introT - INTRO.kick) / (INTRO.end - INTRO.kick)));
+    rig.cinematic(camPos, camLook, 50 + 12 * e);
+    if (introT >= INTRO.kick && !world.gateOpen) kickGate();
+    if (introT >= INTRO.titans && titans.wave === 0) titans.start();
+    if (introT >= INTRO.end) endIntro();
   };
 
   const frame = (now: number) => {
@@ -119,98 +163,93 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     }
     slowT -= real;
     if (slowT <= 0) timeScale = 1;
-    const dt = real * timeScale;
+    stopT -= real;
+    const dt = stopT > 0 ? 0 : real * timeScale;
+    t += dt;
 
     input.takeMouse(mouse);
     rig.mouse(mouse.x, mouse.y);
     input.aim(rig.yaw, rig.pitch, view.camera.position);
     const inp = input.state;
 
-    if (lock && !titans.nape(lock)) setLock(null);
-    if (playing && inp.pressed.has("lock")) {
-      setLock(lock ? null : titans.nearestNape(player.pos, inp.look));
-      audio?.sfx("lock");
-    }
-
-    if (playing) route(titans.update(dt, player));
-    if (playing || !everPlayed) route(player.update(dt, inp, lock, playing));
-    rig.update(real, { pos: player.pos, vel: player.vel, lock: lock ? titans.nape(lock) : null }, playing, input.mouseIdle);
+    if (introT >= 0) intro(real);
+    const control = playing && introT < 0;
+    route(world.update(dt, t));
+    if (playing) route(titans.update(dt, t, player));
+    if (control || !everPlayed) route(player.update(dt, inp, control));
+    rig.update(real, player.cameraView(), playing, input.mouseIdle);
     player.setVisible(view.camera.position.distanceTo(player.pos) > 1.3);
-    view.frame(player.pos);
-    fx.update(dt);
+    const speed = player.vel.length();
+    view.frame(dt, player.pos, control ? THREE.MathUtils.clamp((speed - 25) / 35, 0, 1) : 0);
+    fx.update(dt, view.camera);
     input.endFrame();
 
-    if (playing) {
-      const reach = 100 + view.camera.position.distanceTo(player.pos);
-      const tt = titans.raycast(view.camera.position, inp.look, reach);
-      const tw = raycast(world, view.camera.position, inp.look, reach);
-      const hit = tt && (tw < 0 || tt.t < tw) ? tt.t : tw;
-      aimDist = hit >= 0 ? aimHit.copy(view.camera.position).addScaledVector(inp.look, hit).distanceTo(player.pos) : 0;
-      aim = hit < 0 || aimDist > 100 ? "none" : tt && hit === tt.t ? "titan" : "world";
-    }
-
+    const lock = player.lock;
     if (reticle) {
-      const n = lock ? titans.nape(lock) : null;
-      if (n && playing) {
-        proj.copy(n).project(view.camera);
-        const vis = proj.z < 1;
-        reticle.style.opacity = vis ? "1" : "0";
-        reticle.style.transform = `translate(${((proj.x + 1) / 2) * window.innerWidth}px, ${((1 - proj.y) / 2) * window.innerHeight}px) translate(-50%, -50%)`;
+      const p = lock && control ? titans.partPos(lock.titan, lock.part, proj) : null;
+      if (p) {
+        p.project(view.camera);
+        reticle.style.opacity = p.z < 1 ? "1" : "0";
+        reticle.style.transform = `translate(${((p.x + 1) / 2) * window.innerWidth}px, ${((1 - p.y) / 2) * window.innerHeight}px)`;
+        reticle.dataset.part = lock!.part;
       } else reticle.style.opacity = "0";
     }
+
+    let danger = 0;
+    for (const ti of titans.list()) if (ti.alive) danger = Math.max(danger, 1 - ti.pos.distanceTo(player.pos) / 150);
+    const boss = titans.boss();
+    music = !playing ? "title" : introT >= 0 ? "intro" : !player.alive ? "defeat" : boss ? "boss" : danger > 0.15 ? "battle" : "explore";
+    audio?.update(real, { music, speed, gas: control && inp.held.has("gas") && !player.grounded, danger });
 
     hudT += real;
     if (hudT > 0.1) {
       hudT = 0;
       const blips: TitanBlip[] = [];
-      for (const t of titans.list()) {
-        if (t.state === "dead") continue;
-        const d = Math.hypot(t.pos.x - player.pos.x, t.pos.z - player.pos.z);
-        if (d > 300) continue;
-        const b = Math.atan2(t.pos.x - player.pos.x, t.pos.z - player.pos.z) - rig.yaw;
-        blips.push({ bearing: Math.atan2(Math.sin(b), Math.cos(b)), dist: d, height: t.h, abnormal: t.abnormal });
+      for (const ti of titans.list()) {
+        if (!ti.alive) continue;
+        const d = Math.hypot(ti.pos.x - player.pos.x, ti.pos.z - player.pos.z);
+        if (d > 350) continue;
+        const b = Math.atan2(ti.pos.x - player.pos.x, ti.pos.z - player.pos.z) - rig.yaw;
+        blips.push({ bearing: Math.atan2(Math.sin(b), Math.cos(b)), dist: d, height: ti.height, kind: ti.kind });
       }
-      const p = player.hud();
       onHud({
         playing,
+        intro: introT >= 0,
         fps,
-        speed: player.vel.length() * 3.6,
-        ...p,
+        speed: speed * 3.6,
         wave: titans.wave,
         kills: titans.kills,
         score,
         left: titans.left,
         breakT: titans.breakT,
-        aim,
-        aimDist,
         escape: titans.escape,
-        locked: !!lock,
+        lock: lock ? { part: lock.part, health: titans.partHealth(lock.titan, lock.part), height: lock.titan.height, kind: lock.titan.kind, name: lock.titan.name } : null,
+        boss,
         blips,
+        ...player.hud(),
       });
     }
-    const near = titans.list().some((t) => t.state !== "dead" && t.pos.distanceTo(player.pos) < 120);
-    const music: MusicState = !playing ? "menu" : near ? "battle" : "calm";
-    audio?.update(player.vel.length(), playing && inp.held.has("boost") && player.mode === "air", music);
     view.render();
   };
-
   raf = requestAnimationFrame(frame);
+
+  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { view, world, titans, player, rig, fx, input, endIntro };
 
   return {
     play() {
       if (!audio) {
         audio = createAudio();
         applySettings({});
-        audio.sfx("start");
-        titans.start();
       }
-      audio.resume();
+      void audio.resume();
+      if (!everPlayed) introT = 0;
       playing = true;
       everPlayed = true;
       input.enabled = true;
       canvas.requestPointerLock()?.catch?.(() => {});
     },
     pause,
+    skipIntro: endIntro,
     bindReticle(el: HTMLElement | null) {
       reticle = el;
     },
