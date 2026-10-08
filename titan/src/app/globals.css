@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brass: #d4a24c;
+  --color-blood: #d33a2c;
+  --font-cond: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Impact, sans-serif;
+}
+
+html,
+body {
+  background: #000;
+  overscroll-behavior: none;
+}
+
+.font-cond {
+  font-stretch: condensed;
+}
+
+@utility rgb {
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.8);
+}
+
+.panel-in {
+  animation: panel-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: none; }
+}
+
+.banner-in {
+  animation: banner 2.8s ease-out both;
+}
+@keyframes banner {
+  0% { opacity: 0; transform: translateY(-14px) scale(1.06); }
+  8% { opacity: 1; transform: none; }
+  85% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+
+.xp-rise {
+  animation: xp-rise 1.9s ease-out both;
+}
+@keyframes xp-rise {
+  0% { opacity: 0; transform: translateY(10px); }
+  12% { opacity: 1; transform: none; }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-44px); }
+}
+
+.hurt-flash {
+  animation: hurt 650ms ease-out both;
+}
+@keyframes hurt {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+input[type="range"].slider {
+  appearance: none;
+  height: 4px;
+  background: linear-gradient(to right, #d4a24c var(--fill), rgba(255, 255, 255, 0.2) var(--fill));
+  cursor: pointer;
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 18px;
+  background: #fff;
+  transform: skewX(-12deg);
+  box-shadow: 2px 2px 0 #000;
+}
+input[type="range"].slider::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
+.logo {
+  color: #f3efe6;
+  text-shadow: 0.04em 0.04em 0 #000, 0 0 0.4em rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner-in,
+  .xp-rise {
+    animation: none;
+  }
+}
