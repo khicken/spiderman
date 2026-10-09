@@ -1,14 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-export const RIG = { hipY: 0.93, hipX: 0.1, kneeY: 0.5, shX: 0.235, shY: 1.42, elbY: 1.13, neckY: 1.5, handY: 0.82 };
-
-export const ACC = { beanie: 1, hat: 2, scarf: 4, longCoat: 8, bagL: 16, bagR: 32, backpack: 64, phone: 128, longHair: 256, earmuffs: 512 } as const;
-
-// Color slots: 0 skin, 1 coat, 2 pants, 3 hat, 4 scarf, 5 shoes, 6 hair, 7 bag, 8 dark, 9 white.
-const S = { skin: 0, coat: 1, pants: 2, hat: 3, scarf: 4, shoes: 5, hair: 6, bag: 7, dark: 8, white: 9 };
-// Bones: 0 torso, 1 head, 2 armL, 3 armR, 4 foreL, 5 foreR, 6 thighL, 7 thighR, 8 shinL, 9 shinR.
-
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
@@ -42,53 +34,6 @@ class Rig {
     g.computeBoundingSphere();
     return g;
   }
-}
-
-/** One person template: all accessories baked in, hidden by mask. */
-export function personGeometry() {
-  const r = new Rig();
-  const cap = (rad: number, len: number, seg = 6) => new THREE.CapsuleGeometry(rad, len, 2, seg);
-  r.add(cap(0.17, 0.36, 8), mat(0, 1.17, 0, 1.3, 1, 0.82), 0, S.coat);
-  r.add(new THREE.SphereGeometry(0.1, 8, 6), mat(0, 1.38, 0, 2.3, 0.8, 1.3), 0, S.coat);
-  r.add(new THREE.CylinderGeometry(0.2, 0.215, 0.05, 9), mat(0, 1.0, 0, 1.08, 1, 0.82), 0, S.coat, 0, 0.82);
-  r.add(new THREE.BoxGeometry(0.32, 0.17, 0.21), mat(0, 0.88, 0), 0, S.pants);
-  r.add(new THREE.CylinderGeometry(0.205, 0.25, 0.42, 9, 1, true), mat(0, 0.73, 0, 1, 1, 0.82), 0, S.coat, ACC.longCoat, 0.95);
-  r.add(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 6), mat(0, 1.52, 0), 0, S.skin);
-  r.add(new THREE.BoxGeometry(0.28, 0.34, 0.14), mat(0, 1.2, -0.19), 0, S.bag, ACC.backpack, 0.85);
-  r.add(new THREE.TorusGeometry(0.1, 0.05, 5, 10), mat(0, 1.49, 0.005, 1, 1, 0.85, Math.PI / 2), 0, S.scarf, ACC.scarf);
-  r.add(new THREE.BoxGeometry(0.085, 0.28, 0.035), mat(0.07, 1.33, 0.135, 1, 1, 1, 0.1), 0, S.scarf, ACC.scarf, 0.9);
-  r.add(new THREE.SphereGeometry(0.125, 9, 7), mat(0, 1.64, 0, 1, 1.08, 1), 1, S.skin);
-  r.add(new THREE.SphereGeometry(0.133, 10, 5, 0, Math.PI * 2, 0, Math.PI * 0.52), mat(0, 1.65, -0.012, 1, 1.08, 1, -0.35), 1, S.hair);
-  r.add(new THREE.SphereGeometry(0.13, 10, 6), mat(0, 1.55, -0.05, 1.05, 1.45, 0.7), 1, S.hair, ACC.longHair);
-  for (const s of [-1, 1]) {
-    r.add(new THREE.BoxGeometry(0.042, 0.04, 0.02), mat(s * 0.045, 1.665, 0.112), 1, S.white);
-    r.add(new THREE.BoxGeometry(0.022, 0.03, 0.02), mat(s * 0.045, 1.663, 0.12), 1, S.dark);
-  }
-  r.add(new THREE.BoxGeometry(0.035, 0.05, 0.04), mat(0, 1.625, 0.128), 1, S.skin, 0, 0.9);
-  r.add(new THREE.SphereGeometry(0.142, 10, 5, 0, Math.PI * 2, 0, Math.PI * 0.5), mat(0, 1.665, 0, 1, 1.12, 1), 1, S.hat, ACC.beanie);
-  r.add(new THREE.CylinderGeometry(0.146, 0.146, 0.06, 10, 1, true), mat(0, 1.68, 0), 1, S.hat, ACC.beanie, 0.8);
-  r.add(new THREE.SphereGeometry(0.045, 6, 4), mat(0, 1.83, 0), 1, S.white, ACC.beanie);
-  r.add(new THREE.CylinderGeometry(0.2, 0.2, 0.02, 12), mat(0, 1.74, 0), 1, S.hat, ACC.hat, 0.85);
-  r.add(new THREE.CylinderGeometry(0.11, 0.125, 0.12, 10), mat(0, 1.8, 0), 1, S.hat, ACC.hat);
-  for (const s of [-1, 1]) r.add(new THREE.SphereGeometry(0.05, 6, 4), mat(s * 0.125, 1.64, 0, 0.6, 1, 1), 1, S.scarf, ACC.earmuffs);
-  r.add(new THREE.TorusGeometry(0.13, 0.012, 3, 10, Math.PI), mat(0, 1.66, 0, 1, 1.15, 1, 0, Math.PI / 2), 1, S.scarf, ACC.earmuffs);
-  for (const s of [1, -1]) {
-    const L = s > 0;
-    r.add(cap(0.068, 0.2), mat(s * RIG.shX, 1.27, 0), L ? 2 : 3, S.coat);
-    r.add(cap(0.06, 0.18), mat(s * RIG.shX, 0.99, 0), L ? 4 : 5, S.coat, 0, 0.95);
-    r.add(new THREE.SphereGeometry(0.06, 7, 5), mat(s * RIG.shX, RIG.handY, 0.01, 1, 1.1, 1), L ? 4 : 5, S.scarf, 0, 0.9);
-    r.add(new THREE.BoxGeometry(0.24, 0.27, 0.1), mat(s * (RIG.shX + 0.03), 0.6, 0.02), L ? 4 : 5, S.bag, L ? ACC.bagL : ACC.bagR, L ? 1 : 0.8);
-    r.add(new THREE.TorusGeometry(0.06, 0.008, 3, 8, Math.PI), mat(s * (RIG.shX + 0.03), 0.735, 0.02), L ? 4 : 5, S.dark, L ? ACC.bagL : ACC.bagR);
-  }
-  r.add(new THREE.BoxGeometry(0.075, 0.14, 0.014), mat(-RIG.shX, 0.84, 0.07, 1, 1, 1, -0.4), 5, S.dark, ACC.phone);
-  r.add(new THREE.PlaneGeometry(0.06, 0.12), mat(-RIG.shX, 0.84, 0.079, 1, 1, 1, -0.4), 5, S.white, ACC.phone, 1.6);
-  for (const s of [1, -1]) {
-    const L = s > 0;
-    r.add(cap(0.085, 0.29), mat(s * RIG.hipX, 0.71, 0), L ? 6 : 7, S.pants);
-    r.add(cap(0.07, 0.3), mat(s * RIG.hipX, 0.3, 0), L ? 8 : 9, S.pants, 0, 0.94);
-    r.add(new THREE.BoxGeometry(0.13, 0.13, 0.25), mat(s * RIG.hipX, 0.065, 0.035), L ? 8 : 9, S.shoes);
-  }
-  return r.build();
 }
 
 /** A small dog, facing +z. Bones: 0 body, 1 head, 2-5 legs (FL, FR, BL, BR), 6 tail. */
@@ -178,43 +123,6 @@ bool cwHidden(float bit, float mask) {
 }
 `;
 
-const PERSON_BODY = `
-int b = int(aPart.x + 0.5);
-vec3 n0 = objectNormal;
-if (cwHidden(aPart.z, iD.z)) cwP = vec3(0.0);
-if (b >= 6) {
-  bool L = b == 6 || b == 8;
-  float sd = L ? 1.0 : -1.0;
-  vec3 knee = vec3(${RIG.hipX} * sd, ${RIG.kneeY}, 0.0);
-  vec3 hip = vec3(${RIG.hipX} * sd, ${RIG.hipY}, 0.0);
-  if (b >= 8) { mat3 r = cwF(-(L ? iD.x : iD.y)); cwP = knee + r * (cwP - knee); n0 = r * n0; }
-  mat3 r = cwF(L ? iC.z : iC.w);
-  cwP = hip + r * (cwP - hip); n0 = r * n0;
-} else {
-  if (b == 1) {
-    vec3 neck = vec3(0.0, ${RIG.neckY}, 0.0);
-    mat3 r = cwY(iA.y) * cwF(iA.z);
-    cwP = neck + r * ((cwP - neck) * iD.w); n0 = r * n0;
-  } else if (b >= 2) {
-    bool L = b == 2 || b == 4;
-    float sd = L ? 1.0 : -1.0;
-    vec3 sh = vec3(${RIG.shX} * sd, ${RIG.shY}, 0.0);
-    vec3 el = vec3(${RIG.shX} * sd, ${RIG.elbY}, 0.0);
-    if (b >= 4) { mat3 r = cwF(L ? iB.z : iC.y); cwP = el + r * (cwP - el); n0 = r * n0; }
-    mat3 r = cwF(L ? iB.x : iB.w) * cwZ(sd * (L ? iB.y : iC.x));
-    cwP = sh + r * (cwP - sh); n0 = r * n0;
-  }
-  vec3 hc = vec3(0.0, ${RIG.hipY}, 0.0);
-  mat3 r = cwF(-iA.x) * cwZ(iA.w);
-  cwP = hc + r * (cwP - hc); n0 = r * n0;
-}
-objectNormal = n0;
-`;
-
-const PERSON_COLOR = `(aPart.y < 0.5 ? cwHex(iCol0.x) : aPart.y < 1.5 ? cwHex(iCol0.y) : aPart.y < 2.5 ? cwHex(iCol0.z) : aPart.y < 3.5 ? cwHex(iCol0.w)
-  : aPart.y < 4.5 ? cwHex(iCol1.x) : aPart.y < 5.5 ? cwHex(iCol1.y) : aPart.y < 6.5 ? cwHex(iCol1.z) : aPart.y < 7.5 ? cwHex(iCol1.w)
-  : aPart.y < 8.5 ? vec3(0.02) : vec3(0.9))`;
-
 const DOG_BODY = `
 int b = int(aPart.x + 0.5);
 vec3 n0 = objectNormal;
@@ -267,12 +175,6 @@ function rigMesh(geo: THREE.BufferGeometry, mat: THREE.Material, names: string[]
   mesh.receiveShadow = true;
   mesh.count = 0;
   return { mesh, attrs };
-}
-
-export function personMesh(max: number) {
-  const names = ["iA", "iB", "iC", "iD", "iCol0", "iCol1"];
-  const decl = names.map((n) => `attribute vec4 ${n};`).join("\n");
-  return rigMesh(personGeometry(), rigMaterial("crowd-person", decl, PERSON_BODY, PERSON_COLOR), names, max);
 }
 
 export function dogMesh(max: number) {

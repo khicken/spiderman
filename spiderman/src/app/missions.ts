@@ -1,12 +1,16 @@
 import * as THREE from "three";
 import { BLOCKS, HALF, PERIOD, STREET, rng, type Box, type City } from "./city";
-import type { GameEvent, HudState, Marker, Objective } from "./contracts";
+import type { GameEvent, HudState, Marker, Objective, Saveable } from "./contracts";
 import type { Combat, EnemyKind } from "./combat";
-import { BOSSES, bossArena, type BossName } from "./bosses";
+import { BOSSES, bossArena, bossText, type BossName } from "./bosses";
 import * as M from "./missions-models";
 
 type Player = { pos: THREE.Vector3; vel: THREE.Vector3; mode: string; camera: THREE.Camera };
 export type MissionHud = Pick<HudState, "objective" | "markers" | "progress" | "prompts" | "combo"> & { race: boolean; xp: number };
+type Spot = { x: number; z: number; done: boolean };
+// Missions and activities are separate modules. They share this board so only one task runs at a time and districts count both.
+// busy also covers tasks the player has not engaged yet (a loose getaway car, a noticed crime).
+export const taskBoard = { mission: false, busy: false, activity: false, missionSpots: [] as Spot[], avoid: [] as THREE.Vector3[] };
 
 const G = 24;
 const COLLECTIBLES = 30;
@@ -18,8 +22,11 @@ const BEAM_CRIME = 6;
 const BEAM_CHASE = 10;
 const BEAM_NEXT = 12;
 const BEAM_HIDEOUT = 13;
-const BEAM_BOSS = 17;
-const BEAMS = 23;
+const HIDEOUTS = 3;
+const BOSS_ORDER = (Object.keys(BOSSES) as BossName[]).sort((a, b) => BOSSES[a].level - BOSSES[b].level);
+const BEAM_BOSS = BEAM_HIDEOUT + HIDEOUTS * 2;
+const BEAMS = BEAM_BOSS + BOSS_ORDER.length * 2;
+const BEAM_K = 0.35;
 const CHASE_HITS = 3;
 const SIDEWALK = STREET / 2 + 1.5;
 const XP_ITEM = 100;
@@ -28,6 +35,7 @@ const XP_CHASE = 400;
 const XP_HIDEOUT = 600;
 const MEDALS = ["GOLD", "SILVER", "BRONZE"] as const;
 const MEDAL_XP = [600, 400, 250, 100];
+const NO_MEDAL = 4;
 const RACES = [
   { name: "Midtown Rush", i: 8, j: 9, di: 0, dj: -1, rings: 12 },
   { name: "Harlem Hustle", i: 3, j: 2, di: 1, dj: 0, rings: 13 },
@@ -44,13 +52,12 @@ const WAVES: { kind: EnemyKind; n: number; mix: Partial<Record<EnemyKind, number
   { kind: "thug", n: 2, mix: { shield: 1, gunner: 1 } },
   { kind: "brute", n: 1, mix: { thug: 2, rocket: 1 } },
 ];
-const BOSS_ORDER: BossName[] = ["kingpin", "shocker", "vulture"];
 const PAINT = ["#b01c1c", "#f2f2f2", "#2a4f8f", "#e3b81f", "#7d8288"];
 
 type Crime = { state: "empty" | "active"; kind: number; center: THREE.Vector3; group: number; noticed: boolean; respawnAt: number; farT: number };
-type Race = { name: string; start: THREE.Vector3; rings: THREE.Vector3[]; quats: THREE.Quaternion[]; times: number[]; limit: number; best: number; done: boolean };
+type Race = { name: string; start: THREE.Vector3; rings: THREE.Vector3[]; quats: THREE.Quaternion[]; times: number[]; limit: number; best: number; medal: number; done: boolean };
 type Hideout = { pos: THREE.Vector3; state: "idle" | "active" | "done"; wave: number; group: number; waitT: number };
-type BossSlot = { name: BossName; pos: THREE.Vector3; state: "locked" | "open" | "active" | "done"; id: number };
+type BossSlot = { name: BossName; pos: THREE.Vector3; state: "locked" | "open" | "active" | "done"; id: number; farT?: number };
 
 const lineAt = (k: number) => -HALF + k * PERIOD;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -58,10 +65,13 @@ const inBox = (b: Box, x: number, z: number, m = 0) => x > b.minX - m && x < b.m
 const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 const turn = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * Math.min(1, k);
 const levelNeed = (level: number) => 300 + 200 * level;
-const district = (x: number, z: number) => {
-  const j = Math.floor((z + HALF) / PERIOD);
-  return j <= 1 ? "Harlem" : j <= 5 ? "Upper Manhattan" : j <= 10 ? "Midtown" : "Downtown";
-};
+const levelFloor = (level: number) => (level - 1) * 300 + 100 * level * (level - 1);
+const medalTokens = (m: number) => (m < 3 ? 3 - m : 0);
+const TOKENS = { crime: 1, chase: 1, hideout: 3, boss: 5, level: 1 };
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const count = (v: unknown) => (isNum(v) && v >= 0 ? Math.floor(v) : 0);
+const bools = (v: unknown, n: number) => Array.from({ length: n }, (_, i) => Array.isArray(v) && v[i] === true);
+export const raceStarts = () => RACES.map((d) => new THREE.Vector3(lineAt(d.i), 0, lineAt(d.j)));
 
 export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const r = rng(4242);
@@ -86,6 +96,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const last = new THREE.Vector3();
   const target = new THREE.Vector3();
   const strikeOut = new THREE.Vector3();
+  const cam = new THREE.Vector3();
 
   const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number, colors = false) => {
     const m = new THREE.InstancedMesh(geo, mat, n);
@@ -186,7 +197,9 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   for (const s of roofs.slice(0, 40)) {
     const b = roofBox(s);
     if (!b || items.length >= 12) continue;
-    addItem(b.minX + 2 + r() * (b.maxX - b.minX - 4), b.maxY + 1.1, b.minZ + 2 + r() * (b.maxZ - b.minZ - 4));
+    const x = b.minX + 2 + r() * (b.maxX - b.minX - 4);
+    const z = b.minZ + 2 + r() * (b.maxZ - b.minZ - 4);
+    if (!insideAny(x, b.maxY + 1.1, z, 0.5)) addItem(x, b.maxY + 1.1, z);
   }
   for (const b of shuffled(city.boxes.filter((b) => b.maxY > 40)).slice(0, 60)) {
     if (items.length >= 20) break;
@@ -256,23 +269,46 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       p = q;
     }
     const times = [len / 34 + 3, len / 27 + 3, len / 21 + 3].map(Math.round);
-    return { name: def.name, start, rings: ringsAt, quats, times, limit: Math.round(len / 15 + 10), best: Infinity, done: false };
+    return { name: def.name, start, rings: ringsAt, quats, times, limit: Math.round(len / 15 + 10), best: Infinity, medal: NO_MEDAL, done: false };
   });
 
   const crimes: Crime[] = Array.from({ length: SLOTS }, (_, i) => ({ state: "empty", kind: 0, center: new THREE.Vector3(), group: 0, noticed: false, respawnAt: i ? 35 : 10, farT: 0 }));
   const roofCandidates = city.roofSpots.filter((s) => s.y > 20 && s.y < 90).map(roofBox).filter((b): b is Box => !!b && b.maxX - b.minX > 14 && b.maxZ - b.minZ > 14);
 
-  const bossSlots: BossSlot[] = BOSS_ORDER.map((name) => ({ name, pos: bossArena(city, name), state: "locked", id: 0 }));
+  const bossSlots: BossSlot[] = [];
+  for (const name of BOSS_ORDER) {
+    let pos = bossArena(city, name);
+    const taken = (x: number, z: number) => bossSlots.some((b) => Math.hypot(b.pos.x - x, b.pos.z - z) < 120);
+    const clash = (x: number, z: number) => taken(x, z) || races.some((q) => Math.hypot(q.start.x - x, q.start.z - z) < 80);
+    if (taken(pos.x, pos.z)) {
+      let best = -1;
+      for (let i = 2; i < BLOCKS - 1; i++) {
+        for (let j = 2; j < BLOCKS - 1; j++) {
+          const x = lineAt(i);
+          const z = lineAt(j);
+          if (clash(x, z) || insideAny(x, 1, z, 4)) continue;
+          const d = Math.min(...bossSlots.map((b) => Math.hypot(b.pos.x - x, b.pos.z - z))) - Math.hypot(x, z) * 0.5;
+          if (d > best) [best, pos] = [d, new THREE.Vector3(x, 0, z)];
+        }
+      }
+    }
+    bossSlots.push({ name, pos, state: "locked", id: 0 });
+  }
   const hideoutSpots = (() => {
     const out: THREE.Vector3[] = [];
     const far = (s: THREE.Vector3) => out.every((o) => o.distanceTo(s) > 250) && races.every((q) => q.start.distanceTo(s) > 60) && bossSlots.every((b) => Math.hypot(b.pos.x - s.x, b.pos.z - s.z) > 80);
     for (const s of shuffled(streetSpots.filter((s) => s.y < 0.5 && !insideAny(s.x, 1, s.z, 1.5)))) {
-      if (out.length >= 3) break;
+      if (out.length >= HIDEOUTS) break;
       if (far(s)) out.push(s.clone());
     }
     return out;
   })();
   const hideouts: Hideout[] = hideoutSpots.map((pos) => ({ pos, state: "idle", wave: 0, group: 0, waitT: 0 }));
+  taskBoard.mission = false;
+  taskBoard.activity = false;
+  taskBoard.avoid = [...races.map((q) => q.start), ...hideouts.map((h) => h.pos), ...bossSlots.map((b) => b.pos)];
+  const spots: Spot[] = [];
+  taskBoard.missionSpots = spots;
 
   const hideLines = () => {
     linePos.fill(-9999);
@@ -293,6 +329,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       const b = def.roof ? roofCandidates[Math.floor(r() * roofCandidates.length)] : null;
       if (def.roof && !b) break;
       const s = b ? _w.set((b.minX + b.maxX) / 2, b.maxY, (b.minZ + b.maxZ) / 2) : streetSpots[Math.floor(r() * streetSpots.length)];
+      if (insideAny(s.x, s.y + 1, s.z, 0.5)) continue;
       const d = Math.hypot(s.x - avoid.x, s.z - avoid.z);
       const clear =
         crimes.every((o) => o === c || o.state === "empty" || o.center.distanceTo(s) > 150) &&
@@ -328,6 +365,10 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     _v.copy(c.center);
     if (def.car) _v.x += 3.5;
     c.group = combat.spawnGroup(def.kind, _v, n, { mix: def.mix });
+    if (combat.groupAlive(c.group) === 0) {
+      clearCrime(slot);
+      c.respawnAt = now + 10;
+    }
   };
 
   const clearCrime = (slot: number) => {
@@ -409,14 +450,18 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   let now = 0;
   let started = false;
   const completed = { races: 0, crimes: 0, chases: 0, hideouts: 0, bosses: 0 };
+  const token = (out: GameEvent[], amount: number, reason: string) => {
+    if (amount > 0) out.push({ type: "token", amount, reason });
+  };
   const award = (out: GameEvent[], amount: number, reason: string) => {
-    xp = Math.max(0, xp + amount);
-    levelXp = Math.max(0, levelXp + amount);
+    xp = Math.max(levelFloor(level), xp + amount);
+    levelXp = xp - levelFloor(level);
     out.push({ type: "xp", amount, reason });
     while (levelXp >= levelNeed(level)) {
       levelXp -= levelNeed(level);
       level++;
       out.push({ type: "sfx", name: "levelUp" }, { type: "toast", title: "LEVEL UP", text: `Level ${level}` });
+      token(out, TOKENS.level, `Level ${level}`);
     }
   };
 
@@ -430,21 +475,25 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const medalFor = (q: Race, time: number) => q.times.findIndex((m) => time <= m);
 
   const events: GameEvent[] = [];
-  const busy = () => race.state !== "idle" || combat.bossActive() || hideouts.some((h) => h.state === "active");
+  const busy = () => race.state !== "idle" || combat.bossActive() || hideouts.some((h) => h.state === "active") || taskBoard.activity;
 
   const updateRace = (p: Player, dt: number) => {
     if (race.latch >= 0 && Math.hypot(p.pos.x - races[race.latch].start.x, p.pos.z - races[race.latch].start.z) > 8) race.latch = -1;
     if (race.state === "idle") {
-      if (chase.state === "active" || busy()) return;
+      if ((chase.state === "active" && chase.touched) || busy()) return;
       for (let i = 0; i < races.length; i++) {
         const s = races[i].start;
-        if (i !== race.latch && Math.hypot(p.pos.x - s.x, p.pos.z - s.z) < 5 && p.pos.y < 120) {
+        if (i !== race.latch && Math.hypot(p.pos.x - s.x, p.pos.z - s.z) < 6 && p.pos.y < 30) {
           race.state = "countdown";
           race.idx = i;
           race.t = 0;
           race.count = 3;
           race.next = 0;
           race.latch = i;
+          if (chase.state === "active") {
+            chase.state = "none";
+            chase.nextAt = now + 60;
+          }
           events.push({ type: "sfx", name: "start" }, { type: "toast", title: races[i].name, text: "Swing race" }, { type: "sfx", name: "countdown" }, { type: "toast", title: "3" }, { type: "music", state: "race", duration: 3 });
           return;
         }
@@ -475,13 +524,18 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       events.push({ type: "sfx", name: "checkpoint" });
       if (race.next >= q.rings.length) {
         const medal = medalFor(q, race.t);
+        const got = medal >= 0 ? medal : 3;
         const best = race.t < q.best;
         q.best = Math.min(q.best, race.t);
         if (!q.done) completed.races++;
         q.done = true;
         race.state = "idle";
         events.push({ type: "sfx", name: "complete" }, { type: "toast", title: "RACE COMPLETE", text: `${medal >= 0 ? MEDALS[medal] + "  " : ""}${fmt(race.t)}${best ? "  New best" : ""}` });
-        award(events, MEDAL_XP[medal >= 0 ? medal : 3], `${q.name} ${medal >= 0 ? MEDALS[medal].toLowerCase() : "finish"}`);
+        if (got < q.medal) {
+          award(events, MEDAL_XP[got] - (q.medal < NO_MEDAL ? MEDAL_XP[q.medal] : 0), `${q.name} ${medal >= 0 ? MEDALS[medal].toLowerCase() : "finish"}`);
+          token(events, medalTokens(got) - medalTokens(q.medal), q.name);
+          q.medal = got;
+        }
         return;
       }
     }
@@ -500,7 +554,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
         continue;
       }
       const d = c.center.distanceTo(p.pos);
-      if (!c.noticed && d < 90) {
+      if (!c.noticed && d < 90 && !busy()) {
         c.noticed = true;
         events.push({ type: "sfx", name: "start" }, { type: "toast", title: "CRIME IN PROGRESS", text: CRIMES[c.kind].text });
       }
@@ -515,6 +569,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
         completed.crimes++;
         events.push({ type: "sfx", name: "complete" }, { type: "sfx", name: "cheer" }, { type: "toast", title: "CRIME STOPPED", text: CRIMES[c.kind].name });
         award(events, XP_CRIME, CRIMES[c.kind].name);
+        token(events, TOKENS.crime, CRIMES[c.kind].name);
         c.group = 0;
         c.state = "empty";
         hazards.setMatrixAt(1 + s, ZERO);
@@ -538,11 +593,11 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       if (h.state === "done") continue;
       const d = Math.hypot(p.pos.x - h.pos.x, p.pos.z - h.pos.z);
       if (h.state === "idle") {
-        if (d < 18 && p.pos.y < 8 && !busy()) {
+        if (d < 55 && !busy()) {
           h.state = "active";
           h.wave = 0;
-          h.waitT = 1.5;
-          events.push({ type: "sfx", name: "start" }, { type: "toast", title: "HIDEOUT", text: "Survive three waves" }, { type: "music", state: "combat", duration: 4 });
+          h.waitT = 0;
+          events.push({ type: "sfx", name: "start" }, { type: "toast", title: "HIDEOUT", text: "Clear three waves" });
         }
         continue;
       }
@@ -561,6 +616,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
           completed.hideouts++;
           events.push({ type: "sfx", name: "complete" }, { type: "toast", title: "HIDEOUT CLEARED", text: `+${XP_HIDEOUT} XP` });
           award(events, XP_HIDEOUT, "Hideout cleared");
+          token(events, TOKENS.hideout, "Hideout cleared");
           continue;
         }
         h.waitT = 2;
@@ -569,12 +625,13 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       if (h.waitT > 0) continue;
       const w = WAVES[h.wave];
       h.wave++;
-      h.group = combat.spawnGroup(w.kind, h.pos, w.n, { mix: w.mix, aware: true, radius: 7 });
-      events.push({ type: "sfx", name: "start" }, { type: "toast", title: `WAVE ${h.wave}`, text: h.wave === 3 ? "A brute is coming" : "Enemies incoming" });
+      h.group = combat.spawnGroup(w.kind, h.pos, w.n, { mix: w.mix, aware: h.wave > 1, radius: 7 });
+      const text = h.wave === 1 ? "Take them down quietly" : h.wave === 3 ? "A brute is coming" : "Enemies incoming";
+      events.push({ type: "sfx", name: "start" }, { type: "toast", title: `WAVE ${h.wave}`, text });
     }
   };
 
-  const updateBosses = (p: Player) => {
+  const updateBosses = (p: Player, dtNow: number) => {
     for (const b of bossSlots) {
       if (b.state === "locked" && level >= BOSSES[b.name].level) {
         b.state = "open";
@@ -589,6 +646,15 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       if (b.state === "active" && combat.bossDone(b.id)) {
         b.state = "done";
         completed.bosses++;
+        token(events, TOKENS.boss, BOSSES[b.name].name);
+      } else if (b.state === "active") {
+        b.farT = Math.hypot(p.pos.x - b.pos.x, p.pos.z - b.pos.z) > 180 ? (b.farT ?? 0) + dtNow : 0;
+        if (b.farT > 10) {
+          combat.cancelBoss();
+          b.state = "open";
+          b.farT = 0;
+          events.push({ type: "toast", title: "FIGHT ABANDONED", text: `${BOSSES[b.name].name} got away` });
+        }
       }
     }
   };
@@ -672,9 +738,10 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   };
 
   const setBeam = (i: number, x: number, y: number, z: number, rad: number, h: number, rr: number, g: number, b: number) => {
+    const k = BEAM_K * (0.1 + 0.9 * clamp((Math.hypot(x - cam.x, z - cam.z) - rad) / 50, 0, 1) ** 2);
     _m.makeScale(rad, h, rad).setPosition(x, y, z);
     beams.setMatrixAt(i, _m);
-    setColor(beams, i, rr, g, b);
+    setColor(beams, i, rr * k, g * k, b * k);
   };
   const setBase = (i: number, x: number, y: number, z: number, rad: number, spin: number, rr: number, g: number, b: number) => {
     _e.set(0, spin, 0, "XYZ");
@@ -689,12 +756,13 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const pillar = (i: number, x: number, y: number, z: number, wide: number, k: number, rr: number, g: number, b: number, spin: number) => {
     setBeam(i, x, y, z, wide, 400, rr * 0.35 * k, g * 0.35 * k, b * 0.35 * k);
     setBeam(i + 1, x, y, z, wide * 0.28, 400, rr, g, b);
-    setBase(i, x, y, z, wide * 1.4, spin, rr, g, b);
+    setBase(i, x, y, z, wide * 1.4, spin, rr * 0.5, g * 0.5, b * 0.5);
   };
 
   const render = (p: Player, dt: number, t: number) => {
     const pulse = 0.75 + 0.25 * Math.sin(t * 4);
     p.camera.getWorldQuaternion(_q);
+    p.camera.getWorldPosition(cam);
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (it.got && it.popT > 0.4) {
@@ -737,14 +805,14 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       const k = 0.6 + 0.4 * Math.sin(t * 6 + s);
       pillar(BEAM_CRIME + s * 2, c.center.x, c.center.y, c.center.z, 5, k, 4 * k, 0.3, 0.25, -t);
     }
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < HIDEOUTS; i++) {
       const h = hideouts[i];
       if (!h || h.state !== "idle" || busy()) {
         hideBeam(BEAM_HIDEOUT + i * 2);
         hideBeam(BEAM_HIDEOUT + i * 2 + 1);
         continue;
       }
-      pillar(BEAM_HIDEOUT + i * 2, h.pos.x, 0, h.pos.z, 5, pulse, 3.6, 0.9, 3.2, t * 0.7);
+      pillar(BEAM_HIDEOUT + i * 2, h.pos.x, 0, h.pos.z, 5, pulse, 3.2, 3.2, 3.6, t * 0.7);
     }
     bossSlots.forEach((b, i) => {
       if (b.state !== "open" || busy()) {
@@ -842,8 +910,15 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     updateRace(p, dt);
     updateCrimes(p, dt);
     updateHideouts(p, dt);
-    updateBosses(p);
+    updateBosses(p, dt);
     updateChase(p, dt);
+    taskBoard.mission =
+      race.state !== "idle" ||
+      combat.bossActive() ||
+      hideouts.some((h) => h.state === "active") ||
+      (chase.state === "active" && chase.touched) ||
+      crimes.some((c) => c.state === "active" && c.center.distanceTo(p.pos) < 25);
+    taskBoard.busy = taskBoard.mission || chase.state === "active" || crimes.some((c) => c.state === "active" && c.noticed && c.center.distanceTo(p.pos) < 120);
     updateSparks(dt);
     render(p, dt, t);
     prev.copy(p.pos);
@@ -871,6 +946,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       completed.chases++;
       out.push({ type: "sfx", name: "complete" }, { type: "toast", title: "CHASE COMPLETE", text: `+${XP_CHASE} XP` });
       award(out, XP_CHASE, "Getaway car stopped");
+      token(out, TOKENS.chase, "Getaway car stopped");
     }
     return out;
   };
@@ -884,86 +960,118 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     return out;
   };
 
-  const districts = () => {
-    const tally = new Map<string, [number, number]>();
-    const add = (x: number, z: number, done: boolean) => {
-      const k = district(x, z);
-      const v = tally.get(k) ?? [0, 0];
-      v[0] += done ? 1 : 0;
-      v[1]++;
-      tally.set(k, v);
+  const publishSpots = () => {
+    let n = 0;
+    const put = (x: number, z: number, done: boolean) => {
+      const sp = spots[n] ?? (spots[n] = { x, z, done });
+      sp.x = x;
+      sp.z = z;
+      sp.done = done;
+      n++;
     };
-    for (const it of items) add(it.pos.x, it.pos.z, it.got);
-    for (const q of races) add(q.start.x, q.start.z, q.done);
-    for (const h of hideouts) add(h.pos.x, h.pos.z, h.state === "done");
-    for (const b of bossSlots) add(b.pos.x, b.pos.z, b.state === "done");
-    return ["Harlem", "Upper Manhattan", "Midtown", "Downtown"].filter((n) => tally.has(n)).map((name) => {
-      const [d, n] = tally.get(name)!;
-      return { name, pct: Math.round((100 * d) / n) };
-    });
+    for (const it of items) put(it.pos.x, it.pos.z, it.got);
+    for (const q of races) put(q.start.x, q.start.z, q.done);
+    for (const h of hideouts) put(h.pos.x, h.pos.z, h.state === "done");
+    for (const b of bossSlots) put(b.pos.x, b.pos.z, b.state === "done");
+    spots.length = n;
   };
 
   const hud = (): MissionHud => {
     const markers: Marker[] = [];
     const prompts: { key: string; label: string }[] = [];
-    const near = (x: number, z: number, d: number) => Math.hypot(x - last.x, z - last.z) < d;
-    let objective: Objective | null = null;
+    const flatTo = (x: number, z: number) => Math.hypot(x - last.x, z - last.z);
+    const mark = (x: number, z: number, kind: Marker["kind"], label?: string) => {
+      const m: Marker & { label?: string } = { x, z, kind };
+      if (label) m.label = label;
+      markers.push(m);
+    };
+    const at = (v: THREE.Vector3, dy = 0) => ({ x: v.x, y: v.y + dy, z: v.z });
+    // Candidates in priority order: the first one set wins the objective slot.
+    let racing: Objective | null = null;
+    let boss: Objective | null = null;
+    let hideout: Objective | null = null;
+    let pursuit: Objective | null = null;
+    let fight: Objective | null = null;
+    let carLoose: Objective | null = null;
+    let crimeNear: Objective | null = null;
+    let nearby: Objective | null = null;
+
     if (race.state === "idle") {
       for (const q of races) {
-        markers.push({ x: q.start.x, z: q.start.z, kind: "race" });
-        if (!busy() && !prompts.length && near(q.start.x, q.start.z, 60)) prompts.push({ key: "", label: `Enter the beam: ${q.name}` });
+        mark(q.start.x, q.start.z, "race", q.name);
+        if (!busy() && !prompts.length && flatTo(q.start.x, q.start.z) < 60) prompts.push({ key: "", label: `Land in the blue beam: ${q.name}` });
       }
     } else {
       const q = races[race.idx];
       const n = q.rings[race.next];
-      markers.push({ x: n.x, z: n.z, kind: "checkpoint" });
+      mark(n.x, n.z, "checkpoint");
       const medal = race.state === "running" ? medalFor(q, race.t) : 0;
-      objective = {
+      racing = {
         title: q.name,
         text: race.state === "countdown" ? "Get ready" : "Swing through the rings",
         timer: race.state === "running" ? race.t : 0,
         progress: `${race.next}/${q.rings.length}`,
         medal: medal >= 0 ? `${MEDALS[medal]} ${fmt(q.times[medal])}` : `Limit ${fmt(q.limit)}`,
+        target: at(n),
       };
     }
     for (const b of bossSlots) {
+      const def = BOSSES[b.name];
       if (b.state === "open") {
-        markers.push({ x: b.pos.x, z: b.pos.z, kind: "boss" });
-        if (!objective && near(b.pos.x, b.pos.z, 150)) objective = { title: BOSSES[b.name].name, text: `Reach ${BOSSES[b.name].place}` };
+        mark(b.pos.x, b.pos.z, "boss", def.name);
+        if (!nearby && flatTo(b.pos.x, b.pos.z) < 150) nearby = { title: def.name, text: `Swing to ${def.place}`, target: at(b.pos, 2) };
       }
-      if (b.state === "active" && !objective) objective = { title: BOSSES[b.name].name, text: BOSSES[b.name].intro };
+      if (b.state === "active") {
+        const far = flatTo(b.pos.x, b.pos.z) > 160;
+        boss = { title: def.name, text: far ? "Return to the fight" : bossText(b.name, combat.hud().boss?.phase ?? 1), target: at(b.pos, 2) };
+      }
     }
     for (const h of hideouts) {
       if (h.state === "idle") {
-        markers.push({ x: h.pos.x, z: h.pos.z, kind: "hideout" });
-        if (!objective && near(h.pos.x, h.pos.z, 80)) objective = { title: "Hideout", text: "Step in to start the fight" };
+        mark(h.pos.x, h.pos.z, "hideout", "Hideout");
+        if (!nearby && flatTo(h.pos.x, h.pos.z) < 80) nearby = { title: "Hideout", text: "Step into the white beam", target: at(h.pos, 1) };
       }
       if (h.state === "active") {
-        objective = { title: "Hideout", text: h.group ? "Defeat every enemy" : "Next wave incoming", progress: `Wave ${Math.max(1, h.wave)}/${WAVES.length}` };
+        const left = h.group ? combat.groupAlive(h.group) : 0;
+        hideout = {
+          title: "Hideout",
+          text: h.group ? `Defeat ${left} ${left === 1 ? "enemy" : "enemies"}` : "Next wave incoming",
+          progress: `Wave ${Math.max(1, h.wave)}/${WAVES.length}`,
+          target: at(h.pos, 1),
+        };
       }
     }
     let closest = Infinity;
     for (const c of crimes) {
       if (c.state !== "active") continue;
-      markers.push({ x: c.center.x, z: c.center.z, kind: "crime" });
-      const d = Math.hypot(c.center.x - last.x, c.center.z - last.z);
-      if (!objective && d < 120 && d < closest) {
-        closest = d;
-        const left = combat.groupAlive(c.group);
-        objective = { title: CRIMES[c.kind].name, text: CRIMES[c.kind].text, progress: `${left} left` };
+      const def = CRIMES[c.kind];
+      mark(c.center.x, c.center.z, "crime", def.name);
+      const d = flatTo(c.center.x, c.center.z);
+      if (d >= 120 || d >= closest) continue;
+      closest = d;
+      const left = combat.groupAlive(c.group);
+      const o: Objective = { title: def.name, text: `Defeat ${left} ${left === 1 ? "enemy" : "enemies"}`, target: at(c.center, 1) };
+      if (d < 60) fight = o;
+      else {
+        fight = null;
+        crimeNear = o;
       }
     }
     if (chase.state === "active") {
-      markers.push({ x: chase.pos.x, z: chase.pos.z, kind: "chase" });
-      if (race.state === "idle" && !combat.bossActive() && (chase.touched || closest > 60))
-        objective = {
-          title: "Getaway Car",
-          text: chase.farT > 0 ? "The car is escaping" : chase.touched ? "Web-strike the car" : "Catch the car",
-          progress: `${chase.hits}/${CHASE_HITS} hits`,
-          timer: chase.farT > 0 ? 10 - chase.farT : undefined,
-        };
+      mark(chase.pos.x, chase.pos.z, "chase", "Getaway Car");
+      const o: Objective = {
+        title: "Getaway Car",
+        text: chase.farT > 0 ? "The car is escaping" : chase.touched ? "Web-strike the car with F" : "Catch the getaway car",
+        progress: `${chase.hits}/${CHASE_HITS} hits`,
+        timer: chase.farT > 0 ? 10 - chase.farT : undefined,
+        target: at(chase.pos, 1),
+      };
+      if (chase.touched) pursuit = o;
+      else carLoose = o;
     }
-    for (const it of items) if (!it.got && near(it.pos.x, it.pos.z, 250)) markers.push({ x: it.pos.x, z: it.pos.z, kind: "collectible" });
+    for (const it of items) if (!it.got && flatTo(it.pos.x, it.pos.z) < 250) mark(it.pos.x, it.pos.z, "collectible", "Backpack");
+    const objective = racing ?? boss ?? hideout ?? pursuit ?? fight ?? carLoose ?? crimeNear ?? nearby;
+    publishSpots();
     return {
       race: race.state !== "idle",
       xp,
@@ -976,8 +1084,8 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
         levelProgress: levelXp / levelNeed(level),
         collected: items.filter((it) => it.got).length,
         totalCollectibles: items.length,
-        completed: { ...completed },
-        districts: districts(),
+        completed: { ...completed, "total:races": races.length, "total:hideouts": hideouts.length, "total:bosses": bossSlots.length },
+        districts: [],
       },
     };
   };
@@ -1008,7 +1116,48 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     return out;
   };
 
-  return { update, hud, strikeTarget, strike, trick, addXp, setDetail, dispose, debug: { races, crimes, items, chase, hideouts, bossSlots } };
+  const save: Saveable = {
+    snapshot: () => ({
+      v: 1,
+      xp,
+      crimes: completed.crimes,
+      chases: completed.chases,
+      items: items.map((it) => it.got),
+      races: races.map((q) => ({ done: q.done, medal: q.medal, best: Number.isFinite(q.best) ? q.best : null })),
+      hideouts: hideouts.map((h) => h.state === "done"),
+      bosses: Object.fromEntries(bossSlots.map((b) => [b.name, b.state === "done"])),
+    }),
+    restore: (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      xp = Math.min(count(d.xp), 1e7);
+      level = 1;
+      while (xp >= levelFloor(level + 1)) level++;
+      levelXp = xp - levelFloor(level);
+      completed.crimes = count(d.crimes);
+      completed.chases = count(d.chases);
+      bools(d.items, items.length).forEach((got, i) => {
+        items[i].got = got;
+        items[i].popT = got ? 1 : 0;
+      });
+      const rs = Array.isArray(d.races) ? d.races : [];
+      races.forEach((q, i) => {
+        const e = (rs[i] ?? {}) as Record<string, unknown>;
+        q.medal = isNum(e.medal) && e.medal >= 0 && e.medal <= NO_MEDAL ? Math.floor(e.medal) : NO_MEDAL;
+        q.best = isNum(e.best) && e.best > 0 ? e.best : Infinity;
+        q.done = e.done === true || q.medal < NO_MEDAL;
+      });
+      bools(d.hideouts, hideouts.length).forEach((done, i) => (hideouts[i].state = done ? "done" : "idle"));
+      const bs = d.bosses && typeof d.bosses === "object" ? (d.bosses as Record<string, unknown>) : {};
+      for (const b of bossSlots) b.state = bs[b.name] === true ? "done" : level >= BOSSES[b.name].level ? "open" : "locked";
+      completed.races = races.filter((q) => q.done).length;
+      completed.hideouts = hideouts.filter((h) => h.state === "done").length;
+      completed.bosses = bossSlots.filter((b) => b.state === "done").length;
+      publishSpots();
+    },
+  };
+
+  return { update, hud, strikeTarget, strike, trick, addXp, setDetail, dispose, ...save, debug: { races, race, crimes, items, chase, hideouts, bossSlots } };
 }
 
 export type Missions = ReturnType<typeof createMissions>;

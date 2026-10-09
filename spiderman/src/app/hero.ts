@@ -20,7 +20,7 @@ import {
   type Spec,
   type Surf,
 } from "./hero-body";
-import { ANGLES, CH, JOINTS, NCH, poseTarget, type Ctx } from "./hero-poses";
+import { ANGLES, CH, JOINTS, NCH, SWIM_WRAP, poseTarget, type Ctx } from "./hero-poses";
 import { SUITS, paintSuit, suitMaterial, type Suit, type SuitName } from "./hero-suit";
 
 export type { HeroPose, SuitName };
@@ -267,6 +267,7 @@ export function createHero() {
       started = true;
     }
     const h = Math.min(dt, 1 / 20);
+    if (state === "swim") for (const q of SWIM_WRAP) cur[q] = tgt[q] + wrap(cur[q] - tgt[q]);
     for (let q = 0; q < NCH; q++) {
       const w = om[q] * snap;
       const z = ze[q];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import type { HudState, Marker } from "./contracts";
 import { BLOCKS, HALF, PERIOD } from "./city";
 import { Key } from "./ui-menu";
@@ -9,40 +9,69 @@ export type Pop =
   | { id: number; type: "xp"; amount: number; reason: string }
   | { id: number; type: "penalty"; reason: string }
   | { id: number; type: "toast"; title: string; text?: string }
-  | { id: number; type: "hurt"; amount: number };
+  | { id: number; type: "hurt"; amount: number }
+  | { id: number; type: "token"; amount: number; reason: string };
 
 const R = 74;
 const RANGE = 230;
 const K = R / RANGE;
 
-const MARKER: Record<Marker["kind"], { color: string; r: number; edge: boolean }> = {
-  race: { color: "#3fa9ff", r: 5, edge: true },
-  crime: { color: "#ff2a3c", r: 5, edge: true },
-  chase: { color: "#ff9a1f", r: 5, edge: true },
-  checkpoint: { color: "#5ff2ff", r: 5, edge: true },
-  boss: { color: "#c13cff", r: 6.5, edge: true },
-  hideout: { color: "#ff5a1f", r: 5, edge: true },
-  challenge: { color: "#2ee6a6", r: 5, edge: true },
-  request: { color: "#ffffff", r: 4.5, edge: true },
-  photo: { color: "#9be15d", r: 4, edge: false },
-  cache: { color: "#c58bff", r: 4, edge: false },
-  collectible: { color: "#ffd34d", r: 2.5, edge: false },
-  pigeon: { color: "#b9c2cc", r: 2.5, edge: false },
-  enemy: { color: "#ff4d5a", r: 2.8, edge: false },
-  civilian: { color: "#ffffff", r: 1.8, edge: false },
+export type Labeled = Marker & { label?: string };
+type Target = { x: number; y?: number; z: number };
+
+// One color per task type, matched to its beam in the world.
+export const MARKER: Record<Marker["kind"], { color: string; r: number; edge: boolean; name: string; hint: string }> = {
+  race: { color: "#3fa9ff", r: 5, edge: true, name: "Swing Race", hint: "Land in the blue beam to start" },
+  crime: { color: "#ff2a3c", r: 5, edge: true, name: "Crime", hint: "Swing to the red beam" },
+  chase: { color: "#ff9a1f", r: 5, edge: true, name: "Getaway Car", hint: "Catch the car, then press F" },
+  checkpoint: { color: "#5ff2ff", r: 5, edge: true, name: "Objective", hint: "" },
+  boss: { color: "#ffc21f", r: 6.5, edge: true, name: "Boss", hint: "Swing to the gold beam" },
+  hideout: { color: "#f4f4f4", r: 5, edge: true, name: "Hideout", hint: "Step into the white beam" },
+  challenge: { color: "#d36bff", r: 5, edge: true, name: "Challenge", hint: "Step into the purple beam" },
+  request: { color: "#3ee67f", r: 4.5, edge: true, name: "Request", hint: "Walk up to the green beam" },
+  photo: { color: "#9fd4ff", r: 4, edge: false, name: "Photo Op", hint: "Face the landmark and hold still" },
+  cache: { color: "#ffae2e", r: 4, edge: false, name: "Signal Cache", hint: "Enter the zone, then press V" },
+  collectible: { color: "#ff6b6b", r: 2.5, edge: false, name: "Backpack", hint: "Grab the backpack" },
+  pigeon: { color: "#b9c2cc", r: 2.5, edge: false, name: "Pigeons", hint: "Get close to the flock" },
+  enemy: { color: "#ff4d5a", r: 2.8, edge: false, name: "Enemy", hint: "" },
+  civilian: { color: "#ffffff", r: 1.8, edge: false, name: "Civilian", hint: "" },
 };
+const SUGGEST: Marker["kind"][] = ["race", "crime", "chase", "boss", "hideout", "challenge", "request", "photo", "cache", "pigeon"];
+
+export function nextUp(h: HudState): (Labeled & { d: number }) | null {
+  let best: (Labeled & { d: number }) | null = null;
+  for (const m of h.markers as Labeled[]) {
+    if (!SUGGEST.includes(m.kind)) continue;
+    const d = Math.hypot(m.x - h.x, m.z - h.z);
+    if (!best || d < best.d) best = { ...m, d };
+  }
+  return best;
+}
+
+// Angle of a world point from the camera forward, positive to the right. Forward is (sin h, cos h).
+const relAngle = (h: HudState, t: Target) => {
+  const dx = t.x - h.x;
+  const dz = t.z - h.z;
+  return Math.atan2(-dx * Math.cos(h.heading) + dz * Math.sin(h.heading), dx * Math.sin(h.heading) + dz * Math.cos(h.heading));
+};
+const meters = (d: number) => (d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`);
 
 const GRID = Array.from({ length: BLOCKS + 1 }, (_, i) => -HALF + i * PERIOD);
 const SHADOW = "drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]";
 
-function Minimap({ h }: { h: HudState }) {
+// Heading without the jump at +-PI, so CSS transitions never spin the long way round.
+function useUnwrapped(a: number) {
   const prev = useRef<{ raw: number; acc: number } | null>(null);
-  if (!prev.current) prev.current = { raw: h.heading, acc: h.heading };
-  else if (prev.current.raw !== h.heading) {
-    const d = Math.atan2(Math.sin(h.heading - prev.current.raw), Math.cos(h.heading - prev.current.raw));
-    prev.current = { raw: h.heading, acc: prev.current.acc + d };
+  if (!prev.current) prev.current = { raw: a, acc: a };
+  else if (prev.current.raw !== a) {
+    const d = Math.atan2(Math.sin(a - prev.current.raw), Math.cos(a - prev.current.raw));
+    prev.current = { raw: a, acc: prev.current.acc + d };
   }
-  const rot = prev.current.acc + Math.PI;
+  return prev.current.acc;
+}
+
+function Minimap({ h }: { h: HudState }) {
+  const rot = useUnwrapped(h.heading) + Math.PI;
   const c = Math.cos(h.heading);
   const n = Math.sin(h.heading);
   const ease = "transform 125ms linear";
@@ -73,6 +102,7 @@ function Minimap({ h }: { h: HudState }) {
           let x = (-c * dx + n * dz) * K;
           let y = -(n * dx + c * dz) * K;
           const d = Math.hypot(x, y);
+          if (m.kind === "request" && d > 250 * K) return null;
           const lim = R - 9;
           if (d > lim) {
             if (!st.edge) return null;
@@ -90,7 +120,7 @@ function Minimap({ h }: { h: HudState }) {
 function Health({ h, show }: { h: HudState; show: boolean }) {
   const low = h.health < 0.3;
   return (
-    <div className={`w-[min(300px,60vw)] transition-opacity duration-700 ${SHADOW} ${show ? "opacity-100" : "opacity-0"}`}>
+    <div className={`w-[min(300px,42vw)] transition-opacity duration-700 ${SHADOW} ${show ? "opacity-100" : "opacity-0"}`}>
       <div className="h-3.5 -skew-x-[20deg] bg-black/55 p-[2px] ring-1 ring-white/25">
         <div className={`h-full transition-[width] duration-200 ${low ? "bg-spider" : "bg-white"}`} style={{ width: `${Math.max(0, h.health) * 100}%` }} />
       </div>
@@ -110,7 +140,7 @@ function Health({ h, show }: { h: HudState; show: boolean }) {
 
 function Boss({ b }: { b: NonNullable<HudState["boss"]> }) {
   return (
-    <div className={`glitch-in absolute left-1/2 top-4 w-[min(560px,calc(100%-32px))] -translate-x-1/2 ${SHADOW}`}>
+    <div className={`glitch-in absolute bottom-[200px] left-1/2 w-[min(560px,calc(100%-32px))] sm:bottom-auto sm:top-16 -translate-x-1/2 ${SHADOW}`}>
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-cond text-3xl font-black uppercase italic leading-none tracking-tight">{b.name}</div>
@@ -148,16 +178,19 @@ function Sense({ s }: { s: NonNullable<HudState["sense"]> }) {
   );
 }
 
-function Objective({ o }: { o: NonNullable<HudState["objective"]> }) {
+function Objective({ o, dist }: { o: NonNullable<HudState["objective"]>; dist: number | null }) {
   const medal: Record<string, string> = { gold: "#ffcf3a", silver: "#d5dbe3", bronze: "#d48a4f" };
   return (
-    <div key={o.title} className={`panel-in absolute right-4 top-4 flex max-w-[min(340px,calc(100%-32px))] flex-col items-end text-right sm:right-6 sm:top-6 ${SHADOW}`}>
+    <div key={o.title} className={`panel-in flex flex-col items-end text-right ${SHADOW}`}>
       <div className="-skew-x-12 bg-spider px-3 py-0.5 font-cond text-sm font-black uppercase italic tracking-wider shadow-[3px_3px_0_#000]">{o.title}</div>
-      <div className="mt-2 text-[15px] font-semibold leading-snug">{o.text}</div>
+      <div className="mt-2 text-[13px] font-semibold leading-snug sm:text-[15px]">
+        {o.text}
+        {dist !== null && dist > 8 && <span className="ml-2 font-cond font-bold italic tabular-nums text-white/60">{meters(dist)}</span>}
+      </div>
       {(o.timer !== undefined || o.progress || o.medal) && (
         <div className="mt-1 flex items-baseline gap-3 font-cond font-black italic tabular-nums">
           {o.medal && (
-            <span className="text-xs uppercase tracking-widest" style={{ color: medal[o.medal.toLowerCase()] ?? "#fff" }}>
+            <span className="text-xs uppercase tracking-widest" style={{ color: medal[o.medal.split(" ")[0].toLowerCase()] ?? "#fff" }}>
               {o.medal}
             </span>
           )}
@@ -196,12 +229,173 @@ function Gadget({ g }: { g: NonNullable<HudState["gadget"]> }) {
   );
 }
 
-export function Hud({ h, pops, showVitals }: { h: HudState; pops: Pop[]; showVitals: boolean }) {
+export function clockText(hours: number) {
+  const m = Math.floor((((hours % 24) + 24) % 24) * 60);
+  const h24 = Math.floor(m / 60);
+  return `${((h24 + 11) % 12) + 1}:${String(m % 60).padStart(2, "0")} ${h24 < 12 ? "AM" : "PM"}`;
+}
+
+function TokenIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" className="shrink-0">
+      <path d="M8 1 14 4.5v7L8 15 2 11.5v-7Z" fill="#ffc21f" stroke="#000" strokeWidth={1.2} />
+      <path d="M8 4.5 11 6.25v3.5L8 11.5 5 9.75v-3.5Z" fill="#e2231a" />
+    </svg>
+  );
+}
+
+function Status({ h, token }: { h: HudState; token: Extract<Pop, { type: "token" }> | undefined }) {
+  const p = h.progress;
+  return (
+    <div className={`flex items-center gap-3 ${SHADOW}`}>
+      <div className="flex items-center gap-1.5">
+        <span className="-skew-x-12 bg-white px-1.5 font-cond text-sm font-black italic leading-tight text-black">{p.level}</span>
+        <div className="h-1.5 w-14 -skew-x-12 bg-black/55 ring-1 ring-white/20 sm:w-20">
+          <div className="h-full bg-spider" style={{ width: `${Math.min(1, Math.max(0, p.levelProgress)) * 100}%` }} />
+        </div>
+      </div>
+      <div className="relative flex items-center gap-1 font-cond text-sm font-black italic tabular-nums" data-hud="tokens">
+        <TokenIcon />
+        <span key={`n${h.tokens}`} className={token ? "glitch-in text-[#ffc21f]" : ""}>
+          {h.tokens}
+        </span>
+        {token && (
+          <div key={`p${token.id}`} className="xp-rise absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap">
+            <span className="text-[#ffc21f]">+{token.amount}</span> <span className="text-xs font-bold not-italic uppercase text-white/75">{token.reason}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Stealth({ s }: { s: NonNullable<HudState["stealth"]> }) {
+  const a = Math.min(1, Math.max(0, s.alert));
+  const col = s.hidden ? "#ffffff" : "#ff2a3c";
+  return (
+    <div className={`absolute left-1/2 top-[calc(50%+26px)] w-24 -translate-x-1/2 text-center ${SHADOW}`} data-hud="stealth">
+      <div className="font-cond text-[11px] font-black uppercase tracking-[0.3em]" style={{ color: col }}>
+        {s.hidden ? "Hidden" : "Seen"}
+      </div>
+      <div className="mt-1 h-1 bg-black/55 ring-1 ring-white/20">
+        <div className="h-full transition-[width] duration-150" style={{ width: `${a * 100}%`, background: a > 0.66 ? "#ff2a3c" : a > 0.33 ? "#ffd23a" : "#ffffff" }} />
+      </div>
+    </div>
+  );
+}
+
+const SPAN = Math.PI / 2;
+const CW = 440;
+const PX = CW / 2 / SPAN;
+const STEP = Math.PI / 12;
+const CARDINAL = ["N", "E", "S", "W"];
+
+function Compass({ h, t, color, dist }: { h: HudState; t: Target | null; color: string; dist: number }) {
+  // Compass bearing: north (-z) is 0, east (+x) is +90 degrees.
+  const bearing = Math.PI - useUnwrapped(h.heading);
+  const ticks = [];
+  for (let k = Math.floor((bearing - SPAN) / STEP) - 1; k <= Math.ceil((bearing + SPAN) / STEP) + 1; k++) {
+    const q = ((k % 24) + 24) % 24;
+    ticks.push(
+      q % 6 === 0 ? (
+        <span key={k} className="absolute top-1 -translate-x-1/2 font-cond text-[13px] font-black italic leading-none" style={{ left: k * STEP * PX }}>
+          {CARDINAL[q / 6]}
+        </span>
+      ) : (
+        <span key={k} className={`absolute top-1.5 w-px -translate-x-1/2 bg-white ${q % 3 === 0 ? "h-2.5 opacity-60" : "h-1.5 opacity-35"}`} style={{ left: k * STEP * PX }} />
+      ),
+    );
+  }
+  const rel = t ? relAngle(h, t) : 0;
+  const inView = t && Math.abs(rel) <= SPAN;
+  const dy = t?.y !== undefined ? t.y - h.height - 1 : 0;
+  return (
+    <div className={`absolute left-1/2 top-3 h-11 -translate-x-1/2 ${SHADOW}`} style={{ width: `min(${CW}px, 38vw)` }} data-hud="compass">
+      <div
+        className="absolute inset-x-0 top-0 h-6 overflow-hidden border-b border-white/25 bg-gradient-to-b from-black/45 to-black/10"
+        style={{ maskImage: "linear-gradient(90deg, transparent, black 18%, black 82%, transparent)", WebkitMaskImage: "linear-gradient(90deg, transparent, black 18%, black 82%, transparent)" }}
+      >
+        <div className="absolute left-1/2 top-0 h-full" style={{ transform: `translateX(${-bearing * PX}px)`, transition: "transform 125ms linear" }}>
+          {ticks}
+          {inView && (
+            <span className="absolute top-[3px] h-3.5 w-3.5 -translate-x-1/2 rotate-45 ring-2 ring-black/70" style={{ left: (bearing + rel) * PX, background: color }} />
+          )}
+        </div>
+      </div>
+      <div data-hud="clock" className="absolute -left-3 top-[3px] -translate-x-full whitespace-nowrap font-cond text-[13px] font-black italic leading-none tabular-nums text-white/85">{clockText(h.clock)}</div>
+      <span className="absolute left-1/2 top-6 h-0 w-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-spider" />
+      {t && !inView && (
+        <span className={`absolute top-[5px] font-cond text-sm font-black leading-none ${rel > 0 ? "-right-4" : "-left-4"}`} style={{ color }}>
+          {rel > 0 ? "\u25B6" : "\u25C0"}
+        </span>
+      )}
+      {t && (
+        <div className="absolute left-1/2 top-7 -translate-x-1/2 whitespace-nowrap font-cond text-xs font-bold italic tabular-nums text-white/85">
+          {Math.abs(dy) > 10 && <span style={{ color }}>{dy > 0 ? "\u25B2 " : "\u25BC "}</span>}
+          {meters(dist)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Screen spot from yaw only: the camera pitch is not in the HUD state, so height assumes the default tilt.
+function Waypoint({ h, t, color, dist }: { h: HudState; t: Target; color: string; dist: number }) {
+  if (typeof window === "undefined" || dist < 12) return null;
+  const rel = relAngle(h, t);
+  const tanV = Math.tan((30 * Math.PI) / 180);
+  const tanH = tanV * (window.innerWidth / Math.max(1, window.innerHeight));
+  const sx = Math.tan(rel) / tanH;
+  if (Math.abs(rel) < Math.PI / 2 && Math.abs(sx) < 0.9) {
+    const elev = Math.atan2((t.y ?? h.height + 1) - h.height - 1.5, Math.max(dist, 1));
+    const sy = Math.min(0.8, Math.max(-0.75, Math.tan(elev + 0.15) / tanV));
+    return (
+      <div className={`absolute -translate-x-1/2 -translate-y-1/2 text-center ${SHADOW}`} style={{ left: `${50 + sx * 50}%`, top: `${50 - sy * 50}%`, transition: "left 125ms linear, top 125ms linear" }}>
+        <div className="mx-auto h-3 w-3 rotate-45 ring-2 ring-black/60" style={{ background: color }} />
+        <div className="mt-1 font-cond text-[11px] font-bold italic tabular-nums text-white/80">{meters(dist)}</div>
+      </div>
+    );
+  }
+  const right = rel > 0;
+  return (
+    <div className={`absolute top-1/2 flex -translate-y-1/2 items-center gap-1 ${right ? "right-3 flex-row-reverse" : "left-3"} ${SHADOW}`}>
+      <span className="font-cond text-2xl font-black leading-none" style={{ color }}>
+        {right ? "\u25B6" : "\u25C0"}
+      </span>
+      <span className="font-cond text-xs font-bold italic tabular-nums text-white/80">{meters(dist)}</span>
+    </div>
+  );
+}
+
+function NextUp({ m }: { m: Labeled & { d: number } }) {
+  const st = MARKER[m.kind];
+  return (
+    <div key={m.label ?? m.kind} className={`panel-in flex flex-col items-end text-right ${SHADOW}`}>
+      <div className="font-cond text-[11px] font-black uppercase tracking-[0.3em] text-white/60">Next up</div>
+      <div className="mt-1 flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rotate-45" style={{ background: st.color }} />
+        <span className="font-cond text-base font-black uppercase italic leading-none sm:text-lg">{m.label ?? st.name}</span>
+        <span className="font-cond text-sm font-bold italic tabular-nums text-white/70">{meters(m.d)}</span>
+      </div>
+      <div className="mt-1 text-[13px] leading-snug text-white/80">{st.hint}</div>
+      <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/55">
+        <Key dark>Esc</Key> Map
+      </div>
+    </div>
+  );
+}
+
+export function Hud({ h, pops, showVitals, tip }: { h: HudState; pops: Pop[]; showVitals: boolean; tip?: ReactNode }) {
   const lines = Math.min(Math.max((h.speed - 110) / 160, 0), 0.45);
   const toast = [...pops].reverse().find((p) => p.type === "toast");
   const penalty = [...pops].reverse().find((p) => p.type === "penalty");
   const hurt = [...pops].reverse().find((p) => p.type === "hurt");
   const xps = pops.filter((p) => p.type === "xp");
+  const token = [...pops].reverse().find((p): p is Extract<Pop, { type: "token" }> => p.type === "token");
+  const next = h.objective ? null : nextUp(h);
+  const goal: Target | null = h.objective?.target ?? next;
+  const goalColor = h.objective ? "#e2231a" : next ? MARKER[next.kind].color : "#fff";
+  const dist = goal ? Math.hypot(goal.x - h.x, goal.z - h.z) : 0;
   return (
     <div className="pointer-events-none absolute inset-0 font-sans">
       {lines > 0 && (
@@ -224,13 +418,21 @@ export function Hud({ h, pops, showVitals }: { h: HudState; pops: Pop[]; showVit
         />
       )}
 
-      <div className="absolute left-4 top-4 sm:left-6 sm:top-6">
+      <div className="absolute left-4 top-[60px] flex max-w-[42vw] flex-col gap-2 sm:left-6 sm:top-6 sm:max-w-[340px]">
         <Health h={h} show={showVitals} />
+        <Status h={h} token={token} />
+        {tip}
       </div>
 
+      <Compass h={h} t={goal} color={goalColor} dist={dist} />
+      {goal && <Waypoint h={h} t={goal} color={goalColor} dist={dist} />}
       {h.boss && <Boss b={h.boss} />}
-      {h.objective && <Objective o={h.objective} />}
+      <div data-hud="right" className="absolute right-4 top-[60px] flex max-w-[46vw] flex-col items-end sm:right-6 sm:top-6 sm:max-w-[340px]">
+        {h.objective && <Objective o={h.objective} dist={h.objective.target ? dist : null} />}
+        {next && <NextUp m={next} />}
+      </div>
       {h.sense && <Sense s={h.sense} />}
+      {h.stealth && <Stealth s={h.stealth} />}
 
       <div className="absolute left-1/2 top-1/2 -ml-[2px] -mt-[2px] h-1 w-1 rounded-full bg-white/80" />
 
@@ -247,7 +449,7 @@ export function Hud({ h, pops, showVitals }: { h: HudState; pops: Pop[]; showVit
       )}
 
       {penalty?.type === "penalty" && (
-        <div key={penalty.id} className="warn-in absolute bottom-40 left-1/2 w-max max-w-[calc(100%-32px)] -translate-x-1/2">
+        <div key={penalty.id} className="warn-in absolute bottom-[210px] left-1/2 sm:bottom-40 w-max max-w-[calc(100%-32px)] -translate-x-1/2">
           <div className="flex items-center gap-2.5 -skew-x-12 border-l-4 border-warn bg-black/75 px-4 py-2 shadow-[4px_4px_0_rgba(0,0,0,0.5)]">
             <svg width="20" height="18" viewBox="0 0 20 18" className="skew-x-12">
               <path d="M10 1 L19 17 H1 Z" fill="#ffd23a" />
@@ -284,7 +486,7 @@ export function Hud({ h, pops, showVitals }: { h: HudState; pops: Pop[]; showVit
       )}
 
       {h.prompts.length > 0 && (
-        <div className="absolute bottom-24 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-x-4 gap-y-2 px-4">
+        <div className="absolute bottom-[132px] left-1/2 flex w-full -translate-x-1/2 flex-wrap justify-center gap-x-4 gap-y-2 px-4 sm:bottom-24 sm:w-auto" data-hud="prompts">
           {h.prompts.map((p) => (
             <div key={p.key + p.label} className="flex items-center gap-2 rounded-sm bg-black/55 py-1 pl-1 pr-3 backdrop-blur-sm">
               {p.key && <Key>{p.key}</Key>}
@@ -295,7 +497,11 @@ export function Hud({ h, pops, showVitals }: { h: HudState; pops: Pop[]; showVit
       )}
 
       <div className="absolute bottom-4 left-4 flex items-end gap-3 sm:bottom-6 sm:left-6">
-        <Minimap h={h} />
+        <div className="h-[104px] w-[104px] sm:h-[148px] sm:w-[148px]" data-hud="minimap">
+          <div className="origin-top-left scale-[0.7027] sm:scale-100">
+            <Minimap h={h} />
+          </div>
+        </div>
         {h.gadget && <Gadget g={h.gadget} />}
       </div>
 

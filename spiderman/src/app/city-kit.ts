@@ -295,11 +295,12 @@ export class Bulbs {
         attribute vec3 data;
         uniform float uTime;
         uniform float uScale;
+        uniform float fogFar;
         varying vec3 vColor;
         #include <fog_pars_vertex>
         void main() {
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
+          gl_Position = -mvPosition.z > fogFar ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mvPosition;
           float f = abs(data.y);
           float b = f == 0.0 ? 1.0 : data.y > 0.0 ? mix(0.06, 1.0, step(0.5, fract(uTime * f + data.z))) : 0.5 + 0.5 * sin(6.2832 * (uTime * f + data.z));
           float px = data.x * uScale / -mvPosition.z;

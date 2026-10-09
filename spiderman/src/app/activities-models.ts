@@ -192,6 +192,8 @@ export function dotTexture() {
     }
   }
   const t = new THREE.DataTexture(data, n, n);
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearFilter;
   t.needsUpdate = true;
   return t;
 }

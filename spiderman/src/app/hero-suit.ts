@@ -1,12 +1,19 @@
 import * as THREE from "three";
 import { PARTS, TAU, clamp01, hex, sstep, type PartKey, type RGB, type Vec } from "./hero-body";
 
-export type SuitName = "miles" | "classic" | "symbiote";
+export type SuitName = "miles" | "classic" | "symbiote" | "advanced" | "noir" | "stealth" | "punk" | "verse" | "iron";
 
-export const SUITS: { id: SuitName; label: string }[] = [
-  { id: "miles", label: "Miles Morales" },
-  { id: "classic", label: "Classic" },
-  { id: "symbiote", label: "Symbiote" },
+// cost is in suit tokens
+export const SUITS: { id: SuitName; label: string; cost: number }[] = [
+  { id: "miles", label: "Miles Morales", cost: 0 },
+  { id: "classic", label: "Classic", cost: 0 },
+  { id: "symbiote", label: "Symbiote", cost: 0 },
+  { id: "advanced", label: "Advanced", cost: 2 },
+  { id: "noir", label: "Noir", cost: 3 },
+  { id: "stealth", label: "Stealth", cost: 4 },
+  { id: "punk", label: "Spider-Punk", cost: 6 },
+  { id: "verse", label: "Spider-Verse", cost: 8 },
+  { id: "iron", label: "Iron Spider", cost: 10 },
 ];
 
 // Box-filtered coverage of a line of half-width w at distance d
@@ -140,7 +147,7 @@ const LEGS: [number, number][][] = [
 ];
 
 // Spider drawn in a unit box, y down
-function spider(color: string, lw: number, body: number, outline?: string) {
+function spider(color: string, lw: number, body: number, outline?: string, extra?: (g: CanvasRenderingContext2D) => void) {
   const c = canvas(256);
   const g = c.getContext("2d")!;
   g.setTransform(128, 0, 0, 128, 128, 128);
@@ -165,10 +172,11 @@ function spider(color: string, lw: number, body: number, outline?: string) {
   };
   if (outline) draw(outline, 0.07);
   draw(color, 0);
+  extra?.(g);
   return readMask(c);
 }
 
-type Texel = { col: RGB; emi: RGB; h: number; rough: number; coat: number; lw: number };
+type Texel = { col: RGB; emi: RGB; h: number; rough: number; coat: number; metal: number; lw: number };
 
 type Look = {
   sheen: number;
@@ -193,7 +201,7 @@ function emblemAt(m: Mask, P: Vec, cy: number, size: number, back: boolean) {
   return sample(m, P.x / size + 0.5, (cy - P.y) / size + 0.5);
 }
 
-function lensPaint(P: Vec, masks: ReturnType<typeof lensMasks>, frameCol: RGB, o: Texel, glow: number) {
+function lensPaint(P: Vec, masks: ReturnType<typeof lensMasks>, frameCol: RGB, o: Texel, glow: number, lens: RGB = [0.97, 0.98, 1], tint: RGB = [0.62, 0.66, 0.74]) {
   if (P.z <= 0) return;
   const i = sample(masks.frameM, (P.x + 0.1) / 0.2, (0.1 - P.y) / 0.2);
   if (i < 0) return;
@@ -203,11 +211,325 @@ function lensPaint(P: Vec, masks: ReturnType<typeof lensMasks>, frameCol: RGB, o
   put(o.emi, [0, 0, 0], f);
   o.h = Math.max(o.h, f * 0.8 - l * 0.6);
   o.rough += (0.3 - o.rough) * f;
-  put(o.col, [0.97, 0.98, 1], l);
-  put(o.emi, [0.62 * glow, 0.66 * glow, 0.74 * glow], l);
+  put(o.col, lens, l);
+  put(o.emi, [tint[0] * glow, tint[1] * glow, tint[2] * glow], l);
   o.rough += (0.06 - o.rough) * l;
   o.coat += (1 - o.coat) * l;
 }
+
+// Halftone dot coverage on a (a, b) plane in meters
+function dot(a: number, b: number, cell: number, amt: number, px: number) {
+  const fx = a / cell - Math.round(a / cell);
+  const fy = b / cell - Math.round(b / cell);
+  const r = 0.5 * Math.sqrt(clamp01(amt)) * cell;
+  return sstep(r + px, r - px, Math.hypot(fx, fy) * cell);
+}
+
+const inkEdge = (o: Texel, ink: RGB, edge: number, w: number, px: number) => put(o.col, ink, 1 - sstep(w - px, w + px, edge));
+
+const EXTRA: Partial<Record<SuitName, () => SuitDef>> = {
+  advanced: () => {
+    const red = hex("#c8141f");
+    const navy = hex("#121a36");
+    const white = hex("#f4f5f7");
+    const ink = hex("#0a0b12");
+    const em = spider("#f4f5f7", 0.085, 1.15);
+    const masks = lensMasks(0.008);
+    return {
+      look: {
+        sheen: 0.4,
+        sheenColor: "#9aa6e0",
+        normal: 0.9,
+        rim: [0.06, 0.065, 0.1],
+        desat: 0.5,
+        cool: [0.93, 0.97, 1.12],
+        wing: { base: "#121a36", alpha: 0.66, line: "#f4f5f7" },
+      },
+      paint: (part, P, phi, px, side, o) => {
+        let d = 1;
+        if (part === "torso") d = Math.max(P.y - 0.2, P.z > 0 ? 0.045 - Math.abs(P.x) : -1);
+        else if (part === "pelvis" || part === "thigh") d = -1;
+        else if (part === "shin") d = -0.2 + 0.035 * Math.max(0, Math.cos(phi)) - P.y;
+        const redness = sstep(-px, px, d);
+        o.col.splice(0, 3, ...navy);
+        put(o.col, red, redness);
+        const k = webCov(part, P, phi, px, o.lw) * redness;
+        put(o.col, ink, k);
+        if (d !== 1 && d !== -1) inkEdge(o, ink, Math.abs(d), 0.002, px);
+        o.h = webCov(part, P, phi, px * 3, 1.3) * redness;
+        o.rough = 0.6 - 0.2 * redness;
+        o.coat = 0.15 + 0.25 * k;
+        if (part === "torso")
+          for (const back of [false, true]) {
+            const i = emblemAt(em, P, back ? 0.27 : 0.3, back ? 0.36 : 0.4, back);
+            if (i >= 0) {
+              put(o.col, white, em.a[i]);
+              put(o.emi, [0.05, 0.05, 0.06], em.a[i]);
+              o.h = Math.max(o.h, em.a[i] * 0.8);
+              o.rough += (0.35 - o.rough) * em.a[i];
+            }
+          }
+        if (part === "head") lensPaint(P, masks, ink, o, 1);
+      },
+    };
+  },
+  noir: () => {
+    const cloth = hex("#3d3d41");
+    const seam = hex("#1c1c1f");
+    const leather = hex("#202022");
+    const em = spider("#141416", 0.08, 1.1);
+    const masks = lensMasks(0.01);
+    return {
+      look: {
+        sheen: 0.6,
+        sheenColor: "#9a9aa0",
+        normal: 1.2,
+        rim: [0.07, 0.07, 0.07],
+        desat: 1,
+        cool: [1, 1, 1],
+        wing: { base: "#2a2a2d", alpha: 0.7, line: "#0e0e10" },
+      },
+      paint: (part, P, phi, px, side, o) => {
+        o.col.splice(0, 3, ...cloth);
+        const k = webCov(part, P, phi, px, 0.9 * o.lw);
+        put(o.col, seam, k * 0.85);
+        const quilt = 0.5 + 0.5 * Math.sin(P.y * 260) * Math.sin(phi * 9);
+        o.h = webCov(part, P, phi, px * 3, 1.5) * 0.7 + quilt * 0.25;
+        o.rough = 0.88;
+        o.coat = 0.04;
+        let lea = 0;
+        if (part === "handL" || part === "handR" || part === "foot") lea = 1;
+        else if (part === "shin") lea = sstep(-px, px, -0.24 - P.y);
+        else if (part === "pelvis") lea = sstep(-px, px, 0.012 - Math.abs(P.y - 0.07));
+        else if (part === "forearm") lea = sstep(-px, px, -0.2 - P.y);
+        put(o.col, leather, lea);
+        o.rough += (0.42 - o.rough) * lea;
+        o.coat += (0.35 - o.coat) * lea;
+        o.h *= 1 - lea;
+        if (part === "pelvis" && P.z > 0) {
+          const b = sstep(px, -px, Math.max(Math.abs(P.x) - 0.022, Math.abs(P.y - 0.07) - 0.016));
+          put(o.col, hex("#8a8a8e"), b);
+          o.metal += (0.8 - o.metal) * b;
+          o.rough += (0.35 - o.rough) * b;
+        }
+        if (part === "torso") {
+          const i = emblemAt(em, P, 0.31, 0.3, false);
+          if (i >= 0) put(o.col, em.rgb, em.a[i], i * 3);
+        }
+        if (part === "head") lensPaint(P, masks, hex("#121213"), o, 0.18, [0.3, 0.31, 0.33], [0.6, 0.6, 0.6]);
+      },
+    };
+  },
+  stealth: () => {
+    const black = hex("#0b0c0e");
+    const line = hex("#0f3d37");
+    const glow: RGB = [0.03, 0.5, 0.42];
+    const em = spider("#3cffd9", 0.045, 0.85);
+    const masks = lensMasks(0.006);
+    return {
+      look: {
+        sheen: 0.3,
+        sheenColor: "#4f6a66",
+        normal: 0.8,
+        rim: [0.035, 0.075, 0.075],
+        desat: 0.9,
+        cool: [0.9, 0.98, 1.1],
+        wing: { base: "#0b0c0e", alpha: 0.75, line: "#2ee8c4" },
+      },
+      paint: (part, P, phi, px, side, o) => {
+        o.col.splice(0, 3, ...black);
+        const k = webCov(part, P, phi, px, 0.8 * o.lw);
+        put(o.col, line, k);
+        put(o.emi, glow, k * 0.55);
+        o.h = webCov(part, P, phi, px * 3, 1.2) * 0.8;
+        o.rough = 0.72;
+        o.coat = 0.1;
+        if (part === "torso") {
+          const i = emblemAt(em, P, 0.31, 0.26, false);
+          if (i >= 0) {
+            put(o.col, hex("#3cffd9"), em.a[i]);
+            put(o.emi, glow, em.a[i]);
+          }
+        }
+        if (part === "head") lensPaint(P, masks, hex("#020203"), o, 1, [0.55, 1, 0.92], [0.06, 0.62, 0.52]);
+      },
+    };
+  },
+  punk: () => {
+    const red = hex("#d4161f");
+    const darkRed = hex("#7d0a12");
+    const denim = hex("#24439c");
+    const yellow = hex("#ffd21f");
+    const ink = hex("#0a0a0b");
+    const em = spider("#0a0a0b", 0.12, 1.25, "#ffd21f");
+    const masks = lensMasks(0.009);
+    return {
+      look: {
+        sheen: 0.3,
+        sheenColor: "#b0b8e0",
+        normal: 1,
+        rim: [0.06, 0.06, 0.09],
+        desat: 0.4,
+        cool: [0.95, 0.98, 1.08],
+        wing: { base: "#24439c", alpha: 0.7, line: "#ffd21f" },
+      },
+      paint: (part, P, phi, px, side, o) => {
+        const r = Math.hypot(P.x, P.z);
+        let jean = 0;
+        let edge = 1;
+        let black = 0;
+        if (part === "torso") {
+          const d = Math.abs(Math.sin(phi)) - 0.55 + (P.z < 0 ? 1 : 0) + 0.02 * Math.sin(P.y * 140);
+          jean = sstep(-px * 8, px * 8, d * 0.05);
+          edge = Math.abs(d) * 0.05;
+        } else if (part === "upperArm" || part === "thigh") jean = 1;
+        else if (part === "pelvis") jean = 1;
+        else if (part === "handL" || part === "handR" || part === "foot") black = 1;
+        else if (part === "shin") {
+          const d = -0.26 - P.y;
+          black = sstep(-px, px, d);
+          edge = Math.abs(d);
+        }
+        o.col.splice(0, 3, ...red);
+        put(o.col, darkRed, dot(phi * r, P.y, 0.012, 0.35, px));
+        put(o.col, ink, webCov(part, P, phi, px, 1.2 * o.lw) * (1 - jean));
+        const twill = 0.5 + 0.5 * Math.sin((P.y + phi * r) * 900);
+        const jc: RGB = [denim[0] * (0.85 + 0.25 * twill), denim[1] * (0.85 + 0.25 * twill), denim[2] * (0.85 + 0.25 * twill)];
+        put(o.col, jc, jean);
+        if (part === "thigh") {
+          const knee = sstep(px, -px, Math.hypot(phi * r * 0.8, P.y + 0.36) - 0.035) * sstep(0, 0.3, Math.cos(phi));
+          put(o.col, yellow, knee);
+        }
+        if (part === "upperArm") put(o.col, yellow, sstep(px, -px, Math.abs(P.y + 0.12) - 0.012));
+        put(o.col, ink, black);
+        inkEdge(o, ink, edge, 0.0035, px);
+        o.h = webCov(part, P, phi, px * 3, 1.3) * (1 - jean) + twill * 0.15 * jean;
+        o.rough = 0.55 + 0.3 * jean;
+        o.coat = 0.15 * (1 - jean) + 0.4 * black;
+        if (part === "torso") {
+          const i = emblemAt(em, P, 0.3, 0.42, false);
+          if (i >= 0) {
+            put(o.col, em.rgb, em.a[i], i * 3);
+            o.h = Math.max(o.h, em.a[i] * 0.6);
+          }
+        }
+        if (part === "head") lensPaint(P, masks, ink, o, 1);
+      },
+    };
+  },
+  verse: () => {
+    const black = hex("#0b0b0e");
+    const red = hex("#e01328");
+    const spray = spider("#e01328", 0.075, 1.05, undefined, (g) => {
+      g.lineWidth = 0.035;
+      for (const [x, y, l] of [[-0.07, 0.3, 0.28], [0.02, 0.34, 0.42], [0.09, 0.28, 0.2], [-0.5, 0.3, 0.25], [0.52, 0.42, 0.18]]) {
+        g.beginPath();
+        g.moveTo(x, y);
+        g.lineTo(x, y + l);
+        g.stroke();
+        g.beginPath();
+        g.arc(x, y + l, 0.026, 0, TAU);
+        g.fill();
+      }
+      for (let i = 0; i < 26; i++) {
+        const a = i * 2.4;
+        const d = 0.5 + 0.45 * ((i * 37) % 11) / 11;
+        g.beginPath();
+        g.arc(Math.cos(a) * d, Math.sin(a) * d * 0.8, 0.008 + 0.012 * ((i * 13) % 5) / 5, 0, TAU);
+        g.fill();
+      }
+    });
+    const masks = lensMasks(0.0075);
+    return {
+      look: {
+        sheen: 0.5,
+        sheenColor: "#5c6278",
+        normal: 1,
+        rim: [0.055, 0.06, 0.09],
+        desat: 0.9,
+        cool: [0.9, 0.96, 1.18],
+        wing: { base: "#0b0b0e", alpha: 0.7, line: "#e01328" },
+      },
+      paint: (part, P, phi, px, side, o) => {
+        const r = Math.hypot(P.x, P.z);
+        o.col.splice(0, 3, ...black);
+        const k = webCov(part, P, phi, px, 1.15 * o.lw);
+        put(o.col, red, k);
+        put(o.emi, [0.1, 0.004, 0.012], k);
+        o.h = webCov(part, P, phi, px * 3, 1.4);
+        o.rough = 0.6 - 0.15 * k;
+        o.coat = 0.1 + 0.2 * k;
+        let ht = 0;
+        if (part === "upperArm") ht = sstep(-0.12, 0.05, P.y);
+        else if (part === "torso") ht = sstep(0.3, 0.46, P.y) * sstep(0.4, 0.9, Math.abs(Math.sin(phi)));
+        else if (part === "forearm" || part === "shin") ht = 0.5 * sstep(0, 0.4, Math.max(0, Math.sin(phi) * side));
+        if (ht > 0) put(o.col, red, dot(phi * r, P.y, 0.011, ht * 0.7, px));
+        if (part === "foot") {
+          put(o.col, red, 0.92);
+          o.rough = 0.45;
+        }
+        if (part === "torso")
+          for (const back of [false, true]) {
+            const i = emblemAt(spray, P, back ? 0.27 : 0.3, back ? 0.42 : 0.36, back);
+            if (i >= 0) {
+              put(o.col, red, spray.a[i]);
+              put(o.emi, [0.32, 0.01, 0.03], spray.a[i]);
+              o.rough += (0.75 - o.rough) * spray.a[i];
+            }
+          }
+        if (part === "head") lensPaint(P, masks, hex("#020203"), o, 1);
+      },
+    };
+  },
+  iron: () => {
+    const red = hex("#a50f1b");
+    const gold = hex("#e0aa48");
+    const ink = hex("#141216");
+    const em = spider("#e0aa48", 0.075, 1.15, "#141216");
+    const masks = lensMasks(0.0075);
+    return {
+      look: {
+        sheen: 0.2,
+        sheenColor: "#e8c890",
+        normal: 0.8,
+        rim: [0.08, 0.06, 0.05],
+        desat: 0.3,
+        cool: [1, 0.98, 1.02],
+        wing: { base: "#a50f1b", alpha: 0.7, line: "#e0aa48" },
+      },
+      paint: (part, P, phi, px, side, o) => {
+        const out = Math.sin(phi) * side;
+        let d = -1;
+        if (part === "torso") d = Math.max((Math.abs(Math.sin(phi)) - 0.86) * 0.1, P.z < 0 ? (P.y - 0.36) * 1 : -1);
+        else if (part === "upperArm" || part === "thigh") d = (out - 0.75) * 0.05;
+        else if (part === "forearm") d = Math.max(-0.17 - P.y, (out - 0.4) * 0.05);
+        else if (part === "shin") d = -0.14 + 0.04 * Math.max(0, -Math.cos(phi)) - P.y;
+        else if (part === "foot") d = 1;
+        else if (part === "pelvis") d = 0.012 - Math.abs(P.y - 0.08);
+        const g = sstep(-px, px, d);
+        o.col.splice(0, 3, ...red);
+        put(o.col, gold, g);
+        if (d > -1 && d < 1) inkEdge(o, ink, Math.abs(d), 0.0016, px);
+        const k = webCov(part, P, phi, px * 2, 0.8);
+        put(o.col, ink, k * 0.45 * (1 - g));
+        o.h = k * 0.9 + g * 0.3;
+        o.rough = 0.32 - 0.06 * g;
+        o.coat = 0.75 - 0.4 * g;
+        o.metal = 0.25 + 0.5 * g;
+        if (part === "torso") {
+          const i = emblemAt(em, P, 0.3, 0.4, false);
+          if (i >= 0) {
+            put(o.col, em.rgb, em.a[i], i * 3);
+            const gg = em.a[i] * sstep(0.3, 0.6, em.rgb[i * 3 + 1]);
+            o.metal += (0.75 - o.metal) * gg;
+            o.h = Math.max(o.h, em.a[i] * 0.9);
+          }
+        }
+        if (part === "head") lensPaint(P, masks, gold, o, 1);
+      },
+    };
+  },
+};
 
 function suitDef(name: SuitName): SuitDef {
   if (name === "classic") {
@@ -267,6 +589,8 @@ function suitDef(name: SuitName): SuitDef {
       },
     };
   }
+  const extra = EXTRA[name];
+  if (extra) return extra();
   if (name === "symbiote") {
     const black = hex("#09090c");
     const white = hex("#f2f2f5");
@@ -277,7 +601,7 @@ function suitDef(name: SuitName): SuitDef {
         sheen: 0.35,
         sheenColor: "#8890b0",
         normal: 0.7,
-        rim: [0.05, 0.06, 0.095],
+        rim: [0.065, 0.075, 0.115],
         desat: 0.9,
         cool: [0.9, 0.96, 1.18],
         wing: { base: "#0c0c12", alpha: 0.7, line: "#d8dae6" },
@@ -318,7 +642,7 @@ function suitDef(name: SuitName): SuitDef {
       sheen: 0.5,
       sheenColor: "#5c6278",
       normal: 1,
-      rim: [0.045, 0.055, 0.085],
+      rim: [0.06, 0.07, 0.105],
       desat: 0.92,
       cool: [0.9, 0.96, 1.18],
       wing: { base: "#0d0d12", alpha: 0.66, line: "#e3132a" },
@@ -391,7 +715,7 @@ const toCanvas = (im: ImageData) => {
 export function paintSuit(name: SuitName): Suit {
   const def = suitDef(name);
   const P = { x: 0, y: 0, z: 0, t: 0 };
-  const o: Texel = { col: [0, 0, 0], emi: [0, 0, 0], h: 0, rough: 0.6, coat: 0, lw: 1 };
+  const o: Texel = { col: [0, 0, 0], emi: [0, 0, 0], h: 0, rough: 0.6, coat: 0, metal: 0, lw: 1 };
   const tex = {} as SuitTex;
   for (const part of Object.keys(PARTS) as PartKey[]) {
     const { surf, w: w0, h: h0, px: px0 } = PARTS[part];
@@ -418,6 +742,7 @@ export function paintSuit(name: SuitName): Suit {
           surf(u, surf.inv ? surf.inv(tv) : tv, P);
           o.emi[0] = o.emi[1] = o.emi[2] = 0;
           o.h = 0;
+          o.metal = 0;
           def.paint(part, P, TAU * u + Math.PI, px, side, o);
           const i = y * w + x;
           const q = i * 4;
@@ -430,6 +755,7 @@ export function paintSuit(name: SuitName): Suit {
             hgt[i] = o.h + 0.07 * Math.sin(x * 2.1) * Math.sin(y * 2.1);
             si.data[q] = Math.round(clamp01(o.coat) * 255);
             si.data[q + 1] = Math.round(clamp01(o.rough) * 255);
+            si.data[q + 2] = Math.round(clamp01(o.metal) * 255);
             si.data[q + 3] = 255;
           }
         }
@@ -470,7 +796,7 @@ type Uniforms = { uRim: { value: THREE.Color }; uDesat: { value: number }; uCool
 
 export function suitMaterial() {
   const u: Uniforms = { uRim: { value: new THREE.Color() }, uDesat: { value: 0 }, uCool: { value: new THREE.Color(1, 1, 1) } };
-  const m = new THREE.MeshPhysicalMaterial({ emissive: "#ffffff", emissiveIntensity: 1, sheenRoughness: 0.45, roughness: 1, clearcoat: 1 });
+  const m = new THREE.MeshPhysicalMaterial({ emissive: "#ffffff", emissiveIntensity: 1, sheenRoughness: 0.45, roughness: 1, clearcoat: 1, metalness: 1 });
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, u);
     s.fragmentShader = s.fragmentShader
@@ -501,6 +827,7 @@ export function suitMaterial() {
     m.roughnessMap = t.spec;
     m.clearcoatMap = t.spec;
     m.clearcoatRoughnessMap = t.spec;
+    m.metalnessMap = t.spec;
     m.sheen = L.sheen;
     m.sheenColor.set(L.sheenColor);
     u.uRim.value.setRGB(...L.rim);

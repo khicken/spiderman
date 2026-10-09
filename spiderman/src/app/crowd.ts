@@ -1,15 +1,23 @@
 import * as THREE from "three";
-import { BLOCKS, HALF, PERIOD, rng, type Box, type City } from "./city";
+import { BLOCKS, HALF, PERIOD, rng, type City } from "./city";
 import { signal } from "./city-cars";
 import { softDot } from "./city-textures";
-import type { GameEvent, Marker, PlayerApi } from "./contracts";
-import { ACC, RIG, cartGeometry, dogMesh, personMesh } from "./crowd-body";
-import { buildNav, lateral } from "./crowd-nav";
+import type { GameEvent, HeroPose, Marker, PlayerApi } from "./contracts";
+import { cartGeometry, dogMesh } from "./crowd-body";
+import { EMO, createEmotes } from "./crowd-emote";
+import { buildNav } from "./crowd-nav";
+import { ACC, RIG, personMaterial, personMesh } from "./crowd-person";
+import { SKY } from "./sky-state";
+import {
+  ADULT, BLINK, BROW, BUMP, CH, CHAT, CHEER, COWER, CUSTOMER, DODGE, ELDER, FIVE, FLEE, FOLLOW, GREET, HUG, IDLE_CROSS, IDLE_PHONE,
+  IDLE_POCKET, IDLE_SHIFT, JUMP, KID, LOOK, NONE, PHOTO, POINT, Ped, SELFIE, SHAKE, STAND, STUMBLE, SWAY, VENDOR, WALK, WATCH, WAVE, pose,
+} from "./crowd-pose";
 
 const MAX = 560;
 const MAX_DOGS = 40;
 const MAX_CARTS = 16;
 const MAX_FLASH = 48;
+const MAX_EMO = 40;
 const STEAM = 8;
 const LANE = [13.75, 14.45];
 const CURB = 11.8;
@@ -18,34 +26,29 @@ const CART_LAT = 12.45;
 const CART_ALONG = 17;
 const SIDEWALK_PER_M2 = 0.0314;
 const DETAIL = [
-  { spacing: 8, groups: 4, radius: 90, steam: false },
-  { spacing: 5.2, groups: 10, radius: 110, steam: true },
-  { spacing: 3.9, groups: 16, radius: 120, steam: true },
+  { spacing: 8, groups: 4, radius: 90, steam: false, near: 14 },
+  { spacing: 5.2, groups: 10, radius: 110, steam: true, near: 22 },
+  { spacing: 3.9, groups: 16, radius: 120, steam: true, near: 30 },
 ];
 
-const WALK = 0, FOLLOW = 1, STAND = 2;
-const CHAT = 0, VENDOR = 1, CUSTOMER = 2;
-const NONE = 0, WATCH = 1, CHEER = 2, FLEE = 3, COWER = 4, STUMBLE = 5, DODGE = 6, GREET = 7;
-const LOOK = 0, POINT = 1, WAVE = 2, PHOTO = 3;
-const BUMP = 0, FIVE = 1, SELFIE = 2;
-
-const SKIN = [0x8d5524, 0xc68642, 0xe0ac69, 0xf1c27d, 0xffdbac, 0x5c3a21, 0x3b2219, 0xa8714a, 0xd9a07a];
-const COATS = [0x2b3a55, 0x7a1f2b, 0x1f1f24, 0x6b4f3a, 0x3d5a3c, 0xb8860b, 0xc0392b, 0x5d6d7e, 0x6c3483, 0x2e86c1, 0xe8e2d0, 0xd35400, 0x16a085, 0x3a3f47, 0xa04060];
-const PANTS = [0x22252b, 0x2c3e50, 0x3b4f6b, 0x4a4a4a, 0x5b4636, 0x1b1b1b, 0x6d6152];
-const BRIGHT = [0xc0392b, 0xf1c40f, 0x27ae60, 0xe67e22, 0xecf0f1, 0x2980b9, 0x9b59b6, 0xe84393, 0x1abc9c, 0x34495e, 0xd4ac0d];
-const HAIR = [0x1a1110, 0x3b2314, 0x6a4e2e, 0xb8935a, 0x8c8c8c, 0x2b1b0f, 0xa0522d, 0x111111];
+const SKIN = [0x8d5524, 0xc68642, 0xe0ac69, 0xf1c27d, 0xffdbac, 0x6a4228, 0x4e2f20, 0xa8714a, 0xd9a07a, 0xeac4a0];
+const COAT_DARK = [0x2b3a55, 0x1f1f24, 0x3a3f47, 0x4a3b2e, 0x2f4a3a, 0x5d6d7e, 0x23324a];
+const COAT_WARM = [0xb5835a, 0x8c6d4f, 0x7a1f2b, 0x9c8b70, 0x55606b, 0x6e2f3a, 0x3f4f3b];
+const COAT_BRIGHT = [0xc0392b, 0xd35400, 0x2e86c1, 0x16a085, 0xe0b020, 0x8e44ad, 0xe84393, 0x27ae60, 0xe8e2d0, 0xf06a2a];
+const PANTS = [0x22252b, 0x2c3e50, 0x3b4f6b, 0x4a4a4a, 0x5b4636, 0x1b1b1b, 0x6d6152, 0x4d6a8f];
+const KNIT = [0xc0392b, 0xf1c40f, 0x27ae60, 0xe67e22, 0xecf0f1, 0x2980b9, 0x9b59b6, 0xe84393, 0x1abc9c, 0x34495e, 0xd4ac0d];
+const HAIR = [0x1a1110, 0x3b2314, 0x6a4e2e, 0xb8935a, 0x2b1b0f, 0xa0522d, 0x111111, 0x4a2c1a];
+const GRAY = [0x9a9a9a, 0xc8c8c8, 0xe6e2da, 0x7d7d7d];
 const SHOES = [0x1a1a1a, 0x3e2a1e, 0x5a3d2b, 0xdedede, 0x6b4a2f];
-const BAGS = [0xc0392b, 0x1e8449, 0xf5f5f5, 0xd4ac0d, 0x7d3c98, 0xb03a2e, 0x1f6fb2];
+const BAGS = [0xc0392b, 0x1e8449, 0xf5f5f5, 0xd4ac0d, 0x7d3c98, 0xb03a2e, 0x1f6fb2, 0x3b2a1e];
+const GLOVES = [0x1a1a1a, 0x3b2a1e, 0x5a2a2a, 0x2c3e50];
+const SHIRT = [0xf2f2f2, 0xd9d4c7, 0x1d1d1d, 0x8fa3b8, 0xc94f4f, 0x6b8e6b];
 const FUR = [0x3b2a1a, 0xc8a165, 0xf0e6d2, 0x1a1a1a, 0x8b5a2b, 0xd2b48c, 0x7a7a7a];
 
 const rnd = Math.random;
 const pick = <T,>(a: readonly T[]) => a[Math.floor(rnd() * a.length)];
 const lineAt = (k: number) => -HALF + k * PERIOD;
 const okBlock = (i: number, j: number) => i >= -2 && i <= BLOCKS - 1 && j >= -2 && j <= BLOCKS + 1;
-const sstep = (a: number, b: number, x: number) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const cx = (i: number, c: number, o: number) => (c === 0 || c === 3 ? lineAt(i) + o : lineAt(i + 1) - o);
 const cz = (j: number, c: number, o: number) => (c < 2 ? lineAt(j) + o : lineAt(j + 1) - o);
@@ -72,65 +75,6 @@ function writeMatrix(e: Float32Array, n: number, yaw: number, w: number, h: numb
   e[k + 15] = 1;
 }
 
-class Ped {
-  on = false;
-  kind = WALK;
-  sub = CHAT;
-  x = 0;
-  z = 0;
-  yaw = 0;
-  home = 0;
-  speed = 1.3;
-  moving = 0;
-  phase = 0;
-  seed = 0;
-  bi = 0;
-  bj = 0;
-  c = 0;
-  dir = 1;
-  o = LANE[0];
-  lat = 0;
-  ek = -1;
-  wn = 0;
-  wi = 0;
-  wx = [0, 0, 0];
-  wz = [0, 0, 0];
-  nbi = 0;
-  nbj = 0;
-  nc = 0;
-  axis = 0;
-  g = 0;
-  waiting = false;
-  delay = 0;
-  crossed = false;
-  re = NONE;
-  reK = 0;
-  reT = 0;
-  reDur = 0;
-  flashT = 0;
-  vx = 0;
-  vz = 0;
-  gx = 0;
-  gz = 0;
-  hx = 0;
-  hz = 0;
-  gyaw = 0;
-  lookX = 0;
-  lookZ = 0;
-  parent = -1;
-  child = -1;
-  dog = -1;
-  cart = -1;
-  greeted = false;
-  w = 1;
-  h = 1;
-  head = 1;
-  mask = 0;
-  col = [0, 0, 0, 0, 0, 0, 0, 0];
-  ang = new Float32Array(15);
-  boxes: Box[] | null = null;
-}
-
 type Dog = { on: boolean; owner: number; x: number; z: number; yaw: number; phase: number; amp: number; wag: number; s: number; fur: number; ear: number; collar: number };
 type Site = { key: number; x: number; z: number; yaw: number; type: number; vendor: number; customers: number[]; seen: boolean };
 type Zone = { x: number; z: number; r: number };
@@ -140,9 +84,11 @@ export type Crowd = ReturnType<typeof createCrowd>;
 export function createCrowd(scene: THREE.Scene, city: City) {
   const group = new THREE.Group();
   scene.add(group);
-  const people = personMesh(MAX);
+  const pMat = personMaterial();
+  const lods = [personMesh(MAX, false, pMat), personMesh(MAX, true, pMat)];
   const dogs = dogMesh(MAX_DOGS);
-  group.add(people.mesh, dogs.mesh);
+  const emotes = createEmotes(MAX_EMO);
+  group.add(lods[0].mesh, lods[1].mesh, dogs.mesh, emotes.mesh);
   const dot = softDot();
 
   const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, map: dot, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -172,7 +118,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   const steamPos = new Float32Array(MAX_CARTS * 2 * STEAM * 3);
   const steamGeo = new THREE.BufferGeometry();
   steamGeo.setAttribute("position", new THREE.BufferAttribute(steamPos, 3).setUsage(THREE.DynamicDrawUsage));
-  const steam = new THREE.Points(steamGeo, new THREE.PointsMaterial({ size: 0.75, map: dot, color: 0xdfe6ee, transparent: true, opacity: 0.32, depthWrite: false }));
+  const steam = new THREE.Points(steamGeo, Object.assign(new THREE.PointsMaterial({ size: 0.75, map: dot, transparent: true, opacity: 0.3, depthWrite: false }), { color: SKY.steam }));
   steam.frustumCulled = false;
   group.add(steam);
 
@@ -180,7 +126,12 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   const flashLife = new Float32Array(MAX_FLASH);
   const flashGeo = new THREE.BufferGeometry();
   flashGeo.setAttribute("position", new THREE.BufferAttribute(flashPos, 3).setUsage(THREE.DynamicDrawUsage));
-  const flash = new THREE.Points(flashGeo, new THREE.PointsMaterial({ size: 1.6, map: dot, color: new THREE.Color(6, 6, 6.5), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  const flashMat = new THREE.PointsMaterial({ size: 1.6, map: dot, color: new THREE.Color(1.8, 1.8, 1.95), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+  // Cap at about 40 CSS px; size already carries the pixel ratio (1.6 * pr).
+  flashMat.onBeforeCompile = (s) => {
+    s.vertexShader = s.vertexShader.replace("#include <fog_vertex>", "gl_PointSize = min(gl_PointSize, size * 25.0);\n#include <fog_vertex>");
+  };
+  const flash = new THREE.Points(flashGeo, flashMat);
   flash.frustumCulled = false;
   group.add(flash);
 
@@ -213,7 +164,8 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   let player: PlayerApi | null = null;
   let cam: THREE.Camera | null = null;
   let freeHint = 0;
-  const tmp = new Float32Array(15);
+  const tmp = new Float32Array(CH);
+  const camQ = new THREE.Quaternion();
   const v3 = new THREE.Vector3();
   const v3b = new THREE.Vector3();
   const m4 = new THREE.Matrix4();
@@ -238,32 +190,79 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     if (p.dog >= 0) pack[p.dog].on = false;
   };
 
-  const dress = (p: Ped, kid: boolean) => {
-    p.col[0] = pick(SKIN);
-    p.col[1] = pick(COATS);
-    p.col[2] = pick(PANTS);
-    p.col[3] = pick(BRIGHT);
-    p.col[4] = pick(BRIGHT);
-    p.col[5] = pick(SHOES);
-    p.col[6] = pick(HAIR);
-    p.col[7] = pick(BAGS);
+  const dress = (p: Ped, age: number) => {
+    const kid = age === KID;
+    const old = age === ELDER;
+    const c = p.col;
+    c[0] = pick(SKIN);
+    c[2] = pick(PANTS);
+    c[3] = pick(KNIT);
+    c[4] = pick(KNIT);
+    c[5] = pick(SHOES);
+    c[6] = old ? pick(GRAY) : pick(HAIR);
+    c[7] = pick(BAGS);
+    c[8] = rnd() < 0.45 ? (rnd() < 0.6 ? pick(GLOVES) : c[4]) : c[0];
+    c[9] = pick(SHIRT);
+    c[11] = c[9];
     let m = 0;
+    const st = rnd();
+    if (old) {
+      c[1] = pick(rnd() < 0.6 ? COAT_WARM : COAT_DARK);
+      if (rnd() < 0.8) m |= ACC.longCoat;
+      if (rnd() < 0.85) m |= ACC.cane;
+      if (rnd() < 0.5) m |= ACC.glasses;
+    } else if (st < (kid ? 0.6 : 0.28)) {
+      c[1] = pick(rnd() < 0.6 ? COAT_BRIGHT : COAT_DARK);
+      m |= ACC.puffer;
+    } else if (!kid && st < 0.52) {
+      c[1] = pick(rnd() < 0.7 ? COAT_WARM : COAT_DARK);
+      m |= ACC.longCoat;
+    } else if (st < 0.74) {
+      c[1] = pick(rnd() < 0.5 ? COAT_BRIGHT : COAT_DARK);
+      m |= ACC.hood;
+    } else c[1] = pick(rnd() < 0.4 ? COAT_BRIGHT : rnd() < 0.5 ? COAT_WARM : COAT_DARK);
+    c[10] = m & ACC.puffer ? c[1] : rnd() < 0.5 ? pick(COAT_DARK) : pick(KNIT);
     const hr = rnd();
-    if (hr < 0.42) m |= ACC.beanie;
-    else if (hr < 0.54) m |= ACC.hat;
-    else if (hr < 0.62) m |= ACC.earmuffs;
-    if (rnd() < 0.55) m |= ACC.scarf;
-    if (!kid && rnd() < 0.3) m |= ACC.longCoat;
-    if (rnd() < 0.3) m |= ACC.longHair;
-    if (rnd() < (kid ? 0.45 : 0.1)) m |= ACC.backpack;
+    if (!kid && hr < 0.28) m |= ACC.longHair;
+    else if (!kid && hr < 0.36) m |= ACC.afro;
+    else {
+      m |= ACC.shortHair;
+      if (hr < 0.45) m |= ACC.ponytail;
+      else if (hr < 0.5) m |= ACC.bun;
+    }
+    if (!kid && !old && !(m & ACC.longHair) && rnd() < 0.16) m |= ACC.beard;
+    if (!kid && !old && rnd() < 0.14) m |= ACC.glasses;
+    const hat = rnd();
+    if (old) {
+      if (hat < 0.45) m |= ACC.hat;
+      else if (hat < 0.6) m |= ACC.cap;
+    } else if (hat < (kid ? 0.6 : 0.34)) m |= ACC.beanie;
+    else if (hat < (kid ? 0.62 : 0.42)) m |= m & ACC.longCoat ? ACC.hat : ACC.cap;
+    else if (hat < 0.47) m |= ACC.earmuffs;
+    if (m & (ACC.beanie | ACC.hat | ACC.cap)) m &= ~(ACC.afro | ACC.bun);
+    if (!(m & ACC.puffer) && rnd() < (m & ACC.longCoat ? 0.6 : 0.4)) m |= ACC.scarf;
+    if (rnd() < (kid ? 0.5 : m & ACC.hood ? 0.35 : 0.08)) m |= ACC.backpack;
+    if (!kid && !old && !(m & (ACC.longCoat | ACC.backpack)) && rnd() < 0.14) m |= ACC.satchel;
+    if (!kid && !old && !(m & ACC.longCoat) && rnd() < 0.12) {
+      m |= ACC.skirt;
+      c[10] = pick(rnd() < 0.5 ? COAT_WARM : KNIT);
+      c[2] = rnd() < 0.6 ? 0x1b1b22 : 0x3a2a35;
+    }
+    p.h = kid ? 0.55 + rnd() * 0.13 : old ? 0.9 + rnd() * 0.08 : 0.93 + rnd() * 0.15;
+    p.w = kid ? 0.95 : old ? 0.95 + rnd() * 0.1 : 0.9 + rnd() * rnd() * 0.42;
+    if (!kid && p.w > 1.12 && rnd() < 0.7) m |= ACC.belly;
     p.mask = m;
-    p.h = kid ? 0.55 + rnd() * 0.12 : 0.92 + rnd() * 0.16;
-    p.w = kid ? 0.95 : 0.88 + rnd() * rnd() * 0.45;
+    p.age = age;
     p.head = kid ? 1.3 : 1;
+    const ir = rnd();
+    p.idle = ir < 0.35 ? IDLE_SHIFT : ir < 0.55 ? IDLE_CROSS : ir < 0.8 ? IDLE_PHONE : IDLE_POCKET;
     p.seed = rnd() * 100;
     p.phase = rnd() * 6;
     p.re = NONE;
     p.greeted = false;
+    p.noticed = -99;
+    p.emo = -1;
+    p.lod = 1;
     p.parent = p.child = p.dog = p.cart = -1;
     p.vx = p.vz = 0;
     p.wn = 0;
@@ -294,7 +293,8 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       const k = alloc();
       if (k < 0) return false;
       const p = peds[k];
-      dress(p, false);
+      const age = rnd() < 0.1 ? ELDER : ADULT;
+      dress(p, age);
       p.on = true;
       p.kind = WALK;
       p.bi = i;
@@ -304,9 +304,9 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       p.x = x;
       p.z = z;
       p.lat = e % 2 ? x : z;
-      p.speed = 1.15 + rnd() * 0.45;
-      const roll = rnd();
-      if (roll < 0.3) {
+      p.speed = age === ELDER ? 0.75 + rnd() * 0.2 : 1.15 + rnd() * 0.45;
+      const roll = age === ELDER ? 0.5 : rnd();
+      if (roll < 0.3 && !(p.mask & ACC.satchel)) {
         p.mask |= rnd() < 0.5 ? ACC.bagL | ACC.bagR : rnd() < 0.5 ? ACC.bagL : ACC.bagR;
         p.speed -= 0.15;
       }
@@ -315,7 +315,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
         const kk = alloc();
         if (kk >= 0) {
           const kid = peds[kk];
-          dress(kid, true);
+          dress(kid, KID);
           kid.on = true;
           kid.kind = FOLLOW;
           kid.parent = k;
@@ -338,7 +338,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
           dg.s = 0.75 + rnd() * 0.55;
           dg.fur = pick(FUR);
           dg.ear = rnd() < 0.5 ? dg.fur : pick(FUR);
-          dg.collar = pick(BRIGHT);
+          dg.collar = pick(KNIT);
           p.dog = di;
           p.mask &= ~ACC.bagR;
         }
@@ -373,7 +373,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
         const k = alloc();
         if (k < 0) return false;
         const p = peds[k];
-        dress(p, rnd() < 0.12);
+        dress(p, rnd() < 0.12 ? KID : rnd() < 0.08 ? ELDER : ADULT);
         p.on = true;
         p.kind = STAND;
         p.sub = CHAT;
@@ -407,7 +407,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     const k = alloc();
     if (k < 0) return -1;
     const p = peds[k];
-    dress(p, sub === CUSTOMER && rnd() < 0.15);
+    dress(p, sub === CUSTOMER && rnd() < 0.15 ? KID : ADULT);
     p.on = true;
     p.kind = STAND;
     p.sub = sub;
@@ -548,6 +548,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     p.reDur = 999;
     p.waiting = false;
     p.boxes = null;
+    if (rnd() < 0.3) emote(p, EMO.alert, 1.4);
     if (clock - lastGasp > 2.5) {
       lastGasp = clock;
       ev.push({ type: "sfx", name: "gasp", volume: 0.8 });
@@ -575,9 +576,29 @@ export function createCrowd(scene: THREE.Scene, city: City) {
 
   const calm = (p: Ped) => p.re === NONE || p.re === WATCH || p.re === DODGE;
 
+  const emote = (p: Ped, kind: number, life: number) => {
+    p.emo = kind;
+    p.emoT = 0;
+    p.emoLife = life;
+  };
+
+  const notice = (p: Ped, dur: number, k: number) => {
+    if (p.age === KID && rnd() < 0.75) k = JUMP;
+    react(p, WATCH, dur, k);
+    p.noticed = clock;
+    const r = rnd();
+    if (k === PHOTO) {
+      if (r < 0.5) emote(p, EMO.camera, 1.6);
+    } else if (k === JUMP) {
+      if (r < 0.6) emote(p, EMO.star, 1.6);
+    } else if (k === WAVE) {
+      if (r < 0.2) emote(p, EMO.heart, 1.5);
+    } else if (r < 0.4) emote(p, EMO.alert, 1.3);
+  };
+
   const watchKind = () => {
     const r = rnd();
-    return r < 0.3 ? LOOK : r < 0.5 ? POINT : r < 0.72 ? WAVE : PHOTO;
+    return r < 0.25 ? LOOK : r < 0.45 ? POINT : r < 0.7 ? WAVE : PHOTO;
   };
 
   const addFlash = (x: number, y: number, z: number) => {
@@ -605,11 +626,12 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     [y, z] = [Math.cos(pitch) * y + Math.sin(pitch) * z, -Math.sin(pitch) * y + Math.cos(pitch) * z];
     x += side * RIG.shX;
     y += RIG.shY - RIG.hipY;
+    [x, z] = [Math.cos(a[15]) * x + Math.sin(a[15]) * z, -Math.sin(a[15]) * x + Math.cos(a[15]) * z];
     [x, y] = [Math.cos(a[3]) * x - Math.sin(a[3]) * y, Math.sin(a[3]) * x + Math.cos(a[3]) * y];
     const lean = -a[0];
     [y, z] = [Math.cos(lean) * y + Math.sin(lean) * z, -Math.sin(lean) * y + Math.cos(lean) * z];
     y += RIG.hipY + a[14];
-    x *= p.w;
+    x = x * p.w + a[SWAY];
     y *= p.h;
     z = z * p.w + 0.06;
     const cs = Math.cos(p.yaw);
@@ -628,7 +650,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       if (hard && d < 6) {
         react(p, STUMBLE, 1.1 + rnd() * 0.5);
         close++;
-      } else if (d < 24 && calm(p) && rnd() < 0.8) react(p, WATCH, 4 + rnd() * 5, watchKind());
+      } else if (d < 24 && calm(p) && rnd() < 0.8) notice(p, 4 + rnd() * 5, watchKind());
     }
     if (hard && nearest < 2) {
       if (clock - lastPenalty > 2) {
@@ -640,164 +662,6 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       lastGasp = clock;
       ev.push({ type: "sfx", name: "gasp" });
     }
-  };
-
-  const pose = (p: Ped, t: number) => {
-    const o = tmp;
-    const ph = p.phase;
-    const mv = p.moving;
-    const run = sstep(2.4, 4, mv);
-    const amp = Math.min(1, mv / 1.3) * (0.42 + run * 0.38);
-    const s = Math.sin(ph);
-    const c = Math.cos(ph);
-    const sd = p.seed;
-    o[0] = 0.04 + run * 0.28 + (p.h < 0.75 ? 0 : 0.02);
-    o[1] = Math.sin(t * 0.3 + sd) * 0.25 * (mv > 0.2 ? 0.4 : 1);
-    o[2] = 0;
-    o[3] = Math.sin(t * 0.9 + sd) * 0.025;
-    o[4] = -amp * s + 0.04;
-    o[5] = 0.12;
-    o[6] = 0.2 + amp * 0.3 + run * 1.1;
-    o[7] = amp * s + 0.04;
-    o[8] = 0.12;
-    o[9] = o[6];
-    o[10] = amp * s;
-    o[11] = -amp * s;
-    o[12] = 0.06 + amp * (1.5 + run) * Math.max(0, c);
-    o[13] = 0.06 + amp * (1.5 + run) * Math.max(0, -c);
-    o[14] = -amp * 0.07 * Math.abs(s) + run * 0.04 * Math.abs(c);
-    if (p.mask & (ACC.bagL | ACC.bagR)) {
-      if (p.mask & ACC.bagL) o[5] += 0.1;
-      if (p.mask & ACC.bagR) o[8] += 0.1;
-    }
-    if (p.child >= 0) {
-      o[4] = 0.15;
-      o[5] = 0.3;
-      o[6] = 0.3;
-    }
-    if (p.kind === FOLLOW) {
-      o[7] = 0.35;
-      o[8] = 0.55;
-      o[9] = 0.2;
-    }
-    if (p.dog >= 0) {
-      o[7] = 0.5 + amp * 0.1 * s;
-      o[9] = 0.6;
-    }
-    let phone = false;
-    if (p.kind === STAND && p.re === NONE) {
-      if (p.sub === VENDOR) {
-        const serve = Math.sin(t * 0.7 + sd) > 0.6;
-        o[0] = 0.18;
-        o[4] = 0.55;
-        o[6] = 0.75;
-        o[7] = serve ? 1.25 : 0.55;
-        o[9] = serve ? 0.4 : 0.75;
-      } else if (sd % 3 < 1) {
-        o[4] = o[7] = 0.5;
-        o[5] = o[8] = -0.35;
-        o[6] = o[9] = 1.95;
-      } else if (p.sub === CUSTOMER && sd % 2 < 1) {
-        phone = true;
-        o[7] = 0.45;
-        o[9] = 1.5;
-        o[2] = -0.45;
-      } else if (Math.sin(t * 1.3 + sd) > 0.35) {
-        o[7] = 0.55 + 0.2 * Math.sin(t * 6 + sd);
-        o[8] = 0.2;
-        o[9] = 1.2 + 0.25 * Math.sin(t * 4.3 + sd);
-      }
-    }
-    if (p.kind === WALK && p.waiting && sd % 4 < 1) {
-      phone = true;
-      o[7] = 0.45;
-      o[9] = 1.5;
-      o[2] = -0.45;
-    }
-    const u = p.reDur > 0 ? p.reT / p.reDur : 0;
-    switch (p.re) {
-      case WATCH:
-        if (p.reK === POINT) {
-          o[7] = 1.5;
-          o[8] = 0.05;
-          o[9] = 0.05;
-        } else if (p.reK === WAVE) {
-          o[7] = 2.35;
-          o[8] = 0.45 + 0.35 * Math.sin(t * 11 + sd);
-          o[9] = 0.45;
-        } else if (p.reK === PHOTO) {
-          phone = true;
-          o[4] = 1.3;
-          o[5] = -0.3;
-          o[6] = 0.75;
-          o[7] = 1.35;
-          o[8] = -0.25;
-          o[9] = 0.6;
-        }
-        break;
-      case CHEER: {
-        const w = t * 10 + sd;
-        if (sd % 2 < 1) {
-          o[4] = o[7] = 2.75 + 0.2 * Math.sin(w);
-          o[5] = o[8] = 0.35;
-          o[6] = o[9] = 0.25 + 0.3 * Math.sin(w);
-          o[14] = Math.max(0, Math.sin(w)) * 0.14;
-        } else {
-          o[4] = o[7] = 1.2;
-          o[5] = o[8] = -0.5 + 0.22 * Math.sin(t * 16 + sd);
-          o[6] = o[9] = 0.9;
-        }
-        o[2] = 0.25;
-        break;
-      }
-      case COWER:
-      case STUMBLE: {
-        const k = p.re === COWER ? 1 : Math.sin(Math.PI * Math.min(1, u * 1.15)) * 0.75;
-        o[14] = -0.42 * k;
-        o[10] = o[11] = 1.5 * k;
-        o[12] = o[13] = 2.2 * k;
-        o[0] = 0.7 * k;
-        o[4] = o[7] = 2.6 * k;
-        o[5] = o[8] = 0.55 * k;
-        o[6] = o[9] = 1.9 * k;
-        o[2] = -0.5 * k;
-        o[3] = 0.04 * Math.sin(t * 31 + sd) * k;
-        break;
-      }
-      case DODGE:
-        o[0] = -0.15;
-        o[4] = o[7] = 0.9;
-        o[5] = o[8] = 0.7;
-        o[6] = o[9] = 1.3;
-        break;
-      case FLEE:
-        o[6] = o[9] = 1.5;
-        if (Math.sin(t * 1.7 + sd) > 0.6) o[1] = 1.1;
-        break;
-      case GREET: {
-        const ext = sstep(0.08, 0.3, u) * (1 - sstep(0.78, 0.98, u));
-        if (p.reK === BUMP) {
-          o[7] = 1.45 * ext;
-          o[9] = 0.15 + 0.5 * (1 - ext);
-        } else if (p.reK === FIVE) {
-          o[7] = 2.65 * ext;
-          o[8] = 0.12;
-          o[9] = 0.2;
-        } else {
-          phone = ext > 0.1;
-          o[7] = 2.2 * ext;
-          o[8] = 0.25 * ext;
-          o[9] = 0.5 * ext;
-          o[4] = 0.35 * ext;
-          o[5] = 1.25 * ext;
-          o[6] = 1.3 * ext;
-          o[3] = 0.12 * ext;
-          o[2] = 0.15;
-        }
-        break;
-      }
-    }
-    return phone;
   };
 
   const steerToward = (p: Ped, tx: number, tz: number, spd: number, dt: number) => {
@@ -920,7 +784,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
 
   const stepFree = (p: Ped, dt: number) => {
     p.moving = 0;
-    if (p.kind === FOLLOW && p.parent >= 0) {
+    if (p.kind === FOLLOW && p.parent >= 0 && p.re !== GREET) {
       const q = peds[p.parent];
       const tx = q.x + Math.cos(q.yaw) * 0.5;
       const tz = q.z - Math.sin(q.yaw) * 0.5;
@@ -1129,8 +993,8 @@ export function createCrowd(scene: THREE.Scene, city: City) {
         react(p, DODGE, 0.7);
       }
       if (lowFly && dist < 3.5 && calm(p)) react(p, STUMBLE, 1.0);
-      if (nearGround && p.re === NONE && dist < 10 && rnd() < dt * 0.25) react(p, WATCH, 2.5 + rnd() * 2, rnd() < 0.5 ? WAVE : watchKind());
-      if (!pl.grounded && feet > 3 && feet < 45 && p.re === NONE && dist < 20 && rnd() < dt * 0.08) react(p, WATCH, 2 + rnd() * 2, POINT);
+      if (nearGround && p.re === NONE && dist < 10 && clock - p.noticed > 8 && rnd() < dt * 0.35) notice(p, 2.5 + rnd() * 2, rnd() < 0.45 ? WAVE : watchKind());
+      if (!pl.grounded && feet > 3 && feet < 45 && p.re === NONE && dist < 20 && clock - p.noticed > 8 && rnd() < dt * 0.08) notice(p, 2 + rnd() * 2, rnd() < 0.7 ? POINT : PHOTO);
 
       if (p.kind === WALK) stepWalker(p, dt);
       else stepFree(p, dt);
@@ -1138,14 +1002,21 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       if (p.re === WATCH || p.re === CHEER) {
         p.yaw += wrap(Math.atan2(-dx, -dz) - p.yaw) * Math.min(1, dt * 4);
       } else if (p.re === GREET) {
-        steerToward(p, p.gx, p.gz, Math.min(3, Math.hypot(p.gx - p.x, p.gz - p.z) * 6), dt);
-        p.yaw += wrap(p.gyaw - p.yaw) * Math.min(1, dt * 8);
-        p.moving = 0;
-        if (p.reK === SELFIE && p.reT > p.reDur * 0.55 && p.flashT > 0) {
-          p.flashT = -1;
-          hand(p, -1, v3);
-          addFlash(v3.x, v3.y, v3.z);
+        const gd = Math.hypot(p.gx - p.x, p.gz - p.z);
+        const spd = Math.min(3.2, gd * 7);
+        if (gd > 0.03) steerToward(p, p.gx, p.gz, spd, dt);
+        p.moving = gd > 0.12 ? spd : 0;
+        if (gd < 0.35) p.yaw += wrap(p.gyaw - p.yaw) * Math.min(1, dt * 10);
+        const hitT = p.reK === SELFIE ? 0.85 : p.reK === HUG ? 0.4 : 0.5;
+        if (!p.hit && p.reT > hitT) {
+          p.hit = true;
+          if (p.reK === SELFIE) {
+            hand(p, -1, v3);
+            addFlash(v3.x, v3.y, v3.z);
+            ev.push({ type: "sfx", name: "photo" });
+          } else if (p.reK !== HUG) ev.push({ type: "sfx", name: "fistBump", volume: p.reK === SHAKE ? 0.5 : 1 });
         }
+        if (p.hit && p.emo < 0 && p.reT > hitT + 0.35) emote(p, p.reK === SELFIE ? EMO.camera : p.reK === FIVE ? EMO.star : EMO.heart, 1.6);
       }
       if (p.vx || p.vz) {
         p.x += p.vx * dt;
@@ -1174,7 +1045,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
         p.x = px + (sx / sd) * 0.8;
         p.z = pz + (sz / sd) * 0.8;
       }
-      if (nearGround && pl.mode === "ground" && dist < candD && !p.greeted && (p.re === NONE || p.re === WATCH || p.re === CHEER)) {
+      if (nearGround && pl.mode === "ground" && dist < candD && !p.greeted && !(p.mask & (ACC.bagL | ACC.bagR)) && p.dog < 0 && p.cart < 0 && (p.re === NONE || p.re === WATCH || p.re === CHEER)) {
         candD = dist;
         cand = i;
       }
@@ -1194,22 +1065,30 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       }
     }
 
-    const iA = people.attrs.iA.array as Float32Array;
-    const iB = people.attrs.iB.array as Float32Array;
-    const iC = people.attrs.iC.array as Float32Array;
-    const iD = people.attrs.iD.array as Float32Array;
-    const c0 = people.attrs.iCol0.array as Float32Array;
-    const c1 = people.attrs.iCol1.array as Float32Array;
-    const mat = people.mesh.instanceMatrix.array as Float32Array;
+    const arr = lods.map((L) => ({
+      a: L.attrs.iA.array as Float32Array,
+      b: L.attrs.iB.array as Float32Array,
+      c: L.attrs.iC.array as Float32Array,
+      d: L.attrs.iD.array as Float32Array,
+      e: L.attrs.iE.array as Float32Array,
+      c0: L.attrs.iCol0.array as Float32Array,
+      c1: L.attrs.iCol1.array as Float32Array,
+      c2: L.attrs.iCol2.array as Float32Array,
+      m: L.mesh.instanceMatrix.array as Float32Array,
+      n: 0,
+    }));
     const ppx = pl.pos.x;
     const ppy = pl.pos.y;
     const ppz = pl.pos.z;
-    let n = 0;
+    const ccx = camera.position.x;
+    const ccz = camera.position.z;
+    camera.getWorldQuaternion(camQ);
+    emotes.begin();
     shadowN = 0;
     for (let i = 0; i < MAX; i++) {
       const p = peds[i];
       if (!p.on) continue;
-      const phone = pose(p, t);
+      const phone = pose(p, t, tmp);
       const dx = ppx - p.x;
       const dz = ppz - p.z;
       const dist = Math.hypot(dx, dz);
@@ -1219,8 +1098,10 @@ export function createCrowd(scene: THREE.Scene, city: City) {
         const sn = Math.sin(p.yaw);
         const lx = cs * dx - sn * dz;
         const lz = sn * dx + cs * dz;
-        tmp[1] = Math.max(-1.25, Math.min(1.25, Math.atan2(lx, lz)));
-        tmp[2] = Math.max(-0.4, Math.min(0.75, Math.atan2(ppy - 1.6 * p.h, Math.max(dist, 1))));
+        const look = Math.atan2(lx, lz);
+        tmp[1] = Math.max(-1.25, Math.min(1.25, look));
+        tmp[15] += Math.max(-0.3, Math.min(0.3, look - tmp[1])) * (p.moving < 0.3 ? 1 : 0.3);
+        tmp[2] = Math.max(-0.4, Math.min(0.75, Math.atan2(ppy + 0.6 - 1.6 * p.h, Math.max(dist, 1))));
         if (p.re === WATCH && p.reK === POINT) tmp[7] = 1.5 + Math.min(1.1, Math.max(-0.3, tmp[2] * 1.3));
       } else if (p.kind === STAND && p.sub === CHAT && p.re === NONE) {
         const cs = Math.cos(p.yaw);
@@ -1231,26 +1112,49 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       }
       const k = 1 - Math.exp(-(10 + p.moving * 6) * dt);
       const a = p.ang;
-      for (let q = 0; q < 15; q++) a[q] += (tmp[q] - a[q]) * k;
-      const b = n * 4;
+      for (let q = 0; q < CH; q++) a[q] += (tmp[q] - a[q]) * k;
+      a[BLINK] = tmp[BLINK];
+      a[BROW] = tmp[BROW];
+      const cd = Math.hypot(ccx - p.x, ccz - p.z);
+      const near = DETAIL[detail].near;
+      if (cd < near - 2) p.lod = 0;
+      else if (cd > near + 2) p.lod = 1;
+      const L = arr[p.lod];
+      const b = L.n * 4;
       for (let q = 0; q < 4; q++) {
-        iA[b + q] = a[q];
-        iB[b + q] = a[4 + q];
-        iC[b + q] = a[8 + q];
-        c0[b + q] = p.col[q];
-        c1[b + q] = p.col[4 + q];
+        L.a[b + q] = a[q];
+        L.b[b + q] = a[4 + q];
+        L.c[b + q] = a[8 + q];
+        L.c0[b + q] = p.col[q];
+        L.c1[b + q] = p.col[4 + q];
+        L.c2[b + q] = p.col[8 + q];
       }
-      iD[b] = a[12];
-      iD[b + 1] = a[13];
-      iD[b + 2] = phone ? p.mask | ACC.phone : p.mask;
-      iD[b + 3] = p.head;
-      writeMatrix(mat, n, p.yaw, p.w, p.h, p.x, a[14] * p.h, p.z);
+      L.d[b] = a[12];
+      L.d[b + 1] = a[13];
+      L.d[b + 2] = phone ? p.mask | ACC.phone : p.mask;
+      L.d[b + 3] = p.head;
+      L.e[b] = a[15];
+      L.e[b + 1] = a[16];
+      L.e[b + 2] = a[BLINK] + 2 * a[BROW];
+      L.e[b + 3] = Math.max(0, a[18]);
+      const cs = Math.cos(p.yaw);
+      const sn = Math.sin(p.yaw);
+      const sway = a[SWAY] * p.w;
+      writeMatrix(L.m, L.n, p.yaw, p.w, p.h, p.x + cs * sway, a[14] * p.h, p.z - sn * sway);
+      L.n++;
       shadowAt(p.x, p.z, 0.85 * p.w * p.h);
-      n++;
+      if (p.emo >= 0) {
+        p.emoT += dt;
+        if (p.emoT > p.emoLife) p.emo = -1;
+        else if (cd < 45) emotes.add(p.x, (RIG.headY + 0.2 * p.head + 0.32 + a[14]) * p.h + 0.12, p.z, p.emo, p.emoT, p.emoLife, camQ);
+      }
     }
-    people.mesh.count = n;
-    people.mesh.instanceMatrix.needsUpdate = true;
-    for (const key in people.attrs) people.attrs[key].needsUpdate = true;
+    lods.forEach((L, i) => {
+      L.mesh.count = arr[i].n;
+      L.mesh.instanceMatrix.needsUpdate = true;
+      for (const key in L.attrs) L.attrs[key].needsUpdate = true;
+    });
+    emotes.end();
     updateDogs(dt);
     shadows.count = shadowN;
     shadows.instanceMatrix.needsUpdate = true;
@@ -1299,6 +1203,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       if (!p.on || p.re === GREET) continue;
       if (Math.hypot(p.x - pos.x, p.z - pos.z) > radius) continue;
       react(p, CHEER, 2.6 + rnd() * 0.9);
+      if (rnd() < 0.2) emote(p, rnd() < 0.5 ? EMO.star : rnd() < 0.5 ? EMO.heart : EMO.note, 1.8);
       p.waiting = p.waiting && p.kind === WALK;
       n++;
     }
@@ -1323,22 +1228,26 @@ export function createCrowd(scene: THREE.Scene, city: City) {
 
   const prompt = () => (cand >= 0 ? { key: "E", label: "Greet" } : null);
 
-  const interact = (): { events: GameEvent[]; pose: "fistBump" | "wave" | "selfie" } | null => {
+  const interact = (): { events: GameEvent[]; pose: HeroPose } | null => {
     if (cand < 0 || !player) return null;
     const p = peds[cand];
     const pl = player;
     const r = rnd();
-    const k = r < 0.36 ? BUMP : r < 0.68 ? FIVE : SELFIE;
-    react(p, GREET, k === SELFIE ? 2.6 : 1.9, k);
+    const k = p.age === KID ? (r < 0.65 ? HUG : FIVE) : r < 0.3 ? BUMP : r < 0.55 ? FIVE : r < 0.8 ? SELFIE : SHAKE;
+    react(p, GREET, 2.3, k);
+    p.hit = false;
+    p.emo = -1;
     p.greeted = true;
     p.waiting = false;
     p.vx = p.vz = 0;
+    if (p.kind === FOLLOW && p.parent >= 0 && peds[p.parent].re === NONE) react(peds[p.parent], WATCH, 2.6, LOOK);
     const fx = p.x - pl.pos.x;
     const fz = p.z - pl.pos.z;
     const d = Math.hypot(fx, fz) || 1;
     if (k !== SELFIE || !cam) {
-      p.gx = pl.pos.x + (fx / d) * 1.05;
-      p.gz = pl.pos.z + (fz / d) * 1.05;
+      const gap = k === HUG ? 0.45 : k === SHAKE ? 0.85 : 0.95;
+      p.gx = pl.pos.x + (fx / d) * gap;
+      p.gz = pl.pos.z + (fz / d) * gap;
       p.gyaw = Math.atan2(-fx, -fz);
       pl.face(v3.set(fx / d, 0, fz / d));
     } else {
@@ -1348,17 +1257,15 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       ux /= ud;
       uz /= ud;
       pl.face(v3.set(ux, 0, uz));
-      p.gx = pl.pos.x - uz * 0.72;
-      p.gz = pl.pos.z + ux * 0.72;
+      p.gx = pl.pos.x - uz * 0.7;
+      p.gz = pl.pos.z + ux * 0.7;
       p.gyaw = Math.atan2(ux, uz);
     }
     cand = -1;
+    const reason = ["Fist bump", "High five", "Selfie with a fan", "Handshake", "Hug from a little fan"][k];
     return {
-      events: [
-        { type: "sfx", name: k === SELFIE ? "photo" : "fistBump" },
-        { type: "xp", amount: 10, reason: k === SELFIE ? "Selfie with a fan" : k === FIVE ? "High five" : "Fist bump" },
-      ],
-      pose: k === BUMP ? "fistBump" : k === FIVE ? "wave" : "selfie",
+      events: [{ type: "xp", amount: 10, reason }],
+      pose: k === BUMP ? "fistBump" : k === SHAKE ? "handshake" : k === FIVE ? "wave" : k === SELFIE ? "selfie" : "hug",
     };
   };
 
@@ -1378,6 +1285,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       }
     });
     dot.dispose();
+    emotes.dispose();
   };
 
   return {

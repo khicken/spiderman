@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { SKY } from "./sky-state";
 
 type G = CanvasRenderingContext2D;
 type R = () => number;
@@ -391,6 +392,7 @@ const col3 = (hex: number) => new THREE.Color(hex);
 const FRAG_PARS = /* glsl */ `
 uniform vec2 uCells; uniform vec2 uCellM; uniform vec4 uWin; uniform vec4 uRoom; uniform vec2 uMull;
 uniform vec3 uFrame; uniform vec3 uGlass; uniform vec2 uGlassRM; uniform vec3 uLit; uniform vec2 uWallPt;
+uniform float uNight; uniform vec3 uReflHi; uniform vec3 uReflLo;
 float fcH(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 fcPal(float h, float warm) {
   vec3 w = h < 0.33 ? vec3(1.0, 0.70, 0.40) : h < 0.66 ? vec3(1.0, 0.80, 0.56) : vec3(1.0, 0.62, 0.34);
@@ -416,9 +418,11 @@ vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0
   float h2 = fcH(rid * 1.7 + 11.3);
   float h3 = fcH(rid * 2.3 + 47.1);
   float hRow = fcH(vec2(cid.y, floor(cid.x / 24.0)) + 5.1);
-  float litP = uLit.x;
+  float nightK = smoothstep(0.3, 1.0, uNight);
+  float litP = mix(uLit.x, 0.35 + 0.5 * uLit.x, nightK);
   float lit = step(mix(h1, hRow, uLit.z), litP);
-  vec3 lc = fcPal(h2, uLit.y) * (0.75 + 0.5 * h3);
+  float litS = uNight < 0.3 ? mix(0.4, 1.0, uNight / 0.3) : mix(1.0, 1.7, nightK);
+  vec3 lc = fcPal(h2, uLit.y) * (0.75 + 0.5 * h3) * litS;
   float area = (min(uWin.z, 1.0) - max(uWin.x, 0.0)) * (uWin.w - uWin.y);
   vec3 farE = lc * lit * 0.55 * area;
   float inside = step(uWin.x, f.x) * step(f.x, uWin.z) * step(uWin.y, f.y) * step(f.y, uWin.w);
@@ -428,7 +432,7 @@ vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0
   vec3 vd = normalize(-vViewPosition);
   vec3 rv = reflect(vd, N);
   float ry = dot(rv, B) + (fcH(cid * 0.71 + 3.3) - 0.5) * 0.12;
-  vec3 sky = ry > 0.0 ? mix(vec3(0.85, 0.55, 0.45), vec3(0.22, 0.36, 0.55), sqrt(ry)) : mix(vec3(0.4, 0.33, 0.33), vec3(0.08, 0.08, 0.1), sqrt(-ry * 4.0));
+  vec3 sky = ry > 0.0 ? mix(uReflLo, uReflHi, sqrt(ry)) : mix(vec3(0.4, 0.33, 0.33) * (1.0 - 0.8 * nightK), vec3(0.08, 0.08, 0.1), sqrt(-ry * 4.0));
   float fres = 0.2 + 0.8 * pow(1.0 - clamp(-dot(vd, N), 0.0, 1.0), 4.0);
   vec3 refl = sky * fres * max(uGlassRM.y, 0.4) * 1.1;
   float glassAmt = mix(inside * (1.0 - lit), area * (1.0 - litP), lod1);
@@ -545,6 +549,9 @@ export function facadeMaterial(style: FacadeStyle, r: R) {
     uGlassRM: { value: new THREE.Vector2(...style.glassRM) },
     uLit: { value: new THREE.Vector3(style.lit, style.warm, style.row) },
     uWallPt: { value: new THREE.Vector2(...style.wallPt) },
+    uNight: SKY.night,
+    uReflHi: SKY.reflHi,
+    uReflLo: SKY.reflLo,
   };
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, uniforms);

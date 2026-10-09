@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Bucket, UNIT, blinkify, mat, type Blink } from "./city-kit";
+import { SKY } from "./sky-state";
 
 type Kind = "body" | "fixed" | "light" | "bar";
 type Part = [Kind, number, number, number, number, number, number, number, number?, Blink?];
@@ -198,7 +199,7 @@ export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: n
     const cols = MODELS[n].colors;
     for (let i = 0; i < counts[m]; i++) body.setColorAt(i, tcol.setHex(cols[Math.floor(r() * cols.length)]));
     group.add(body);
-    const light = geos.light ? new THREE.InstancedMesh(geos.light, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), counts[m]) : null;
+    const light = geos.light ? new THREE.InstancedMesh(geos.light, Object.assign(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), { color: SKY.headlight }), counts[m]) : null;
     if (light) group.add(light);
     const bar = geos.bar ? new THREE.InstancedMesh(geos.bar, blinkify(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), o.time), counts[m]) : null;
     if (bar) group.add(bar);

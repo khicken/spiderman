@@ -119,6 +119,23 @@ export function mineGeometry() {
   ]);
 }
 
+// Sniper read-at-range parts: red visor on the head frame, scope lens on the arm frame.
+export function sniperAccentGeometries() {
+  const visor = merge([box(0.22, 0.05, 0.05, 0, 0.03, 0.2, "#ff2a1a", 3), box(0.04, 0.035, 0.08, 0.12, 0.03, 0.15, "#ff2a1a", 2), box(0.04, 0.035, 0.08, -0.12, 0.03, 0.15, "#ff2a1a", 2)]);
+  const scope = merge([paint(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 8).translate(0, -0.89, 0.13), "#ff3020", 4), box(0.02, 0.5, 0.02, 0.05, -1.0, 0.05, "#ff3020", 1.6)]);
+  return { visor, scope };
+}
+
+// Flat diamond, faces +z.
+export function markGeometry() {
+  return new THREE.OctahedronGeometry(1, 0).scale(0.7, 1, 0.18);
+}
+
+// Unit beam along +z, wide at the rifle end.
+export function beamGeometry() {
+  return new THREE.CylinderGeometry(0.1, 1, 1, 5, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2);
+}
+
 export function ringGeometry() {
   const g = new THREE.RingGeometry(0.86, 1, 48, 1).rotateX(-Math.PI / 2);
   return g;

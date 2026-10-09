@@ -20,6 +20,8 @@ const ROPE_MAX = 35;
 const DASH_CD = 0.8;
 const PROMPT_RANGE = 30;
 const PERCH_HOLD = 0.28;
+const SWIM = 4.2;
+const SWIM_FAST = 7;
 const DEG = Math.PI / 180;
 const UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -46,7 +48,7 @@ export function rayBox(o: THREE.Vector3, d: THREE.Vector3, b: Box, n?: THREE.Vec
   tMin = -Infinity;
   tMax = Infinity;
   hitAxis = -1;
-  if (!slab(o.x, d.x, b.minX, b.maxX, 0) || !slab(o.y, d.y, 0, b.maxY, 1) || !slab(o.z, d.z, b.minZ, b.maxZ, 2)) return -1;
+  if (!slab(o.x, d.x, b.minX, b.maxX, 0) || !slab(o.y, d.y, b.minY ?? 0, b.maxY, 1) || !slab(o.z, d.z, b.minZ, b.maxZ, 2)) return -1;
   if (tMin < 0) return -1;
   n?.set(hitAxis === 0 ? hitSign : 0, hitAxis === 1 ? hitSign : 0, hitAxis === 2 ? hitSign : 0);
   return tMin;
@@ -66,7 +68,7 @@ export function raycast(city: City, o: THREE.Vector3, d: THREE.Vector3, maxT: nu
 }
 
 export function insideAny(city: City, x: number, y: number, z: number, pad = 0) {
-  for (const b of city.near(x, z, 2)) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad && y < b.maxY + pad) return true;
+  for (const b of city.near(x, z, 2)) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad && y < b.maxY + pad && y > (b.minY ?? -Infinity) - pad) return true;
   return false;
 }
 
@@ -80,7 +82,7 @@ export function groundAt(city: City, x: number, z: number, y: number) {
 function onCollider(city: City, c: THREE.Vector3) {
   const e = 0.05;
   for (const b of city.near(c.x, c.z, 2)) {
-    if (c.y > b.maxY + e || c.y < -e) continue;
+    if (c.y > b.maxY + e || c.y < (b.minY ?? 0) - e) continue;
     const inX = c.x >= b.minX - e && c.x <= b.maxX + e;
     const inZ = c.z >= b.minZ - e && c.z <= b.maxZ + e;
     if (inX && inZ && (Math.abs(c.x - b.minX) < e || Math.abs(c.x - b.maxX) < e || Math.abs(c.z - b.minZ) < e || Math.abs(c.z - b.maxZ) < e || Math.abs(c.y - b.maxY) < e)) return true;
@@ -95,6 +97,10 @@ export type PlayerHooks = {
   enemyNear: (pos: THREE.Vector3) => boolean;
   inCombat: () => boolean;
   carHit: (from: THREE.Vector3, speed: number) => void;
+  // Height the feet rest on where no box is below (0 = street). Below -0.5 the hero swims.
+  floorAt?: (x: number, z: number) => number;
+  // Colliders outside the city grid (room walls, roof doors).
+  extraBoxes?: (x: number, z: number) => readonly Box[];
 };
 const ZIP_RANGE = 60;
 
@@ -110,6 +116,9 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let grounded = false;
   let airTime = 0;
   let sprinting = false;
+  let swimming = false;
+  let ceiling = Infinity;
+  let blockE = false;
 
   // Swing state. The anchor is locked from attach to release.
   const anchor = new THREE.Vector3();
@@ -162,7 +171,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let dashCd = 0;
   let dashT = 0;
   const dashTo = new THREE.Vector3();
-  let trick: { kind: "flip" | "spin"; t: number } | null = null;
+  type Trick = "flip" | "backflip" | "corkscrew" | "split";
+  let trick: { kind: Trick; t: number } | null = null;
   let kickT = 1;
   let landT = 1;
   let boostT = 0;
@@ -233,15 +243,15 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const idealUp = THREE.MathUtils.clamp(13 + speed * 0.15, 12, 22);
     const minAhead = speed < 8 ? 3 : 8;
     cands.length = 0;
-    const consider = (x: number, y: number, z: number, nx: number, nz: number, low = false) => {
+    const consider = (x: number, y: number, z: number, nx: number, nz: number) => {
       if (cands.length >= POOL) return;
       const dx = x - p.x;
       const dy = y - p.y;
       const dz = z - p.z;
       const ahead = dx * heading.x + dz * heading.z;
       const side = dx * right.x + dz * right.z;
-      if (ahead < minAhead || ahead > 40 || dy < (low ? -20 : 2) || Math.abs(side) > 26) return;
-      if (dx * dx + dy * dy + dz * dz > 55 * 55) return;
+      if (ahead < minAhead || ahead > 44 || dy < 4 || Math.abs(side) > 30) return;
+      if (dx * dx + dy * dy + dz * dz > 60 * 60) return;
       const fwd = Math.max(0, 1 - Math.abs(ahead - idealAhead) / 22);
       const alt = lastSide === 0 ? 0.7 : Math.sign(side) === -lastSide ? 1 : 0.35;
       const along = nx || nz ? 0.4 + 0.6 * (1 - Math.abs(nx * heading.x + nz * heading.z)) : 0.7;
@@ -251,13 +261,12 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       c.p.set(x, y, z);
       c.n.set(nx, 0, nz);
       c.side = side;
-      c.score = (fwd * 0.5 + sidePref * 0.3 + fit * 0.2) * (low ? 0.5 : 1);
+      c.score = fwd * 0.5 + sidePref * 0.3 + fit * 0.2;
       cands.push(c);
     };
-    for (const b of city.near(p.x, p.z, 55)) {
-      const low = b.maxY < p.y + 2;
-      if (low && (b.maxY < p.y - 20 || b.maxY < 12)) continue;
-      const lo = low ? b.maxY - 0.2 : Math.max(b.maxY * 0.6, p.y + 2);
+    for (const b of city.near(p.x, p.z, 60)) {
+      if (b.maxY < p.y + 4) continue;
+      const lo = Math.max(b.maxY * 0.6, p.y + 4, b.minY ?? 0);
       const hi = b.maxY - 0.2;
       if (lo > hi) continue;
       const y = THREE.MathUtils.clamp(p.y + idealUp, lo, hi);
@@ -275,13 +284,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
           const ix = p.x + heading.x * idealAhead * k;
           const iz = p.z + heading.z * idealAhead * k;
           const along = THREE.MathUtils.clamp(xFace ? iz : ix, a0, a1);
-          if (xFace) consider(fixed, y, along, nx, nz, low);
-          else consider(along, y, fixed, nx, nz, low);
+          if (xFace) consider(fixed, y, along, nx, nz);
+          else consider(along, y, fixed, nx, nz);
         }
       }
     }
     const extra = (city as { anchors?: THREE.Vector3[] }).anchors;
-    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < 55 && Math.abs(a.z - p.z) < 55) consider(a.x, a.y, a.z, 0, 0);
+    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < 60 && Math.abs(a.z - p.z) < 60) consider(a.x, a.y, a.z, 0, 0);
     cands.sort((a, b) => b.score - a.score);
     tmp.copy(p).addScaledVector(UP, 0.6);
     for (const c of cands) {
@@ -307,8 +316,6 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     lastSide = Math.sign(c.side) || 1;
     webHand = lastSide > 0 ? "R" : "L";
     pivot.copy(anchor).addScaledVector(right, -0.9 * c.side);
-    // Low anchors swing around a raised pivot, like Insomniac's latch onto buildings below.
-    pivot.y = Math.max(pivot.y, p.y + 10);
     const dist = p.distanceTo(pivot);
     swingFloor = groundAt(city, pivot.x, pivot.z, pivot.y);
     ropeGoal = Math.max(5, Math.min(THREE.MathUtils.clamp(dist, ROPE_MIN, ROPE_MAX), pivot.y - swingFloor - 3));
@@ -505,39 +512,61 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
   };
 
-  const collide = () => {
-    grounded = false;
-    wallContact = false;
-    if (p.y < R) {
-      p.y = R;
-      if (v.y < 0) v.y = 0;
-      grounded = true;
-    }
-    for (const b of city.near(p.x, p.z, 8)) {
-      const x0 = b.minX - R;
-      const x1 = b.maxX + R;
-      const z0 = b.minZ - R;
-      const z1 = b.maxZ + R;
-      const top = b.maxY + R;
-      if (p.x <= x0 || p.x >= x1 || p.z <= z0 || p.z >= z1 || p.y >= top) continue;
-      const up = top - p.y;
-      let m = 0;
-      let pen = p.x - x0;
-      if (x1 - p.x < pen) [m, pen] = [1, x1 - p.x];
-      if (p.z - z0 < pen) [m, pen] = [2, p.z - z0];
-      if (z1 - p.z < pen) [m, pen] = [3, z1 - p.z];
-      const stepUp = (mode === "ground" || mode === "air") && up < 1.0 && v.y <= 1;
-      if (up < pen || stepUp) {
-        p.y = top;
+  const hits: Box[] = [];
+  const overlaps = (b: Box, x: number, y: number, z: number) =>
+    x > b.minX - R && x < b.maxX + R && z > b.minZ - R && z < b.maxZ + R && y < b.maxY + R && y > (b.minY ?? -Infinity) - R;
+  const clearAt = (x: number, y: number, z: number) => {
+    for (const b of hits) if (overlaps(b, x, y, z)) return false;
+    return true;
+  };
+
+  // Resolve against every touching box at once, so two boxes that share a face cannot trap the hero.
+  const solve = () => {
+    for (let it = 0; it < 5; it++) {
+      let bestCost = Infinity;
+      let bestM = -1;
+      let bestVal = 0;
+      let bestBox: Box | null = null;
+      for (const b of hits) {
+        if (!overlaps(b, p.x, p.y, p.z)) continue;
+        const up = b.maxY + R - p.y;
+        const stepUp = (mode === "ground" || mode === "air") && up < 1.0 && v.y <= 1;
+        for (let m = 0; m < 6; m++) {
+          let val: number;
+          let cost: number;
+          if (m === 0) [val, cost] = [b.minX - R, p.x - b.minX + R];
+          else if (m === 1) [val, cost] = [b.maxX + R, b.maxX + R - p.x];
+          else if (m === 2) [val, cost] = [b.minZ - R, p.z - b.minZ + R];
+          else if (m === 3) [val, cost] = [b.maxZ + R, b.maxZ + R - p.z];
+          else if (m === 4) [val, cost] = [b.maxY + R, stepUp ? 0 : up];
+          else {
+            if (b.minY === undefined) continue;
+            [val, cost] = [b.minY - R, p.y - b.minY + R];
+          }
+          if (cost >= bestCost) continue;
+          const ok = m < 2 ? clearAt(val, p.y, p.z) : m < 4 ? clearAt(p.x, p.y, val) : clearAt(p.x, val, p.z);
+          if (!ok) cost += 1000;
+          if (cost < bestCost) [bestCost, bestM, bestVal, bestBox] = [cost, m, val, b];
+        }
+      }
+      if (!bestBox) return;
+      const b = bestBox;
+      if (bestM === 4) {
+        p.y = bestVal;
         if (v.y < 0) v.y = 0;
         grounded = true;
+        swimming = false;
         continue;
       }
-      if (m === 0) p.x = x0;
-      else if (m === 1) p.x = x1;
-      else if (m === 2) p.z = z0;
-      else p.z = z1;
-      const n = tmp.set(m === 0 ? -1 : m === 1 ? 1 : 0, 0, m === 2 ? -1 : m === 3 ? 1 : 0);
+      if (bestM === 5) {
+        p.y = bestVal;
+        if (v.y > 0) v.y = 0;
+        continue;
+      }
+      const up = b.maxY + R - p.y;
+      if (bestM < 2) p.x = bestVal;
+      else p.z = bestVal;
+      const n = tmp.set(bestM === 0 ? -1 : bestM === 1 ? 1 : 0, 0, bestM === 2 ? -1 : bestM === 3 ? 1 : 0);
       const vn = v.dot(n);
       if (mode === "ground" && sprinting && up < 2.6 && vn < -6) {
         v.y = 8;
@@ -552,13 +581,55 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
   };
 
+  const collide = () => {
+    grounded = false;
+    wallContact = false;
+    swimming = false;
+    const fl = hooks.floorAt?.(p.x, p.z) ?? 0;
+    if (p.y < fl + R) {
+      p.y = fl + R;
+      if (v.y < 0) v.y = 0;
+      grounded = true;
+      swimming = fl < -0.5;
+    }
+    hits.length = 0;
+    for (const b of city.near(p.x, p.z, 8)) hits.push(b);
+    if (hooks.extraBoxes) for (const b of hooks.extraBoxes(p.x, p.z)) hits.push(b);
+    solve();
+    if (p.y > ceiling - R) {
+      p.y = ceiling - R;
+      if (v.y > 0) v.y = 0;
+    }
+  };
+
+  let edgeT = 0;
+  const edge = (h: number) => {
+    if (ceiling < Infinity) return;
+    const B = city.bounds;
+    const ox = p.x < B.minX ? B.minX - p.x : p.x > B.maxX ? B.maxX - p.x : 0;
+    const oz = p.z < B.minZ ? B.minZ - p.z : p.z > B.maxZ ? B.maxZ - p.z : 0;
+    if (ox === 0 && oz === 0) return;
+    if (mode === "wings" || mode === "perch") mode = "air";
+    const k = Math.min(1, 6 * h);
+    if (ox * v.x < 0) v.x -= v.x * k;
+    if (oz * v.z < 0) v.z -= v.z * k;
+    v.x += ox * 10 * h;
+    v.z += oz * 10 * h;
+    if (Math.abs(ox) > 20) p.x += ox - Math.sign(ox) * 20;
+    if (Math.abs(oz) > 20) p.z += oz - Math.sign(oz) * 20;
+    if (edgeT <= 0) {
+      events.push({ type: "toast", title: "City limits", text: "Turn back" });
+      edgeT = 5;
+    }
+  };
+
   const physics = (h: number, inp: Input) => {
     const held = inp.held;
     switch (mode) {
       case "ground": {
-        const target = sprinting ? SPRINT : RUN;
+        const target = swimming ? (sprinting ? SWIM_FAST : SWIM) : sprinting ? SPRINT : RUN;
         const flat = Math.hypot(v.x, v.z);
-        const k = 1 - Math.exp(-(flat > target + 2 ? 3 : 10) * h);
+        const k = 1 - Math.exp(-(flat > target + 2 ? 3 : swimming ? 3 : 10) * h);
         v.x += (wish.x * target - v.x) * k;
         v.z += (wish.z * target - v.z) * k;
         v.y -= G * h;
@@ -695,6 +766,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const boxPre = wallBox;
     collide();
     collideCars(h);
+    edge(h);
     if (wasWall && wallContact && wallBox === boxPre && wallN.dot(nPre) < 0.5) {
       v.copy(vPre).addScaledVector(nPre, 3);
       wallN.copy(nPre);
@@ -719,7 +791,9 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       mode = "air";
     }
     if (grounded && (mode === "air" || mode === "swing" || mode === "wings" || (mode === "wall" && v.y <= 0.1 && !wallContact))) {
-      if (fall > 28) {
+      if (swimming) {
+        // The water module plays the splash.
+      } else if (fall > 28) {
         events.push(...hooks.strikeHit(p, 2));
         sfx("bigLand");
         shake(0.7);
@@ -734,7 +808,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       if (mode === "swing" || mode === "wings") {
         mode = "air";
         v.addScaledVector(wallN, 3);
-      } else if (into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? Math.min(pre, 12) : 0);
+      } else if (ceiling === Infinity && into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? Math.min(pre, 12) : 0);
     }
     if (mode === "wall") {
       if (!wallContact) {
@@ -748,12 +822,22 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (p.y < -30) reset();
   };
 
+  const wallAhead = (look: THREE.Vector3) => {
+    if (wallContact) return true;
+    heading.set(v.x, 0, v.z);
+    if (heading.lengthSq() < 4) heading.set(look.x, 0, look.z);
+    if (wish.lengthSq() > 0) heading.copy(wish);
+    if (heading.lengthSq() < 1e-4) return false;
+    heading.normalize();
+    return raycast(city, p, heading, 6) >= 0;
+  };
+
   const decide = (inp: Input) => {
     const pressed = inp.pressed;
     const look = inp.look;
     const airborne = mode === "air" || mode === "wings";
 
-    if (pressed.has("launch")) {
+    if (pressed.has("launch") && !blockE) {
       eT = 0;
       eFired = false;
     }
@@ -778,7 +862,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
     if (pressed.has("jump")) {
       if (mode === "ground") {
-        v.y = JUMP + (sprinting ? 3 : 0);
+        v.y = swimming ? JUMP + 2 : JUMP + (sprinting ? 3 : 0);
         mode = "air";
       } else if (mode === "swing") release(true, true);
       else if (mode === "wall") {
@@ -792,7 +876,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       } else if (mode === "launch") {
         if (launchArrived) highLaunch(look);
         else if (launchT * LAUNCH > launchLen - 14) launchBuffered = true;
+      } else if (airborne && dashCd <= 0 && raycast(city, p, look, 40, tmp2) < 0) {
+        sfx("whiff", 0.6);
+        dashCd = 0.3;
       } else if (airborne && dashCd <= 0) {
+        const hitT = raycast(city, p, look, 40, tmp2);
         tmp.set(look.x, 0, look.z).normalize();
         const s = Math.max(30, Math.hypot(v.x, v.z) + 6);
         v.copy(tmp).multiplyScalar(s);
@@ -800,7 +888,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         mode = "air";
         dashCd = DASH_CD;
         dashT = 0.3;
-        dashTo.copy(p).addScaledVector(tmp, 22).addScaledVector(UP, 3);
+        dashTo.copy(p).addScaledVector(look, hitT);
         webHand = webHand === "R" ? "L" : "R";
         webGrow = 0;
         trick = null;
@@ -822,7 +910,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
 
     if (pressed.has("trick") && mode === "air" && !trick) {
-      trick = { kind: Math.random() < 0.5 ? "flip" : "spin", t: 0 };
+      tmp.set(look.x, 0, look.z).normalize();
+      const fwd = wish.dot(tmp);
+      const side = wish.x * -tmp.z + wish.z * tmp.x;
+      const kind: Trick = wish.lengthSq() < 0.01 ? "split" : Math.abs(side) > Math.abs(fwd) ? "corkscrew" : fwd > 0 ? "flip" : "backflip";
+      trick = { kind, t: 0 };
       sfx("whoosh", 0.5);
     }
     if (pressed.has("web") && !hooks.inCombat() && mode !== "zip" && mode !== "launch") startZip(look, inp.camPos);
@@ -830,13 +922,12 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
     if (mode === "perch" && wish.lengthSq() > 0) mode = "ground";
 
-    // Holding swing in the air chains swings. Each swing keeps one anchor.
-    if (inp.held.has("swing") && mode === "air" && airTime > 0.15 && retryT <= 0 && sinceRelease > 0.3) {
-      retryT = 0.12;
-      dove = !attach(look, false);
+    // A new web needs a new press. Holding swing in the air with no anchor in reach dives toward the roofs.
+    if (inp.held.has("swing") && mode === "air" && airTime > 0.15 && retryT <= 0) {
+      retryT = 0.2;
+      dove = !wallAhead(look) && findAnchor(look) === null;
     }
-    diveAssist = dove && inp.held.has("swing") && mode === "air";
-    if (mode === "swing" && inp.held.has("swing") && v.y > 0 && pastBottom() > 38 * DEG) release(false, false);
+    diveAssist = dove && !wallContact && inp.held.has("swing") && mode === "air";
     if (mode === "swing" && swingT > 4) release(false, false);
   };
 
@@ -873,6 +964,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       pose = actPose;
       progress = actProgress;
       orient(UP, facing, dt);
+    } else if (mode === "ground" && swimming) {
+      // Stroke when moving, tread water upright when still.
+      const stroke = THREE.MathUtils.clamp(flat / SWIM, 0, 1);
+      pose = "swim";
+      phase += Math.max(flat, 1.2) * dt * 0.45;
+      progress = phase;
+      orient(ou.copy(UP).lerp(facing, 0.82 * stroke), of.copy(facing).lerp(DOWN, 0.82 * stroke), dt);
     } else if (mode === "ground") {
       pose = landT < 1 ? "land" : flat > 14 ? "sprint" : flat > 0.5 ? "run" : "idle";
       phase += flat * dt * 0.85;
@@ -912,6 +1010,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       orient(UP, zipDir, dt);
     }
     hero.root.position.copy(p);
+    if (swimming) hero.root.position.y += Math.sin(t * 2.6) * 0.06;
     hero.animate(pose as Parameters<Hero["animate"]>[0], progress, webHand, t, dt);
     hero.root.updateMatrixWorld(true);
 
@@ -942,7 +1041,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
     const gy = groundAt(city, p.x, p.z, p.y);
     const hgt = p.y - R - gy;
-    blob.visible = hgt < 14 && mode !== "wall";
+    blob.visible = hgt < 14 && mode !== "wall" && !swimming;
     if (blob.visible) {
       blob.position.set(p.x, gy + 0.04, p.z);
       const s = 0.7 + hgt * 0.06;
@@ -989,6 +1088,24 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     },
     get airTime() {
       return airTime;
+    },
+    get swimming() {
+      return swimming;
+    },
+    // Room height above the floor. Finite indoors: caps jumps and turns off wall runs.
+    get ceiling() {
+      return ceiling;
+    },
+    set ceiling(y: number) {
+      ceiling = y;
+    },
+    // True while another module owns E (doors), so E does not launch.
+    get blockE() {
+      return blockE;
+    },
+    set blockE(b: boolean) {
+      blockE = b;
+      if (b) eT = -1;
     },
     busy: false,
     act(pose: HeroPose, progress: number) {
@@ -1037,6 +1154,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       boostT = Math.max(0, boostT - dt);
       vaultT = Math.max(0, vaultT - dt);
       cornerT -= dt;
+      edgeT -= dt;
       retryT -= dt;
       sinceRelease += dt;
       if (mode === "swing") swingT += dt;
@@ -1048,7 +1166,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         trick.t += dt / 0.6;
         if (mode !== "air") trick = null;
         else if (trick.t >= 1) {
-          events.push(...hooks.trick(trick.kind, airTime));
+          events.push(...hooks.trick(trick.kind === "flip" || trick.kind === "backflip" ? "flip" : "spin", airTime));
           sfx("trick");
           trick = null;
         }
