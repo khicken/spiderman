@@ -234,6 +234,36 @@ function place(R: Ring, u: number) {
 
 const BUSY = { z0: streetZ(59), z1: streetZ(14) };
 
+/** Clearcoat paint on white body parts, door seams, and road dirt low on the body. */
+function carMaterial() {
+  const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.12, clearcoat: 1, clearcoatRoughness: 0.06 });
+  m.onBeforeCompile = (s) => {
+    s.vertexShader = s.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec4 vCar; varying vec3 vCarN;")
+      .replace("#include <color_vertex>", "#include <color_vertex>\nvCar = vec4(position, step(2.5, color.r + color.g + color.b));\nvCarN = normal;");
+    s.fragmentShader = s.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec4 vCar; varying vec3 vCarN;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+vec3 cp = vCar.xyz;
+vec3 can = abs(vCarN);
+float cz = abs(cp.z);
+float cs = can.x > 0.6 ? min(min(abs(cp.z - 0.35), abs(cp.z + 0.75)), abs(cp.y - 0.8) * 2.0) : can.y > 0.6 ? abs(cz - 1.35) : 1.0;
+float cw = max(fwidth(cp.z), 0.004) * 1.2;
+float cLine = (1.0 - smoothstep(0.006, 0.006 + cw, cs)) * vCar.w;
+float cDirt = (1.0 - smoothstep(0.22, 0.7, cp.y + 0.25 * sin(cp.z * 5.3 + cp.x * 3.1))) * (1.0 - can.y * 0.6);
+diffuseColor.rgb *= 1.0 - 0.75 * cLine;
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13, 0.12, 0.11), cDirt * 0.55);`,
+      )
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(0.62, 0.32, vCar.w), 0.85, cDirt);")
+      .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor *= vCar.w * (1.0 - cDirt);")
+      .replace("#include <lights_physical_fragment>", "#include <lights_physical_fragment>\nmaterial.clearcoat *= vCar.w * (1.0 - cDirt) * (1.0 - cLine);");
+  };
+  m.customProgramCacheKey = () => "car-paint";
+  return m;
+}
+
 export function createTraffic(o: { r: () => number; max: number; time: { value: number } }) {
   const { r, max } = o;
   const names: ModelName[] = ["sedan", "taxi", "police", "bus", "truck"];
@@ -284,9 +314,10 @@ export function createTraffic(o: { r: () => number; max: number; time: { value: 
     list.forEach((c, i) => (c.next = cars.indexOf(list[(i + 1) % list.length])));
   }
 
+  const paint = carMaterial();
   const meshes = names.map((n, m) => {
     const geos = modelGeos(n);
-    const body = new THREE.InstancedMesh(geos.body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.55 }), Math.max(1, counts[m]));
+    const body = new THREE.InstancedMesh(geos.body, paint, Math.max(1, counts[m]));
     body.castShadow = true;
     body.receiveShadow = true;
     const cols = MODELS[n].colors;

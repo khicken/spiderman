@@ -1586,25 +1586,25 @@ export function poseTarget(out: Pose, state: HeroPose, c: Ctx): number {
       return 2;
     }
     case "punch1":
-      seq(out, [guard, jabLoad, jab, jab, guard], [0, 0.18, 0.36, 0.6, 1], p);
+      seq(out, [guard, jabLoad, jab, jab, guard], [0, 0.12, 0.28, 0.55, 1], p);
       return 2;
     case "punch2":
-      seq(out, [guard, crossLoad, cross, cross, guard], [0, 0.2, 0.38, 0.6, 1], p);
+      seq(out, [guard, crossLoad, cross, cross, guard], [0, 0.12, 0.28, 0.55, 1], p);
       return 2;
     case "punch3": {
-      seq(out, [guard, crossLoad, roundhouse, roundhouse, guard], [0, 0.18, 0.45, 0.68, 1], p);
-      out[CH.yaw] = -TAU * easeIO(sstep(0.12, 0.7, p));
+      seq(out, [guard, crossLoad, roundhouse, roundhouse, guard], [0, 0.12, 0.3, 0.6, 1], p);
+      out[CH.yaw] = -TAU * easeIO(sstep(0.06, 0.55, p));
       return 2.2;
     }
     case "punch4":
-      seq(out, [guard, palmsLoad, palms, palms, guard], [0, 0.3, 0.44, 0.7, 1], p);
+      seq(out, [guard, palmsLoad, palms, palms, guard], [0, 0.24, 0.38, 0.66, 1], p);
       return 2.1;
     case "uppercut":
-      seq(out, [guard, upperLoad, upperHit, upperHit, airReady], [0, 0.3, 0.48, 0.7, 1], p);
+      seq(out, [guard, upperLoad, upperHit, upperHit, airReady], [0, 0.26, 0.4, 0.7, 1], p);
       out[CH.ground] = 1 - bell(p, 0.42, 1.2, 0.08);
       return 2.1;
     case "airPunch":
-      seq(out, [airReady, airLoad, airHit, airHit, airReady], [0, 0.25, 0.4, 0.62, 1], p);
+      seq(out, [airReady, airLoad, airHit, airHit, airReady], [0, 0.14, 0.28, 0.55, 1], p);
       return 2.1;
     case "dodge": {
       seq(out, [guard, crouch, tuck, tuck, crouch, guard], [0, 0.12, 0.3, 0.62, 0.82, 1], p);

@@ -7,19 +7,28 @@ import { Key } from "./ui-menu";
 const STORE = "spiderman-tips";
 const SHOW_S = 7;
 
-type Tip = { id: string; keys: [string, string][]; when: (h: HudState, t: number, seen: Set<string>) => boolean; done?: (h: HudState) => boolean };
+type Ctx = { t: number; seen: Set<string>; fall: number };
+type Tip = { id: string; keys: [string, string][]; when: (h: HudState, c: Ctx) => boolean; done?: (h: HudState) => boolean };
 
 const TIPS: Tip[] = [
-  { id: "swing", keys: [["LMB", "Hold to web-swing"]], when: (_h, t) => t > 1.5, done: (h) => h.speed > 80 && h.height > 12 },
-  { id: "launch", keys: [["E", "Tap to point-launch off a ledge"]], when: (_h, t, seen) => seen.has("swing") && t > 20 },
+  { id: "swing", keys: [["LMB", "Hold to web-swing"]], when: (_h, c) => c.t > 1.5, done: (h) => h.speed > 80 && h.height > 12 },
+  { id: "release", keys: [["LMB", "Let go at the flash for a boost"]], when: (h) => h.swingCue > 0.5 },
+  { id: "fight", keys: [["LMB", "Punch"], ["F", "Web strike"], ["Q", "Dodge"]], when: (h) => h.inCombat },
+  { id: "wall", keys: [["W", "Hold into a wall to run up"], ["Space", "Jump off the wall"]], when: (h) => h.mode === "wall" },
+  { id: "glide", keys: [["A", "Steer the glide with A and D"], ["C", "Close the wings"]], when: (h) => h.mode === "wings" },
+  { id: "fall", keys: [["LMB", "Swing before you land"], ["C", "Open web wings"]], when: (h, c) => c.fall > 30 && !h.inCombat && h.mode !== "swing" },
+  {
+    id: "edge",
+    keys: [["E", "Point-launch off the ledge"], ["W", "Sprint off the edge to leap"]],
+    when: (h, c) => c.seen.has("swing") && !h.inCombat && h.prompts.some((p) => p.key === "E"),
+  },
   {
     id: "race",
     keys: [["", "Blue beams start swing races. Land in one"]],
-    when: (h, t) => t > 12 && !h.objective && h.markers.some((m) => m.kind === "race" && Math.hypot(m.x - h.x, m.z - h.z) < 300),
+    when: (h, c) => c.t > 12 && !h.objective && h.markers.some((m) => m.kind === "race" && Math.hypot(m.x - h.x, m.z - h.z) < 300),
     done: (h) => !!h.objective,
   },
-  { id: "fight", keys: [["LMB", "Punch"], ["F", "Web strike"], ["Q", "Dodge"]], when: (h) => h.inCombat },
-  { id: "map", keys: [["Esc", "Map and Journal"]], when: (_h, t) => t > 75 },
+  { id: "map", keys: [["Esc", "Map and Journal"]], when: (_h, c) => c.t > 75 },
 ];
 
 const load = () => {
@@ -31,21 +40,27 @@ const load = () => {
 };
 
 let startedAt = 0;
+let lastHeight = Infinity;
 
 export function Tips({ h }: { h: HudState }) {
   const seen = useRef<Set<string> | null>(null);
   const shownAt = useRef(0);
+  const peak = useRef(-Infinity);
   const [tip, setTip] = useState<Tip | null>(null);
 
   useEffect(() => {
     seen.current ??= load();
     const now = performance.now() / 1000;
     if (!startedAt) startedAt = now;
+    const prev = lastHeight;
+    lastHeight = h.height;
+    if (h.height >= prev - 0.05 || h.height > peak.current) peak.current = h.height;
+    const fall = peak.current - h.height;
     if (tip) {
       if (now - shownAt.current > SHOW_S || tip.done?.(h)) setTip(null);
       return;
     }
-    const next = TIPS.find((x) => !seen.current!.has(x.id) && x.when(h, now - startedAt, seen.current!));
+    const next = TIPS.find((x) => !seen.current!.has(x.id) && x.when(h, { t: now - startedAt, seen: seen.current!, fall }));
     if (!next) return;
     seen.current.add(next.id);
     try {

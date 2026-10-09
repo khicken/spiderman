@@ -9,6 +9,9 @@ const pick = <T,>(r: () => number, a: readonly T[]) => a[Math.floor(r() * a.leng
 const LUMP = new THREE.SphereGeometry(1, 6, 2, 0, Math.PI * 2, 0, Math.PI / 2);
 const LAMP = 0xffd59a;
 
+/** Lamp heads on the ground as x, z, pool radius. */
+export const LAMPS: number[] = [];
+
 export type District = "harlem" | "upper" | "cps" | "park" | "midtown" | "times" | "downtown" | "industrial" | "plaza" | "site" | "landmark" | "fidi" | "chinatown" | "greenwich" | "hk" | "les" | "build";
 
 function lamp(c: Ctx, F: Face, a: number, o: number, wreath: boolean) {
@@ -18,6 +21,7 @@ function lamp(c: Ctx, F: Face, a: number, o: number, wreath: boolean) {
   beam(c.small, x, 8.0, z, hx, 8.25, hz, 0.1, 0x26292d);
   box(c.small, hx, 8.25, hz, 0.55, 0.22, 0.55, 0x26292d, F.ry);
   box(c.glow, hx, 8.11, hz, 0.42, 0.06, 0.42, LAMP, F.ry, 5);
+  LAMPS.push(hx, hz, 13);
   if (wreath) {
     c.small.add(UNIT.torus, mat(x + F.nx * 0.14, 4.4, z + F.nz * 0.14, 0.42, 0.42, 0.42, F.ry), 0x1f5a26);
     box(c.glowSmall, x + F.nx * 0.2, 4.0, z + F.nz * 0.2, 0.22, 0.18, 0.08, 0xd81a1a, F.ry, 1.4);
@@ -594,6 +598,7 @@ export function shoreEdge(c: Ctx, land: Land[], skip: (x: number, z: number) => 
           const x = ax + dx * a - nx * 2, z = az + dz * a - nz * 2;
           cyl(c.small, UNIT.cyl6, x, 0, z, 0.1, 4.2, 0x1d2622);
           c.glow.add(UNIT.sphere, mat(x, 4.45, z, 0.32, 0.32, 0.32), 0xffd59a, 4);
+          LAMPS.push(x, z, 7);
           c.streetSpots.push(new THREE.Vector3(x - nx * 1.5, 0, z - nz * 1.5));
         }
       }

@@ -1,9 +1,22 @@
 import * as THREE from "three";
 
-const RISE = 5.75;
-const SET = 18.75;
+const LAT = (40.71 * Math.PI) / 180;
 const PEAK = 60;
-const DARK = 24 - SET + RISE;
+let RISE = 5.75;
+let SET = 18.75;
+let DARK = 24 - SET + RISE;
+
+// Sunrise and sunset in New York for the given date, in the player's local clock with daylight saving.
+export const setSeason = (d: Date) => {
+  const y = d.getFullYear();
+  const day = (d.getTime() - new Date(y, 0, 1).getTime()) / 864e5;
+  const dec = ((-23.44 * Math.PI) / 180) * Math.cos((2 * Math.PI * (day + 10)) / 365);
+  const half = (Math.acos(THREE.MathUtils.clamp(-Math.tan(LAT) * Math.tan(dec), -1, 1)) * 12) / Math.PI + 0.1;
+  const dst = d.getTimezoneOffset() < Math.max(new Date(y, 0, 1).getTimezoneOffset(), new Date(y, 6, 1).getTimezoneOffset()) ? 1 : 0;
+  RISE = 12 + dst - half;
+  SET = 12 + dst + half;
+  DARK = 24 - SET + RISE;
+};
 
 export const NIGHT_START = -4;
 export const NIGHT_FULL = -12;
@@ -16,11 +29,6 @@ export const sunElevation = (h: number) => {
 };
 
 export const nightAmount = (e: number) => 1 - THREE.MathUtils.smoothstep(e, NIGHT_FULL, NIGHT_START);
-
-export const clockRate = (hours: number) => {
-  const h = ((hours % 24) + 24) % 24;
-  return h >= 17 && h < 19.5 ? 1 / 3 : 1;
-};
 
 type Key = {
   fog: string; warm: string; sky: string; ground: string; hemi: number; exposure: number; env: number; bloom: number;

@@ -14,14 +14,14 @@ import { createInput } from "./input";
 import { createPlayer, raycast, R, type PlayerHooks } from "./player";
 import { createCameraRig } from "./camera";
 import { createRender, QUALITIES, type Quality } from "./render";
-import { clockRate } from "./render-clock";
+import { setSeason } from "./render-clock";
 import { createWater, riverFloor } from "./water";
 import { createInteriors } from "./interiors";
 import { createFade } from "./interiors-fade";
 
 export { QUALITIES, type Quality };
 
-export type Settings = { quality: Quality; suit: SuitName; muted: boolean; volume: number; sensitivity: number; invertY: boolean };
+export type Settings = { quality: Quality; suit: SuitName; muted: boolean; volume: number; sensitivity: number; invertY: boolean; holdChain: boolean; fov: number };
 export type UiEvent = { type: "toast"; title: string; text?: string } | { type: "xp"; amount: number; reason: string } | { type: "penalty"; reason: string } | { type: "hurt"; amount: number };
 
 type Audio = ReturnType<typeof createAudio>;
@@ -65,7 +65,13 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   let inCombat = false;
   let bossPhase = -1;
   const unlocks = createUnlocks();
-  let clock = 18.5;
+  const localHours = () => {
+    const d = new Date();
+    setSeason(d);
+    return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+  };
+  let clock = localHours();
+  let clockT = 0;
 
   const routeExternal = (events: readonly GameEvent[]) => {
     if (events.length) route(events.flatMap((e) => (e.type === "xp" ? missions.addXp(e.amount, e.reason) : [e])));
@@ -74,6 +80,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     for (const e of events) {
       if (e.type === "sfx") audio?.sfx(e.name as Parameters<Audio["sfx"]>[0], { pan: e.pan, volume: e.volume });
       else if (e.type === "shake") rig.addShake(e.strength);
+      else if (e.type === "kick") rig.kick(e.x, e.z, e.strength);
       else if (e.type === "slowmo") {
         timeScale = e.scale;
         slowT = e.duration;
@@ -97,20 +104,13 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const combat = createCombat(view.scene, city, crowd);
   const missions = createMissions(view.scene, city, combat);
   const activities = createActivities(view.scene, city);
-  const clockSave = {
-    snapshot: () => clock,
-    restore: (d: unknown) => {
-      if (typeof d === "number" && d >= 0 && d < 24) clock = d;
-    },
-  };
-  const save = createSave({ missions, activities, unlocks, clock: clockSave });
+  const save = createSave({ missions, activities, unlocks });
   save.load();
   const hooks: PlayerHooks = {
     strikeTarget: (pos, range) => missions.strikeTarget(pos, range),
     strikeHit: (pos, power) => missions.strike(pos, power),
     trick: (kind, airTime) => missions.trick(kind, airTime),
-    enemyNear: (pos) => combat.nearEnemy(pos, 8),
-    inCombat: () => combat.hud().inCombat,
+    webTaken: () => combat.webTaken(),
     carHit: (from, speed) => {
       combat.hurtPlayer(Math.min(25, 6 + speed), from, 0);
     },
@@ -172,10 +172,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       audio?.setMuted(cur.muted);
       onEvent({ type: "toast", title: cur.muted ? "Sound off" : "Sound on" });
     } else if (code === "KeyP" && playing) photo.enter();
-    else if (code === "KeyR") {
-      interiors.reset(player);
-      player.reset();
-    }
   });
 
   const applySettings = (s: Partial<Settings>, first = false) => {
@@ -197,6 +193,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       audio.setVolume(cur.volume);
     }
     rig.configure(cur);
+    input.state.chain = cur.holdChain ?? true;
   };
   applySettings(cur, true);
 
@@ -243,7 +240,11 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (musicT <= 0) forcedMusic = null;
     const sim = playing && !photo.active;
     const dt = sim ? real * timeScale : 0;
-    if (sim) clock = (clock + (real / 60) * clockRate(clock)) % 24;
+    if (!photo.active) clockT += real;
+    if (clockT > 1) {
+      clockT = 0;
+      clock = localHours();
+    }
     view.setClock(clock);
     view.setSpeed(player.vel.length());
     audio?.setNight(view.night);
@@ -254,7 +255,12 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     input.aim(rig.yaw, rig.pitch, view.camera.position);
     fade.update(real);
     if (sim) route(interiors.update(dt, t, input.state, player, fade, inCombat));
-    if (sim && !greet && !player.blockE && input.state.pressed.has("launch") && player.grounded && !inCombat) {
+    if (sim && input.state.holdTime("reset") >= 1) {
+      interiors.reset(player);
+      player.reset();
+      input.release("reset");
+    }
+    if (sim && !greet && !player.blockE && !player.prompts.some((p) => p.key === "E") && input.state.pressed.has("launch") && player.grounded && !inCombat) {
       const r = crowd.interact();
       if (r) {
         routeExternal(r.events);
@@ -323,12 +329,16 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         objective: mh.objective,
         prompts: interiors.prompts.length
           ? [...interiors.prompts, ...player.prompts.filter((p) => p.key !== "E"), ...mh.prompts.filter((p) => p.key !== "E")]
-          : [...(mh.greet ? player.prompts.filter((p) => p.key !== "E") : player.prompts), ...mh.prompts],
+          : mh.greet && player.prompts.some((p) => p.key === "E")
+            ? [...player.prompts, ...mh.prompts.filter((p) => p.key !== "E")]
+            : [...player.prompts, ...mh.prompts],
         markers: mh.markers,
         combo: mh.combo,
         tokens: unlocks.tokens,
         clock,
         aim: player.aim.kind,
+        swingCue: player.swingCue,
+        mode: player.mode,
         aimDist: player.aim.dist,
         stealth,
         progress: mh.progress,

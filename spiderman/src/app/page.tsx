@@ -10,6 +10,8 @@ import { PhotoPanel } from "./ui-photo";
 import type { Photo } from "./photo";
 import { JournalPanel, MapPanel } from "./ui-map";
 import { Tips } from "./ui-tips";
+import { FOV_BASE } from "./camera";
+import { padMenu } from "./input";
 
 type Game = ReturnType<typeof startGame>;
 type Screen = "title" | "playing" | "pause";
@@ -19,7 +21,7 @@ const POP_MS = { toast: 2800, penalty: 2800, xp: 1900, hurt: 700, token: 2200 } 
 const TOKEN_TOAST = /^\+(\d+) TOKENS?$/;
 
 function loadSettings(): Settings {
-  const s: Settings = { quality: "medium", suit: SUITS[0].id, muted: false, volume: 0.8, sensitivity: 1, invertY: false };
+  const s: Settings = { quality: "medium", suit: SUITS[0].id, muted: false, volume: 0.8, sensitivity: 1, invertY: false, holdChain: true, fov: FOV_BASE };
   try {
     const q = localStorage.getItem("spiderman-quality");
     if (q && q in QUALITIES) s.quality = q as Quality;
@@ -29,6 +31,8 @@ function loadSettings(): Settings {
     if (typeof saved.muted === "boolean") s.muted = saved.muted;
     if (typeof saved.invertY === "boolean") s.invertY = saved.invertY;
     if (typeof saved.volume === "number") s.volume = Math.min(1, Math.max(0, saved.volume));
+    if (typeof saved.holdChain === "boolean") s.holdChain = saved.holdChain;
+    if (typeof saved.fov === "number" && Number.isFinite(saved.fov)) s.fov = Math.min(90, Math.max(50, saved.fov));
     if (typeof saved.sensitivity === "number") s.sensitivity = Math.min(2, Math.max(0.5, saved.sensitivity));
   } catch {}
   return s;
@@ -75,7 +79,8 @@ export default function SpidermanPage() {
       if (h.playing && screenRef.current !== "playing") setScreen("playing");
       else if (!h.playing && screenRef.current === "playing") {
         setScreen("pause");
-        setPanel(null);
+        setPanel(padMenu.map ? "map" : null);
+        padMenu.map = false;
       }
     };
     const game: Game = startGame(canvasRef.current!, onHud, onEvent, initial);
@@ -114,11 +119,39 @@ export default function SpidermanPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [screen, panel]);
 
+  const ready = !!hud;
+  const playRef = useRef(() => {});
+  useEffect(() => {
+    if (screen === "playing" || !ready) return;
+    let raf = 0;
+    let prev = -1;
+    const poll = () => {
+      raf = requestAnimationFrame(poll);
+      let gp: Gamepad | null = null;
+      for (const g of navigator.getGamepads?.() ?? []) if (g?.connected && g.mapping === "standard") gp = g;
+      if (!gp) return;
+      let bits = 0;
+      for (const i of [0, 1, 9, 12, 13]) if (gp.buttons[i]?.pressed) bits |= 1 << i;
+      const was = prev;
+      prev = bits;
+      if (was < 0) return;
+      const hit = (i: number) => (bits & (1 << i)) !== 0 && (was & (1 << i)) === 0;
+      if (hit(9)) playRef.current();
+      else if (hit(1)) setPanel(null);
+      else if (hit(0)) (document.activeElement as HTMLElement | null)?.click();
+      else if (hit(12) || hit(13))
+        document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: hit(12) ? "ArrowUp" : "ArrowDown", bubbles: true }));
+    };
+    raf = requestAnimationFrame(poll);
+    return () => cancelAnimationFrame(raf);
+  }, [screen, ready]);
+
   const play = () => {
     setStarted(true);
     setPanel(null);
     gameRef.current?.play();
   };
+  playRef.current = play;
   const toggle = (p: Panel) => setPanel((cur) => (cur === p ? null : p));
 
   const items: MenuItem[] =

@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { Bucket, Bulbs, Tiled, blinkify, box } from "./city-kit";
-import { crossTexture, parkTexture, pavingTexture, roadTexture, shopTexture, signAtlas, softDot, tickerTexture, SHOP_H } from "./city-textures";
+import { crossTexture, lampTexture, noiseTexture, parkTexture, pavingTexture, roadTexture, shopTexture, signAtlas, softDot, tickerTexture, SHOP_H } from "./city-textures";
 import { SNOW, genHarlem, genIndustrial, genLandmark, genPlaza, billboardWall, face, floors, mass, ticker, timesSteps, type Block, type Box, type Ctx } from "./city-build";
 import { genChinatown, genFiDi, genGreenwich, genHellsKitchen, genLES, genLots, genMidtownTowers, genUpperSide, type Profile } from "./city-districts";
 import { genConstruction, loadMeshes } from "./city-cranes";
-import { blockStreet, groundGeometry, parkBlock, plazaProps, shoreEdge, signals, steam, treeMeshes, type District } from "./city-props";
+import { LAMPS, blockStreet, groundGeometry, parkBlock, plazaProps, shoreEdge, signals, steam, treeMeshes, type District } from "./city-props";
 import { dominoSign, pepsiSign, signMesh } from "./city-river";
 import { chrysler, flatiron, grandCentral, hudsonYards, landmarkBlock, oneCourtSquare, oneWtc, reserved, unitedNations } from "./city-towers";
 import { bridges } from "./city-bridges";
@@ -12,6 +12,7 @@ import { skyline } from "./city-skyline";
 import { createTraffic, type Road } from "./city-cars";
 import { FACADES, FACADE_SETS, STYLE, facadeMaterial } from "./city-facades";
 import { createRiverMaterial } from "./render-water";
+import { SKY } from "./sky-state";
 import * as G from "./city-geo";
 
 export type { Box } from "./city-build";
@@ -225,6 +226,144 @@ function build(c: Ctx, b: Block, gb: G.GeoBlock, W: number, D: number, m: number
   return genLots(c, b, midtown(cx, cz));
 }
 
+const HASH = /* glsl */ `
+float cgHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+`;
+
+const GROUND_FRAG = /* glsl */ `
+#include <map_fragment>
+vec2 gw = vGW.xz;
+vec4 gA = texture2D(uNoise, gw * (1.0 / 53.0));
+vec4 gB = texture2D(uNoise, mat2(0.8, -0.6, 0.6, 0.8) * gw * (1.0 / 17.0) + 0.31);
+float gNight = smoothstep(0.3, 1.0, uNight);
+float gSnow = 0.0;
+float gWet = 0.0;
+#if GK == 0
+  diffuseColor.rgb *= (0.93 + 0.12 * cgHash(floor(gw / 1.5))) * mix(0.84, 1.06, gA.b);
+  gSnow = smoothstep(0.55, 0.6, gA.g * 0.6 + gB.g * 0.4 + 0.1 * (gB.r - 0.5));
+  gWet = (1.0 - gSnow) * smoothstep(0.5, 0.65, gA.a) * 0.5;
+#else
+  diffuseColor.rgb *= mix(0.84, 1.1, gA.b) * (0.96 + 0.08 * gB.g);
+  vec2 pc = floor(gw / vec2(4.3, 3.7));
+  vec2 pf = fract(gw / vec2(4.3, 3.7));
+  float ph = cgHash(pc + 7.7);
+  vec2 pe = min(pf, 1.0 - pf) * vec2(4.3, 3.7);
+  float pin = step(0.9, ph) * step(0.35 * cgHash(pc + 1.3), min(pe.x, pe.y));
+  diffuseColor.rgb *= 1.0 - 0.2 * pin;
+  gWet = smoothstep(0.45, 0.66, gB.b);
+#endif
+#if GK == 1
+  float gAcross = min(vMapUv.x, 1.0 - vMapUv.x) * 22.0;
+  float gAlong = vMapUv.y * 22.0;
+  vec4 gC = texture2D(uNoise, vec2(gAlong * (1.0 / 13.0), vMapUv.x > 0.5 ? 0.27 : 0.71));
+  float gBank = 0.45 + 1.1 * gC.g + 0.45 * (gC.r - 0.5);
+  gSnow = 1.0 - smoothstep(gBank - 0.05, gBank + 0.05, gAcross);
+  float gSlush = (1.0 - smoothstep(gBank, gBank + 0.5 + 0.9 * gC.a, gAcross)) * (1.0 - gSnow);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.06, 0.058, 0.055), gSlush * 0.55);
+  gWet = max(gWet, gSlush);
+#endif
+gWet *= 0.35 + 0.65 * gNight;
+diffuseColor.rgb *= 1.0 - 0.3 * gWet;
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.8, 0.84, 0.9) * (0.94 + 0.08 * gB.r), gSnow);
+`;
+
+/** World-space stains, snow, wet patches and lamp pools for land (0), roads (1) and crossings (2). */
+function groundPatch(m: THREE.MeshStandardMaterial, kind: 0 | 1 | 2, noise: THREE.Texture, lamp: { tex: THREE.Texture; rect: THREE.Vector4 }) {
+  m.defines = { GK: kind };
+  m.onBeforeCompile = (s) => {
+    Object.assign(s.uniforms, { uNoise: { value: noise }, uLamp: { value: lamp.tex }, uLampR: { value: lamp.rect }, uNight: SKY.night });
+    s.vertexShader = s.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vGW;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvGW = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    s.fragmentShader = s.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform sampler2D uNoise; uniform sampler2D uLamp; uniform vec4 uLampR; uniform float uNight; varying vec3 vGW;" + HASH)
+      .replace("#include <map_fragment>", GROUND_FRAG)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(roughnessFactor, 0.14, gWet * 0.85), 0.62, gSnow);")
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+{
+  float gL = texture2D(uLamp, (gw - uLampR.xy) * uLampR.zw).r;
+  totalEmissiveRadiance += vec3(1.0, 0.68, 0.38) * gL * gNight * (diffuseColor.rgb * 1.5 + 0.06 + 0.3 * gWet * gL);
+}`,
+      );
+  };
+  m.customProgramCacheKey = () => "ground" + kind;
+  return m;
+}
+
+const SOLID_VERT = /* glsl */ `
+{
+  vec4 sp = vec4(transformed, 1.0);
+  vec3 sn = objectNormal;
+  #ifdef USE_INSTANCING
+    sp = instanceMatrix * sp;
+    sn = mat3(instanceMatrix) * sn;
+  #endif
+  vSW = (modelMatrix * sp).xyz;
+  vSN = normalize(mat3(modelMatrix) * sn);
+}
+`;
+
+const SOLID_FRAG = /* glsl */ `
+#include <color_fragment>
+vec3 sAn = abs(vSN);
+vec2 sUv = sAn.y > 0.7 ? vSW.xz : vec2(sAn.x > sAn.z ? vSW.z : vSW.x, vSW.y);
+vec4 sG = texture2D(uNoise, sUv * (1.0 / 2.3));
+vec4 sM = texture2D(uNoise, sUv * (1.0 / 29.0) + 0.43);
+float sNight = smoothstep(0.3, 1.0, uNight);
+float sSnow = smoothstep(0.6, 0.72, dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114))) * smoothstep(0.55, 0.85, vSN.y);
+diffuseColor.rgb *= 1.0 + (sG.r - 0.5) * mix(0.32, 0.07, sSnow);
+diffuseColor.rgb *= mix(mix(0.84, 1.08, sM.b) * (1.0 - 0.12 * smoothstep(0.55, 0.8, sM.a) * (1.0 - sAn.y)), 0.88 + 0.16 * sM.g, sSnow);
+float sH = sG.r;
+`;
+
+/** Triplanar grain, stains and bump on flat vertex-color meshes, with snow glints on bright tops. */
+function solidPatch(m: THREE.MeshStandardMaterial, noise: THREE.Texture, key: string) {
+  m.onBeforeCompile = (s) => {
+    Object.assign(s.uniforms, { uNoise: { value: noise }, uNight: SKY.night });
+    s.vertexShader = s.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vSW; varying vec3 vSN;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n" + SOLID_VERT);
+    s.fragmentShader = s.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform sampler2D uNoise; uniform float uNight; varying vec3 vSW; varying vec3 vSN;" + HASH)
+      .replace("#include <color_fragment>", SOLID_FRAG)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor *= 0.88 + 0.24 * sG.g;")
+      .replace(
+        "#include <normal_fragment_maps>",
+        `#include <normal_fragment_maps>
+{
+  vec2 dH = vec2(dFdx(sH), dFdy(sH)) * mix(0.9, 0.6, sSnow);
+  vec3 sx = normalize(dFdx(-vViewPosition));
+  vec3 sy = normalize(dFdy(-vViewPosition));
+  vec3 r1 = cross(sy, normal);
+  vec3 r2 = cross(normal, sx);
+  float det = dot(sx, r1) * faceDirection;
+  normal = normalize(abs(det) * normal - sign(det) * (dH.x * r1 + dH.y * r2));
+  if (sSnow > 0.01) {
+    float hx = texture2D(uNoise, (sUv + vec2(0.6, 0.0)) * (1.0 / 29.0) + 0.43).g - sM.g;
+    float hz = texture2D(uNoise, (sUv + vec2(0.0, 0.6)) * (1.0 / 29.0) + 0.43).g - sM.g;
+    vec3 wn = normalize(vec3(-hx * 4.0, 1.0, -hz * 4.0));
+    normal = normalize(mix(normal, normalize((viewMatrix * vec4(wn, 0.0)).xyz), sSnow));
+  }
+}`,
+      )
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+{
+  vec3 sV = normalize(cameraPosition - vSW);
+  vec2 sc = sUv * 11.0;
+  float sp = cgHash(floor(sc) + floor(sV.xz * 7.0 + sV.y * 3.0) * 13.1) * step(length(fract(sc) - 0.5), 0.16);
+  float sFade = 1.0 - smoothstep(0.2, 0.7, length(fwidth(sc)));
+  totalEmissiveRadiance += step(0.985, sp) * sSnow * sFade * mix(vec3(1.4), vec3(0.3, 0.36, 0.5), sNight);
+}`,
+      );
+  };
+  m.customProgramCacheKey = () => key;
+  return m;
+}
+
 export function createCity(seed = 7) {
   const r = rng(seed);
   const group = new THREE.Group();
@@ -253,6 +392,7 @@ export function createCity(seed = 7) {
     loads: [],
   };
   const park = new Bucket();
+  LAMPS.length = 0;
   const vents: { x: number; z: number; stack: boolean }[] = [];
 
   const times = fillBlocks(c, park, vents);
@@ -263,15 +403,16 @@ export function createCity(seed = 7) {
   bridges(c);
   shoreEdge(c, G.LAND, (x, z) => x > G.BOUNDS.maxX + 300 || z > G.BOUNDS.maxZ + 200);
 
+  const noise = noiseTexture();
   const shopT = shopTexture(r);
   const shadowed = (m: THREE.Mesh, cast = true) => {
     m.castShadow = cast;
     m.receiveShadow = true;
     return m;
   };
-  for (let i = 0; i < FACADES.length; i++) if (c.facade[i].tris) group.add(shadowed(new THREE.Mesh(c.facade[i].build(), facadeMaterial(FACADES[i], r))));
+  for (let i = 0; i < FACADES.length; i++) if (c.facade[i].tris) group.add(shadowed(new THREE.Mesh(c.facade[i].build(), facadeMaterial(FACADES[i], r, noise))));
   group.add(shadowed(new THREE.Mesh(c.shop.build(), new THREE.MeshStandardMaterial({ map: shopT.map, emissiveMap: shopT.emissive, emissive: 0xffffff, emissiveIntensity: 1.15, roughness: 0.5, vertexColors: true }))));
-  const solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.05 });
+  const solidMat = solidPatch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.05 }), noise, "solid");
   for (const m of (c.solid as Tiled).meshes(solidMat)) group.add(shadowed(m));
   const small = new THREE.Group();
   for (const m of (c.small as Tiled).meshes(solidMat)) small.add(shadowed(m, false));
@@ -285,18 +426,19 @@ export function createCity(seed = 7) {
   const iceMat = new THREE.MeshStandardMaterial({ color: "#d5e6f3", roughness: 0.06, metalness: 0.25 });
   group.add(shadowed(new THREE.Mesh(c.ice.build(), iceMat), false));
   const parkTex = parkTexture(r);
-  group.add(shadowed(new THREE.Mesh(park.build(), new THREE.MeshStandardMaterial({ map: parkTex, roughness: 0.95 })), false));
+  group.add(shadowed(new THREE.Mesh(park.build(), solidPatch(new THREE.MeshStandardMaterial({ map: parkTex, roughness: 0.95 }), noise, "park")), false));
   group.add(signMesh(), skyline());
 
   const gg = groundGeometry(G.LAND, G.ROADS, G.PLAZAS, G.ROAD_W);
-  const landMesh = shadowed(new THREE.Mesh(gg.land, new THREE.MeshStandardMaterial({ map: pavingTexture(), vertexColors: true, roughness: 0.8, metalness: 0.02 })), false);
+  const lamps = lampTexture(LAMPS);
+  const landMesh = shadowed(new THREE.Mesh(gg.land, groundPatch(new THREE.MeshStandardMaterial({ map: pavingTexture(), vertexColors: true, roughness: 0.8, metalness: 0.02 }), 0, noise, lamps)), false);
   const eye = new THREE.Vector3(0, 0, 0);
   landMesh.onBeforeRender = (_r, _s, cam) => {
     if ((cam as THREE.PerspectiveCamera).isPerspectiveCamera) eye.copy(cam.position);
   };
   group.add(landMesh);
-  group.add(shadowed(new THREE.Mesh(gg.roads, new THREE.MeshStandardMaterial({ map: roadTexture(G.ROAD_W), roughness: 0.72, metalness: 0.05 })), false));
-  group.add(shadowed(new THREE.Mesh(gg.cross, new THREE.MeshStandardMaterial({ map: crossTexture(G.ROAD_W), roughness: 0.72, metalness: 0.05 })), false));
+  group.add(shadowed(new THREE.Mesh(gg.roads, groundPatch(new THREE.MeshStandardMaterial({ map: roadTexture(G.ROAD_W), roughness: 0.72, metalness: 0.05 }), 1, noise, lamps)), false));
+  group.add(shadowed(new THREE.Mesh(gg.cross, groundPatch(new THREE.MeshStandardMaterial({ map: crossTexture(G.ROAD_W), roughness: 0.72, metalness: 0.05 }), 2, noise, lamps)), false));
 
   const B = G.BOUNDS;
   const water = new THREE.Mesh(

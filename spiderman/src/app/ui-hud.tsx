@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { memo, useEffect, useRef, type ReactNode } from "react";
 import type { HudState, Marker } from "./contracts";
+import { HIT_MARKS, hitMarks, type HitMark } from "./combat-fx";
 import { BOUNDS, BRIDGES, CENTRAL_PARK, LAND, ROADS, ROAD_W, type Pt } from "./city-geo";
 import { Key } from "./ui-menu";
 
@@ -411,7 +412,17 @@ function Crosshair({ h }: { h: HudState }) {
   const g = st.gap;
   const glow = h.aim === "aim" ? "drop-shadow(0 0 3px rgba(255,255,255,0.9)) drop-shadow(0 1px 2px #000)" : "drop-shadow(0 1px 2px rgba(0,0,0,0.9))";
   const showDist = (h.aim === "aim" || h.aim === "auto" || h.aim === "far") && h.aimDist > 0;
+  const cue = h.swingCue > 0.3 ? Math.min(1, h.swingCue) : 0;
   return (
+    <>
+    {cue > 0 && (
+      <svg viewBox="-30 -30 60 60" className="absolute left-1/2 top-1/2 h-[60px] w-[60px] -translate-x-1/2 -translate-y-1/2 overflow-visible" style={{ filter: "drop-shadow(0 0 4px rgba(226,35,26,0.9))" }}>
+        <circle r={13} fill="none" stroke="#ffffff" strokeOpacity={0.25} strokeWidth={2} />
+        <circle r={13} fill="none" stroke="#e2231a" strokeWidth={2.6} strokeLinecap="round" strokeDasharray={`${(cue * 81.7).toFixed(1)} 81.7`} transform="rotate(-90)">
+          <animate attributeName="stroke-width" values="2.6;4;2.6" dur="0.35s" repeatCount="indefinite" />
+        </circle>
+      </svg>
+    )}
     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ opacity: st.op, transition: "opacity 120ms" }}>
       <svg viewBox="-30 -30 60 60" className="h-[60px] w-[60px] overflow-visible" style={{ filter: glow }}>
         <g stroke={st.color} strokeWidth={h.aim === "aim" ? 2 : 1.6} strokeLinecap="round" fill="none" style={{ transition: "stroke 120ms" }}>
@@ -428,8 +439,59 @@ function Crosshair({ h }: { h: HudState }) {
         </div>
       )}
     </div>
+    </>
   );
 }
+
+const MARK: Record<HitMark["kind"], { color: string; size: number }> = {
+  hit: { color: "#ffffff", size: 20 },
+  heavy: { color: "#ffd23a", size: 26 },
+  ko: { color: "#e2231a", size: 30 },
+  block: { color: "#9cc8ff", size: 18 },
+};
+
+// Damage numbers and block marks: a fixed pool of nodes, written outside React on new marks only.
+const HitMarks = memo(function HitMarks() {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const nodes = box.current ? (Array.from(box.current.children) as HTMLDivElement[]) : [];
+    let seen = hitMarks.seq;
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      if (hitMarks.seq === seen) return;
+      for (const m of hitMarks.list) {
+        if (m.seq <= seen) continue;
+        const el = nodes[m.seq % HIT_MARKS];
+        const k = MARK[m.kind];
+        el.textContent = m.text;
+        el.style.left = `${m.x * 100}%`;
+        el.style.top = `${m.y * 100}%`;
+        el.style.color = k.color;
+        el.style.fontSize = `${k.size}px`;
+        const dx = ((m.seq * 37) % 30) - 15;
+        el.animate(
+          [
+            { opacity: 1, transform: `translate(-50%, -50%) translate(${dx}px, 6px) scale(1.5)` },
+            { opacity: 1, transform: `translate(-50%, -50%) translate(${dx}px, -8px) scale(1)`, offset: 0.2 },
+            { opacity: 0, transform: `translate(-50%, -50%) translate(${dx}px, -34px) scale(0.9)` },
+          ],
+          { duration: m.kind === "block" ? 500 : 700, easing: "ease-out", fill: "forwards" },
+        );
+      }
+      seen = hitMarks.seq;
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div ref={box} className="absolute inset-0 overflow-hidden">
+      {Array.from({ length: HIT_MARKS }, (_, i) => (
+        <div key={i} className={`absolute font-cond font-black italic leading-none tabular-nums opacity-0 ${SHADOW}`} />
+      ))}
+    </div>
+  );
+});
 
 export function Hud({ h, pops, showVitals, tip }: { h: HudState; pops: Pop[]; showVitals: boolean; tip?: ReactNode }) {
   const lines = Math.min(Math.max((h.speed - 110) / 160, 0), 0.45);
@@ -480,6 +542,7 @@ export function Hud({ h, pops, showVitals, tip }: { h: HudState; pops: Pop[]; sh
       {h.sense && <Sense s={h.sense} />}
       {h.stealth && <Stealth s={h.stealth} />}
 
+      <HitMarks />
       <Crosshair h={h} />
 
       {toast?.type === "toast" && (

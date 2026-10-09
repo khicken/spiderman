@@ -674,7 +674,8 @@ export type Suit = { tex: SuitTex; look: Look; wing: THREE.CanvasTexture };
 function wrapTex(c: HTMLCanvasElement, srgb: boolean) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  t.anisotropy = 8;
+  t.wrapS = THREE.RepeatWrapping;
+  t.anisotropy = 16;
   return t;
 }
 
