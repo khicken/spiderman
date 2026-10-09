@@ -1,9 +1,11 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { toon } from "./toon";
 
 export const ALLY_HALF = 0.85;
 const HAIR = ["#2b2320", "#c9a35a", "#6b4a2e", "#1d1d24", "#8a5a3a", "#d8c9a8"];
 const SEG = 6;
+const C = { skin: "#f2cfae", jacket: "#8c5a34", pants: "#ebe5d6", boot: "#3a2a22", metal: "#8e98a6" };
 
 export type Soldier = {
   root: THREE.Group;
@@ -49,14 +51,9 @@ function emblem() {
 export function createKit(scene: THREE.Scene) {
   const tex = emblem();
   const mats = {
-    skin: toon({ color: "#f2cfae" }),
-    jacket: toon({ color: "#8c5a34" }),
-    pants: toon({ color: "#ebe5d6" }),
-    boot: toon({ color: "#3a2a22" }),
-    metal: toon({ color: "#8e98a6" }),
     blade: toon({ color: "#dfe7f2", emissive: "#2a3446", outline: false }),
     cloak: toon({ color: "#ffffff", map: tex, side: THREE.DoubleSide }),
-    hair: HAIR.map((c) => toon({ color: c })),
+    tint: toon({ color: "#ffffff", vertexColors: true }),
   };
   const geos = {
     torso: new THREE.CapsuleGeometry(0.15, 0.28, 3, 10),
@@ -91,22 +88,40 @@ export function createKit(scene: THREE.Scene) {
       p.add(o);
       return o;
     };
-    add(geos.torso, mats.jacket, model, 0, 1.24, 0, true).scale.set(1.15, 1, 0.8);
-    add(geos.pelvis, mats.pants, model, 0, 0.94, 0).scale.set(1.1, 1, 0.85);
-    add(geos.head, mats.skin, model, 0, 1.63, 0.01);
-    add(geos.hair, mats.hair[i % HAIR.length], model, 0, 1.65, -0.01).rotation.x = -0.35;
-    for (const s of [-1, 1]) add(geos.tank, mats.metal, model, s * 0.2, 0.92, -0.1);
-    const limb = (x: number, y: number, g: THREE.BufferGeometry, m: THREE.Material) => {
+    // One vertex-colored mesh per rigid part cuts draw calls from 13 to 8 per soldier.
+    const owned: THREE.BufferGeometry[] = [];
+    const part = (pieces: [THREE.BufferGeometry, string, THREE.Vector3, THREE.Vector3?, number?][]) => {
+      const out = mergeGeometries(pieces.map(([g, hex, pos, scale, rx]) => {
+        const c = g.clone().applyMatrix4(new THREE.Matrix4().compose(pos, new THREE.Quaternion().setFromEuler(new THREE.Euler(rx ?? 0, 0, 0)), scale ?? new THREE.Vector3(1, 1, 1)));
+        const col = new THREE.Color(hex);
+        const n = c.attributes.position.count;
+        c.setAttribute("color", new THREE.Float32BufferAttribute(Array.from({ length: n * 3 }, (_, k) => [col.r, col.g, col.b][k % 3]), 3));
+        return c;
+      }))!;
+      owned.push(out);
+      return out;
+    };
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    add(part([
+      [geos.torso, C.jacket, V(0, 1.24, 0), V(1.15, 1, 0.8)],
+      [geos.pelvis, C.pants, V(0, 0.94, 0), V(1.1, 1, 0.85)],
+      [geos.head, C.skin, V(0, 1.63, 0.01)],
+      [geos.hair, HAIR[i % HAIR.length], V(0, 1.65, -0.01), undefined, -0.35],
+      [geos.tank, C.metal, V(-0.2, 0.92, -0.1)],
+      [geos.tank, C.metal, V(0.2, 0.92, -0.1)],
+    ]), mats.tint, model, 0, 0, 0, true);
+    const arm = part([[geos.arm, C.jacket, V(0, 0, 0)]]);
+    const leg = part([[geos.leg, C.pants, V(0, 0, 0)], [geos.boot, C.boot, V(0, 0, 0)]]);
+    const limb = (x: number, y: number, g: THREE.BufferGeometry) => {
       const p = pivot(model, x, y, 0);
-      add(g, m, p, 0, 0, 0);
+      add(g, mats.tint, p, 0, 0, 0);
       return p;
     };
-    const armL = limb(0.21, 1.42, geos.arm, mats.jacket);
-    const armR = limb(-0.21, 1.42, geos.arm, mats.jacket);
+    const armL = limb(0.21, 1.42, arm);
+    const armR = limb(-0.21, 1.42, arm);
     for (const a of [armL, armR]) add(geos.blade, mats.blade, a, 0, 0, 0);
-    const legL = limb(0.09, 0.92, geos.leg, mats.pants);
-    const legR = limb(-0.09, 0.92, geos.leg, mats.pants);
-    for (const l of [legL, legR]) add(geos.boot, mats.boot, l, 0, 0, 0);
+    const legL = limb(0.09, 0.92, leg);
+    const legR = limb(-0.09, 0.92, leg);
     const cloak = pivot(model, 0, 1.46, -0.17);
     add(geos.cloak, mats.cloak, cloak, 0, 0, 0, true);
 
@@ -183,6 +198,7 @@ export function createKit(scene: THREE.Scene) {
       },
       dispose() {
         scene.remove(root, wires);
+        for (const o of owned) o.dispose();
         g.dispose();
       },
     };

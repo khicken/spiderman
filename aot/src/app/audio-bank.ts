@@ -90,6 +90,7 @@ export function createBank(rate: number) {
     async load(parallel = 3) {
       let next = 0;
       const worker = async () => {
+        await new Promise((r) => setTimeout(r, 0));
         while (!stopped && next < jobs.length) {
           const j = jobs[next++];
           try {

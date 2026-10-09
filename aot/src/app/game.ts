@@ -162,8 +162,21 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (introT >= INTRO.end) endIntro();
   };
 
+  const errs = new Set<string>();
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
+    try {
+      step(now);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!errs.has(msg)) {
+        errs.add(msg);
+        console.error("frame error", e);
+      }
+    }
+    view.render();
+  };
+  const step = (now: number) => {
     const real = Math.min((now - last) / 1000, 1 / 30);
     last = now;
     frames++;
@@ -250,7 +263,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         ...player.hud(),
       });
     }
-    view.render();
   };
   raf = requestAnimationFrame(frame);
 

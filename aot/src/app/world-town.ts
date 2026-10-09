@@ -238,7 +238,7 @@ export function tree(m: Meshers, r: Rand, x: number, z: number, s: number) {
   for (let i = 0; i < n; i++) {
     const a = r() * Math.PI * 2;
     const rr = i === 0 ? 0 : 1.4 * s;
-    m.leaf.add(new THREE.IcosahedronGeometry((2 + r()) * s * (i === 0 ? 1.25 : 0.95), 1), mat(x + Math.cos(a) * rr, (5 + r() * 1.5 + (i === 0 ? 1.2 : 0)) * s, z + Math.sin(a) * rr, 1, 0.85, 1, r(), r(), 0));
+    m.leaf.add(new THREE.IcosahedronGeometry((2 + r()) * s * (i === 0 ? 1.25 : 0.95), 0), mat(x + Math.cos(a) * rr, (5 + r() * 1.5 + (i === 0 ? 1.2 : 0)) * s, z + Math.sin(a) * rr, 1, 0.85, 1, r(), r(), 0));
   }
 }
 

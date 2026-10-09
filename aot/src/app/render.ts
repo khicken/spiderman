@@ -232,10 +232,10 @@ export function createRender(canvas: HTMLCanvasElement): Render {
     const pr = Math.min(window.devicePixelRatio || 1, preset.ratio);
     const pw = Math.max(1, Math.floor(w * pr));
     const ph = Math.max(1, Math.floor(h * pr));
-    rtA = new THREE.WebGLRenderTarget(pw, ph, { type: THREE.HalfFloatType, samples: preset.samples, depthTexture: new THREE.DepthTexture(pw, ph, THREE.UnsignedIntType) });
+    rtA = preset.ink ? new THREE.WebGLRenderTarget(pw, ph, { type: THREE.HalfFloatType, samples: preset.samples, depthTexture: new THREE.DepthTexture(pw, ph, THREE.UnsignedIntType) }) : null;
     rtB = new THREE.WebGLRenderTarget(pw, ph, { type: THREE.HalfFloatType, depthBuffer: true });
-    inkMat.uniforms.tColor.value = rtA.texture;
-    inkMat.uniforms.tDepth.value = rtA.depthTexture;
+    inkMat.uniforms.tColor.value = rtA?.texture ?? null;
+    inkMat.uniforms.tDepth.value = rtA?.depthTexture ?? null;
     inkMat.uniforms.texel.value.set(Math.max(1, pr * 0.8) / pw, Math.max(1, pr * 0.8) / ph);
     finalMat.uniforms.tColor.value = rtB.texture;
   };
@@ -319,7 +319,7 @@ export function createRender(canvas: HTMLCanvasElement): Render {
   };
 
   const render = () => {
-    if (!rtA || !rtB) return;
+    if (!rtB || (preset.ink && !rtA)) return;
     sky.position.copy(camera.position);
     if (impactFrames > 0) {
       finalMat.uniforms.impact.value = 1;

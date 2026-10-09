@@ -440,7 +440,10 @@ export function makeRig(v: Variant, tint: THREE.Color): Rig {
   bones[0].updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(bones));
   mesh.castShadow = true;
-  mesh.frustumCulled = false;
+  if (!v.geo.boundingSphere) v.geo.computeBoundingSphere();
+  // Fixed bind-pose sphere with margin: skinned bounds do not follow the animated pose.
+  mesh.boundingSphere = v.geo.boundingSphere!.clone();
+  mesh.boundingSphere.radius *= 1.5;
   const group = new THREE.Group();
   group.rotation.order = "YXZ";
   group.add(mesh);
