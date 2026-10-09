@@ -137,6 +137,7 @@ export const LANES = [2.4, 6.5] as const;
 export const PARK_LANE = 9.7;
 const CYCLE = 30;
 const STOP = 13.5;
+const PARTS = 4;
 
 /** Signal state for traffic on `axis` at intersection group g: 0 green, 1 yellow, 2 red. */
 export function signal(t: number, axis: number, g: number) {
@@ -305,7 +306,8 @@ export function createTraffic(o: { r: () => number; max: number; time: { value: 
   });
 
   let active = cars.length;
-  const boxes: CarBox[] = cars.map(() => ({ minX: 0, maxX: 0, minZ: 0, maxZ: 0, minY: 0, maxY: 0, vx: 0, vz: 0 }));
+  const boxes: CarBox[] = Array.from({ length: cars.length * PARTS }, () => ({ minX: 0, maxX: 0, minZ: 0, maxZ: 0, minY: 0, maxY: 0, vx: 0, vz: 0 }));
+  const parts = new Uint8Array(cars.length);
   const obstacle = { x: 0, z: 0, y: 0, on: false };
 
   const nextCross = (R: Ring, s: number, dir: number) => {
@@ -357,17 +359,24 @@ export function createTraffic(o: { r: () => number; max: number; time: { value: 
       p = place(R, c.u);
       const mesh = meshes[c.model];
       const [w, hgt] = SIZE[names[c.model]];
-      const bx = boxes[i];
-      const ex = (Math.abs(p.hx) * c.len + Math.abs(p.hz) * w) / 2;
-      const ez = (Math.abs(p.hz) * c.len + Math.abs(p.hx) * w) / 2;
-      bx.minX = p.x - ex;
-      bx.maxX = p.x + ex;
-      bx.minZ = p.z - ez;
-      bx.maxZ = p.z + ez;
-      bx.minY = R.y;
-      bx.maxY = R.y + hgt;
-      bx.vx = p.hx * c.v;
-      bx.vz = p.hz * c.v;
+      const n = Math.abs(p.hx) > 0.03 && Math.abs(p.hz) > 0.03 ? PARTS : 1;
+      const seg = c.len / n;
+      const ex = (Math.abs(p.hx) * seg + Math.abs(p.hz) * w) / 2;
+      const ez = (Math.abs(p.hz) * seg + Math.abs(p.hx) * w) / 2;
+      parts[i] = n;
+      for (let q = 0; q < n; q++) {
+        const bx = boxes[i * PARTS + q];
+        const o = (q + 0.5) * seg - c.len / 2;
+        const x = p.x + p.hx * o, z = p.z + p.hz * o;
+        bx.minX = x - ex;
+        bx.maxX = x + ex;
+        bx.minZ = z - ez;
+        bx.maxZ = z + ez;
+        bx.minY = R.y;
+        bx.maxY = R.y + hgt;
+        bx.vx = p.hx * c.v;
+        bx.vz = p.hz * c.v;
+      }
       for (let q = 0; q < mesh.ims.length; q++) {
         const e = mesh.ims[q].instanceMatrix.array as Float32Array;
         const k = c.slot * 16;
@@ -394,9 +403,11 @@ export function createTraffic(o: { r: () => number; max: number; time: { value: 
     out.length = 0;
     for (let i = 0; i < cars.length; i++) {
       if (cars[i].g >= active) continue;
-      const b = boxes[i];
-      if (y === undefined ? b.minY > 0 : y < b.minY - r || y > b.maxY + r) continue;
-      if (b.maxX > x - r && b.minX < x + r && b.maxZ > z - r && b.minZ < z + r) out.push(b);
+      for (let q = 0; q < parts[i]; q++) {
+        const b = boxes[i * PARTS + q];
+        if (y === undefined ? b.minY > 0 : y < b.minY - r || y > b.maxY + r) continue;
+        if (b.maxX > x - r && b.minX < x + r && b.maxZ > z - r && b.minZ < z + r) out.push(b);
+      }
     }
     return out;
   };

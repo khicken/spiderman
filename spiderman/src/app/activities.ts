@@ -1198,7 +1198,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
   const save: Saveable = {
     snapshot: () => ({
       v: 1,
-      photos: photos.map((p) => p.item.done),
+      photos: photos.map((p) => ({ name: p.name, done: p.item.done })),
       caches: caches.map((c) => c.item.done),
       requests: reqs.map((q) => q.item.done),
       pigeons: flocks.map((f) => f.birds.map((b) => b.caught)),
@@ -1209,7 +1209,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
     restore: (data: unknown) => {
       if (!data || typeof data !== "object") return;
       const d = data as Record<string, unknown>;
-      bools(d.photos, photos.length).forEach((v, i) => (photos[i].item.done = v));
+      const ps = Array.isArray(d.photos) ? d.photos : [];
+      for (const p of photos) p.item.done = ps.some((x) => !!x && typeof x === "object" && (x as Record<string, unknown>).name === p.name && (x as Record<string, unknown>).done === true);
       bools(d.caches, caches.length).forEach((v, i) => (caches[i].item.done = v));
       bools(d.requests, reqs.length).forEach((v, i) => (reqs[i].item.done = v));
       bools(d.flocks, flocks.length).forEach((v, i) => (flocks[i].item.done = v));

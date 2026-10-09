@@ -28,7 +28,6 @@ export class Ped {
   phase = 0;
   seed = 0;
   bi = 0;
-  bj = 0;
   c = 0;
   dir = 1;
   o = 0;
@@ -39,7 +38,6 @@ export class Ped {
   wx = [0, 0, 0];
   wz = [0, 0, 0];
   nbi = 0;
-  nbj = 0;
   nc = 0;
   axis = 0;
   g = 0;

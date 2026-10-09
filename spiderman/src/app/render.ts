@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { FOG_SUN, FOG_WARM, Post, patchFog, patchToneMapping } from "./render-post";
 import { Ao } from "./render-ao";
-import { WATER, WaterSSR, createRiverMaterial } from "./render-water";
+import { WATER, WaterSSR } from "./render-water";
 import { CLOCK_KEYS, nightAmount, sunElevation } from "./render-clock";
 import { makeNightSky } from "./sky-night";
 import { SKY } from "./sky-state";
@@ -11,11 +11,11 @@ export type Quality = "low" | "medium" | "high";
 
 export const QUALITIES: Record<
   Quality,
-  { label: string; detail: string; pixelRatio: number; shadow: number; range: number; post: 0 | 1 | 2; snow: number; cars: number; fog: number; env: boolean; detailLevel: 0 | 1 | 2; aniso: number }
+  { label: string; detail: string; pixelRatio: number; shadow: number; range: number; post: 0 | 1 | 2; snow: number; cars: number; fog: number; detailLevel: 0 | 1 | 2; aniso: number }
 > = {
-  low: { label: "Performance", detail: "No shadows, short view, high frame rate", pixelRatio: 0.75, shadow: 0, range: 0, post: 0, snow: 0, cars: 80, fog: 650, env: true, detailLevel: 0, aniso: 4 },
-  medium: { label: "Balanced", detail: "Soft shadows, snow, color grading, sharp edges", pixelRatio: 1, shadow: 2048, range: 90, post: 1, snow: 1800, cars: 180, fog: 1100, env: true, detailLevel: 1, aniso: 8 },
-  high: { label: "Fidelity", detail: "Sharp shadows, bloom, heavy snow, far view", pixelRatio: 1.25, shadow: 4096, range: 160, post: 2, snow: 3500, cars: 320, fog: 1800, env: true, detailLevel: 2, aniso: 16 },
+  low: { label: "Performance", detail: "No shadows, short view, high frame rate", pixelRatio: 0.75, shadow: 0, range: 0, post: 0, snow: 0, cars: 80, fog: 650, detailLevel: 0, aniso: 4 },
+  medium: { label: "Balanced", detail: "Soft shadows, snow, color grading, sharp edges", pixelRatio: 1, shadow: 2048, range: 90, post: 1, snow: 1800, cars: 180, fog: 1100, detailLevel: 1, aniso: 8 },
+  high: { label: "Fidelity", detail: "Sharp shadows, bloom, heavy snow, far view", pixelRatio: 1.25, shadow: 4096, range: 160, post: 2, snow: 3500, cars: 320, fog: 1800, detailLevel: 2, aniso: 16 },
 };
 
 const MAX_SNOW = 3500;
@@ -35,7 +35,7 @@ const BLOOM_LEVELS = { low: 0, medium: 3, high: 5 };
 const SHADOW_UP = 350;
 const SHADOW_DEPTH = 600;
 const NEAR_RANGE = 12.5;
-const ENV_STEP = 0.25;
+const ENV_STEP = { low: 1, medium: 0.25, high: 0.25 };
 const ENV_SAMPLES = 24;
 const SKY_HORIZON = 1;
 const BOUNCE = new Float32Array([0, 0, 0, 1 / 45]);
@@ -225,6 +225,20 @@ export function createRender(canvas: HTMLCanvasElement) {
   const nightU = (nightSky.material as THREE.ShaderMaterial).uniforms;
 
   const pmrem = new THREE.PMREMGenerator(renderer);
+  // three's 256 GGX samples cost ~10 ms per rebuild.
+  const pm = pmrem as unknown as { _allocateTargets?: () => THREE.WebGLRenderTarget; _ggxMaterial?: THREE.ShaderMaterial | null };
+  const alloc = pm._allocateTargets?.bind(pmrem);
+  if (alloc) {
+    pm._allocateTargets = () => {
+      const t = alloc();
+      const ggx = pm._ggxMaterial;
+      if (ggx && ggx.defines.GGX_SAMPLES !== ENV_SAMPLES) {
+        ggx.defines.GGX_SAMPLES = ENV_SAMPLES;
+        ggx.needsUpdate = true;
+      }
+      return t;
+    };
+  } else console.warn("render: PMREM internals changed, env uses 256 samples");
   const envScene = new THREE.Scene();
   const envSky = makeSky();
   envSky.material.uniforms = { ...skyU, showSunDisc: { value: 0 } };
@@ -237,12 +251,6 @@ export function createRender(canvas: HTMLCanvasElement) {
   const rebuildEnv = () => {
     const old = envRT;
     envRT = pmrem.fromScene(envScene, 0, 0.1, 100, { size: 128 });
-    // three's 256 GGX samples cost ~10 ms per rebuild.
-    const ggx = (pmrem as unknown as { _ggxMaterial?: THREE.ShaderMaterial })._ggxMaterial;
-    if (ggx && ggx.defines.GGX_SAMPLES !== ENV_SAMPLES) {
-      ggx.defines.GGX_SAMPLES = ENV_SAMPLES;
-      ggx.needsUpdate = true;
-    }
     scene.environment = envRT.texture;
     old?.dispose();
     envClock = clock;
@@ -523,7 +531,7 @@ export function createRender(canvas: HTMLCanvasElement) {
 
   const render = () => {
     const d = Math.abs(clock - envClock) % 24;
-    if (!(Math.min(d, 24 - d) < ENV_STEP)) rebuildEnv();
+    if (!(Math.min(d, 24 - d) < ENV_STEP[quality])) rebuildEnv();
     if (!post) {
       renderer.setRenderTarget(null);
       renderer.render(scene, camera);
@@ -563,7 +571,6 @@ export function createRender(canvas: HTMLCanvasElement) {
     setSpeed(mps: number) {
       speed = quality === "low" ? 0 : THREE.MathUtils.smoothstep(mps, 30, 55);
     },
-    riverMaterial: createRiverMaterial,
     resize,
     frame,
     render,
@@ -577,7 +584,13 @@ export function createRender(canvas: HTMLCanvasElement) {
       (snow.material as THREE.Material).dispose();
       haze.geometry.dispose();
       envHaze.geometry.dispose();
+      (envHaze.material as THREE.Material).dispose();
       envNight.geometry.dispose();
+      (envNight.material as THREE.Material).dispose();
+      envSky.geometry.dispose();
+      envSky.material.dispose();
+      sky.geometry.dispose();
+      sky.material.dispose();
       nightSky.geometry.dispose();
       (nightSky.material as THREE.Material).dispose();
       (haze.material as THREE.Material).dispose();

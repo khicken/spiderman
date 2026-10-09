@@ -246,7 +246,7 @@ export function shopTexture(r: R) {
   return { map: tex(c), emissive: tex(ce) };
 }
 
-export type Atlas = { tex: THREE.CanvasTexture; white: [number, number]; whiteRect: [number, number, number, number]; billboards: [number, number, number, number][]; neon: [number, number, number, number][]; tall: [number, number, number, number][]; blades: [number, number, number, number][]; helipad: [number, number, number, number]; flake: [number, number, number, number]; cnBlades: [number, number, number, number][]; cnSigns: [number, number, number, number][] };
+export type Atlas = { tex: THREE.CanvasTexture; white: [number, number]; whiteRect: [number, number, number, number]; billboards: [number, number, number, number][]; neon: [number, number, number, number][]; tall: [number, number, number, number][]; blades: [number, number, number, number][]; flake: [number, number, number, number]; cnBlades: [number, number, number, number][]; cnSigns: [number, number, number, number][] };
 
 export function signAtlas(r: R): Atlas {
   const S = 2048, SH = 2560;
@@ -542,17 +542,6 @@ export function signAtlas(r: R): Atlas {
     blades.push(rect(x + 4, y + 4, 120, 504));
   });
 
-  const hx = 1536, hy = 1280;
-  g.fillStyle = "#3a3d42";
-  g.fillRect(hx, hy, 256, 256);
-  g.strokeStyle = "#f4f4f4";
-  g.lineWidth = 10;
-  g.beginPath();
-  g.arc(hx + 128, hy + 128, 104, 0, Math.PI * 2);
-  g.stroke();
-  text("H", hx + 128, hy + 134, 150, "#f4f4f4");
-  const helipad = rect(hx, hy, 256, 256);
-
   const fx = 1792, fy = 1280;
   g.save();
   g.translate(fx + 128, fy + 128);
@@ -652,7 +641,7 @@ export function signAtlas(r: R): Atlas {
     cnSigns.push(rect(x + 4, y + 4, 312, 248));
   });
   const t = tex(c, false, 4);
-  return { tex: t, white, whiteRect: [white[0], white[1], white[0], white[1]], billboards, neon, tall, blades, helipad, flake, cnBlades, cnSigns };
+  return { tex: t, white, whiteRect: [white[0], white[1], white[0], white[1]], billboards, neon, tall, blades, flake, cnBlades, cnSigns };
 }
 
 export function tickerTexture() {
@@ -816,51 +805,6 @@ export function parkTexture(r: R) {
   path([[1024, 900], [860, 830], [760, 700], [724, 640]], 30);
   path([[880, 0], [800, 160], [700, 300]], 26);
   return tex(c, true, 8);
-}
-
-/** Tiles with no seam: every wave has a whole number of cycles per tile. */
-export function waterNormal() {
-  const S = 256;
-  const [c, g] = canvas(S);
-  const img = g.createImageData(S, S);
-  let seed = 7;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
-  const waves: [number, number, number, number][] = [];
-  for (let i = 0; i < 28; i++) {
-    const k = 3 * Math.pow(8, (i + rnd()) / 28);
-    const th = (i * 2.39996) % (Math.PI * 2);
-    const a = Math.round(k * Math.cos(th)), b = Math.round(k * Math.sin(th));
-    if (a === 0 && b === 0) continue;
-    waves.push([a, b, 1 / Math.pow(Math.hypot(a, b), 1.4), rnd() * Math.PI * 2]);
-  }
-  const gx = new Float32Array(S * S), gy = new Float32Array(S * S);
-  let sum = 0;
-  for (let y = 0; y < S; y++)
-    for (let x = 0; x < S; x++) {
-      let dx = 0, dy = 0;
-      for (const [a, b, amp, ph] of waves) {
-        const cs = amp * Math.cos((2 * Math.PI * (a * x + b * y)) / S + ph);
-        dx += cs * a;
-        dy += cs * b;
-      }
-      const i = y * S + x;
-      gx[i] = dx;
-      gy[i] = dy;
-      sum += dx * dx + dy * dy;
-    }
-  const k = 0.35 / Math.sqrt(sum / (S * S));
-  for (let i = 0; i < S * S; i++) {
-    const nx = -gx[i] * k, ny = gy[i] * k, l = Math.hypot(nx, ny, 1);
-    img.data[i * 4] = (nx / l) * 127.5 + 127.5;
-    img.data[i * 4 + 1] = (ny / l) * 127.5 + 127.5;
-    img.data[i * 4 + 2] = (1 / l) * 127.5 + 127.5;
-    img.data[i * 4 + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 4;
-  return t;
 }
 
 export function softDot() {

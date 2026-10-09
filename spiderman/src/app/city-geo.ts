@@ -305,6 +305,49 @@ function streetName(z: number, borough: Borough) {
   return "";
 }
 
+export const BRIDGES: Bridge[] = [
+  { name: "Brooklyn Bridge", a: project(40.7085, -73.9985), b: project(40.7036, -73.9925), deckY: 26, width: 20 },
+  { name: "Manhattan Bridge", a: project(40.7112, -73.9928), b: project(40.7022, -73.9878), deckY: 30, width: 24 },
+  { name: "Williamsburg Bridge", a: project(40.7148, -73.9795), b: project(40.7114, -73.9655), deckY: 30, width: 24 },
+  { name: "Queensboro Bridge", a: [AV["1st Ave"] + 12, streetZ(59) - 10], b: [QN_SHORE[5][0] + 30, streetZ(59) - 10], deckY: 32, width: 24 },
+];
+
+export const RISE = 0.85;
+export const RUN = 1.3;
+export type RampEnd = { x: number; z: number; dir: number; hl: number; steps: number };
+
+/** Bridge ends: landing box of half size hl, then stairs down along x in dir. */
+export function rampEnds(br: Bridge): RampEnd[] {
+  const hl = br.width / 2 + 1;
+  const steps = Math.ceil(br.deckY / RISE) - 1;
+  const d = Math.sign(br.b[0] - br.a[0]) || 1;
+  return [
+    { x: br.a[0], z: br.a[1], dir: -d, hl, steps },
+    { x: br.b[0], z: br.b[1], dir: d, hl, steps },
+  ];
+}
+
+/** Landing and stair ramp areas. Roads stop short of these. */
+export const RAMP_RECTS: Rect[] = BRIDGES.flatMap((br) =>
+  rampEnds(br).map((e) => {
+    const far = e.x + e.dir * (e.hl + e.steps * RUN);
+    const near = e.x - e.dir * e.hl;
+    return { minX: Math.min(far, near), maxX: Math.max(far, near), minZ: e.z - e.hl, maxZ: e.z + e.hl };
+  }),
+);
+
+function cutRamps(roads: GeoRoad[]) {
+  const h = ROAD_W / 2;
+  return RAMP_RECTS.reduce((rs, q) => rs.flatMap((r) => {
+    const [c0, c1, lo, hi] = r.axis === 1 ? [q.minX, q.maxX, q.minZ, q.maxZ] : [q.minZ, q.maxZ, q.minX, q.maxX];
+    if (r.line <= c0 - h || r.line >= c1 + h || r.max <= lo - h || r.min >= hi + h) return [r];
+    const out: GeoRoad[] = [];
+    if (lo - h - r.min >= 30) out.push({ ...r, max: lo - h });
+    if (r.max - hi - h >= 30) out.push({ ...r, min: hi + h });
+    return out;
+  }), roads);
+}
+
 function buildRoads() {
   const roads: GeoRoad[] = [];
   const add = (r: GeoRoad) => {
@@ -333,7 +376,7 @@ function buildRoads() {
     if (lo - r.min >= 30) cut.push({ ...r, max: lo });
     if (r.max - hi >= 30) cut.push({ ...r, min: hi });
   }
-  return cut;
+  return cutRamps(cut);
 }
 
 export const ROADS: GeoRoad[] = buildRoads();
@@ -342,13 +385,6 @@ const roadRect = (r: GeoRoad, pad = 0): Rect =>
   r.axis === 0
     ? { minX: r.min - pad, maxX: r.max + pad, minZ: r.line - ROAD_W / 2 - pad, maxZ: r.line + ROAD_W / 2 + pad }
     : { minX: r.line - ROAD_W / 2 - pad, maxX: r.line + ROAD_W / 2 + pad, minZ: r.min - pad, maxZ: r.max + pad };
-
-export const BRIDGES: Bridge[] = [
-  { name: "Brooklyn Bridge", a: project(40.7085, -73.9985), b: project(40.7036, -73.9925), deckY: 26, width: 20 },
-  { name: "Manhattan Bridge", a: project(40.7112, -73.9928), b: project(40.7022, -73.9878), deckY: 30, width: 24 },
-  { name: "Williamsburg Bridge", a: project(40.7148, -73.9795), b: project(40.7114, -73.9655), deckY: 30, width: 24 },
-  { name: "Queensboro Bridge", a: [AV["1st Ave"] + 12, streetZ(59) - 10], b: [QN_SHORE[5][0] + 30, streetZ(59) - 10], deckY: 32, width: 24 },
-];
 
 export function deckBoxes(br: Bridge, step = 3): DeckBox[] {
   const [ax, az] = br.a, [bx, bz] = br.b;
@@ -414,7 +450,7 @@ function xz(p: [number, number]) {
 }
 
 function buildBlocks() {
-  const holes: Rect[] = [...ROADS.map((r) => roadRect(r, SIDEWALK)), ...bridgeHoles()];
+  const holes: Rect[] = [...ROADS.map((r) => roadRect(r, SIDEWALK)), ...bridgeHoles(), ...RAMP_RECTS.map((q) => ({ minX: q.minX - 2, maxX: q.maxX + 2, minZ: q.minZ - 2, maxZ: q.maxZ + 2 }))];
   const plazas: Plaza[] = [];
   const blocks: GeoBlock[] = [];
   for (const zn of ZONES) {

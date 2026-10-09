@@ -1250,8 +1250,9 @@ const hugHold = P({
 });
 
 const swimBase = P({
-  pitch: 1.5,
-  head: [-0.45, 0, 0],
+  pitch: -0.15,
+  spine: [-0.15, 0, 0],
+  head: [-0.6, 0, 0],
   hipL: [0, 0, 0.05],
   hipR: [0, 0, -0.05],
   ftL: [0.9, 0, 0],

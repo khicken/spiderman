@@ -340,7 +340,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   raf = requestAnimationFrame(frame);
 
-  (window as any).__dbg = { player, combat, city, missions, activities, crowd, water, interiors, rig, view, hero };
   return {
     play() {
       if (!audio) {

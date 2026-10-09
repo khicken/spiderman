@@ -1,10 +1,8 @@
 import * as THREE from "three";
 import { UNIT, beam, box, mat, type Bucket, type Col } from "./city-kit";
 import { IRON, SNOW, type Box, type Ctx } from "./city-build";
-import { BRIDGES, deckBoxes, onLand, streetDist, type Bridge, type Rect as GeoRect } from "./city-geo";
+import { BRIDGES, RUN, deckBoxes, onLand, rampEnds, streetDist, type Bridge } from "./city-geo";
 
-const RISE = 0.85;
-const RUN = 1.3;
 const RAMP_W = 10;
 const STONE = 0x9a9282;
 const DECK = 0x3a3d42;
@@ -69,31 +67,9 @@ function waterSpans(F: Frame) {
   return out;
 }
 
-type End = { x: number; z: number; dir: number; hl: number; steps: number };
-
-function ends(br: Bridge): End[] {
-  const F = frame(br);
-  const hl = F.hw + 1;
-  const steps = Math.ceil(br.deckY / RISE) - 1;
-  const d = Math.sign(F.ux) || 1;
-  return [
-    { x: br.a[0], z: br.a[1], dir: -d, hl, steps },
-    { x: br.b[0], z: br.b[1], dir: d, hl, steps },
-  ];
-}
-
-/** Landing and stair ramp areas. The layout leaves these empty of blocks and roads. */
-export const RAMP_RECTS: GeoRect[] = BRIDGES.flatMap((br) =>
-  ends(br).map((e) => {
-    const far = e.x + e.dir * (e.hl + e.steps * RUN);
-    const near = e.x - e.dir * e.hl;
-    return { minX: Math.min(far, near), maxX: Math.max(far, near), minZ: e.z - e.hl, maxZ: e.z + e.hl };
-  }),
-);
-
 function ramps(c: Ctx, br: Bridge) {
   const y = br.deckY;
-  for (const e of ends(br)) {
+  for (const e of rampEnds(br)) {
     box(c.solid, e.x, y / 2, e.z, e.hl * 2, y, e.hl * 2, STONE);
     box(c.solid, e.x, y + 0.02, e.z, e.hl * 2 - 0.6, 0.04, e.hl * 2 - 0.6, ROAD);
     for (let k = 0; k < 4; k++) box(c.solid, e.x, 3 + k * (y / 4), e.z, e.hl * 2 + 0.3, 0.3, e.hl * 2 + 0.3, 0x6f685b);
@@ -158,7 +134,7 @@ function waterPier(c: Ctx, F: Frame, t: number, half: number, ls: number) {
 
 function stoneTower(c: Ctx, F: Frame, t: number, TH: number, col: number) {
   const y = F.br.deckY, hw = F.hw;
-  const legs: [number, number][] = [[-(hw + 6), -(hw + 0.8)], [-1.8, 1.8], [hw + 0.8, hw + 6]];
+  const legs: [number, number][] = [[-(hw + 6), -(hw + 0.8)], [hw + 0.8, hw + 6]];
   waterPier(c, F, t, hw + 6, 12);
   const top = TH - 16;
   for (const [l0, l1] of legs) {
@@ -169,17 +145,17 @@ function stoneTower(c: Ctx, F: Frame, t: number, TH: number, col: number) {
   lbox(c.solid, F, t, 0, TH + 0.6, 12.4, (hw + 6) * 2 + 0.8, 1.2, 0x6f685b);
   lbox(c.solid, F, t, 0, TH + 1.25, 12.4, (hw + 6) * 2 + 0.8, 0.1, SNOW);
   cover(c, F, t, 0, 11.6, (hw + 6) * 2, top, TH + 1.2);
-  for (const [g0, g1] of [[-(hw + 0.8), -1.8], [1.8, hw + 0.8]]) {
-    const gc = (g0 + g1) / 2, gw = g1 - g0;
-    for (const s of [-1, 1]) {
-      const x = X(F, t, gc + (s * gw) / 4), z = Z(F, t, gc + (s * gw) / 4);
-      c.solid.add(UNIT.box, mat(x, top - 3, z, 11.2, 2.4, gw / 1.6, F.ry, s * 0.62), col);
-      c.solid.add(UNIT.box, mat(x, top - 1.4, z, 11.2, 2.8, gw / 2.2, F.ry), col);
-    }
-    for (const e of [-1, 1]) lbox(c.glow, F, t + e * 5.65, gc, top - 4.2, 0.1, gw * 0.7, 0.25, 0xffe2a8, 2.2);
+  const gw = (hw + 0.8) * 2;
+  for (const s of [-1, 1]) {
+    const x = X(F, t, (s * gw) / 4), z = Z(F, t, (s * gw) / 4);
+    c.solid.add(UNIT.box, mat(x, top - 3, z, 11.2, 2.4, gw / 1.6, F.ry, s * 0.62), col);
+    c.solid.add(UNIT.box, mat(x, top - 1.4, z, 11.2, 2.8, gw / 2.2, F.ry), col);
   }
-  for (const e of [-1, 1]) lbox(c.glow, F, t + e * 5.6, 0, y + 1.4, 0.1, (hw + 6) * 2, 0.3, 0xffe2a8, 1.8);
-  for (let k = 0; k < 4; k++) lbox(c.solid, F, t, 0, y + 8 + k * ((top - y - 8) / 4), 11.4, (hw + 6) * 2 + 0.3, 0.35, 0x857d6f);
+  for (const e of [-1, 1]) lbox(c.glow, F, t + e * 5.65, 0, top - 4.2, 0.1, gw * 0.7, 0.25, 0xffe2a8, 2.2);
+  for (const [l0, l1] of legs) {
+    for (const e of [-1, 1]) lbox(c.glow, F, t + e * 5.6, (l0 + l1) / 2, y + 1.4, 0.1, l1 - l0, 0.3, 0xffe2a8, 1.8);
+    for (let k = 0; k < 4; k++) lbox(c.solid, F, t, (l0 + l1) / 2, y + 8 + k * ((top - y - 8) / 4), 11.4, l1 - l0 + 0.3, 0.35, 0x857d6f);
+  }
 }
 
 function steelTower(c: Ctx, F: Frame, t: number, TH: number, col: number, lattice: boolean) {

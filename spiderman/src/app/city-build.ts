@@ -31,6 +31,7 @@ export type Ctx = {
 
 const SNOW = 0xe9eef5;
 const IRON = 0x1e2024;
+const TANK = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
 const pick = <T,>(r: () => number, a: readonly T[]) => a[Math.floor(r() * a.length)];
 
 /** Face f of a rectangle: 0 north (-z), 1 east (+x), 2 south (+z), 3 west (-x). Local x runs along, z out. */
@@ -137,8 +138,10 @@ export function cornice(c: Ctx, x0: number, x1: number, z0: number, z1: number, 
 export function fireEscape(c: Ctx, F: Face, a: number, y0: number, y1: number, fh: number) {
   const w = 3.4;
   for (let y = y0; y < y1 - 1; y += fh) {
-    fbox(c.solid, F, a, y, 0.6, w, 0.08, 1.15, IRON);
     const P = (al: number, o: number): [number, number] => [F.ox + F.dx * (a + al) + F.nx * o, F.oz + F.dz * (a + al) + F.nz * o];
+    const [b0x, b0z] = P(-w / 2, 0.025), [b1x, b1z] = P(w / 2, 0.025), [b2x, b2z] = P(w / 2, 1.175), [b3x, b3z] = P(-w / 2, 1.175);
+    c.solid.quad(b3x, y - 0.04, b3z, b2x, y - 0.04, b2z, b1x, y - 0.04, b1z, b0x, y - 0.04, b0z, [0, 0, 1, 1], IRON);
+    fquad(c.solid, F, a - w / 2, a + w / 2, y - 0.04, y + 0.04, 1.175, [0, 0, 1, 1], IRON);
     const [s0x, s0z] = P(-w / 2 + 0.05, 0.05), [s1x, s1z] = P(w / 2 - 0.05, 0.05), [s2x, s2z] = P(w / 2 - 0.05, 1.12), [s3x, s3z] = P(-w / 2 + 0.05, 1.12);
     c.solid.quad(s0x, y + 0.045, s0z, s1x, y + 0.045, s1z, s2x, y + 0.045, s2z, s3x, y + 0.045, s3z, [0, 0, 1, 1], SNOW);
     const [r0x, r0z] = P(-w / 2, 1.15), [r1x, r1z] = P(w / 2, 1.15);
@@ -180,7 +183,7 @@ export function waterTower(c: Ctx, x: number, z: number, y: number) {
   const s = 0.8 + c.r() * 0.5;
   for (const [lx, lz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) beam(c.solid, x + lx * 1.4 * s, y, z + lz * 1.4 * s, x + lx * 1.2 * s, y + 3.6 * s, z + lz * 1.2 * s, 0.22, IRON);
   box(c.solid, x, y + 3.6 * s, z, 3.6 * s, 0.2, 3.6 * s, IRON);
-  cyl(c.solid, UNIT.cyl8, x, y + 3.7 * s, z, 2.1 * s, 4.4 * s, 0x6a4a33);
+  cyl(c.solid, TANK, x, y + 3.7 * s, z, 2.1 * s, 4.4 * s, 0x6a4a33);
   c.solid.add(UNIT.tube, mat(x, y + 3.7 * s + 2.8 * s, z, 2.14 * s, 0.12, 2.14 * s), IRON);
   c.solid.add(UNIT.cone8, mat(x, y + 8.1 * s + 0.9 * s, z, 2.35 * s, 1.8 * s, 2.35 * s), 0xdfe6ee);
   const t = 1.6 * s;
@@ -198,7 +201,7 @@ function acUnits(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: numb
     const w = 1.6 + c.r() * 2.4;
     const [x, z] = offCenter(x0, x1, z0, z1, x0 + 2 + c.r() * (x1 - x0 - 4), z0 + 2 + c.r() * (z1 - z0 - 4));
     box(c.solid, x, y + 0.7, z, w, 1.4, w * 0.7, 0x8d9096);
-    box(c.solid, x, y + 1.42, z, w, 0.05, w * 0.7, SNOW);
+    c.solid.quad(x - w / 2, y + 1.42, z + w * 0.35, x + w / 2, y + 1.42, z + w * 0.35, x + w / 2, y + 1.42, z - w * 0.35, x - w / 2, y + 1.42, z - w * 0.35, [0, 0, 1, 1], SNOW);
     if (c.r() < 0.5) cyl(c.solid, UNIT.cyl8, x, y + 1.45, z, w * 0.22, 0.25, 0x5d6066);
   }
   const vents = Math.floor(c.r() * 3);
@@ -216,7 +219,7 @@ function acUnits(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: numb
 
 function bulkhead(c: Ctx, x: number, z: number, y: number, col: Col) {
   box(c.solid, x, y + 1.6, z, 3.2, 3.2, 3.6, col);
-  box(c.solid, x, y + 3.25, z, 3.4, 0.1, 3.8, SNOW);
+  c.solid.quad(x - 1.7, y + 3.25, z + 1.9, x + 1.7, y + 3.25, z + 1.9, x + 1.7, y + 3.25, z - 1.9, x - 1.7, y + 3.25, z - 1.9, [0, 0, 1, 1], SNOW);
 }
 
 export function antenna(c: Ctx, x: number, z: number, y: number, h: number) {
@@ -234,16 +237,6 @@ export function glowRim(c: Ctx, x0: number, x1: number, z0: number, z1: number, 
 
 function glowCorners(c: Ctx, x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, col: Col, k: number) {
   for (const [x, z] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) box(c.glow, x, (y0 + y1) / 2, z, 0.3, y1 - y0, 0.3, col, 0, k);
-}
-
-function helipad(c: Ctx, x: number, z: number, y: number, rad: number) {
-  cyl(c.solid, UNIT.cyl12, x, y, z, rad, 0.5, 0x3a3d42);
-  const s = rad * 0.92;
-  c.glow.quad(x - s, y + 0.52, z + s, x + s, y + 0.52, z + s, x + s, y + 0.52, z - s, x - s, y + 0.52, z - s, c.atlas.helipad, 0xffffff, 0.75);
-  for (let k = 0; k < 12; k++) {
-    const a = (k / 12) * Math.PI * 2;
-    c.bulbs.add(x + Math.cos(a) * rad, y + 0.6, z + Math.sin(a) * rad, k % 2 ? 0x3bff6e : 0xffd23b, 4, 0.5, [1.2, k / 12]);
-  }
 }
 
 function garden(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number) {
@@ -418,41 +411,6 @@ export function genHarlem(c: Ctx, b: Block) {
   rowHouses(c, b, rx0, rx1, b.z1 - 14, b.z1, 2);
   for (let k = 0; k < 3; k++) c.trees.push({ x: rx0 + 3 + r() * (rx1 - rx0 - 6), z: b.z0 + 17 + r() * (b.z1 - b.z0 - 34), s: 0.8 + r() * 0.3, lit: r() < 0.3 });
 }
-
-export function genUpper(c: Ctx, b: Block) {
-  podiumTower(c, b.x0, b.x1, b.z0, b.z1, 140 + c.r() * 120, c.r() < 0.5 ? STYLE.glass : STYLE.deco, true);
-}
-
-function podiumTower(c: Ctx, x0: number, x1: number, z0: number, z1: number, h: number, style: number, slim = false) {
-  const r = c.r;
-  const podStyle = pick(r, [STYLE.limestone, STYLE.office, STYLE.deco]);
-  const ph = floors(podStyle, SHOP_H, 2 + Math.floor(r() * 4));
-  mass(c, x0, x1, z0, z1, 0, ph, { style: podStyle, shop: 2, vBase: SHOP_H });
-  roofKit(c, x0, x1, z0, z1, ph, "office", 0);
-  const w = x1 - x0, d = z1 - z0;
-  const iw = slim ? Math.max(5, (w - 20) / 2) : 3 + r() * Math.max(0, w * 0.18);
-  const id = slim ? Math.max(5, (d - 20) / 2) : 3 + r() * Math.max(0, d * 0.18);
-  const tx0 = x0 + iw, tx1 = x1 - iw, tz0 = z0 + id, tz1 = z1 - id;
-  const st = FACADES[style];
-  const top = Math.max(ph + 20, floors(style, 0, Math.round(h / st.ch)));
-  if (style === STYLE.deco) {
-    decoTiers(c, tx0, tx1, tz0, tz1, ph, top, style, r() < 0.6);
-  } else {
-    mass(c, tx0, tx1, tz0, tz1, ph, top, { style, parapet: 0x3a3f46 });
-    const crown = pick(r, [0xbfe3ff, 0x9fffe8, 0xffd27a, 0xffffff, 0xff9ad2]);
-    glowRim(c, tx0, tx1, tz0, tz1, top - 0.4, crown, 3.2, 0.35);
-    glowRim(c, tx0, tx1, tz0, tz1, top - 3.6, crown, 2.2, 0.2);
-    if (r() < 0.3) glowCorners(c, tx0, tx1, tz0, tz1, top * 0.6, top, crown, 1.2);
-    if (top > 150 && r() < 0.35 && tx1 - tx0 > 20 && tz1 - tz0 > 20) helipad(c, (tx0 + tx1) / 2, (tz0 + tz1) / 2, top + 0.05, Math.min(tx1 - tx0, tz1 - tz0) * 0.38);
-    else if (top > 120 && r() < 0.5) {
-      const iw2 = (tx1 - tx0) * 0.2, id2 = (tz1 - tz0) * 0.2;
-      const t2 = top + floors(style, 0, 3 + Math.floor(r() * 5));
-      mass(c, tx0 + iw2, tx1 - iw2, tz0 + id2, tz1 - id2, top, t2, { style, parapet: 0x3a3f46 });
-      glowRim(c, tx0 + iw2, tx1 - iw2, tz0 + id2, tz1 - id2, t2 - 0.4, crown, 3.2, 0.35);
-      antenna(c, (tx0 + tx1) / 2, (tz0 + tz1) / 2, t2, 10 + r() * 25);
-    } else roofKit(c, tx0, tx1, tz0, tz1, top, "tower", 0);
-  }
-  }
 
 function decoTiers(c: Ctx, x0: number, x1: number, z0: number, z1: number, y0: number, top: number, style: number, spire: boolean) {
   const r = c.r;
@@ -663,22 +621,6 @@ function podiumTowerDeco(c: Ctx, x0: number, x1: number, z0: number, z1: number)
   const style = STYLE.deco;
   mass(c, x0, x1, z0, z1, 0, floors(style, SHOP_H, 5), { style, shop: 2, vBase: SHOP_H });
   decoTiers(c, x0 + 2, x1 - 2, z0 + 6, z1 - 6, floors(style, SHOP_H, 5), 205, style, false);
-}
-
-export function genFiller(c: Ctx, b: Block, kind: "brick" | "ind" | "mixed", hScale = 1) {
-  const r = c.r;
-  const nx = r() < 0.5 ? 1 : 2, nz = r() < 0.5 ? 1 : 2;
-  const lw = (b.x1 - b.x0) / nx, ld = (b.z1 - b.z0) / nz;
-  for (let a = 0; a < nx; a++) {
-    for (let q = 0; q < nz; q++) {
-      const x0 = b.x0 + a * lw + 0.5, x1 = b.x0 + (a + 1) * lw - 0.5, z0 = b.z0 + q * ld + 0.5, z1 = b.z0 + (q + 1) * ld - 0.5;
-      const style = kind === "ind" ? (r() < 0.7 ? STYLE.industrial : STYLE.brick) : kind === "brick" ? pick(r, [STYLE.brick, STYLE.limestone, STYLE.brick]) : pick(r, [STYLE.office, STYLE.glass, STYLE.limestone, STYLE.brick, STYLE.darkglass]);
-      const n = Math.max(2, Math.round(((kind === "mixed" ? 20 + r() ** 2 * 120 : 12 + r() * 30) * hScale) / FACADES[style].ch));
-      const top = floors(style, 0, n);
-      mass(c, x0, x1, z0, z1, 0, top, { style, spot: false });
-      if (r() < 0.3) waterTower(c, (x0 + x1) / 2, (z0 + z1) / 2, top);
-    }
-  }
 }
 
 export { SNOW, IRON };

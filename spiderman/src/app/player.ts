@@ -86,9 +86,11 @@ function castList(list: readonly Box[], o: THREE.Vector3, d: THREE.Vector3, maxT
   return best;
 }
 
+const rayBuf: Box[] = [];
+const ptBuf: Box[] = [];
 export function raycast(city: City, o: THREE.Vector3, d: THREE.Vector3, maxT: number, n?: THREE.Vector3) {
   let best = -1;
-  for (const b of city.near(o.x + (d.x * maxT) / 2, o.z + (d.z * maxT) / 2, maxT / 2 + 2)) {
+  for (const b of city.near(o.x + (d.x * maxT) / 2, o.z + (d.z * maxT) / 2, maxT / 2 + 2, rayBuf)) {
     const t = rayBox(o, d, b, _n);
     if (t >= 0 && t <= maxT && (best < 0 || t < best)) {
       best = t;
@@ -99,20 +101,20 @@ export function raycast(city: City, o: THREE.Vector3, d: THREE.Vector3, maxT: nu
 }
 
 export function insideAny(city: City, x: number, y: number, z: number, pad = 0) {
-  for (const b of city.near(x, z, 2)) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad && y < b.maxY + pad && y > (b.minY ?? -Infinity) - pad) return true;
+  for (const b of city.near(x, z, 2, ptBuf)) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad && y < b.maxY + pad && y > (b.minY ?? -Infinity) - pad) return true;
   return false;
 }
 
 export function groundAt(city: City, x: number, z: number, y: number) {
   let g = 0;
-  for (const b of city.near(x, z, 2)) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && b.maxY <= y + 0.5 && b.maxY > g) g = b.maxY;
+  for (const b of city.near(x, z, 2, ptBuf)) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && b.maxY <= y + 0.5 && b.maxY > g) g = b.maxY;
   return g;
 }
 
 // Debug assert: an anchor must lie on a collider face.
 function onCollider(city: City, c: THREE.Vector3) {
   const e = 0.05;
-  for (const b of city.near(c.x, c.z, 2)) {
+  for (const b of city.near(c.x, c.z, 2, ptBuf)) {
     if (c.y > b.maxY + e || c.y < (b.minY ?? 0) - e) continue;
     const inX = c.x >= b.minX - e && c.x <= b.maxX + e;
     const inZ = c.z >= b.minZ - e && c.z <= b.maxZ + e;
@@ -135,8 +137,19 @@ export type PlayerHooks = {
 };
 const ZIP_RANGE = 60;
 
-type Candidate = { p: THREE.Vector3; n: THREE.Vector3; side: number; score: number };
+type Candidate = { p: THREE.Vector3; n: THREE.Vector3; side: number; score: number; done: boolean };
 const POOL = 400;
+const AHEAD_K = [0.6, 1, 1.4];
+const SIM_DT = 1 / 30;
+const SIM_T = 1;
+const SIM_PAD = 0.6;
+const AUTO_EVERY = 3;
+const FAR_RANGE = 150;
+const GLANCE_KEEP = 0.7;
+const ROLL_TIME = 0.5;
+const TOP_SKIN = 0.35;
+const UNDER_MAX = 0.5;
+const XAXIS = new THREE.Vector3(1, 0, 0);
 const DEV = process.env.NODE_ENV !== "production";
 
 export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: THREE.Vector3, spawnDir: THREE.Vector3, hooks: PlayerHooks) {
@@ -176,9 +189,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const aim: AimState = { kind: "none", dist: 0, point: new THREE.Vector3() };
   const aimN = new THREE.Vector3();
+  const pickP = new THREE.Vector3();
+  const missP = new THREE.Vector3();
+  let pickOk = false;
   let aimHand: "L" | "R" = "R";
   let aimSide = 1;
-  let aimList: Box[] = [];
+  const aimList: Box[] = [];
+  const scanBuf: Box[] = [];
   const camRight = new THREE.Vector3();
   const ringUp = new THREE.Vector3();
   const rayO = new THREE.Vector3();
@@ -188,6 +205,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   const hitN = new THREE.Vector3();
 
   const wallN = new THREE.Vector3();
+  const preV = new THREE.Vector3();
   let wallBox: Box | null = null;
   let wallContact = false;
   let cornerHit = false;
@@ -226,6 +244,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let trick: { kind: Trick; t: number } | null = null;
   let kickT = 1;
   let landT = 1;
+  let rollT = 1;
   let boostT = 0;
   let vaultT = 0;
   let phase = 0;
@@ -239,7 +258,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const events: GameEvent[] = [];
   const prompts: { key: string; label: string }[] = [];
-  const pool: Candidate[] = Array.from({ length: POOL }, () => ({ p: new THREE.Vector3(), n: new THREE.Vector3(), side: 0, score: 0 }));
+  const pool: Candidate[] = Array.from({ length: POOL }, () => ({ p: new THREE.Vector3(), n: new THREE.Vector3(), side: 0, score: 0, done: false }));
   const cands: Candidate[] = [];
   const tmp = new THREE.Vector3();
   const tmp2 = new THREE.Vector3();
@@ -278,6 +297,68 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   blob.renderOrder = 1;
   scene.add(marker, blob);
 
+  const simP = new THREE.Vector3();
+  const simV = new THREE.Vector3();
+  const simD = new THREE.Vector3();
+  const simN = new THREE.Vector3();
+  const simList: Box[] = [];
+  // Predicts the first part of a swing on c. Returns the time of the first side hit (normal in simN), or -1.
+  const simSwing = (c: Candidate) => {
+    const a = c.p;
+    simP.copy(p);
+    simV.copy(v);
+    const dist = p.distanceTo(a);
+    const floor = groundAt(city, a.x + c.n.x * 1.5, a.z + c.n.z * 1.5, a.y);
+    const goal = Math.max(4, Math.min(dist - REEL, ROPE_MAX, a.y - floor - 5));
+    let rope = dist;
+    for (let t = SIM_DT; t <= SIM_T; t += SIM_DT) {
+      const live = t > WEB_TRAVEL;
+      simV.y -= (live ? G_SWING : G) * SIM_DT;
+      if (live && rope > goal) rope = Math.max(goal, rope - Math.min(45, 10 + 4 * (rope - goal)) * SIM_DT);
+      if (live && (c.n.x || c.n.z)) {
+        const out = (simP.x - a.x) * c.n.x + (simP.z - a.z) * c.n.z;
+        const vn = simV.x * c.n.x + simV.z * c.n.z;
+        const want = (WALL_GAP - out) * 2;
+        if (vn < want) {
+          const s0 = simV.length();
+          const k = (want - vn) * Math.min(1, 10 * SIM_DT);
+          simV.x += c.n.x * k;
+          simV.z += c.n.z * k;
+          simV.setLength(s0);
+        }
+      }
+      simP.addScaledVector(simV, SIM_DT);
+      if (live) {
+        simD.copy(simP).sub(a);
+        const len = simD.length();
+        if (len > rope) {
+          simD.divideScalar(len);
+          simP.copy(a).addScaledVector(simD, rope);
+          const vr = simV.dot(simD);
+          if (vr > 0) {
+            const s0 = simV.length();
+            simV.addScaledVector(simD, -vr);
+            const ts = simV.length();
+            if (ts > 0.5) simV.multiplyScalar(s0 / ts);
+          }
+        }
+      }
+      for (const b of simList) {
+        const x = simP.x;
+        const z = simP.z;
+        if (x <= b.minX - SIM_PAD || x >= b.maxX + SIM_PAD || z <= b.minZ - SIM_PAD || z >= b.maxZ + SIM_PAD) continue;
+        if (simP.y >= b.maxY + SIM_PAD || simP.y <= (b.minY ?? -Infinity) - SIM_PAD) continue;
+        if (simP.y > b.maxY - 0.3) return -1;
+        const ex = Math.min(x - b.minX, b.maxX - x);
+        const ez = Math.min(z - b.minZ, b.maxZ - z);
+        if (ex < ez) simN.set(x - b.minX < b.maxX - x ? -1 : 1, 0, 0);
+        else simN.set(0, 0, z - b.minZ < b.maxZ - z ? -1 : 1);
+        return t;
+      }
+    }
+    return -1;
+  };
+
   const findAnchor = (look: THREE.Vector3) => {
     const speed = v.length();
     heading.set(v.x, 0, v.z);
@@ -287,33 +368,37 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     heading.normalize();
     right.set(-heading.z, 0, heading.x);
     const idealAhead = THREE.MathUtils.clamp(12 + speed * 0.35, 12, 26);
-    const idealUp = THREE.MathUtils.clamp(13 + speed * 0.15, 12, 22);
+    const low = Math.max(0, 16 - (p.y - groundAt(city, p.x, p.z, p.y)));
+    const idealUp = THREE.MathUtils.clamp(13 + speed * 0.15 + low * 0.5, 12, 22);
     const minAhead = speed < 8 ? 3 : 8;
     cands.length = 0;
-    const consider = (x: number, y: number, z: number, nx: number, nz: number) => {
+    const consider = (x: number, y: number, z: number, nx: number, nz: number, corner: boolean) => {
       if (cands.length >= POOL) return;
       const dx = x - p.x;
       const dy = y - p.y;
       const dz = z - p.z;
       const ahead = dx * heading.x + dz * heading.z;
       const side = dx * right.x + dz * right.z;
-      if (ahead < minAhead || ahead > 44 || dy < 4 || Math.abs(side) > 30) return;
-      if (dx * dx + dy * dy + dz * dz > 60 * 60) return;
+      if (ahead < minAhead || ahead > 44 || dy < AIM_UP || Math.abs(side) > 30) return;
+      if (dx * dx + dy * dy + dz * dz > AIM_RANGE * AIM_RANGE) return;
+      const as = Math.abs(side);
       const fwd = Math.max(0, 1 - Math.abs(ahead - idealAhead) / 22);
       const alt = lastSide === 0 ? 0.7 : Math.sign(side) === -lastSide ? 1 : 0.35;
       const along = nx || nz ? 0.4 + 0.6 * (1 - Math.abs(nx * heading.x + nz * heading.z)) : 0.7;
-      const sidePref = alt * along * (Math.abs(side) < 3 ? 0.4 : 1);
-      const fit = Math.max(0, 1 - Math.abs(dy - idealUp) / idealUp);
+      const wide = as > 16 ? Math.max(0, 1 - (as - 16) / 14) : 1;
+      const sidePref = alt * along * wide * (as < 3 ? 0.4 : 1) * (corner ? 0.8 : 1);
+      const fit = dy < 10 ? 0.15 + (0.6 * (dy - AIM_UP)) / (10 - AIM_UP) : dy <= 22 ? 1 : Math.max(0, 1 - (dy - 22) / 20);
       const c = pool[cands.length];
       c.p.set(x, y, z);
       c.n.set(nx, 0, nz);
       c.side = side;
-      c.score = fwd * 0.5 + sidePref * 0.3 + fit * 0.2;
+      c.score = fwd * 0.4 + sidePref * 0.25 + fit * 0.35;
+      c.done = false;
       cands.push(c);
     };
-    for (const b of city.near(p.x, p.z, 60)) {
-      if (b.maxY < p.y + 4) continue;
-      const lo = Math.max(b.maxY * 0.6, p.y + 4, b.minY ?? 0);
+    for (const b of city.near(p.x, p.z, AIM_RANGE, scanBuf)) {
+      if (b.maxY < p.y + AIM_UP) continue;
+      const lo = Math.max(b.maxY * 0.6, p.y + AIM_UP, b.minY ?? 0);
       const hi = b.maxY - 0.2;
       if (lo > hi) continue;
       const y = THREE.MathUtils.clamp(p.y + idealUp, lo, hi);
@@ -327,28 +412,47 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         const a0 = (xFace ? b.minZ : b.minX) + 0.5;
         const a1 = (xFace ? b.maxZ : b.maxX) - 0.5;
         if (a1 <= a0) continue;
-        for (const k of [0.6, 1, 1.4]) {
-          const ix = p.x + heading.x * idealAhead * k;
-          const iz = p.z + heading.z * idealAhead * k;
-          const along = THREE.MathUtils.clamp(xFace ? iz : ix, a0, a1);
-          if (xFace) consider(fixed, y, along, nx, nz);
-          else consider(along, y, fixed, nx, nz);
+        let last = NaN;
+        for (let i = 0; i < AHEAD_K.length; i++) {
+          const k = AHEAD_K[i];
+          const raw = xFace ? p.z + heading.z * idealAhead * k : p.x + heading.x * idealAhead * k;
+          const along = THREE.MathUtils.clamp(raw, a0, a1);
+          if (Math.abs(along - last) < 1) continue;
+          last = along;
+          if (xFace) consider(fixed, y, along, nx, nz, along !== raw);
+          else consider(along, y, fixed, nx, nz, along !== raw);
         }
       }
     }
     const extra = (city as { anchors?: THREE.Vector3[] }).anchors;
-    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < 60 && Math.abs(a.z - p.z) < 60) consider(a.x, a.y, a.z, 0, 0);
-    cands.sort((a, b) => b.score - a.score);
+    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < AIM_RANGE && Math.abs(a.z - p.z) < AIM_RANGE) consider(a.x, a.y, a.z, 0, 0, false);
+    city.near(p.x + v.x * 0.25, p.z + v.z * 0.25, 24, simList);
     tmp.copy(p).addScaledVector(UP, 0.6);
-    for (const c of cands) {
+    let glance: Candidate | null = null;
+    let turn: Candidate | null = null;
+    for (let tries = 0; tries < 12; ) {
+      let c: Candidate | null = null;
+      for (const k of cands) if (!k.done && (!c || k.score > c.score)) c = k;
+      if (!c) break;
+      c.done = true;
+      if ((c.n.x || c.n.z) && insideAny(city, c.p.x + c.n.x * 0.3, c.p.y, c.p.z + c.n.z * 0.3)) continue;
+      tries++;
       tmp2.copy(c.p).sub(tmp);
       const len = tmp2.length();
       tmp2.divideScalar(len);
       const hit = raycast(city, tmp, tmp2, len);
       if (hit >= 0 && hit < len - 0.3) continue;
-      return c;
+      const st = simSwing(c);
+      if (st < 0) {
+        const prog = (simP.x - p.x) * heading.x + (simP.z - p.z) * heading.z;
+        if (prog > 0.5 * (speed * SIM_T + 2)) return c;
+        if (!turn) turn = c;
+        continue;
+      }
+      // A swing that would hit a wall head on is never picked. A glancing hit is the last choice.
+      if (!glance && Math.abs(simN.x * heading.x + simN.z * heading.z) < 0.5) glance = c;
     }
-    return null;
+    return turn ?? glance;
   };
 
   const sideOf = (pt: THREE.Vector3, camPos: THREE.Vector3): "L" | "R" => ((pt.x - camPos.x) * camRight.x + (pt.z - camPos.z) * camRight.z >= 0 ? "R" : "L");
@@ -373,7 +477,29 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     return true;
   };
 
-  const computeAim = (camPos: THREE.Vector3, look: THREE.Vector3) => {
+  // Fallback pick, refreshed every few frames or after the hero moves 1 m.
+  const autoP = new THREE.Vector3();
+  const autoN = new THREE.Vector3();
+  const autoAt = new THREE.Vector3(Infinity, 0, 0);
+  let autoSide = 1;
+  let autoFound = false;
+  let autoAge = AUTO_EVERY;
+  const refreshAuto = (look: THREE.Vector3, force: boolean) => {
+    autoAge++;
+    if (!force && autoAge < AUTO_EVERY && autoAt.distanceToSquared(p) < 1) return;
+    autoAge = 0;
+    autoAt.copy(p);
+    const c = findAnchor(look);
+    autoFound = !!c;
+    if (!c) return;
+    autoP.copy(c.p);
+    autoN.copy(c.n);
+    autoSide = Math.sign(c.side) || 1;
+  };
+
+  // HUD kind: aim when the crosshair or its rings hold a valid anchor, far or blocked when the
+  // crosshair hits geometry out of range or behind cover, else auto, else none. A press uses aim, else auto.
+  const computeAim = (camPos: THREE.Vector3, look: THREE.Vector3, force = false) => {
     const d = look;
     camRight.set(-d.z, 0, d.x);
     if (camRight.lengthSq() < 1e-6) camRight.set(1, 0, 0);
@@ -382,15 +508,22 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     eye.copy(p).addScaledVector(UP, 0.6);
     const ahead = Math.max(0, tmp.copy(p).sub(camPos).dot(d));
     const maxT = AIM_RANGE + ahead + 2;
-    aimList = city.near(camPos.x + (d.x * maxT) / 2, camPos.z + (d.z * maxT) / 2, maxT / 2 + 8);
+    city.near(camPos.x + (d.x * maxT) / 2, camPos.z + (d.z * maxT) / 2, maxT / 2 + 8, aimList);
     let miss: AimKind = "none";
     let found = false;
-    if (castAim(camPos, d, ahead, maxT)) {
-      const r = checkAnchor(hitP);
+    let center = castAim(camPos, d, ahead, maxT);
+    if (!center) {
+      const t = raycast(city, rayO, d, FAR_RANGE, hitN);
+      if (t >= 0) hitP.copy(rayO).addScaledVector(d, t);
+      center = t >= 0;
+    }
+    if (center) {
+      let r = checkAnchor(hitP);
+      if (r === 0 && hitN.y > 0.5) r = 1;
       if (r === 0) found = true;
       else if (r > 1) {
         miss = r === 2 ? "far" : "blocked";
-        aim.point.copy(hitP);
+        missP.copy(hitP);
       }
     }
     for (let ring = 1; ring <= 2 && !found; ring++) {
@@ -398,7 +531,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         const a = (k / 8) * Math.PI * 2;
         const r = ring * 0.045;
         rayD.copy(d).addScaledVector(camRight, Math.cos(a) * r).addScaledVector(ringUp, Math.sin(a) * r).normalize();
-        if (castAim(camPos, rayD, ahead, maxT) && checkAnchor(hitP) === 0) found = true;
+        if (castAim(camPos, rayD, ahead, maxT) && hitN.y <= 0.5 && checkAnchor(hitP) === 0) found = true;
       }
     }
     if (found) {
@@ -408,34 +541,26 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       heading.set(v.x, 0, v.z);
       if (heading.lengthSq() < 16) heading.set(look.x, 0, look.z);
       aimSide = Math.sign((hitP.x - p.x) * -heading.z + (hitP.z - p.z) * heading.x) || 1;
+      pickP.copy(hitP);
     } else {
-      const c = findAnchor(look);
-      if (c) {
-        aim.kind = "auto";
-        aim.point.copy(c.p);
-        aimN.copy(c.n);
-        aimSide = Math.sign(c.side) || 1;
-      } else aim.kind = miss;
+      refreshAuto(look, force);
+      if (autoFound) {
+        aimN.copy(autoN);
+        aimSide = autoSide;
+        pickP.copy(autoP);
+      }
+      aim.kind = miss !== "none" ? miss : autoFound ? "auto" : "none";
+      aim.point.copy(miss !== "none" ? missP : autoFound ? autoP : aim.point);
     }
-    aimHand = sideOf(aim.point, camPos);
+    pickOk = found || autoFound;
+    aimHand = sideOf(pickP, camPos);
     aim.dist = aim.kind === "none" ? 0 : aim.point.distanceTo(p);
   };
-  const aimOk = () => aim.kind === "aim" || aim.kind === "auto";
-
-  // Debug hook for the verify scripts. It moves p and v.
-  (globalThis as any).__fa = (pp: THREE.Vector3, look: THREE.Vector3, vv: THREE.Vector3, cam?: THREE.Vector3) => {
-    p.copy(pp);
-    v.copy(vv);
-    const c = findAnchor(look);
-    const res = { found: !!c, c: c && { p: c.p.clone(), n: c.n.clone(), side: c.side, score: c.score }, aim: { kind: aim.kind, dist: 0, point: new THREE.Vector3() } };
-    computeAim(cam ?? tmp.copy(pp).addScaledVector(look, -6).addScaledVector(UP, 2).clone(), look);
-    res.aim = { kind: aim.kind, dist: aim.dist, point: aim.point.clone() };
-    return res;
-  };
+  const aimOk = () => pickOk;
 
   const attach = () => {
     if (!aimOk()) return false;
-    anchor.copy(aim.point);
+    anchor.copy(pickP);
     anchorN.copy(aimN);
     if (DEV && !onCollider(city, anchor) && aim.kind === "aim") console.error("anchor off collider", anchor.toArray());
     lastSide = aimSide;
@@ -589,7 +714,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (mode !== "ground" && mode !== "air" && mode !== "wall" && mode !== "perch" && mode !== "wings") return;
     let best = 0.9;
     const eye = tmp.copy(p).addScaledVector(UP, 0.6);
-    for (const b of city.near(p.x, p.z, PROMPT_RANGE)) {
+    for (const b of city.near(p.x, p.z, PROMPT_RANGE, scanBuf)) {
       if (b.maxX - b.minX < 4 || b.maxZ - b.minZ < 4) continue;
       for (let k = 0; k < 4; k++) {
         const ox = k & 1 ? 1 : -1;
@@ -679,8 +804,9 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   };
   const cornerN = new THREE.Vector3();
   const bestCorner = new THREE.Vector3();
+  // A shallow contact with a box top does not block a push: the step-up resolves it next.
   const clearAt = (x: number, y: number, z: number) => {
-    for (const b of hits) if (overlaps(b, x, y, z)) return false;
+    for (const b of hits) if (overlaps(b, x, y, z) && y < b.maxY + R - TOP_SKIN) return false;
     return true;
   };
 
@@ -719,7 +845,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
           else if (m === 3) [val, cost] = [b.maxZ + R, b.maxZ + R - p.z];
           else if (m === 4) [val, cost] = [b.maxY + R, stepUp ? 0 : up];
           else {
-            if (b.minY === undefined) continue;
+            // Push down only out of a shallow underside contact, never through a deck the hero stands on.
+            if (b.minY === undefined || p.y > b.minY + UNDER_MAX) continue;
             [val, cost] = [b.minY - R, p.y - b.minY + R];
           }
           if (cost >= bestCost) continue;
@@ -785,8 +912,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       grounded = true;
       swimming = fl < -0.5;
     }
-    hits.length = 0;
-    for (const b of city.near(p.x, p.z, 8)) hits.push(b);
+    city.near(p.x, p.z, 8, hits);
     if (hooks.extraBoxes) for (const b of hooks.extraBoxes(p.x, p.z)) hits.push(b);
     solve();
     if (p.y > ceiling - R) {
@@ -977,15 +1103,26 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     tmp.copy(v).divideScalar(s);
     tmp2.copy(UP).addScaledVector(tmp, -tmp.y);
     const cl = (dive ? 0.012 : 0.07) * Math.max(0, 1 - 2 * Math.max(0, tmp.y));
-    if (tmp2.lengthSq() > 1e-6) v.addScaledVector(tmp2.normalize(), Math.min(2.5 * G, cl * s * s) * h);
+    // A fast fall allows a harder pull-out, so the wings catch a dive within about 0.6 s.
+    const maxLift = G * (2.5 + 3 * THREE.MathUtils.clamp((-v.y - 10) / 25, 0, 1));
+    if (tmp2.lengthSq() > 1e-6) v.addScaledVector(tmp2.normalize(), Math.min(maxLift, cl * s * s) * h);
     const drag = 0.12 * s + 0.006 * s * s;
     v.addScaledVector(tmp, -Math.min(s, drag * h));
   };
 
   const land = (fall: number, held: ReadonlySet<string>) => {
+    const glided = mode === "wings";
     trick = null;
     mode = "ground";
     if (swimming) return;
+    if (glided && wish.lengthSq() > 0 && Math.hypot(v.x, v.z) > 5 && !held.has("dive")) {
+      rollT = 0;
+      sfx("land", 0.7);
+      if (fall > 20) shake(0.15);
+      v.x *= 0.85;
+      v.z *= 0.85;
+      return;
+    }
     if (fall > 35) {
       if (held.has("dive") || diveAssist) {
         events.push(...hooks.strikeHit(p, 2));
@@ -1086,6 +1223,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (mode === "launch" && !launchArrived) return;
     const pre = v.length();
     const fall = -v.y;
+    preV.copy(v);
     collide();
     collideCars(h);
     edge(h);
@@ -1111,12 +1249,14 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
     if (cornerHit && !wallContact && (mode === "swing" || mode === "wings")) {
       mode = "air";
+      glance(cornerHitN);
       v.addScaledVector(cornerHitN, 3);
     }
     if (wallContact && !(cornerT > 0 && wallBox === cornerBox) && mode !== "wall" && mode !== "zip" && mode !== "launch" && mode !== "perch") {
       const into = -wish.dot(wallN);
       if (mode === "swing" || mode === "wings") {
         mode = "air";
+        glance(wallN);
         v.addScaledVector(wallN, 3);
       } else if (ceiling === Infinity && into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? pre : 0);
     }
@@ -1130,6 +1270,20 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       } else if (grounded && v.y <= 0.1 && wish.dot(wallN) > -0.5) mode = "ground";
     }
     if (p.y < -30) reset();
+  };
+
+  // A swing or glide that hits a wall slides along it and keeps most of its flat speed.
+  const glance = (n: THREE.Vector3) => {
+    const flat0 = Math.hypot(preV.x, preV.z);
+    tmp.set(-n.z, 0, n.x);
+    let along = v.x * tmp.x + v.z * tmp.z;
+    const keep = flat0 * GLANCE_KEEP;
+    if (Math.abs(along) >= keep) return;
+    const sgn = Math.sign(preV.x * tmp.x + preV.z * tmp.z) || Math.sign(facing.x * tmp.x + facing.z * tmp.z) || 1;
+    along = sgn * keep;
+    const vn = v.x * n.x + v.z * n.z;
+    v.x = tmp.x * along + n.x * vn;
+    v.z = tmp.z * along + n.z * vn;
   };
 
   const wallAhead = (look: THREE.Vector3) => {
@@ -1245,6 +1399,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   };
 
   const quatTarget = new THREE.Quaternion();
+  const rollQ = new THREE.Quaternion();
   const basis = new THREE.Matrix4();
   const ou = new THREE.Vector3();
   const of = new THREE.Vector3();
@@ -1284,6 +1439,15 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       phase += Math.max(flat, 1.2) * dt * 0.45;
       progress = phase;
       orient(ou.copy(UP).lerp(facing, 0.82 * stroke), of.copy(facing).lerp(DOWN, 0.82 * stroke), dt);
+    } else if (mode === "ground" && rollT < 1) {
+      pose = "crouch";
+      progress = rollT;
+      of.copy(facing);
+      ox.crossVectors(UP, of);
+      basis.makeBasis(ox, UP, of);
+      quatTarget.setFromRotationMatrix(basis);
+      rollQ.setFromAxisAngle(XAXIS, Math.PI * 2 * THREE.MathUtils.smootherstep(rollT, 0, 1));
+      hero.root.quaternion.copy(quatTarget).multiply(rollQ);
     } else if (mode === "ground") {
       pose = landT < 1 ? "land" : flat > 14 ? "sprint" : flat > 0.5 ? "run" : "idle";
       phase += flat * dt * 0.85;
@@ -1323,6 +1487,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       orient(UP, zipDir, dt);
     }
     hero.root.position.copy(rp);
+    if (mode === "ground" && rollT < 1) hero.root.position.y -= 0.35 * Math.sin(Math.PI * rollT);
     if (swimming) hero.root.position.y += Math.sin(t * 2.6) * 0.06;
     hero.animate(pose as Parameters<Hero["animate"]>[0], progress, webHand, t, dt);
     hero.root.updateMatrixWorld(true);
@@ -1335,7 +1500,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
     const taut = mode !== "swing" || (ropeLive && p.distanceTo(anchor) > rope - 0.1);
     webLine.update(dt, handPos, dashing ? dashTo : anchor, dashing ? ZERO : anchorN, webGrow, taut, webOn, camPos);
-    webLine.preview(aimOk() && mode !== "zip" && mode !== "launch" ? aim.point : null, aim.kind);
+    webLine.preview(aimOk() && mode !== "zip" && mode !== "launch" ? pickP : null, aim.kind === "aim" ? "aim" : "auto");
 
     marker.visible = hasPrompt && mode !== "launch";
     if (marker.visible) {
@@ -1461,7 +1626,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       if (api.busy) wish.set(0, 0, 0);
       else wish.copy(inp.wish);
       sprinting = !api.busy && inp.held.has("swing") && wish.lengthSq() > 0;
-      computeAim(inp.camPos, inp.look);
+      computeAim(inp.camPos, inp.look, inp.pressed.has("swing") || swingRetry > 0);
       if (!api.busy) decide(inp, dt);
       acc += dt;
       let steps = 0;
@@ -1489,6 +1654,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       airTime = mode === "air" || mode === "swing" || mode === "zip" || mode === "wings" ? airTime + dt : 0;
       kickT = Math.min(1, kickT + dt / 0.45);
       landT = Math.min(1, landT + dt / 0.5);
+      rollT = mode === "ground" ? Math.min(1, rollT + dt / ROLL_TIME) : 1;
       if (trick) {
         trick.t += dt / 0.6;
         if (mode !== "air") trick = null;

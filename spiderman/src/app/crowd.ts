@@ -304,7 +304,6 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       p.on = true;
       p.kind = WALK;
       p.bi = i;
-      p.bj = 0;
       setDir(p, dir);
       p.c = dir > 0 ? (e + 1) % 4 : e;
       p.x = x;
@@ -509,7 +508,6 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     const jit = (rnd() - 0.5) * 1.0;
     if (xRoad) {
       p.nbi = nx;
-      p.nbj = 0;
       p.nc = [1, 0, 3, 2][c];
       p.axis = 1;
       p.wx[0] = X + sx * (CURB + rnd() * 0.9);
@@ -520,7 +518,6 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       p.wz[2] = Z + sz * p.o;
     } else {
       p.nbi = nz;
-      p.nbj = 0;
       p.nc = [3, 2, 1, 0][c];
       p.axis = 0;
       p.wz[0] = Z + sz * (CURB + rnd() * 0.9);
@@ -699,7 +696,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     const s = Math.sign(along) || 1;
     const step = Math.min(Math.abs(along), spd * dt);
     const pref = alongX ? tz : tx;
-    const ek = ((p.bi * 64 + p.bj) * 4 + p.c) * 2 + (p.dir > 0 ? 1 : 0);
+    const ek = (p.bi * 4 + p.c) * 2 + (p.dir > 0 ? 1 : 0);
     if (ek !== p.ek) {
       p.ek = ek;
       p.lat = pref;
@@ -765,7 +762,6 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       else {
         p.wn = 0;
         p.bi = p.nbi;
-        p.bj = p.nbj;
         p.c = (p.nc + p.dir + 4) % 4;
         p.crossed = true;
       }

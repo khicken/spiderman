@@ -347,25 +347,44 @@ export function createCity(seed = 7) {
   const traffic = createTraffic({ r, max: MAX_CARS, time });
   group.add(traffic.group);
 
-  const grid = new Map<number, Box[]>();
+  const grid = new Map<number, number[]>();
   const key = (cx: number, cz: number) => cx * 4096 + cz;
-  for (const b of c.boxes) {
+  const allBoxes = c.boxes;
+  allBoxes.forEach((b, i) => {
     for (let cx = Math.floor(b.minX / CELL); cx <= Math.floor(b.maxX / CELL); cx++) {
       for (let cz = Math.floor(b.minZ / CELL); cz <= Math.floor(b.maxZ / CELL); cz++) {
         const k = key(cx, cz);
         let l = grid.get(k);
         if (!l) grid.set(k, (l = []));
-        l.push(b);
+        l.push(i);
       }
     }
-  }
-  const near = (x: number, z: number, radius: number) => {
-    const out = new Set<Box>();
+  });
+  const stamps = new Uint32Array(allBoxes.length);
+  let stamp = 0;
+  // Pass `out` to reuse an array in hot loops. It is cleared and returned.
+  const near = (x: number, z: number, radius: number, out: Box[] = []) => {
+    out.length = 0;
+    if (++stamp === 0xffffffff) {
+      stamps.fill(0);
+      stamp = 1;
+    }
     const n = Math.ceil(radius / CELL);
     const gx = Math.floor(x / CELL);
     const gz = Math.floor(z / CELL);
-    for (let a = gx - n; a <= gx + n; a++) for (let b = gz - n; b <= gz + n; b++) grid.get(key(a, b))?.forEach((bx) => out.add(bx));
-    return [...out];
+    for (let a = gx - n; a <= gx + n; a++) {
+      for (let b = gz - n; b <= gz + n; b++) {
+        const l = grid.get(key(a, b));
+        if (!l) continue;
+        for (let j = 0; j < l.length; j++) {
+          const i = l[j];
+          if (stamps[i] === stamp) continue;
+          stamps[i] = stamp;
+          out.push(allBoxes[i]);
+        }
+      }
+    }
+    return out;
   };
 
   const roofSpots = c.roofSpots.filter((s) => !near(s.x, s.z, 1).some((b) => s.x > b.minX && s.x < b.maxX && s.z > b.minZ && s.z < b.maxZ && b.maxY > s.y + 0.5));

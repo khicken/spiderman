@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { HudState, Marker } from "./contracts";
 import { BLOCKS, BOUNDS, DISTRICT_NAMES, type GeoBlock } from "./city-geo";
 import { GEO, MARKER, type Labeled } from "./ui-hud";
@@ -79,10 +79,21 @@ export function MapPanel({ h, onClose }: { h: HudState; onClose: () => void }) {
     const nu = fitU / zoom;
     setView(clampView({ zoom, cx: wx - (px - size.w / 2) * nu, cz: wz - (py - size.h / 2) * nu }));
   };
-  const onWheel = (e: WheelEvent) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
-  };
+  const wheel = useRef(zoomAt);
+  useEffect(() => {
+    wheel.current = zoomAt;
+  });
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const on = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      wheel.current(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+    };
+    el.addEventListener("wheel", on, { passive: false });
+    return () => el.removeEventListener("wheel", on);
+  }, []);
   const onDown = (e: PointerEvent) => {
     drag.current = { x: e.clientX, y: e.clientY, cx: view.cx, cz: view.cz };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -107,7 +118,6 @@ export function MapPanel({ h, onClose }: { h: HudState; onClose: () => void }) {
           <svg
             viewBox={`${view.cx - vw / 2} ${view.cz - vh / 2} ${vw} ${vh}`}
             className={`block h-full w-full bg-[#0d2238] ${drag.current ? "cursor-grabbing" : "cursor-grab"}`}
-            onWheel={onWheel}
             onPointerDown={onDown}
             onPointerMove={onMove}
             onPointerUp={onUp}

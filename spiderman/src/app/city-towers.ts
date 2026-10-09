@@ -4,8 +4,7 @@ import { FACADES, STYLE } from "./city-facades";
 import { SHOP_H } from "./city-textures";
 import { IRON, SNOW, antenna, face, fbox, floors, fquad, glowRim, mass, roofKit, type Block, type Ctx, type Face } from "./city-build";
 import { topConstruction } from "./city-cranes";
-import { BLOCKS, LANDMARKS, type GeoBlock, type Rect as GeoRect } from "./city-geo";
-import { RAMP_RECTS } from "./city-bridges";
+import { BLOCKS, LANDMARKS, RAMP_RECTS, type GeoBlock, type Rect as GeoRect } from "./city-geo";
 
 const pick = <T,>(r: () => number, a: readonly T[]) => a[Math.floor(r() * a.length)];
 const CROWNS = [0xbfe3ff, 0x9fffe8, 0xffd27a, 0xffffff, 0xff9ad2, 0xff5a4a];

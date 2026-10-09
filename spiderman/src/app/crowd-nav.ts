@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BLOCKS, ROADS, ROAD_W, SIDEWALK, blockAt, crossingsOf, nearestAvenue, nearestStreet, onLand, shoreDist, streetDist, type GeoBlock } from "./city-geo";
+import { BLOCKS, RAMP_RECTS, ROADS, ROAD_W, SIDEWALK, blockAt, crossingsOf, nearestAvenue, nearestStreet, onLand, shoreDist, streetDist, type GeoBlock } from "./city-geo";
 
 const CELL = 0.25;
 const key = (ix: number, iz: number) => (ix + 8192) * 16384 + (iz + 8192);
@@ -53,7 +53,8 @@ export const cx = (L: Loop, c: number, o: number) => (c === 0 || c === 3 ? L.min
 export const cz = (L: Loop, c: number, o: number) => (c < 2 ? L.minZ - INSET + o : L.maxZ + INSET - o);
 export const edgeLine = (L: Loop, c: number, alongX: boolean) => (alongX ? (c < 2 ? L.minZ - INSET : L.maxZ + INSET) : c === 0 || c === 3 ? L.minX - INSET : L.maxX + INSET);
 
-const walkable = (x: number, z: number) => onLand(x, z) && shoreDist(x, z) > 1.5 && !blockAt(x, z) && streetDist(x, z) > 10.6;
+const inRamp = (x: number, z: number) => RAMP_RECTS.some((q) => x > q.minX - 2 && x < q.maxX + 2 && z > q.minZ - 2 && z < q.maxZ + 2);
+const walkable = (x: number, z: number) => onLand(x, z) && shoreDist(x, z) > 1.5 && !blockAt(x, z) && streetDist(x, z) > 10.6 && !inRamp(x, z);
 
 /** Sidewalk loops around touching blocks, plus crosswalk links between loop corners. */
 export function buildLoops(o0: number, O: number) {

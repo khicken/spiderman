@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { rng, type Box, type City } from "./city";
-import { AVENUES, BLOCKS, BRIDGES, ROADS, ROAD_W, SPAWN, broadwayX, crossingsOf, deckBoxes, nearestStreet, onLand, streetZ, type GeoRoad, type Pt } from "./city-geo";
+import { AVENUES, BLOCKS, BRIDGES, ROADS, ROAD_W, RUN, SPAWN, broadwayX, crossingsOf, deckBoxes, onLand, rampEnds, streetZ, type GeoRoad, type Pt, type RampEnd } from "./city-geo";
 import type { GameEvent, HudState, Marker, Objective, Saveable } from "./contracts";
 import type { Combat, EnemyKind } from "./combat";
 import { BOSSES, bossArena, bossText, type BossName } from "./bosses";
@@ -58,9 +58,14 @@ export const RACES: { name: string; path: Pt[] }[] = [
     name: "Bridge Run",
     path: (() => {
       const br = bridgeEnds("Brooklyn Bridge");
-      const bk = nearestStreet(br.b[1], br.b[0] + 40)!;
+      const [ea, eb] = rampEnds(br);
+      const foot = (e: RampEnd, off: number) => e.x + e.dir * (e.hl + e.steps * RUN + off);
+      const fa = foot(ea, 14);
+      const fb = foot(eb, 3);
       const ch = streetLine("Chambers St");
-      return [[145, streetLine("Worth St")], [145, ch], [br.a[0] - 24, ch], br.a, br.b, [br.b[0] + 20, bk.line], [bk.max - 100, bk.line]] as Pt[];
+      const av = ROADS.filter((q) => q.axis === 1 && q.line < fa && ea.z > q.min && ea.z < q.max && ch >= q.min - 1).sort((p, q) => q.line - p.line)[0];
+      const bk = ROADS.filter((q) => q.axis === 0 && q.min > fb && q.max - q.min > 150).sort((p, q) => Math.abs(p.line - eb.z) - Math.abs(q.line - eb.z))[0];
+      return [[145, streetLine("Worth St")], [145, ch], [av.line, ch], [av.line, ea.z], [fa, ea.z], br.a, br.b, [fb, eb.z], [fb, bk.line], [bk.max - 100, bk.line]] as Pt[];
     })(),
   },
 ];
@@ -433,16 +438,20 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     chase.next = nextStop(q, s, dir);
   };
   const spawnChase = (p: THREE.Vector3, out: GameEvent[]) => {
-    let q = ROADS[0];
+    let q: GeoRoad | null = null;
     let s = 0;
-    for (let n = 0; n < 60; n++) {
-      q = ROADS[Math.floor(r() * ROADS.length)];
-      const cs = CROSS[ROAD_IDX.get(q)!];
+    for (let n = 0; n < 60 && !q; n++) {
+      const t = ROADS[Math.floor(r() * ROADS.length)];
+      const cs = CROSS[ROAD_IDX.get(t)!];
       if (!cs.length) continue;
       s = cs[Math.floor(r() * cs.length)];
-      const [x, z] = q.axis === 0 ? [s, q.line] : [q.line, s];
+      const [x, z] = t.axis === 0 ? [s, t.line] : [t.line, s];
       const d = Math.hypot(x - p.x, z - p.z);
-      if (d > 180 && d < 380 && onLand(x, z)) break;
+      if (d > 180 && d < 380 && onLand(x, z)) q = t;
+    }
+    if (!q) {
+      chase.nextAt = now + 10;
+      return;
     }
     const away = q.axis === 0 ? s - p.x : s - p.z;
     onRoad(q, s, away >= 0 ? 1 : -1);
@@ -1162,7 +1171,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
       crimes: completed.crimes,
       chases: completed.chases,
       items: items.map((it) => it.got),
-      races: races.map((q) => ({ done: q.done, medal: q.medal, best: Number.isFinite(q.best) ? q.best : null })),
+      races: races.map((q) => ({ name: q.name, done: q.done, medal: q.medal, best: Number.isFinite(q.best) ? q.best : null })),
       hideouts: hideouts.map((h) => h.state === "done"),
       bosses: Object.fromEntries(bossSlots.map((b) => [b.name, b.state === "done"])),
     }),
@@ -1180,8 +1189,8 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
         items[i].popT = got ? 1 : 0;
       });
       const rs = Array.isArray(d.races) ? d.races : [];
-      races.forEach((q, i) => {
-        const e = (rs[i] ?? {}) as Record<string, unknown>;
+      races.forEach((q) => {
+        const e = (rs.find((x) => !!x && typeof x === "object" && (x as Record<string, unknown>).name === q.name) ?? {}) as Record<string, unknown>;
         q.medal = isNum(e.medal) && e.medal >= 0 && e.medal <= NO_MEDAL ? Math.floor(e.medal) : NO_MEDAL;
         q.best = isNum(e.best) && e.best > 0 ? e.best : Infinity;
         q.done = e.done === true || q.medal < NO_MEDAL;
