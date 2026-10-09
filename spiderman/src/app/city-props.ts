@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { Bucket, UNIT, beam, box, cyl, mat } from "./city-kit";
 import { IRON, SNOW, face, fbox, fquad, type Block, type Ctx, type Face } from "./city-build";
-import { bakeCar, signal, type ModelName } from "./city-cars";
+import { bakeCar, signal, signalGroup, type ModelName } from "./city-cars";
 import { SKY } from "./sky-state";
+import { onLand } from "./city-geo";
 
 const pick = <T,>(r: () => number, a: readonly T[]) => a[Math.floor(r() * a.length)];
 const LUMP = new THREE.SphereGeometry(1, 6, 2, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -132,7 +133,7 @@ function strand(c: Ctx, F: Face, a: number) {
 
 type Signals = { mesh: THREE.InstancedMesh[][][]; update: (t: number) => void };
 
-export function signals(c: Ctx, lineAt: (k: number) => number, lines: number, group: THREE.Group): Signals {
+export function signals(c: Ctx, crossings: { x: number; z: number; g: number }[], group: THREE.Group): Signals {
   const cols = [0x20ff60, 0xffb020, 0xff2020];
   const spots: THREE.Matrix4[][][][] = [0, 1].map(() => [0, 1].map(() => [0, 1, 2].map(() => [] as THREE.Matrix4[])));
   const H = 6.6;
@@ -144,16 +145,12 @@ export function signals(c: Ctx, lineAt: (k: number) => number, lines: number, gr
     const fx = Math.sin(ry) * 0.18, fz = Math.cos(ry) * 0.18;
     for (let k = 0; k < 3; k++) spots[g][axis][k].push(mat(hx + fx, H - 0.25 + (k - 1) * 0.38, hz + fz, 1, 1, 1, ry).clone());
   };
-  for (let k = 0; k < lines; k++) {
-    for (let l = 0; l < lines; l++) {
-      const X = lineAt(k), Z = lineAt(l);
-      const g = (k + l) & 1;
-      const d = 12.3;
-      pole(X + d, Z + d, X + 4.5, Z + d, 0, 1, g);
-      pole(X - d, Z - d, X - 4.5, Z - d, Math.PI, 1, g);
-      pole(X - d, Z + d, X - d, Z + 4.5, -Math.PI / 2, 0, g);
-      pole(X + d, Z - d, X + d, Z - 4.5, Math.PI / 2, 0, g);
-    }
+  for (const { x: X, z: Z, g } of crossings) {
+    const d = 12.3;
+    if (onLand(X + d, Z + d)) pole(X + d, Z + d, X + 4.5, Z + d, 0, 1, g);
+    if (onLand(X - d, Z - d)) pole(X - d, Z - d, X - 4.5, Z - d, Math.PI, 1, g);
+    if (onLand(X - d, Z + d)) pole(X - d, Z + d, X - d, Z + 4.5, -Math.PI / 2, 0, g);
+    if (onLand(X + d, Z - d)) pole(X + d, Z - d, X + d, Z - 4.5, Math.PI / 2, 0, g);
   }
   const disc = new THREE.CircleGeometry(0.15, 8);
   const mesh = spots.map((ga) =>
@@ -179,7 +176,7 @@ export function signals(c: Ctx, lineAt: (k: number) => number, lines: number, gr
 
 const CAR_COLORS = [0xb01c1c, 0xf2f2f2, 0x15171b, 0x2a4f8f, 0x7d8288, 0x3e5e46, 0x8a6a3a, 0xc9ccd1, 0x5c1f3c];
 
-export function blockStreet(c: Ctx, b: Block, d: District, vents: { x: number; z: number; stack: boolean }[]) {
+export function blockStreet(c: Ctx, b: Block, d: District, vents: { x: number; z: number; stack: boolean }[], road = 15) {
   const r = c.r;
   const leafy = d === "harlem" || d === "upper" || d === "cps" || d === "park" || d === "greenwich";
   const busy = d === "midtown" || d === "times" || d === "downtown" || d === "plaza" || d === "landmark" || d === "fidi" || d === "chinatown";
@@ -187,7 +184,14 @@ export function blockStreet(c: Ctx, b: Block, d: District, vents: { x: number; z
   for (let f = 0; f < 4; f++) {
     const F = face(f, b.x0, b.x1, b.z0, b.z1);
     const L = F.len;
-    const lamps = [3.5, L / 2, L - 3.5];
+    if (!(road & (1 << f))) {
+      for (let a = 3; a < L - 2; a += 9) {
+        const x = F.ox + F.dx * a + F.nx * 1.8, z = F.oz + F.dz * a + F.nz * 1.8;
+        if (onLand(x, z)) c.streetSpots.push(new THREE.Vector3(x, 0, z));
+      }
+      continue;
+    }
+    const lamps = L < 30 ? [L / 2] : L < 60 ? [3.5, L - 3.5] : [3.5, L / 2, L - 3.5];
     lamps.forEach((a) => lamp(c, F, a, 3.4, (d === "harlem" || d === "upper") && r() < 0.5));
     if (leafy && d !== "park") {
       for (let a = 8; a < L - 6; a += 8 + r() * 2) {
@@ -197,7 +201,7 @@ export function blockStreet(c: Ctx, b: Block, d: District, vents: { x: number; z
     } else if (busy && r() < 0.4) {
       for (let a = 10; a < L - 8; a += 14) if (Math.abs(a - L / 2) > 3) c.trees.push({ x: F.ox + F.dx * a + F.nx * 3.0, z: F.oz + F.dz * a + F.nz * 3.0, s: 0.6 + r() * 0.2, lit: r() < 0.7 });
     }
-    const hy = 10 + r() * (L - 20);
+    const hy = 10 + r() * Math.max(0, L - 20);
     if (r() < 0.6) hydrant(c, F.ox + F.dx * hy + F.nx * 3.5, F.oz + F.dz * hy + F.nz * 3.5);
     if (r() < 0.25) mailbox(c, F, 6, 3.2);
     if (r() < 0.5) trashCan(c, F.ox + F.dx * (L - 5.5) + F.nx * 3.3, F.oz + F.dz * (L - 5.5) + F.nz * 3.3);
@@ -218,7 +222,7 @@ export function blockStreet(c: Ctx, b: Block, d: District, vents: { x: number; z
     if (parks) {
       const ry = Math.atan2(-F.nz, F.nx);
       for (let a = 9; a < L - 9; a += 6.2) {
-        if (r() > 0.42 || Math.abs(a - hy) < 3 || Math.abs(a - stopAt) < 4) continue;
+        if (r() > 0.22 || Math.abs(a - hy) < 3 || Math.abs(a - stopAt) < 4) continue;
         const name: ModelName = d === "industrial" && r() < 0.5 ? "truck" : r() < 0.15 ? "taxi" : "sedan";
         const x = F.ox + F.dx * a + F.nx * 5.6, z = F.oz + F.dz * a + F.nz * 5.6;
         bakeCar(c.small, name, x, z, ry, name === "taxi" ? 0xf2b705 : pick(r, CAR_COLORS));
@@ -308,79 +312,104 @@ export function treeMeshes(c: Ctx, tile: number, origin: number) {
   return { meshes, pines };
 }
 
-export function parkBlock(c: Ctx, b: Block, park: Bucket, pond: boolean) {
+export type Pond = { x: number; z: number; rx: number; rz: number };
+export type ParkOpts = { ponds?: Pond[]; ring?: { x: number; z: number }; drives?: number[]; density?: number };
+
+function pondRim(c: Ctx, p: Pond) {
+  const seg = Math.max(20, Math.round((p.rx + p.rz) * 0.9));
+  for (let k = 0; k < seg; k++) {
+    const a0 = (k / seg) * Math.PI * 2, a1 = ((k + 1) / seg) * Math.PI * 2;
+    const x0 = p.x + Math.cos(a0) * p.rx, z0 = p.z + Math.sin(a0) * p.rz;
+    const x1 = p.x + Math.cos(a1) * p.rx, z1 = p.z + Math.sin(a1) * p.rz;
+    c.ice.quad(p.x, 0.08, p.z, x1, 0.08, z1, x0, 0.08, z0, x0, 0.08, z0, [0.5, 0.5, 0.5, 0.5], 0xffffff);
+    box(c.solid, (x0 + x1) / 2, 0.2, (z0 + z1) / 2, 0.9, 0.4, Math.hypot(x1 - x0, z1 - z0) + 0.3, 0x77726a, -Math.atan2(z1 - z0, x1 - x0) + Math.PI / 2);
+  }
+}
+
+export function parkBlock(c: Ctx, b: Block, park: Bucket, o: ParkOpts = {}) {
   const r = c.r;
-  park.quad(b.x0, 0.04, b.z1, b.x1, 0.04, b.z1, b.x1, 0.04, b.z0, b.x0, 0.04, b.z0, [0, 0, 1, 1], 0xffffff);
-  const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
-  const W = b.x1 - b.x0;
+  const W = b.x1 - b.x0, D = b.z1 - b.z0;
+  park.quad(b.x0, 0.04, b.z1, b.x1, 0.04, b.z1, b.x1, 0.04, b.z0, b.x0, 0.04, b.z0, [0, 0, W / 56, D / 56], 0xffffff);
   for (let f = 0; f < 4; f++) {
     const F = face(f, b.x0, b.x1, b.z0, b.z1);
-    for (const [a0, a1] of [[0, W / 2 - 2.5], [W / 2 + 2.5, W]]) {
-      fbox(c.solid, F, (a0 + a1) / 2, 0.45, -0.25, a1 - a0, 0.9, 0.5, 0x6f6a62);
-      fbox(c.solid, F, (a0 + a1) / 2, 0.92, -0.25, a1 - a0, 0.06, 0.55, SNOW);
+    const n = Math.max(1, Math.round(F.len / 90));
+    const gates = Array.from({ length: n }, (_, k) => ((k + 0.5) * F.len) / n);
+    let a0 = 0;
+    for (const g of [...gates, F.len + 2.5]) {
+      const a1 = g - 2.5;
+      if (a1 - a0 > 0.5) {
+        fbox(c.solid, F, (a0 + a1) / 2, 0.45, -0.25, a1 - a0, 0.9, 0.5, 0x6f6a62);
+        fbox(c.solid, F, (a0 + a1) / 2, 0.92, -0.25, a1 - a0, 0.06, 0.55, SNOW);
+      }
+      a0 = g + 2.5;
     }
-    for (const s of [-1, 1]) {
-      const a = W / 2 + s * 2.7;
-      const x = F.ox + F.dx * a - F.nx * 0.25, z = F.oz + F.dz * a - F.nz * 0.25;
-      box(c.solid, x, 0.8, z, 0.7, 1.6, 0.7, 0x6f6a62);
-      c.glow.add(UNIT.sphere, mat(x, 1.95, z, 0.28, 0.28, 0.28), LAMP, 3.5);
+    for (const g of gates) {
+      for (const s of [-1, 1]) {
+        const a = g + s * 2.7;
+        const x = F.ox + F.dx * a - F.nx * 0.25, z = F.oz + F.dz * a - F.nz * 0.25;
+        box(c.solid, x, 0.8, z, 0.7, 1.6, 0.7, 0x6f6a62);
+        c.glow.add(UNIT.sphere, mat(x, 1.95, z, 0.28, 0.28, 0.28), LAMP, 3.5);
+      }
+      c.streetSpots.push(new THREE.Vector3(F.ox + F.dx * g - F.nx * 3, 0, F.oz + F.dz * g - F.nz * 3));
     }
   }
+  const ponds = o.ponds ?? [];
+  const inPond = (x: number, z: number, m: number) => ponds.some((p) => ((x - p.x) / (p.rx + m)) ** 2 + ((z - p.z) / (p.rz + m)) ** 2 < 1);
   // Old elms along the drives give swing lines over the park.
-  for (let f = 0; f < 4; f++) {
-    const F = face(f, b.x0, b.x1, b.z0, b.z1);
-    for (const a of [10, 33, 50]) {
-      const s = 6 + r() * 1.2;
-      const w = s * 0.5;
-      const x = F.ox + F.dx * a - F.nx * 6, z = F.oz + F.dz * a - F.nz * 6;
-      c.trees.push({ x, z, s, lit: false, w });
-      const t = 0.3 * w;
-      c.boxes.push({ minX: x - t, maxX: x + t, minZ: z - t, maxZ: z + t, maxY: 3.4 * s * 0.9 });
-    }
-  }
-  const ring = 18;
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
-    const x = cx + Math.cos(a) * (ring + 2.2), z = cz + Math.sin(a) * (ring + 2.2);
-    cyl(c.small, UNIT.cyl6, x, 0, z, 0.09, 3.6, 0x1d2622);
-    c.glow.add(UNIT.sphere, mat(x, 3.85, z, 0.3, 0.3, 0.3), LAMP, 4);
-    const bx = cx + Math.cos(a + 0.2) * (ring + 2.4), bz = cz + Math.sin(a + 0.2) * (ring + 2.4);
-    bench(c.small, bx, bz, -a - Math.PI / 2 - 0.2);
-  }
-  for (let k = 0; k < 16; k++) {
-    const a = (k / 16) * Math.PI * 2;
-    c.streetSpots.push(new THREE.Vector3(cx + Math.cos(a) * ring, 0, cz + Math.sin(a) * ring));
-  }
-  for (let t = 4; t < W - 4; t += 6) {
-    c.streetSpots.push(new THREE.Vector3(b.x0 + t, 0, cz), new THREE.Vector3(cx, 0, b.z0 + t));
-  }
-  if (pond) {
-    const pr = 15;
-    const seg = 28;
-    for (let k = 0; k < seg; k++) {
-      const a0 = (k / seg) * Math.PI * 2, a1 = ((k + 1) / seg) * Math.PI * 2;
-      const rx = 1;
-      c.ice.quad(cx, 0.08, cz, cx + Math.cos(a1) * pr * rx, 0.08, cz + Math.sin(a1) * pr, cx + Math.cos(a0) * pr * rx, 0.08, cz + Math.sin(a0) * pr, cx + Math.cos(a0) * pr * rx, 0.08, cz + Math.sin(a0) * pr, [0.5, 0.5, 0.5, 0.5], 0xffffff);
-      const mx = cx + Math.cos((a0 + a1) / 2) * pr * rx, mz = cz + Math.sin((a0 + a1) / 2) * pr;
-      box(c.solid, mx, 0.2, mz, 0.9, 0.4, (pr * Math.PI * 2 * 1.08) / seg + 0.3, 0x77726a, -(a0 + a1) / 2);
-    }
-    c.landmarks.push({ name: "Frozen Pond", pos: new THREE.Vector3(cx, 0, cz + pr + 2) });
-  }
-  const spotsFree = (x: number, z: number) => {
-    const dx = x - cx, dz = z - cz;
-    const rr = Math.hypot(dx, dz);
-    if (Math.abs(rr - ring) < 3) return false;
-    if (pond && rr < 19) return false;
-    if (Math.abs(dx) < 3.5 || Math.abs(dz) < 3.5) return false;
-    return true;
+  const elm = (x: number, z: number) => {
+    if (inPond(x, z, 4)) return;
+    const s = 6 + r() * 1.2;
+    const w = s * 0.5;
+    c.trees.push({ x, z, s, lit: false, w, anchor: true });
+    const t = 0.3 * w;
+    c.boxes.push({ minX: x - t, maxX: x + t, minZ: z - t, maxZ: z + t, maxY: 3.4 * s * 0.9 });
   };
-  for (let k = 0; k < 70; k++) {
-    const x = b.x0 + 2.5 + r() * (W - 5), z = b.z0 + 2.5 + r() * (W - 5);
-    if (!spotsFree(x, z)) continue;
-    if (r() < 0.6) c.trees.push({ x, z, s: 0.9 + r() * 0.6, lit: r() < 0.25 });
+  const drives = o.drives ?? [];
+  if (drives.length) {
+    for (const dx of drives) {
+      for (let z = b.z0 + 10; z < b.z1 - 6; z += 19 + r() * 4) {
+        for (const s of [-6, 6]) elm(dx + s, z);
+        c.streetSpots.push(new THREE.Vector3(dx, 0, z));
+      }
+    }
+  } else {
+    for (let f = 0; f < 4; f++) {
+      const F = face(f, b.x0, b.x1, b.z0, b.z1);
+      if (F.len < 20) continue;
+      for (let a = 10; a < F.len - 6; a += 20) elm(F.ox + F.dx * a - F.nx * 6, F.oz + F.dz * a - F.nz * 6);
+    }
+  }
+  const ring = Math.min(18, W / 2 - 6, D / 2 - 6);
+  const rc = o.ring ?? { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2 };
+  if (ring > 5) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      const x = rc.x + Math.cos(a) * (ring + 2.2), z = rc.z + Math.sin(a) * (ring + 2.2);
+      cyl(c.small, UNIT.cyl6, x, 0, z, 0.09, 3.6, 0x1d2622);
+      c.glow.add(UNIT.sphere, mat(x, 3.85, z, 0.3, 0.3, 0.3), LAMP, 4);
+      const bx = rc.x + Math.cos(a + 0.2) * (ring + 2.4), bz = rc.z + Math.sin(a + 0.2) * (ring + 2.4);
+      bench(c.small, bx, bz, -a - Math.PI / 2 - 0.2);
+    }
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      c.streetSpots.push(new THREE.Vector3(rc.x + Math.cos(a) * ring, 0, rc.z + Math.sin(a) * ring));
+    }
+  }
+  for (const p of ponds) pondRim(c, p);
+  const free = (x: number, z: number) => {
+    if (ring > 5 && Math.abs(Math.hypot(x - rc.x, z - rc.z) - ring) < 3) return false;
+    if (inPond(x, z, 3)) return false;
+    return !drives.some((dx) => Math.abs(x - dx) < 9);
+  };
+  const n = Math.round(W * D * (o.density ?? 0.0134));
+  for (let k = 0; k < n; k++) {
+    const x = b.x0 + 2.5 + r() * (W - 5), z = b.z0 + 2.5 + r() * (D - 5);
+    if (!free(x, z)) continue;
+    if (r() < 0.6) c.trees.push({ x, z, s: 0.9 + r() * 0.6, lit: r() < 0.15 });
     else c.pines.push({ x, z, s: 0.7 + r() * 0.6 });
   }
 }
+
 
 export function steam(c: Ctx, vents: { x: number; z: number; stack: boolean }[], dot: THREE.Texture) {
   const N = 9;
@@ -448,4 +477,126 @@ export function steam(c: Ctx, vents: { x: number; z: number; stack: boolean }[],
     mat.uniforms.uScale.value = size.y / (2 * Math.tan((fov * Math.PI) / 360));
   };
   return { points, time: mat.uniforms.uTime as { value: number } };
+}
+
+export function plazaProps(c: Ctx, p: { minX: number; maxX: number; minZ: number; maxZ: number }) {
+  const r = c.r;
+  const alongZ = p.maxZ - p.minZ >= p.maxX - p.minX;
+  const cx = (p.minX + p.maxX) / 2, cz = (p.minZ + p.maxZ) / 2;
+  const L = alongZ ? p.maxZ - p.minZ : p.maxX - p.minX;
+  const W = alongZ ? p.maxX - p.minX : p.maxZ - p.minZ;
+  for (let a = 3; a < L - 2; a += 7) {
+    const x = alongZ ? cx : p.minX + a, z = alongZ ? p.minZ + a : cz;
+    if (W > 8 && r() < 0.45) {
+      box(c.small, x, 0.35, z, 1.6, 0.7, 1.6, 0x5d5a55);
+      box(c.small, x, 0.72, z, 1.5, 0.05, 1.5, SNOW);
+      c.pines.push({ x, z, s: 0.3 + r() * 0.1 });
+    } else if (W > 6 && r() < 0.5) bench(c.small, x, z, alongZ ? Math.PI / 2 : 0);
+    for (const s of [-1, 1]) {
+      const o = (W / 2 - 1.5) * s;
+      c.streetSpots.push(new THREE.Vector3(alongZ ? cx + o : x, 0, alongZ ? z : cz + o));
+    }
+    c.streetSpots.push(new THREE.Vector3(x + (alongZ ? 2 : 0), 0, z + (alongZ ? 0 : 2)));
+  }
+}
+
+type GeoArrays = { pos: number[]; uv: number[]; col: number[] };
+const arrays = (): GeoArrays => ({ pos: [], uv: [], col: [] });
+
+function quadXZ(g: GeoArrays, x0: number, z0: number, x1: number, z1: number, y: number, uv: (x: number, z: number) => [number, number], tint = 1) {
+  const p: [number, number][] = [[x0, z1], [x1, z1], [x1, z0], [x0, z1], [x1, z0], [x0, z0]];
+  for (const [x, z] of p) {
+    g.pos.push(x, y, z);
+    g.uv.push(...uv(x, z));
+    g.col.push(tint, tint * 0.97, tint * 0.94);
+  }
+}
+
+function toGeometry(g: GeoArrays) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(g.pos, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(g.uv, 2));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(g.col, 3));
+  const n = new Float32Array(g.pos.length);
+  for (let i = 1; i < n.length; i += 3) n[i] = 1;
+  geo.setAttribute("normal", new THREE.BufferAttribute(n, 3));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+type GRoad = { axis: 0 | 1; line: number; min: number; max: number };
+type GRect = { minX: number; maxX: number; minZ: number; maxZ: number };
+type Land = { poly: readonly (readonly [number, number])[]; borough: string };
+
+/** Land, sidewalks, roads, crossings and plazas as three flat meshes. */
+export function groundGeometry(land: Land[], roads: GRoad[], plazas: GRect[], roadW: number) {
+  const h = roadW / 2;
+  const L = arrays(), R = arrays(), X = arrays();
+  const world = (x: number, z: number): [number, number] => [x / 6, z / 6];
+  for (const l of land) {
+    const pts = l.poly.map(([x, z]) => new THREE.Vector2(x, z));
+    for (const t of THREE.ShapeUtils.triangulateShape(pts, [])) {
+      const [A, B, C] = t.map((i) => l.poly[i]);
+      const up = (B[1] - A[1]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[1] - A[1]) > 0;
+      for (const [x, z] of up ? [A, B, C] : [A, C, B]) {
+        L.pos.push(x, 0, z);
+        L.uv.push(x / 6, z / 6);
+        L.col.push(1, 1, 1);
+      }
+    }
+  }
+  for (const p of plazas) quadXZ(L, p.minX, p.minZ, p.maxX, p.maxZ, 0.025, world, 0.9);
+  const crossings: { x: number; z: number; g: number }[] = [];
+  for (const r of roads) {
+    const cuts: number[] = [];
+    for (const o of roads) {
+      if (o.axis === r.axis || o.line < r.min - 1 || o.line > r.max + 1 || r.line < o.min - 1 || r.line > o.max + 1) continue;
+      cuts.push(o.line);
+      if (r.axis === 0) {
+        quadXZ(X, o.line - h, r.line - h, o.line + h, r.line + h, 0.035, (x, z) => [(x - o.line + h) / roadW, 1 - (z - r.line + h) / roadW]);
+        crossings.push({ x: o.line, z: r.line, g: signalGroup(o.line, r.line) });
+      }
+    }
+    cuts.sort((a, b) => a - b);
+    let s = r.min;
+    for (const cut of [...cuts, r.max + h]) {
+      const e = Math.min(cut - h, r.max);
+      if (e - s > 0.2) {
+        if (r.axis === 0) quadXZ(R, s, r.line - h, e, r.line + h, 0.03, (x, z) => [(z - r.line + h) / roadW, x / roadW]);
+        else quadXZ(R, r.line - h, s, r.line + h, e, 0.03, (x, z) => [(x - r.line + h) / roadW, z / roadW]);
+      }
+      s = Math.max(s, cut + h);
+    }
+  }
+  return { land: toGeometry(L), roads: toGeometry(R), cross: toGeometry(X), crossings };
+}
+
+/** Stone bulkhead and a rail along every shore edge that faces water. */
+export function shoreEdge(c: Ctx, land: Land[], skip: (x: number, z: number) => boolean) {
+  for (const l of land) {
+    const P = l.poly;
+    for (let i = 0; i < P.length; i++) {
+      const [ax, az] = P[i], [bx, bz] = P[(i + 1) % P.length];
+      const len = Math.hypot(bx - ax, bz - az);
+      if (len < 0.5 || skip((ax + bx) / 2, (az + bz) / 2)) continue;
+      const dx = (bx - ax) / len, dz = (bz - az) / len;
+      const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+      const s = onLand(mx + dz * 1.5, mz - dx * 1.5) ? -1 : 1;
+      const nx = dz * s, nz = -dx * s;
+      const ry = Math.atan2(-dz, dx);
+      box(c.solid, (ax + bx) / 2 - nx * 0.4, -1.6, (az + bz) / 2 - nz * 0.4, len + 0.8, 3.4, 0.8, 0x6f685b, ry);
+      box(c.solid, (ax + bx) / 2 - nx * 0.4, 0.12, (az + bz) / 2 - nz * 0.4, len + 0.8, 0.24, 1.0, 0x9a9282, ry);
+      if (l.borough === "Manhattan" || l.borough === "Brooklyn") {
+        const rx = -nx * 0.5, rz = -nz * 0.5;
+        box(c.small, (ax + bx) / 2 + rx, 1.1, (az + bz) / 2 + rz, len, 0.08, 0.1, IRON, ry);
+        for (let a = 0; a < len; a += 4.5) box(c.small, ax + dx * a + rx, 0.6, az + dz * a + rz, 0.08, 1.0, 0.08, IRON);
+        for (let a = 12; a < len - 4; a += 36) {
+          const x = ax + dx * a - nx * 2, z = az + dz * a - nz * 2;
+          cyl(c.small, UNIT.cyl6, x, 0, z, 0.1, 4.2, 0x1d2622);
+          c.glow.add(UNIT.sphere, mat(x, 4.45, z, 0.32, 0.32, 0.32), 0xffd59a, 4);
+          c.streetSpots.push(new THREE.Vector3(x - nx * 1.5, 0, z - nz * 1.5));
+        }
+      }
+    }
+  }
 }

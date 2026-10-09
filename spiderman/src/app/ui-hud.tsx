@@ -2,7 +2,7 @@
 
 import { useRef, type ReactNode } from "react";
 import type { HudState, Marker } from "./contracts";
-import { BLOCKS, HALF, PERIOD } from "./city";
+import { BOUNDS, BRIDGES, CENTRAL_PARK, LAND, ROADS, ROAD_W, type Pt } from "./city-geo";
 import { Key } from "./ui-menu";
 
 export type Pop =
@@ -56,7 +56,32 @@ const relAngle = (h: HudState, t: Target) => {
 };
 const meters = (d: number) => (d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`);
 
-const GRID = Array.from({ length: BLOCKS + 1 }, (_, i) => -HALF + i * PERIOD);
+const pathOf = (p: readonly Pt[]) => `M${p.map(([x, z]) => `${x.toFixed(1)} ${z.toFixed(1)}`).join("L")}Z`;
+const rectPath = (minX: number, minZ: number, maxX: number, maxZ: number) => `M${minX.toFixed(1)} ${minZ.toFixed(1)}H${maxX.toFixed(1)}V${maxZ.toFixed(1)}H${minX.toFixed(1)}Z`;
+export const GEO = {
+  land: LAND.map((l) => ({ borough: l.borough, d: pathOf(l.poly) })),
+  roads: ROADS.map((q) => (q.axis === 0 ? `M${q.min.toFixed(1)} ${q.line.toFixed(1)}H${q.max.toFixed(1)}` : `M${q.line.toFixed(1)} ${q.min.toFixed(1)}V${q.max.toFixed(1)}`)).join(""),
+  park: rectPath(CENTRAL_PARK.minX, CENTRAL_PARK.minZ, CENTRAL_PARK.maxX, CENTRAL_PARK.maxZ),
+  bridges: BRIDGES.map((b) => ({ name: b.name, d: `M${b.a[0].toFixed(1)} ${b.a[1].toFixed(1)}L${b.b[0].toFixed(1)} ${b.b[1].toFixed(1)}`, w: b.width })),
+  rectPath,
+};
+
+const MINI_PAD = 320;
+const MINI = (() => {
+  const x0 = BOUNDS.minX - MINI_PAD;
+  const z0 = BOUNDS.minZ - MINI_PAD;
+  const w = BOUNDS.maxX - BOUNDS.minX + MINI_PAD * 2;
+  const hh = BOUNDS.maxZ - BOUNDS.minZ + MINI_PAD * 2;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${z0} ${w} ${hh}" width="${Math.round(w * K)}" height="${Math.round(hh * K)}">` +
+    `<rect x="${x0}" y="${z0}" width="${w}" height="${hh}" fill="rgba(30,80,140,0.35)"/>` +
+    GEO.land.map((l) => `<path d="${l.d}" fill="rgba(255,255,255,0.07)"/>`).join("") +
+    `<path d="${GEO.park}" fill="rgba(70,150,90,0.35)"/>` +
+    `<path d="${GEO.roads}" stroke="rgba(255,255,255,0.2)" stroke-width="${ROAD_W}" fill="none"/>` +
+    GEO.bridges.map((b) => `<path d="${b.d}" stroke="rgba(255,255,255,0.3)" stroke-width="${b.w}" fill="none"/>`).join("") +
+    `</svg>`;
+  return { src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, x: x0 * K, z: z0 * K, w: Math.round(w * K), h: Math.round(hh * K) };
+})();
 const SHADOW = "drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]";
 
 // Heading without the jump at +-PI, so CSS transitions never spin the long way round.
@@ -79,19 +104,7 @@ function Minimap({ h }: { h: HudState }) {
     <div className="relative shrink-0 overflow-hidden rounded-full bg-black/60 ring-2 ring-white/25 backdrop-blur-sm" style={{ width: R * 2, height: R * 2 }}>
       <div className="absolute" style={{ left: R, top: R, transform: `rotate(${rot}rad)`, transition: ease }}>
         <div style={{ transform: `translate(${-h.x * K}px, ${-h.z * K}px)`, transition: ease }}>
-          <svg className="absolute overflow-visible" style={{ left: 0, top: 0 }} width={1} height={1}>
-            <g transform={`scale(${K})`}>
-              <rect x={-HALF} y={-HALF} width={HALF * 2} height={HALF * 2} fill="rgba(255,255,255,0.04)" />
-              <g stroke="rgba(255,255,255,0.17)" strokeWidth={22}>
-                {GRID.map((l) => (
-                  <g key={l}>
-                    <line x1={l} y1={-HALF} x2={l} y2={HALF} />
-                    <line x1={-HALF} y1={l} x2={HALF} y2={l} />
-                  </g>
-                ))}
-              </g>
-            </g>
-          </svg>
+          <img src={MINI.src} alt="" draggable={false} className="absolute max-w-none" style={{ left: MINI.x, top: MINI.z, width: MINI.w, height: MINI.h }} />
         </div>
       </div>
       <svg className="absolute inset-0" width={R * 2} height={R * 2}>

@@ -33,7 +33,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const hero = createHero();
   view.scene.add(hero.root);
 
-  const start = city.roofSpots.reduce((a, b) => (b.y > 25 && b.y < 70 && Math.hypot(b.x - 60, b.z - 160) < Math.hypot(a.x - 60, a.z - 160) ? b : a));
+  const start = city.spawn;
   const roof = city.boxes.find((b) => Math.abs(b.maxY - start.y) < 0.01 && start.x > b.minX && start.x < b.maxX && start.z > b.minZ && start.z < b.maxZ);
   const spawnDir = new THREE.Vector3(0, 0, 1);
   let open = -1;
@@ -282,7 +282,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (sim) updateModules(dt, t);
     input.endFrame();
     routeExternal(crowd.update(dt, t, player, view.camera));
-    city.setCarObstacle(player.pos.x, player.pos.z, player.pos.y < 3);
+    city.setCarObstacle(player.pos.x, player.pos.z, player.grounded, player.pos.y - R);
     city.updateTraffic(dt);
     city.update(dt, t);
 

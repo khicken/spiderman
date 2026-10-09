@@ -667,103 +667,102 @@ export function tickerTexture() {
   return t;
 }
 
-/** One street period: road, curb, sidewalk, markings. Lines sit on the tile edges. */
-export function groundTexture(PERIOD: number, STREET: number) {
-  const S = 1024;
-  const px = S / PERIOD;
-  const [c, g] = canvas(S);
-  const rand = Math.random;
+function asphalt(g: G, S: number, rand: R) {
   g.fillStyle = "#47484d";
   g.fillRect(0, 0, S, S);
-  for (let i = 0; i < 14000; i++) {
+  for (let i = 0; i < 9000; i++) {
     g.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${rand() * 0.06})`;
     g.fillRect(rand() * S, rand() * S, 2, 2);
   }
-  for (let i = 0; i < 70; i++) {
-    g.fillStyle = `rgba(14,14,18,${0.2 + rand() * 0.2})`;
+  for (let i = 0; i < 30; i++) {
+    g.fillStyle = `rgba(14,14,18,${0.15 + rand() * 0.2})`;
     g.beginPath();
-    g.ellipse(rand() * S, rand() * S, 10 + rand() * 40, 6 + rand() * 20, rand() * 3, 0, Math.PI * 2);
+    g.ellipse(rand() * S, rand() * S, 6 + rand() * 24, 4 + rand() * 12, rand() * 3, 0, Math.PI * 2);
     g.fill();
   }
-  const s0 = (STREET / 2) * px;
-  const s1 = S - s0;
-  for (const [a, b] of [[0, s0 - 1.3 * px], [s1 + 1.3 * px, S]]) {
-    for (const [c0, c1] of [[0, s0 - 1.3 * px], [s1 + 1.3 * px, S]]) {
-      g.fillStyle = "rgba(225,230,240,0.08)";
-      g.fillRect(a, c0, b - a, c1 - c0);
-    }
-  }
-  g.fillStyle = "rgba(220,226,236,0.22)";
-  for (const o of [s0 - 1.6 * px, s1]) {
-    g.fillRect(o, s0, 1.6 * px, s1 - s0);
-    g.fillRect(s0, o, s1 - s0, 1.6 * px);
-  }
-  g.fillStyle = "#a9adb5";
-  g.fillRect(s0, s0, s1 - s0, s1 - s0);
-  g.strokeStyle = "rgba(60,62,70,0.45)";
-  g.lineWidth = 1;
-  for (let t = s0; t < s1; t += 1.5 * px) {
-    g.beginPath();
-    g.moveTo(t, s0);
-    g.lineTo(t, s0 + 4 * px);
-    g.moveTo(t, s1 - 4 * px);
-    g.lineTo(t, s1);
-    g.moveTo(s0, t);
-    g.lineTo(s0 + 4 * px, t);
-    g.moveTo(s1 - 4 * px, t);
-    g.lineTo(s1, t);
-    g.stroke();
-  }
-  g.fillStyle = "#c4c7cd";
-  g.fillRect(s0 + 4 * px, s0 + 4 * px, s1 - s0 - 8 * px, s1 - s0 - 8 * px);
-  g.fillStyle = "rgba(248,250,255,0.75)";
-  for (let i = 0; i < 700; i++) {
-    const along = s0 + rand() * (s1 - s0);
-    const side = Math.floor(rand() * 4);
-    const depth = rand() < 0.5 ? 0.2 * px + rand() * 0.6 * px : 3.3 * px + rand() * 0.6 * px;
-    const w = 4 + rand() * 18, h = 3 + rand() * 7;
-    if (side === 0) g.fillRect(along, s0 + depth, w, h);
-    else if (side === 1) g.fillRect(along, s1 - depth - h, w, h);
-    else if (side === 2) g.fillRect(s0 + depth, along, h, w);
-    else g.fillRect(s1 - depth - h, along, h, w);
-  }
-  g.fillStyle = "rgba(245,248,255,0.85)";
-  for (let i = 0; i < 260; i++) g.fillRect(s0 + 4 * px + rand() * (s1 - s0 - 8 * px), s0 + 4 * px + rand() * (s1 - s0 - 8 * px), 6 + rand() * 30, 4 + rand() * 18);
-  g.strokeStyle = "#6c6f76";
-  g.lineWidth = 0.35 * px;
-  g.strokeRect(s0, s0, s1 - s0, s1 - s0);
+}
+
+/** Road cross-section: u runs across ROAD_W, v runs 22 m along the road. */
+export function roadTexture(roadW: number) {
+  const S = 512;
+  const px = S / roadW;
+  const [c, g] = canvas(S);
+  const rand = Math.random;
+  asphalt(g, S, rand);
+  const mid = S / 2;
+  g.fillStyle = "rgba(20,20,24,0.25)";
+  for (const o of [2.4, 6.5]) for (const s of [-1, 1]) for (const t of [-0.8, 0.8]) g.fillRect(mid + s * (o + t) * px - 0.25 * px, 0, 0.5 * px, S);
   const lw = 0.14 * px;
   g.fillStyle = "#c9a43a";
-  for (const o of [lw * 0.6, S - lw * 1.6]) {
-    g.fillRect(o, s0, lw, s1 - s0);
-    g.fillRect(s0, o, s1 - s0, lw);
-  }
+  for (const o of [-0.18, 0.18]) g.fillRect(mid + o * px - lw / 2, 0, lw, S);
   g.fillStyle = "rgba(230,232,236,0.75)";
-  for (let t = s0 + 1 * px; t < s1 - 3 * px; t += 7 * px) {
-    for (const o of [4.6 * px, S - 4.6 * px]) {
-      g.fillRect(o - lw / 2, t, lw, 3 * px);
-      g.fillRect(t, o - lw / 2, 3 * px, lw);
-    }
+  for (let t = 0; t < S; t += S / 2) for (const s of [-1, 1]) g.fillRect(mid + s * 4.5 * px - lw / 2, t + 2 * px, lw, 3 * px);
+  g.fillStyle = "rgba(248,250,255,0.8)";
+  for (let i = 0; i < 260; i++) {
+    const side = rand() < 0.5 ? 0 : 1;
+    const w = (0.4 + rand() * 1.1) * px, h = 4 + rand() * 30;
+    g.fillRect(side ? S - 0.35 * px - w : 0.35 * px, rand() * S, w * (0.4 + rand() * 0.6), h);
   }
-  g.fillStyle = "rgba(235,238,242,0.85)";
-  for (let t = 0.8; t < STREET - 0.8; t += 1.1) {
-    const a = ((t - STREET / 2 + PERIOD) % PERIOD) * px;
-    for (const edge of [s0 - 4.2 * px, s1 + 1.2 * px]) {
-      g.fillRect(a, edge, 0.55 * px, 3 * px);
-      g.fillRect(edge, a, 3 * px, 0.55 * px);
-    }
-  }
+  g.fillStyle = "#8a8d94";
+  g.fillRect(0, 0, 0.35 * px, S);
+  g.fillRect(S - 0.35 * px, 0, 0.35 * px, S);
   g.fillStyle = "#18191c";
-  for (const [x, y] of [[0.3, 0.5], [0.6, 0.2], [0.8, 0.7]]) {
+  for (const [x, y] of [[0.3, 0.2], [0.68, 0.7]]) {
     g.beginPath();
-    g.arc(x * s0 + 2 * px, y * S, 0.45 * px, 0, Math.PI * 2);
-    g.fill();
-    g.beginPath();
-    g.arc(y * S, x * s0 + 2 * px, 0.45 * px, 0, Math.PI * 2);
+    g.arc(x * S, y * S, 0.45 * px, 0, Math.PI * 2);
     g.fill();
   }
   return tex(c, true, 16);
 }
+
+/** Intersection square with crosswalks on all four sides. */
+export function crossTexture(roadW: number) {
+  const S = 512;
+  const px = S / roadW;
+  const [c, g] = canvas(S);
+  asphalt(g, S, Math.random);
+  g.fillStyle = "rgba(235,238,242,0.85)";
+  for (let t = 1.2; t < roadW - 1.2; t += 1.1) {
+    const a = t * px;
+    for (const e of [0.4 * px, S - 3.4 * px]) {
+      g.fillRect(a, e, 0.55 * px, 3 * px);
+      g.fillRect(e, a, 3 * px, 0.55 * px);
+    }
+  }
+  return tex(c, false, 16);
+}
+
+/** Sidewalk and plaza slabs with snow, tiled in world space every 6 m. */
+export function pavingTexture() {
+  const S = 512;
+  const px = S / 6;
+  const [c, g] = canvas(S);
+  const rand = Math.random;
+  g.fillStyle = "#b9bcc3";
+  g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 6000; i++) {
+    g.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${rand() * 0.05})`;
+    g.fillRect(rand() * S, rand() * S, 2, 2);
+  }
+  g.strokeStyle = "rgba(60,62,70,0.4)";
+  g.lineWidth = 1.5;
+  for (let t = 0; t <= S; t += 1.5 * px) {
+    g.beginPath();
+    g.moveTo(t, 0);
+    g.lineTo(t, S);
+    g.moveTo(0, t);
+    g.lineTo(S, t);
+    g.stroke();
+  }
+  g.fillStyle = "rgba(245,248,255,0.8)";
+  for (let i = 0; i < 90; i++) {
+    g.beginPath();
+    g.ellipse(rand() * S, rand() * S, 8 + rand() * 40, 5 + rand() * 18, rand() * 3, 0, Math.PI * 2);
+    g.fill();
+  }
+  return tex(c, true, 16);
+}
+
 
 export function parkTexture(r: R) {
   const S = 1024;

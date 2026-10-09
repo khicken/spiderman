@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { HALF, PERIOD, STREET, type Box, type City } from "./city";
+import type { Box, City } from "./city";
+import { BOUNDS, LANDMARKS, ROAD_W, SPAWN, nearestAvenue, nearestStreet, onLand, shoreDist, streetDist } from "./city-geo";
 import type { HudState, Input, Marker } from "./contracts";
 import type { Bounds, CombatCtx, Hit, HitResult, Hittable, Threat } from "./combat";
 import * as BM from "./boss-models";
@@ -10,7 +11,7 @@ export const BOSSES: Record<BossName, { name: string; title: string; level: numb
   kingpin: { name: "KINGPIN", title: "Wilson Fisk", level: 2, place: "Holiday Plaza rink", intro: "Disable the turrets, then Fisk", phase2: "Dodge his charge into the boards", phase3: "Goons incoming. Clear them first" },
   shocker: { name: "SHOCKER", title: "Herman Schultz", level: 4, place: "Harlem crossing", intro: "Web him when his gauntlets vent", phase2: "Dodge the beam sideways", phase3: "Jump the double shockwaves" },
   vulture: { name: "VULTURE", title: "Adrian Toomes", level: 6, place: "Midtown rooftop", intro: "Strike him when he pauses", phase2: "Watch for feather volleys", phase3: "He called in gunmen" },
-  rhino: { name: "RHINO", title: "Aleksei Sytsevich", level: 8, place: "Times Square", intro: "Dodge his charge into a wall", phase2: "Jump the slam shockwave", phase3: "Mash LMB when he grabs you" },
+  rhino: { name: "RHINO", title: "Aleksei Sytsevich", level: 8, place: "Brooklyn lot", intro: "Dodge his charge into a wall", phase2: "Jump the slam shockwave", phase3: "Mash LMB when he grabs you" },
 };
 
 export const bossText = (name: BossName, phase: number) => {
@@ -18,45 +19,71 @@ export const bossText = (name: BossName, phase: number) => {
   return phase >= 3 ? d.phase3 : phase === 2 ? d.phase2 : d.intro;
 };
 
-const lineAt = (k: number) => -HALF + k * PERIOD;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const turn = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * Math.min(1, k);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+const inBox = (b: Box, x: number, z: number, m = 0) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m;
 
-// The rink center mirrors genPlaza in city-build.ts for block (8, 7).
-const rinkCenter = () => {
-  const x0 = lineAt(8) + STREET / 2 + 4;
-  const x1 = lineAt(9) - STREET / 2 - 4;
-  const z0 = lineAt(7) + STREET / 2 + 4;
-  const z1 = lineAt(8) - STREET / 2 - 4;
-  return new THREE.Vector3((x0 + x1 - 22) / 2, 0, (z0 + z1) / 2 + 6);
-};
-const vultureRoof = (city: City): Box => {
+export function placeOf(city: City, name: string) {
+  const geo = LANDMARKS.find((l) => l.name === name || l.alias === name);
+  const names = [name, geo?.name, geo?.alias];
+  const lm = city.landmarks.find((l) => names.includes(l.name));
+  if (lm) return new THREE.Vector3(lm.pos.x, 0, lm.pos.z);
+  return geo ? new THREE.Vector3(geo.x, 0, geo.z) : null;
+}
+
+type Avoid = (x: number, z: number) => boolean;
+const NONE: Avoid = () => false;
+
+export function openLot(city: City, x: number, z: number, hx: number, hz: number, range: number, maxShore = Infinity, avoid = NONE) {
+  const roadGap = ROAD_W / 2 + 1;
+  let best: THREE.Vector3 | null = null;
+  let bd = Infinity;
+  for (let dx = -range; dx <= range; dx += 6) {
+    for (let dz = -range; dz <= range; dz += 6) {
+      const cx = x + dx;
+      const cz = z + dz;
+      const d = Math.hypot(dx, dz);
+      if (d >= bd || d > range || shoreDist(cx, cz) > maxShore || avoid(cx, cz)) continue;
+      if (cx - hx < BOUNDS.minX + 20 || cx + hx > BOUNDS.maxX - 20 || cz - hz < BOUNDS.minZ + 20 || cz + hz > BOUNDS.maxZ - 20) continue;
+      const pts = [[cx, cz], [cx - hx, cz - hz], [cx + hx, cz - hz], [cx - hx, cz + hz], [cx + hx, cz + hz], [cx, cz - hz], [cx, cz + hz]];
+      if (!pts.every(([px, pz]) => onLand(px, pz) && shoreDist(px, pz) > 3 && streetDist(px, pz) > roadGap)) continue;
+      if (city.near(cx, cz, Math.max(hx, hz) + 2).some((b) => b.maxY > 0.6 && b.minX < cx + hx + 1 && b.maxX > cx - hx - 1 && b.minZ < cz + hz + 1 && b.maxZ > cz - hz - 1)) continue;
+      [bd, best] = [d, new THREE.Vector3(cx, 0, cz)];
+    }
+  }
+  return best;
+}
+
+const vultureRoof = (city: City, avoid = NONE): Box => {
   const clear = (b: Box) => !city.near((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2, 40).some((o) => o !== b && o.maxY > b.maxY - 0.5 && o.minX < b.maxX && o.maxX > b.minX && o.minZ < b.maxZ && o.maxZ > b.minZ);
-  const d = (b: Box) => Math.hypot((b.minX + b.maxX) / 2 - 215, (b.minZ + b.maxZ) / 2 - 215);
+  const at = placeOf(city, "Empire Tower") ?? new THREE.Vector3();
+  const d = (b: Box) => Math.hypot((b.minX + b.maxX) / 2 - at.x, (b.minZ + b.maxZ) / 2 - at.z);
   const roofs = city.boxes.filter((b) => b.maxX - b.minX > 24 && b.maxZ - b.minZ > 24 && b.maxY > 25 && b.maxY < 90).sort((a, b) => d(a) - d(b));
-  return roofs.find(clear) ?? roofs[0];
+  return roofs.find((b) => clear(b) && !avoid((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2)) ?? roofs.find(clear) ?? roofs[0];
 };
+const roofAt = (city: City, p: THREE.Vector3) => city.near(p.x, p.z, 1).find((b) => inBox(b, p.x, p.z) && Math.abs(b.maxY - p.y) < 0.5) ?? vultureRoof(city);
 
-// Times Square plaza (block 6, 8) south of the bleachers, walled by towers east and west.
-const rhinoYard = () => {
-  const x = (lineAt(6) + lineAt(7)) / 2;
-  const z0 = lineAt(8) + STREET / 2 + 4 + 27;
-  const z1 = lineAt(9) - STREET / 2 - 4;
-  return { x, z0, z1, half: 12 };
-};
+const YARD = { half: 12, len: 37 };
+const rhinoYard = (pos: THREE.Vector3) => ({ x: pos.x, z0: pos.z - YARD.len / 2, z1: pos.z + YARD.len / 2, half: YARD.half });
 
-export function bossArena(city: City, name: BossName) {
+export function bossArena(city: City, name: BossName, avoid = NONE) {
   if (name === "rhino") {
-    const y = rhinoYard();
-    return new THREE.Vector3(y.x, 0, (y.z0 + y.z1) / 2);
+    const at = placeOf(city, "DUMBO") ?? new THREE.Vector3(SPAWN.x, 0, SPAWN.z);
+    const lot = (shore: number) => openLot(city, at.x, at.z, YARD.half + 2, YARD.len / 2 + 2, 320, shore, avoid);
+    return lot(70) ?? lot(Infinity) ?? at;
   }
   if (name === "kingpin") {
-    const lm = city.landmarks.find((l) => l.name === "Holiday Plaza");
-    return lm ? new THREE.Vector3(lm.pos.x, 0, lm.pos.z - 11) : rinkCenter();
+    const lm = placeOf(city, "Holiday Plaza") ?? new THREE.Vector3(SPAWN.x, 0, SPAWN.z);
+    return lm.setZ(lm.z - 11);
   }
-  if (name === "shocker") return new THREE.Vector3(lineAt(3), 0, lineAt(1));
-  const r = vultureRoof(city);
+  if (name === "shocker") {
+    const at = placeOf(city, "Harlem") ?? new THREE.Vector3(SPAWN.x, 0, SPAWN.z);
+    const av = nearestAvenue(at.x, at.z);
+    const st = nearestStreet(at.z, av ? av.line : at.x);
+    return new THREE.Vector3(av ? av.line : at.x, 0, st ? st.line : at.z);
+  }
+  const r = vultureRoof(city, avoid);
   return new THREE.Vector3((r.minX + r.maxX) / 2, r.maxY, (r.minZ + r.maxZ) / 2);
 }
 
@@ -165,7 +192,7 @@ export function createBosses(ctx: CombatCtx) {
   const turrets = [turretAt(0), turretAt(1)];
 
   const GANTRY_Y = 9;
-  const barriers = BM.barrierRow(rhinoYard().half * 2);
+  const barriers = BM.barrierRow(YARD.half * 2);
   barriers.visible = false;
   root.add(barriers);
   const loadAt = (i: number): Load => {
@@ -410,7 +437,7 @@ export function createBosses(ctx: CombatCtx) {
     } else if (name === "shocker") {
       B.bounds = { minX: pos.x - 12.5, maxX: pos.x + 12.5, minZ: pos.z - 12.5, maxZ: pos.z + 12.5 };
     } else if (name === "rhino") {
-      const y = rhinoYard();
+      const y = rhinoYard(pos);
       const m = 1.6;
       B.bounds = { minX: y.x - y.half + m, maxX: y.x + y.half - m, minZ: y.z0 + m, maxZ: y.z1 - m };
       B.pos.z = y.z0 + 5;
@@ -427,7 +454,7 @@ export function createBosses(ctx: CombatCtx) {
         hang(l);
       });
     } else {
-      const r = vultureRoof(ctx.city);
+      const r = roofAt(ctx.city, pos);
       B.bounds = { minX: r.minX + 2, maxX: r.maxX - 2, minZ: r.minZ + 2, maxZ: r.maxZ - 2 };
       B.pos.y = B.floorY + 9;
     }

@@ -1,11 +1,12 @@
 import * as THREE from "three";
-import { BLOCKS, HALF, PERIOD, rng, type City } from "./city";
-import { signal } from "./city-cars";
+import { rng, type City } from "./city";
+import { signal, signalGroup } from "./city-cars";
+import { PLAZAS, blockAt, onLand as isLand, streetDist } from "./city-geo";
 import { softDot } from "./city-textures";
 import type { GameEvent, HeroPose, Marker, PlayerApi } from "./contracts";
 import { cartGeometry, dogMesh } from "./crowd-body";
 import { EMO, createEmotes } from "./crowd-emote";
-import { buildNav } from "./crowd-nav";
+import { INSET, buildLoops, buildNav, cx, cz, edgeLine } from "./crowd-nav";
 import { ACC, RIG, personMaterial, personMesh } from "./crowd-person";
 import { SKY } from "./sky-state";
 import {
@@ -47,11 +48,8 @@ const FUR = [0x3b2a1a, 0xc8a165, 0xf0e6d2, 0x1a1a1a, 0x8b5a2b, 0xd2b48c, 0x7a7a7
 
 const rnd = Math.random;
 const pick = <T,>(a: readonly T[]) => a[Math.floor(rnd() * a.length)];
-const lineAt = (k: number) => -HALF + k * PERIOD;
-const okBlock = (i: number, j: number) => i >= -2 && i <= BLOCKS - 1 && j >= -2 && j <= BLOCKS + 1;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-const cx = (i: number, c: number, o: number) => (c === 0 || c === 3 ? lineAt(i) + o : lineAt(i + 1) - o);
-const cz = (j: number, c: number, o: number) => (c < 2 ? lineAt(j) + o : lineAt(j + 1) - o);
+let NET: ReturnType<typeof buildLoops> | null = null;
 
 function writeMatrix(e: Float32Array, n: number, yaw: number, w: number, h: number, x: number, y: number, z: number) {
   const k = n * 16;
@@ -136,6 +134,13 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   group.add(flash);
 
   const nav = buildNav(city.group);
+  const net = (NET ??= buildLoops(LANE[0], (LANE[0] + LANE[1]) / 2));
+  const spots: { x: number; z: number }[] = [...city.streetSpots];
+  for (const q of PLAZAS) {
+    const mx = (q.minX + q.maxX) / 2, mz = (q.minZ + q.maxZ) / 2;
+    spots.push({ x: mx, z: mz });
+    if (q.maxX - q.minX > 18) spots.push({ x: q.minX + 4, z: mz }, { x: q.maxX - 4, z: mz });
+  }
   const peds = Array.from({ length: MAX }, () => new Ped());
   const pack: Dog[] = Array.from({ length: MAX_DOGS }, () => ({ on: false, owner: -1, x: 0, z: 0, yaw: 0, phase: 0, amp: 0, wag: 0, s: 1, fur: 0, ear: 0, collar: 0 }));
   const sites = new Map<number, Site>();
@@ -278,16 +283,17 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   };
 
   const spawnWalker = (px: number, pz: number, rmin: number, rmax: number) => {
-    for (let tries = 0; tries < 8; tries++) {
-      const i = Math.floor((px - lineAt(0)) / PERIOD + (rnd() - 0.5) * 2 * (rmax / PERIOD));
-      const j = Math.floor((pz - lineAt(0)) / PERIOD + (rnd() - 0.5) * 2 * (rmax / PERIOD));
-      if (!okBlock(i, j)) continue;
+    for (let tries = 0; tries < 12; tries++) {
+      const b = blockAt(px + (rnd() - 0.5) * 2 * rmax, pz + (rnd() - 0.5) * 2 * rmax);
+      const i = b ? net.of.get(b) : undefined;
+      if (i === undefined) continue;
+      const L = net.loops[i];
       const e = Math.floor(rnd() * 4);
       const dir = rnd() < 0.5 ? 1 : -1;
       const o = LANE[dir > 0 ? 0 : 1];
       const t = rnd();
-      const x = cx(i, e, o) + (cx(i, (e + 1) % 4, o) - cx(i, e, o)) * t;
-      const z = cz(j, e, o) + (cz(j, (e + 1) % 4, o) - cz(j, e, o)) * t;
+      const x = cx(L, e, o) + (cx(L, (e + 1) % 4, o) - cx(L, e, o)) * t;
+      const z = cz(L, e, o) + (cz(L, (e + 1) % 4, o) - cz(L, e, o)) * t;
       const d = Math.hypot(x - px, z - pz);
       if (d < rmin || d > rmax || !free2(x, z)) continue;
       const k = alloc();
@@ -298,7 +304,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       p.on = true;
       p.kind = WALK;
       p.bi = i;
-      p.bj = j;
+      p.bj = 0;
       setDir(p, dir);
       p.c = dir > 0 ? (e + 1) % 4 : e;
       p.x = x;
@@ -310,7 +316,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
         p.mask |= rnd() < 0.5 ? ACC.bagL | ACC.bagR : rnd() < 0.5 ? ACC.bagL : ACC.bagR;
         p.speed -= 0.15;
       }
-      p.yaw = Math.atan2(cx(i, p.c, p.o) - x, cz(j, p.c, p.o) - z);
+      p.yaw = Math.atan2(cx(L, p.c, p.o) - x, cz(L, p.c, p.o) - z);
       if (roll > 0.88) {
         const kk = alloc();
         if (kk >= 0) {
@@ -349,7 +355,6 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   };
 
   const spawnGroup = (px: number, pz: number, rmin: number, rmax: number) => {
-    const spots = city.streetSpots;
     if (!spots.length) return false;
     for (let tries = 0; tries < 12; tries++) {
       const s = spots[Math.floor(rnd() * spots.length)];
@@ -357,12 +362,17 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       if (d < rmin || d > rmax) continue;
       let x = s.x;
       let z = s.z;
-      const lx = (((x - lineAt(0)) % PERIOD) + PERIOD) % PERIOD;
-      const lz = (((z - lineAt(0)) % PERIOD) + PERIOD) % PERIOD;
-      const dx = Math.min(lx, PERIOD - lx);
-      const dz = Math.min(lz, PERIOD - lz);
-      if (dx > 10 && dx < 16.5) x += (lx < PERIOD / 2 ? 1 : -1) * (12.4 - dx);
-      if (dz > 10 && dz < 16.5) z += (lz < PERIOD / 2 ? 1 : -1) * (12.4 - dz);
+      const sd = streetDist(x, z);
+      if (sd > 10 && sd < 16.5) {
+        const gx = streetDist(x + 0.3, z) - streetDist(x - 0.3, z);
+        const gz = streetDist(x, z + 0.3) - streetDist(x, z - 0.3);
+        const g = Math.hypot(gx, gz);
+        if (g > 1e-3) {
+          x += (gx / g) * (12.4 - sd);
+          z += (gz / g) * (12.4 - sd);
+        }
+      }
+      if (!isLand(x, z) || streetDist(x, z) < 10.6 || city.near(x, z, 2).some((b) => b.maxY > 0.5 && x > b.minX - 0.6 && x < b.maxX + 0.6 && z > b.minZ - 0.6 && z < b.maxZ + 0.6)) continue;
       const n = 2 + Math.floor(rnd() * rnd() * 3.2);
       const a0 = rnd() * Math.PI * 2;
       const rad = 0.5 + n * 0.05;
@@ -390,17 +400,20 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     return false;
   };
 
-  const siteAt = (k: number, l: number): Site | null => {
-    const r = rng(k * 7919 + l * 104729 + 17);
+  const siteAt = (k: number): Site | null => {
+    const r = rng(k * 7919 + 17);
     if (r() > 0.5) return null;
     const sx = r() < 0.5 ? 1 : -1;
     const sz = r() < 0.5 ? 1 : -1;
-    if (!okBlock(sx > 0 ? k : k - 1, sz > 0 ? l : l - 1)) return null;
-    const X = lineAt(k);
-    const Z = lineAt(l);
+    const { x: X, z: Z } = net.inters[k];
+    if (!blockAt(X + sx * (INSET + 4), Z + sz * (INSET + 4))) return null;
     const type = Math.floor(r() * 3);
-    if (r() < 0.5) return { key: k * 1000 + l, x: X + sx * CART_ALONG, z: Z + sz * CART_LAT, yaw: sz > 0 ? 0 : Math.PI, type, vendor: -1, customers: [], seen: true };
-    return { key: k * 1000 + l, x: X + sx * CART_LAT, z: Z + sz * CART_ALONG, yaw: (sx * Math.PI) / 2, type, vendor: -1, customers: [], seen: true };
+    const s: Site =
+      r() < 0.5
+        ? { key: k, x: X + sx * CART_ALONG, z: Z + sz * CART_LAT, yaw: sz > 0 ? 0 : Math.PI, type, vendor: -1, customers: [], seen: true }
+        : { key: k, x: X + sx * CART_LAT, z: Z + sz * CART_ALONG, yaw: (sx * Math.PI) / 2, type, vendor: -1, customers: [], seen: true };
+    const d = streetDist(s.x, s.z);
+    return d > 12 && d < 13 && isLand(s.x, s.z) && !blockAt(s.x, s.z) ? s : null;
   };
 
   const standAt = (x: number, z: number, yaw: number, sub: number) => {
@@ -420,19 +433,16 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   const refreshCarts = (px: number, pz: number) => {
     const R = DETAIL[detail].radius + 10;
     for (const s of sites.values()) s.seen = false;
-    const k0 = Math.max(0, Math.floor((px - R - lineAt(0)) / PERIOD));
-    const k1 = Math.min(BLOCKS, Math.ceil((px + R - lineAt(0)) / PERIOD));
-    const l0 = Math.max(-1, Math.floor((pz - R - lineAt(0)) / PERIOD));
-    const l1 = Math.min(BLOCKS + 1, Math.ceil((pz + R - lineAt(0)) / PERIOD));
-    for (let k = k0; k <= k1; k++) {
-      for (let l = l0; l <= l1; l++) {
-        const key = k * 1000 + l;
+    for (let key = 0; key < net.inters.length; key++) {
+      {
+        const it = net.inters[key];
+        if (Math.abs(it.x - px) > R + 20 || Math.abs(it.z - pz) > R + 20) continue;
         const old = sites.get(key);
         if (old) {
           old.seen = Math.hypot(old.x - px, old.z - pz) < R;
           continue;
         }
-        const s = siteAt(k, l);
+        const s = siteAt(key);
         if (!s || Math.hypot(s.x - px, s.z - pz) > R || !free2(s.x, s.z)) continue;
         if ([...sites.values()].filter((o) => o.type === s.type).length >= MAX_CARTS) continue;
         const fx = Math.sin(s.yaw);
@@ -483,24 +493,23 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   const planCross = (p: Ped) => {
     const c = p.c;
     const left = c === 0 || c === 3;
-    const k = left ? p.bi : p.bi + 1;
-    const l = c < 2 ? p.bj : p.bj + 1;
     const sx = left ? 1 : -1;
     const sz = c < 2 ? 1 : -1;
-    const X = lineAt(k);
-    const Z = lineAt(l);
+    const q = p.bi * 4 + c;
+    const nx = net.nbX[q];
+    const nz = net.nbZ[q];
+    if (nx < 0 && nz < 0) return false;
+    const X = net.ix[q];
+    const Z = net.iz[q];
     let xRoad = rnd() < 0.5;
-    if (xRoad && !okBlock(p.bi - sx, p.bj)) xRoad = false;
-    if (!xRoad && !okBlock(p.bi, p.bj - sz)) {
-      if (!okBlock(p.bi - sx, p.bj)) return false;
-      xRoad = true;
-    }
+    if (xRoad && nx < 0) xRoad = false;
+    if (!xRoad && nz < 0) xRoad = true;
     const dir = rnd() < 0.5 ? 1 : -1;
     setDir(p, dir);
     const jit = (rnd() - 0.5) * 1.0;
     if (xRoad) {
-      p.nbi = p.bi - sx;
-      p.nbj = p.bj;
+      p.nbi = nx;
+      p.nbj = 0;
       p.nc = [1, 0, 3, 2][c];
       p.axis = 1;
       p.wx[0] = X + sx * (CURB + rnd() * 0.9);
@@ -510,8 +519,8 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       p.wx[2] = X - sx * p.o;
       p.wz[2] = Z + sz * p.o;
     } else {
-      p.nbi = p.bi;
-      p.nbj = p.bj - sz;
+      p.nbi = nz;
+      p.nbj = 0;
       p.nc = [3, 2, 1, 0][c];
       p.axis = 0;
       p.wz[0] = Z + sz * (CURB + rnd() * 0.9);
@@ -521,7 +530,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       p.wz[2] = Z - sz * p.o;
       p.wx[2] = X + sx * p.o;
     }
-    p.g = (k + l) & 1;
+    p.g = signalGroup(X, Z);
     p.wn = 3;
     p.wi = 0;
     p.delay = rnd() * 1.2;
@@ -558,8 +567,9 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     if (p.wn > 0) return;
     const Zn = zones[zi];
     const prev = (p.c - p.dir + 4) % 4;
-    const dc = Math.hypot(cx(p.bi, p.c, p.o) - Zn.x, cz(p.bj, p.c, p.o) - Zn.z);
-    const dp = Math.hypot(cx(p.bi, prev, p.o) - Zn.x, cz(p.bj, prev, p.o) - Zn.z);
+    const L = net.loops[p.bi];
+    const dc = Math.hypot(cx(L, p.c, p.o) - Zn.x, cz(L, p.c, p.o) - Zn.z);
+    const dp = Math.hypot(cx(L, prev, p.o) - Zn.x, cz(L, prev, p.o) - Zn.z);
     if (dc < dp) {
       p.c = prev;
       setDir(p, -p.dir);
@@ -696,7 +706,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     }
     const cur = alongX ? p.z : p.x;
     const ahead = (alongX ? p.x : p.z) + s * 1.1;
-    const ln = lineAt(Math.round((pref + HALF) / PERIOD));
+    const ln = edgeLine(net.loops[p.bi], p.c, alongX);
     const side = pref >= ln ? 1 : -1;
     const ok = (lat: number) => {
       for (let d = -0.7; d <= 2.2; d += 0.7) if (alongX ? !free2(ahead + s * d, lat) : !free2(lat, ahead + s * d)) return false;
@@ -744,8 +754,8 @@ export function createCrowd(scene: THREE.Scene, city: City) {
     if (crossing && frozen) spd = 3.5;
     p.moving = spd;
     if (spd === 0) return;
-    const tx = p.wn > 0 ? p.wx[p.wi] : cx(p.bi, p.c, p.o);
-    const tz = p.wn > 0 ? p.wz[p.wi] : cz(p.bj, p.c, p.o);
+    const tx = p.wn > 0 ? p.wx[p.wi] : cx(net.loops[p.bi], p.c, p.o);
+    const tz = p.wn > 0 ? p.wz[p.wi] : cz(net.loops[p.bi], p.c, p.o);
     if (p.wn > 0 ? !steerToward(p, tx, tz, spd, dt) : !walkEdge(p, tx, tz, spd, dt)) return;
     if (p.wn > 0) {
       if (p.wi === 0) {
@@ -765,8 +775,9 @@ export function createCrowd(scene: THREE.Scene, city: City) {
       const Zn = zones[zi];
       const a = (p.c + 1) % 4;
       const b = (p.c + 3) % 4;
-      const da = Math.hypot(cx(p.bi, a, p.o) - Zn.x, cz(p.bj, a, p.o) - Zn.z);
-      const db = Math.hypot(cx(p.bi, b, p.o) - Zn.x, cz(p.bj, b, p.o) - Zn.z);
+      const L = net.loops[p.bi];
+      const da = Math.hypot(cx(L, a, p.o) - Zn.x, cz(L, a, p.o) - Zn.z);
+      const db = Math.hypot(cx(L, b, p.o) - Zn.x, cz(L, b, p.o) - Zn.z);
       setDir(p, da >= db ? 1 : -1);
       p.c = da >= db ? a : b;
       return;
@@ -777,6 +788,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   };
 
   const blocked = (p: Ped, x: number, z: number) => {
+    if (!isLand(x, z)) return true;
     if (!p.boxes) p.boxes = city.near(p.x, p.z, 30);
     for (const b of p.boxes) if (x > b.minX - 0.4 && x < b.maxX + 0.4 && z > b.minZ - 0.4 && z < b.maxZ + 0.4) return true;
     return false;
@@ -1289,6 +1301,7 @@ export function createCrowd(scene: THREE.Scene, city: City) {
   };
 
   return {
+    peds,
     update,
     setDanger,
     cheer,

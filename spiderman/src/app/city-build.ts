@@ -143,12 +143,9 @@ export function fireEscape(c: Ctx, F: Face, a: number, y0: number, y1: number, f
     c.solid.quad(s0x, y + 0.045, s0z, s1x, y + 0.045, s1z, s2x, y + 0.045, s2z, s3x, y + 0.045, s3z, [0, 0, 1, 1], SNOW);
     const [r0x, r0z] = P(-w / 2, 1.15), [r1x, r1z] = P(w / 2, 1.15);
     beam(c.solid, r0x, y + 1.0, r0z, r1x, y + 1.0, r1z, 0.07, IRON, 1, undefined, UNIT.prism);
-    beam(c.solid, r0x, y, r0z, r0x, y + 1.0, r0z, 0.07, IRON, 1, undefined, UNIT.prism);
-    beam(c.solid, r1x, y, r1z, r1x, y + 1.0, r1z, 0.07, IRON, 1, undefined, UNIT.prism);
     if (y + fh < y1 - 1) {
       const [p0x, p0z] = P(-1.2, 0.6), [p1x, p1z] = P(1.2, 0.6);
-      beam(c.solid, p0x, y, p0z, p1x, y + fh, p1z, 0.12, IRON, 1, undefined, UNIT.prism);
-      beam(c.solid, p0x + F.nx * 0.5, y, p0z + F.nz * 0.5, p1x + F.nx * 0.5, y + fh, p1z + F.nz * 0.5, 0.12, IRON, 1, undefined, UNIT.prism);
+      beam(c.solid, p0x + F.nx * 0.25, y, p0z + F.nz * 0.25, p1x + F.nx * 0.25, y + fh, p1z + F.nz * 0.25, 0.3, IRON, 1, undefined, UNIT.prism);
     }
   }
 }
@@ -484,20 +481,24 @@ function decoTiers(c: Ctx, x0: number, x1: number, z0: number, z1: number, y0: n
   } else roofKit(c, ax0 - 2, ax1 + 2, az0 - 2, az1 + 2, y, "tower", 0);
 }
 
-export function genIndustrial(c: Ctx, b: Block) {
+export function genIndustrial(c: Ctx, b: Block, styles: number[] = [STYLE.industrial, STYLE.industrial, STYLE.industrial, STYLE.brick], minF = 2, maxF = 7) {
   const r = c.r;
-  if (r() < 0.12) {
-    for (let k = 0; k < 6; k++) c.trees.push({ x: b.x0 + 3 + r() * 50, z: b.z0 + 3 + r() * 50, s: 0.7 + r() * 0.3, lit: false });
+  if (r() < 0.08) {
+    for (let k = 0; k < 6; k++) c.trees.push({ x: b.x0 + 3 + r() * (b.x1 - b.x0 - 6), z: b.z0 + 3 + r() * (b.z1 - b.z0 - 6), s: 0.7 + r() * 0.3, lit: false });
     return "lot";
   }
-  const split = r() < 0.55;
-  const lots: [number, number, number, number][] = split
-    ? [[b.x0, b.x1, b.z0, b.z0 + 27.6], [b.x0, b.x1, b.z0 + 28.4, b.z1]]
-    : [[b.x0, b.x1, b.z0, b.z1]];
+  const alongZ = b.z1 - b.z0 >= b.x1 - b.x0;
+  const L = alongZ ? b.z1 - b.z0 : b.x1 - b.x0;
+  const n = Math.max(1, Math.min(3, Math.floor(L / (24 + r() * 10))));
+  const lots: [number, number, number, number][] = [];
+  for (let k = 0; k < n; k++) {
+    const a0 = (L * k) / n + (k ? 0.4 : 0), a1 = (L * (k + 1)) / n - (k < n - 1 ? 0.4 : 0);
+    lots.push(alongZ ? [b.x0, b.x1, b.z0 + a0, b.z0 + a1] : [b.x0 + a0, b.x0 + a1, b.z0, b.z1]);
+  }
   for (const [x0, x1, z0, z1] of lots) {
-    const style = r() < 0.75 ? STYLE.industrial : STYLE.brick;
+    const style = pick(r, styles);
     const vBase = SHOP_H;
-    const top = floors(style, vBase, 2 + Math.floor(r() * 6));
+    const top = floors(style, vBase, minF + Math.floor(r() * (maxF - minF + 1)));
     const sf = streetFaces(b, x0, x1, z0, z1);
     mass(c, x0, x1, z0, z1, 0, top, { style, shop: 3, vBase, parapet: 0x4a2c22, tint: new THREE.Color().setHSL(0.04, 0.2, 0.8 + r() * 0.3) });
     cornice(c, x0, x1, z0, z1, top + 0.9, sf, 0x3a241c, 0.5, 0.8);
@@ -506,37 +507,15 @@ export function genIndustrial(c: Ctx, b: Block) {
   return "";
 }
 
-export function genTimes(c: Ctx, b: Block) {
-  const r = c.r;
-  const sw = 16;
-  const lots: [number, number, number, number][] = [
-    [b.x0, b.x0 + sw, b.z0, b.z0 + 27.6],
-    [b.x0, b.x0 + sw, b.z0 + 28.4, b.z1],
-    [b.x1 - sw, b.x1, b.z0, b.z0 + 27.6],
-    [b.x1 - sw, b.x1, b.z0 + 28.4, b.z1],
-  ];
-  lots.forEach(([x0, x1, z0, z1], idx) => {
-    const h = floors(STYLE.darkglass, SHOP_H, 18 + Math.floor(r() * 22));
-    mass(c, x0, x1, z0, z1, 0, h, { style: STYLE.darkglass, shop: r() < 0.5 ? 0 : 2, vBase: SHOP_H });
-    glowRim(c, x0, x1, z0, z1, h - 0.4, pick(r, [0xff3b6e, 0x3bc8ff, 0xffd23b]), 3, 0.4);
-    roofKit(c, x0, x1, z0, z1, h, "tower", 0);
-    for (let f = 0; f < 4; f++) {
-      if (f === (idx % 2 ? 0 : 2)) continue;
-      billboardWall(c, face(f, x0, x1, z0, z1), 6, Math.min(h - 4, 46));
-    }
-    if (idx === 1) ticker(c, x0, x1, z0, z1, 11);
-  });
-  const px0 = b.x0 + sw, px1 = b.x1 - sw;
-  const cx = (px0 + px1) / 2;
+/** Red TKTS steps facing south, centered on x, z. */
+export function timesSteps(c: Ctx, cx: number, z0: number) {
   for (let k = 0; k < 9; k++) {
-    const z = b.z0 + 26 - k * 0.9;
+    const z = z0 - k * 0.9;
     const top = 0.45 * (k + 1);
     box(c.solid, cx, top / 2, z, 12, top, 0.9, 0x1a1214);
     c.glow.quad(cx - 6, top - 0.42, z + 0.46, cx + 6, top - 0.42, z + 0.46, cx + 6, top - 0.03, z + 0.46, cx - 6, top - 0.03, z + 0.46, c.atlas.whiteRect, 0xff2a3a, 2.2);
+    c.boxes.push({ minX: cx - 6, maxX: cx + 6, minZ: z - 0.45, maxZ: z + 0.45, maxY: top });
   }
-  for (let z = b.z0 + 4; z < b.z1; z += 8) for (const x of [px0 + 2, px1 - 2]) c.streetSpots.push(new THREE.Vector3(x, 0, z));
-  for (let z = b.z0 + 36; z < b.z1 - 4; z += 6) c.streetSpots.push(new THREE.Vector3(cx, 0, z));
-  c.landmarks.push({ name: "Times Square", pos: new THREE.Vector3(cx, 0, (b.z0 + b.z1) / 2 + 10) });
 }
 
 export function billboardWall(c: Ctx, F: Face, y0: number, y1: number, density = 1) {
@@ -561,7 +540,7 @@ export function billboardWall(c: Ctx, F: Face, y0: number, y1: number, density =
   }
 }
 
-function ticker(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number) {
+export function ticker(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number) {
   let u = 0;
   for (let f = 0; f < 4; f++) {
     const F = face(f, x0, x1, z0, z1);
@@ -628,10 +607,10 @@ export function genLandmark(c: Ctx, b: Block) {
 
 export function genPlaza(c: Ctx, b: Block) {
   const r = c.r;
-  const tx0 = b.x1 - 22;
-  podiumTowerDeco(c, tx0, b.x1, b.z0, b.z1);
+  const tx0 = b.x1 - b.x0 >= 44 ? b.x1 - 22 : b.x1;
+  if (tx0 < b.x1) podiumTowerDeco(c, tx0, b.x1, b.z0, b.z1);
   const cx = (b.x0 + tx0) / 2, cz = (b.z0 + b.z1) / 2 + 6;
-  const rw = 24, rd = 16;
+  const rw = Math.min(24, tx0 - b.x0 - 4), rd = Math.min(16, (b.z1 - b.z0) * 0.32);
   c.ice.quad(cx - rw / 2, 0.06, cz + rd / 2, cx + rw / 2, 0.06, cz + rd / 2, cx + rw / 2, 0.06, cz - rd / 2, cx - rw / 2, 0.06, cz - rd / 2, [0, 0, 1, 1], 0xffffff);
   for (const [x, z, sx, sz] of [[cx, cz - rd / 2, rw + 0.4, 0.3], [cx, cz + rd / 2, rw + 0.4, 0.3], [cx - rw / 2, cz, 0.3, rd], [cx + rw / 2, cz, 0.3, rd]] as const) {
     box(c.solid, x, 0.55, z, sx, 1.1, sz, 0xf2f2f2);

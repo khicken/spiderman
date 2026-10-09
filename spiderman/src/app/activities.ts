@@ -1,5 +1,7 @@
 import * as THREE from "three";
-import { HALF, PERIOD, STREET, rng, type Box, type City } from "./city";
+import { rng, type Box, type City } from "./city";
+import { BRIDGES, ROADS, ROAD_W, crossingsOf, districtAt, districtRects, onLand } from "./city-geo";
+import { placeOf } from "./bosses";
 import type { GameEvent, Input, Marker, Objective, PlayerApi, Saveable } from "./contracts";
 import * as A from "./activities-models";
 import { raceStarts, taskBoard } from "./missions";
@@ -15,17 +17,7 @@ type Flock = { home: THREE.Vector3; birds: Bird[]; item: Item };
 type Chal = { name: string; kind: number; start: THREE.Vector3; pts: THREE.Vector3[]; tower: Box | null; medals: number[]; limit: number; best: number; item: Item };
 type Active = { kind: Kind; i: number; t0: number } | null;
 
-const lineAt = (k: number) => -HALF + k * PERIOD;
-const BIG = 1e4;
-const DEFAULT_DISTRICTS: District[] = [
-  { name: "Harlem", minX: -BIG, maxX: BIG, minZ: -BIG, maxZ: lineAt(2) },
-  { name: "Upper West Side", minX: -BIG, maxX: lineAt(7), minZ: lineAt(2), maxZ: lineAt(6) },
-  { name: "Upper East Side", minX: lineAt(7), maxX: BIG, minZ: lineAt(2), maxZ: lineAt(6) },
-  { name: "Hell's Kitchen", minX: -BIG, maxX: lineAt(7), minZ: lineAt(6), maxZ: lineAt(11) },
-  { name: "Midtown", minX: lineAt(7), maxX: BIG, minZ: lineAt(6), maxZ: lineAt(11) },
-  { name: "Financial District", minX: -BIG, maxX: BIG, minZ: lineAt(11), maxZ: BIG },
-];
-const SIDEWALK = STREET / 2 + 1.5;
+const SIDEWALK = ROAD_W / 2 + 1.5;
 const PHOTO_RANGE = 60;
 const CACHE_R = 110;
 const CACHES_PER_DISTRICT = 2;
@@ -100,13 +92,15 @@ export function createActivities(scene: THREE.Scene, city: City) {
   group.name = "activities";
   scene.add(group);
 
-  const districts = (city as unknown as { districts?: District[] }).districts ?? DEFAULT_DISTRICTS;
+  const districts: District[] = city.districts?.length ? city.districts : districtRects();
+  const byName = new Map(districts.map((d, i) => [d.name, i]));
   const districtOf = (x: number, z: number) => {
+    const hit = byName.get(districtAt(x, z));
+    if (hit !== undefined) return hit;
     let best = 0;
     let bd = Infinity;
     for (let i = 0; i < districts.length; i++) {
       const d = districts[i];
-      if (x >= d.minX && x < d.maxX && z >= d.minZ && z < d.maxZ) return i;
       const dd = Math.hypot(x - clamp(x, d.minX, d.maxX), z - clamp(z, d.minZ, d.maxZ));
       if (dd < bd) [bd, best] = [dd, i];
     }
@@ -128,9 +122,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
     for (const b of city.near(x, z, m + 4)) if (inBox(b, x, z, m) && b.maxY > y - m) return false;
     return true;
   };
-  const inCity = (x: number, z: number, m = 0) => Math.abs(x) < HALF - m && Math.abs(z) < HALF - m;
   const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
-  const big = city.boxes.filter((b) => b.maxX - b.minX >= 9 && b.maxZ - b.minZ >= 9 && inCity((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2, 10));
+  const big = city.boxes.filter((b) => b.maxX - b.minX >= 9 && b.maxZ - b.minZ >= 9 && onLand((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2));
   const boxDistrict = (b: Box) => districtOf((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2);
   const roofCorner = (b: Box, inset: number) => {
     const k0 = Math.floor(r() * 4);
@@ -158,18 +151,64 @@ export function createActivities(scene: THREE.Scene, city: City) {
   };
   const avoid = taskBoard.avoid.length ? taskBoard.avoid : raceStarts();
   const crowded = (x: number, z: number, rad = AVOID_R) => avoid.some((v) => flat(v, x, z) < rad);
-  const corners: THREE.Vector3[] = [];
-  for (let i = 1; i < 14; i++) {
-    for (let j = 1; j < 14; j++) {
-      for (const sx of [-1, 1]) {
-        for (const sz of [-1, 1]) {
-          const x = lineAt(i) + sx * SIDEWALK;
-          const z = lineAt(j) + sz * SIDEWALK;
-          if (topAt(x, z) === 0 && !crowded(x, z)) corners.push(new THREE.Vector3(x, 0, z));
+  const walk: { p: THREE.Vector3; c: THREE.Vector3; nb: number[] }[] = [];
+  {
+    const seen = new Map<string, number>();
+    for (const q of ROADS) {
+      if (q.axis !== 1) continue;
+      for (const z0 of crossingsOf(q)) {
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            const x = q.line + sx * SIDEWALK;
+            const z = z0 + sz * SIDEWALK;
+            const key = `${Math.round(x)},${Math.round(z)}`;
+            if (seen.has(key) || !onLand(x, z) || topAt(x, z) > 0) continue;
+            seen.set(key, walk.length);
+            walk.push({ p: new THREE.Vector3(x, 0, z), c: new THREE.Vector3(q.line, 0, z0), nb: [] });
+          }
+        }
+      }
+    }
+    const clearRun = (a: THREE.Vector3, b: THREE.Vector3) => {
+      const n = Math.ceil(a.distanceTo(b) / 6);
+      for (let k = 1; k < n; k++) {
+        const x = a.x + ((b.x - a.x) * k) / n;
+        const z = a.z + ((b.z - a.z) * k) / n;
+        if (!onLand(x, z) || topAt(x, z) > 0) return false;
+      }
+      return true;
+    };
+    for (const axis of [0, 1] as const) {
+      const lines = new Map<number, number[]>();
+      walk.forEach((w, i) => {
+        const k = Math.round(axis ? w.p.x : w.p.z);
+        const l = lines.get(k);
+        if (l) l.push(i);
+        else lines.set(k, [i]);
+      });
+      for (const l of lines.values()) {
+        l.sort((i, j) => (axis ? walk[i].p.z - walk[j].p.z : walk[i].p.x - walk[j].p.x));
+        for (let k = 1; k < l.length; k++) {
+          const a = walk[l[k - 1]];
+          const b = walk[l[k]];
+          if (a.p.distanceTo(b.p) > 8 && a.p.distanceTo(b.p) < 260 && clearRun(a.p, b.p)) {
+            a.nb.push(l[k]);
+            b.nb.push(l[k - 1]);
+          }
         }
       }
     }
   }
+  const corners = walk.filter((w) => w.nb.length && !crowded(w.p.x, w.p.z)).map((w) => w.p);
+  const nearestWalk = (x: number, z: number) => {
+    let best = 0;
+    let bd = Infinity;
+    walk.forEach((w, i) => {
+      const d = w.nb.length ? flat(w.p, x, z) : Infinity;
+      if (d < bd) [bd, best] = [d, i];
+    });
+    return best;
+  };
   const cornerIn = (d: number) => {
     const list = corners.filter((c) => districtOf(c.x, c.z) === d);
     return (list.length ? pick(list) : pick(corners)).clone();
@@ -177,6 +216,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
 
   const photos: Photo[] = city.landmarks.map((l) => {
     const target = l.pos.clone();
+    const br = BRIDGES.find((q) => q.name === l.name);
+    if (br) target.y = Math.max(target.y, br.deckY + 14);
     if (target.y < 1) target.y = 12;
     return { name: l.name, target, item: item("photo", target.x, target.z) };
   });
@@ -224,9 +265,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
     const type = n % REQUESTS.length;
     const di = n % districts.length;
     const giver = cornerIn(di);
-    const lx = Math.round((giver.x + HALF) / PERIOD) * PERIOD - HALF;
-    const lz = Math.round((giver.z + HALF) / PERIOD) * PERIOD - HALF;
-    const yaw = Math.atan2(lx - giver.x, lz - giver.z);
+    const c = walk[nearestWalk(giver.x, giver.z)].c;
+    const yaw = Math.atan2(c.x - giver.x, c.z - giver.z);
     const dest = giver.clone();
     const pts: THREE.Vector3[] = [];
     const a = r() * Math.PI * 2;
@@ -276,8 +316,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
 
   const chals: Chal[] = [];
   {
-    const plaza = city.landmarks.find((l) => l.name === "Holiday Plaza") ?? city.landmarks.find((l) => l.name === "Times Square");
-    const start = plaza ? new THREE.Vector3(plaza.pos.x, 0, plaza.pos.z) : new THREE.Vector3(0, 0, 0);
+    const start = placeOf(city, "Times Square") ?? placeOf(city, "Holiday Plaza") ?? corners[0].clone();
     if (topAt(start.x, start.z) > 0 || crowded(start.x, start.z, 70)) {
       const free = corners.filter((c) => !crowded(c.x, c.z, 70));
       start.copy(free.reduce((a, b) => (b.distanceTo(start) < a.distanceTo(start) ? b : a), free[0] ?? start));
@@ -357,14 +396,6 @@ export function createActivities(scene: THREE.Scene, city: City) {
   }
   chals.sort((a, b) => a.kind - b.kind);
 
-  const nodes: number[] = [];
-  for (let k = 0; k <= 14; k++) nodes.push(lineAt(k) - SIDEWALK, lineAt(k) + SIDEWALK);
-  nodes.sort((a, b) => a - b);
-  const nearestNode = (v: number) => {
-    let best = 1;
-    for (let k = 1; k < nodes.length - 1; k++) if (Math.abs(nodes[k] - v) < Math.abs(nodes[best] - v)) best = k;
-    return best;
-  };
 
   const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number, colors = true, shadow = false) => {
     const m = new THREE.InstancedMesh(geo, mat, n);
@@ -424,7 +455,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
   let range = 280;
   let photoNear = -1;
   let photoFacing = false;
-  const rq = { stage: 0, timer: 0, carried: false, item: new THREE.Vector3(), fixed: 0, nx: 0, nz: 0, ix: 0, iz: 0, prevX: 0, prevZ: 0 };
+  const rq = { stage: 0, timer: 0, carried: false, item: new THREE.Vector3(), fixed: 0, at: 0, next: 0, prev: 0 };
   const ch = { t: 0, hit: 0, next: 0, prevY: 0, started: false };
   let flockT = 0;
   let zoneR = CACHE_R;
@@ -469,13 +500,18 @@ export function createActivities(scene: THREE.Scene, city: City) {
       rq.timer = (230 - rq.item.y) / 1.6;
     }
     if (q.type === 3) {
-      rq.ix = clamp(nearestNode(q.giver.x) + (q.giver.x > 0 ? -3 : 3), 1, nodes.length - 2);
-      rq.iz = nearestNode(q.giver.z);
-      rq.nx = rq.ix;
-      rq.nz = rq.iz;
-      rq.item.set(nodes[rq.ix], 0, nodes[rq.iz]);
-      rq.prevX = rq.ix;
-      rq.prevZ = rq.iz;
+      let at = nearestWalk(q.giver.x, q.giver.z);
+      let prev = at;
+      for (let k = 0; k < 3; k++) {
+        const nb = walk[at].nb.filter((i) => i !== prev);
+        if (!nb.length) break;
+        prev = at;
+        at = pick(nb);
+      }
+      rq.at = at;
+      rq.next = at;
+      rq.prev = at;
+      rq.item.copy(walk[at].p);
       rq.timer = 60;
     }
     if (q.type === 4) {
@@ -722,26 +758,21 @@ export function createActivities(scene: THREE.Scene, city: City) {
           }
         } else if (flat(q.giver, P.x, P.z) < 4 && P.y < 6) completeRequest(t);
       } else if (act && q.type === 3) {
-        const tx = nodes[rq.nx];
-        const tz = nodes[rq.nz];
+        const tx = walk[rq.next].p.x;
+        const tz = walk[rq.next].p.z;
         _v.set(tx - rq.item.x, 0, tz - rq.item.z);
         const left = _v.length();
         const step = 8.5 * dt;
         if (left <= step) {
           rq.item.x = tx;
           rq.item.z = tz;
-          rq.prevX = rq.ix;
-          rq.prevZ = rq.iz;
-          rq.ix = rq.nx;
-          rq.iz = rq.nz;
+          rq.prev = rq.at;
+          rq.at = rq.next;
           let best = -Infinity;
-          for (let k = 0; k < 4; k++) {
-            const ix = rq.ix + (k === 0 ? 1 : k === 1 ? -1 : 0);
-            const iz = rq.iz + (k === 2 ? 1 : k === 3 ? -1 : 0);
-            if (ix < 1 || iz < 1 || ix >= nodes.length - 1 || iz >= nodes.length - 1) continue;
-            if (ix === rq.prevX && iz === rq.prevZ) continue;
-            const s = Math.hypot(nodes[ix] - P.x, nodes[iz] - P.z) + r() * 25;
-            if (s > best) [best, rq.nx, rq.nz] = [s, ix, iz];
+          for (const i of walk[rq.at].nb) {
+            if (i === rq.prev && walk[rq.at].nb.length > 1) continue;
+            const s = flat(walk[i].p, P.x, P.z) + r() * 25;
+            if (s > best) [best, rq.next] = [s, i];
           }
         } else rq.item.addScaledVector(_v, step / left);
         if (t - a.t0 > 0.5 && P.distanceTo(_p.set(rq.item.x, 1, rq.item.z)) < 2.5) {
@@ -921,8 +952,8 @@ export function createActivities(scene: THREE.Scene, city: City) {
         if (!rq.carried) halos.add(billboard(at.x, at.y + 0.9, at.z, 1.8), 0.7 * pulse, 0.15 * pulse, 0.25 * pulse);
         else beam(q.giver.x, 0, q.giver.z, 2.4, 0.4, 2.6, 0.9, t);
       } else if (q.type === 3) {
-        const tx = nodes[rq.nx] - rq.item.x;
-        const tz = nodes[rq.nz] - rq.item.z;
+        const tx = walk[rq.next].p.x - rq.item.x;
+        const tz = walk[rq.next].p.z - rq.item.z;
         const bob = Math.abs(Math.sin(t * 11)) * 0.12;
         people.add(placeYaw(rq.item.x, bob, rq.item.z, Math.atan2(tx, tz), 1, 0.25), 0.25, 0.25, 0.3);
         beam(rq.item.x, 0, rq.item.z, 1, 3 * pulse, 0.3, 0.2, t);

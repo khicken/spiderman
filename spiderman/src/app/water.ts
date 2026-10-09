@@ -1,22 +1,22 @@
 import * as THREE from "three";
-import { HALF, PERIOD, type City } from "./city";
+import type { City } from "./city";
+import { BOUNDS, onLand } from "./city-geo";
 import { softDot } from "./city-textures";
 import type { GameEvent, Input } from "./contracts";
 import { R, insideAny, type Player } from "./player";
 import type { Fade } from "./interiors-fade";
 
-// Mirrors RIVER_W and RIVER_E in city.ts.
-export const RIVER_W = HALF + 30;
-export const RIVER_E = -HALF + 18 * PERIOD - 30;
 export const SURFACE = -0.6;
 const SWIM_FLOOR = -1.45;
 const RECOVER_IDLE = 4;
 const FOAM = 320;
 const RINGS = 12;
 
-export function riverFloor(x: number, _z: number) {
-  return x > RIVER_W + 0.4 && x < RIVER_E - 0.4 ? SWIM_FLOOR : 0;
+export function riverFloor(x: number, z: number) {
+  return onLand(x, z) ? 0 : SWIM_FLOOR;
 }
+
+const inBounds = (x: number, z: number) => x > BOUNDS.minX + 4 && x < BOUNDS.maxX - 4 && z > BOUNDS.minZ + 4 && z < BOUNDS.maxZ - 4;
 
 export function createWater(scene: THREE.Scene, city: City) {
   const pos = new Float32Array(FOAM * 3);
@@ -99,13 +99,22 @@ export function createWater(scene: THREE.Scene, city: City) {
   let recovered = false;
   const events: GameEvent[] = [];
   const shore = new THREE.Vector3();
+  const face = new THREE.Vector3();
 
   const recoverTo = (p: THREE.Vector3) => {
-    const west = p.x - RIVER_W < RIVER_E - p.x;
-    const x = west ? RIVER_W - 3 : RIVER_E + 3;
-    shore.set(x, R + 0.05, p.z);
-    for (let k = 0; k < 12 && insideAny(city, shore.x, 1, shore.z, 0.6); k++) shore.z += k % 2 ? -k * 4 : k * 4;
-    return shore;
+    for (let r = 4; r < 1200; r += 4) {
+      const n = Math.max(16, Math.round(r / 3));
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        const dx = Math.cos(a), dz = Math.sin(a);
+        const x = p.x + dx * (r + 4), z = p.z + dz * (r + 4);
+        if (!onLand(p.x + dx * r, p.z + dz * r) || !onLand(x, z) || !inBounds(x, z) || insideAny(city, x, 1, z, 0.6)) continue;
+        face.set(dx, 0, dz);
+        return shore.set(x, R + 0.05, z);
+      }
+    }
+    face.set(0, 0, 1);
+    return shore.set(p.x, R + 0.05, p.z);
   };
 
   return {
@@ -154,9 +163,10 @@ export function createWater(scene: THREE.Scene, city: City) {
         if (idle > RECOVER_IDLE && !fade.busy) {
           idle = 0;
           const to = recoverTo(p).clone();
+          const dir = face.clone();
           fade.run(() => {
             player.teleport(to);
-            player.face(new THREE.Vector3(to.x < RIVER_W ? -1 : 1, 0, 0));
+            player.face(dir);
             recovered = true;
           });
         }

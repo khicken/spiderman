@@ -627,8 +627,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let carCd = 0;
   const collideCars = (h: number) => {
     carCd -= h;
-    if (p.y > 6) return;
-    for (const b of city.carsNear(p.x, p.z, 4, carList)) {
+    for (const b of city.carsNear(p.x, p.z, 4, carList, p.y)) {
+      if (p.y < (b.minY ?? 0) - R) continue;
       const x0 = b.minX - 0.45;
       const x1 = b.maxX + 0.45;
       const z0 = b.minZ - 0.45;

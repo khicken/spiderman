@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { BLOCKS, HALF, PERIOD, STREET, rng, type Box, type City } from "./city";
+import { rng, type Box, type City } from "./city";
+import { AVENUES, BLOCKS, BRIDGES, ROADS, ROAD_W, SPAWN, broadwayX, crossingsOf, deckBoxes, nearestStreet, onLand, streetZ, type GeoRoad, type Pt } from "./city-geo";
 import type { GameEvent, HudState, Marker, Objective, Saveable } from "./contracts";
 import type { Combat, EnemyKind } from "./combat";
 import { BOSSES, bossArena, bossText, type BossName } from "./bosses";
@@ -28,7 +29,9 @@ const BEAM_BOSS = BEAM_HIDEOUT + HIDEOUTS * 2;
 const BEAMS = BEAM_BOSS + BOSS_ORDER.length * 2;
 const BEAM_K = 0.35;
 const CHASE_HITS = 3;
-const SIDEWALK = STREET / 2 + 1.5;
+const SIDEWALK = ROAD_W / 2 + 1.5;
+const RING_GAP = 75;
+const RINGS = 16;
 const XP_ITEM = 100;
 const XP_CRIME = 250;
 const XP_CHASE = 400;
@@ -36,11 +39,67 @@ const XP_HIDEOUT = 600;
 const MEDALS = ["GOLD", "SILVER", "BRONZE"] as const;
 const MEDAL_XP = [600, 400, 250, 100];
 const NO_MEDAL = 4;
-const RACES = [
-  { name: "Midtown Rush", i: 8, j: 9, di: 0, dj: -1, rings: 12 },
-  { name: "Harlem Hustle", i: 3, j: 2, di: 1, dj: 0, rings: 13 },
-  { name: "Skyline Sprint", i: 11, j: 6, di: 0, dj: -1, rings: 14 },
+const AV = AVENUES;
+const streetLine = (name: string) => ROADS.find((q) => q.axis === 0 && q.name === name)?.line ?? 0;
+const bridgeEnds = (name: string) => BRIDGES.find((b) => b.name === name)!;
+export const RACES: { name: string; path: Pt[] }[] = [
+  {
+    name: "Midtown Rush",
+    path: [[AV["5th Ave"], streetZ(28)], [AV["5th Ave"], streetZ(59)], [AV["8th Ave"], streetZ(59)], [AV["8th Ave"], streetZ(42)], [AV["Lexington Ave"], streetZ(42)], [AV["Lexington Ave"], streetZ(23)]],
+  },
+  {
+    name: "Broadway Dash",
+    path: [
+      [broadwayX(streetZ(47)), streetZ(47)], [broadwayX(streetZ(34)), streetZ(34)], [broadwayX(streetZ(23)), streetZ(23)], [broadwayX(streetZ(14)), streetZ(14)],
+      [145, streetLine("Houston St")], [145, streetLine("Chambers St")], [145, streetLine("Wall St")],
+    ],
+  },
+  {
+    name: "Bridge Run",
+    path: (() => {
+      const br = bridgeEnds("Brooklyn Bridge");
+      const bk = nearestStreet(br.b[1], br.b[0] + 40)!;
+      const ch = streetLine("Chambers St");
+      return [[145, streetLine("Worth St")], [145, ch], [br.a[0] - 24, ch], br.a, br.b, [br.b[0] + 20, bk.line], [bk.max - 100, bk.line]] as Pt[];
+    })(),
+  },
 ];
+const ROAD_IDX = new Map(ROADS.map((q, i) => [q, i]));
+const CROSS = ROADS.map((q) => crossingsOf(q));
+const crossRoad = (q: GeoRoad, c: number) => ROADS.find((o) => o.axis !== q.axis && Math.abs(o.line - c) < 0.01 && q.line >= o.min - 1 && q.line <= o.max + 1) ?? null;
+const nextStop = (q: GeoRoad, s: number, dir: number) => {
+  const cs = CROSS[ROAD_IDX.get(q)!];
+  if (dir > 0) return cs.find((c) => c > s + 0.5 && c <= q.max) ?? q.max;
+  for (let i = cs.length - 1; i >= 0; i--) if (cs[i] < s - 0.5 && cs[i] >= q.min) return cs[i];
+  return q.min;
+};
+const nearestRoad = (x: number, z: number) => {
+  let best = ROADS[0];
+  let bd = Infinity;
+  for (const q of ROADS) {
+    const a = q.axis === 0 ? x : z;
+    const l = q.axis === 0 ? z : x;
+    const d = Math.hypot(Math.max(q.min - a, 0, a - q.max), l - q.line);
+    if (d < bd) [bd, best] = [d, q];
+  }
+  return best;
+};
+const DECKS = BRIDGES.flatMap((b) => deckBoxes(b, 6));
+const deckAt = (x: number, z: number) => DECKS.find((d) => x >= d.minX && x <= d.maxX && z >= d.minZ && z <= d.maxZ)?.maxY ?? 0;
+export const raceRoute = (path: Pt[]) => {
+  const pts: { x: number; z: number; dx: number; dz: number }[] = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i++) total += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+  const gap = Math.max(RING_GAP, total / (RINGS - path.length));
+  for (let i = 1; i < path.length; i++) {
+    const [ax, az] = path[i - 1];
+    const [bx, bz] = path[i];
+    const L = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.round(L / gap));
+    for (let k = 1; k <= n; k++) pts.push({ x: ax + ((bx - ax) * k) / n, z: az + ((bz - az) * k) / n, dx: (bx - ax) / L, dz: (bz - az) / L });
+  }
+  return pts;
+};
 const CRIMES: { name: string; text: string; kind: EnemyKind; min: number; max: number; mix: Partial<Record<EnemyKind, number>>; roof: boolean; car: boolean }[] = [
   { name: "Mugging", text: "Stop the muggers", kind: "thug", min: 2, max: 4, mix: {}, roof: false, car: false },
   { name: "Store robbery", text: "Armed robbers. Web the gunmen", kind: "gunner", min: 2, max: 2, mix: { thug: 2 }, roof: false, car: false },
@@ -59,7 +118,6 @@ type Race = { name: string; start: THREE.Vector3; rings: THREE.Vector3[]; quats:
 type Hideout = { pos: THREE.Vector3; state: "idle" | "active" | "done"; wave: number; group: number; waitT: number };
 type BossSlot = { name: BossName; pos: THREE.Vector3; state: "locked" | "open" | "active" | "done"; id: number; farT?: number };
 
-const lineAt = (k: number) => -HALF + k * PERIOD;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const inBox = (b: Box, x: number, z: number, m = 0) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m;
 const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
@@ -71,7 +129,7 @@ const TOKENS = { crime: 1, chase: 1, hideout: 3, boss: 5, level: 1 };
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const count = (v: unknown) => (isNum(v) && v >= 0 ? Math.floor(v) : 0);
 const bools = (v: unknown, n: number) => Array.from({ length: n }, (_, i) => Array.isArray(v) && v[i] === true);
-export const raceStarts = () => RACES.map((d) => new THREE.Vector3(lineAt(d.i), 0, lineAt(d.j)));
+export const raceStarts = () => RACES.map((d) => new THREE.Vector3(d.path[0][0], 0, d.path[0][1]));
 
 export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const r = rng(4242);
@@ -117,7 +175,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const halos = inst(M.haloGeometry(), M.glowMaterial(true), COLLECTIBLES, true);
   const beams = inst(M.beamGeometry(), M.glowMaterial(true, THREE.DoubleSide), BEAMS, true);
   const bases = inst(M.baseRingGeometry(), M.glowMaterial(true, THREE.DoubleSide), BEAMS, true);
-  const rings = inst(M.ringGeometry(), M.glowMaterial(false), 14, true);
+  const rings = inst(M.ringGeometry(), M.glowMaterial(false), RINGS, true);
   const arrow = inst(M.arrowGeometry(), M.glowMaterial(false), 1, true);
   setColor(arrow, 0, 0.5, 1.6, 4);
   const cocoons = inst(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: "#f4f6fb", roughness: 0.55, emissive: "#9aa4b8", emissiveIntensity: 0.35, flatShading: true }), 1);
@@ -180,10 +238,13 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   const shuffled = <T,>(a: T[]) => a.map((v) => [r(), v] as const).sort((p, q) => p[0] - q[0]).map((p) => p[1]);
   const streetSpots: THREE.Vector3[] = city.streetSpots.slice();
   if (!streetSpots.length) {
-    for (let k = 1; k < BLOCKS; k++) {
-      for (let j = 0; j < BLOCKS; j++) {
-        const t = lineAt(j) + PERIOD / 2;
-        for (const side of [-1, 1]) streetSpots.push(new THREE.Vector3(lineAt(k) + side * SIDEWALK, 0, t), new THREE.Vector3(t, 0, lineAt(k) + side * SIDEWALK));
+    for (const q of ROADS) {
+      for (let t = q.min + 20; t < q.max - 20; t += 40) {
+        for (const side of [-1, 1]) {
+          const x = q.axis === 0 ? t : q.line + side * SIDEWALK;
+          const z = q.axis === 0 ? q.line + side * SIDEWALK : t;
+          if (onLand(x, z)) streetSpots.push(new THREE.Vector3(x, 0, z));
+        }
       }
     }
   }
@@ -211,16 +272,15 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     if (!insideAny(x, y, z, 0.6)) addItem(x, y, z);
   }
   for (let n = 0; n < 40 && items.length < 26; n++) {
-    const line = lineAt(1 + Math.floor(r() * (BLOCKS - 1)));
-    const t = lineAt(Math.floor(r() * BLOCKS)) + PERIOD / 2;
-    const [x, z] = r() < 0.5 ? [line, t] : [t, line];
-    addItem(x, clamp(heightNear(x, z, 30) * 0.5, 14, 40), z);
+    const q = ROADS[Math.floor(r() * ROADS.length)];
+    const t = q.min + r() * (q.max - q.min);
+    const [x, z] = q.axis === 0 ? [t, q.line] : [q.line, t];
+    if (onLand(x, z)) addItem(x, clamp(heightNear(x, z, 30) * 0.5, 14, 40), z);
   }
   for (let n = 0; n < 400 && items.length < COLLECTIBLES; n++) {
-    const x0 = lineAt(Math.floor(r() * BLOCKS)) + STREET / 2 + 3;
-    const z0 = lineAt(Math.floor(r() * BLOCKS)) + STREET / 2 + 3;
-    const x = x0 + r() * (PERIOD - STREET - 6);
-    const z = z0 + r() * (PERIOD - STREET - 6);
+    const bk = BLOCKS[Math.floor(r() * BLOCKS.length)];
+    const x = bk.minX + r() * (bk.maxX - bk.minX);
+    const z = bk.minZ + r() * (bk.maxZ - bk.minZ);
     const close = city.near(x, z, 6).filter((b) => Math.hypot(x - clamp(x, b.minX, b.maxX), z - clamp(z, b.minZ, b.maxZ)) < 4).length;
     if (close >= 2 && !insideAny(x, 1, z, 0.8)) addItem(x, 1.1, z);
   }
@@ -230,38 +290,19 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
   }
 
   const races: Race[] = RACES.map((def) => {
-    let gi = def.i;
-    let gj = def.j;
-    let di = def.di;
-    let dj = def.dj;
     const ringsAt: THREE.Vector3[] = [];
     const quats: THREE.Quaternion[] = [];
-    const visited = new Set([gi * 100 + gj]);
-    const ok = (i: number, j: number) => i >= 1 && i <= BLOCKS - 1 && j >= 1 && j <= BLOCKS - 1;
-    const push = (x: number, z: number, dx: number, dz: number) => {
-      const n = ringsAt.length;
-      const h = n % 5 === 3 ? 9 + r() * 4 : clamp(heightNear(x, z, 30) * (0.35 + r() * 0.3), 10, 58);
-      ringsAt.push(new THREE.Vector3(x, h, z));
-      quats.push(new THREE.Quaternion().setFromUnitVectors(FWD, _v.set(dx, 0, dz).normalize()));
-    };
-    while (ringsAt.length < def.rings) {
-      const ni = gi + di;
-      const nj = gj + dj;
-      push((lineAt(gi) + lineAt(ni)) / 2, (lineAt(gj) + lineAt(nj)) / 2, di, dj);
-      gi = ni;
-      gj = nj;
-      visited.add(gi * 100 + gj);
-      if (ringsAt.length >= def.rings) break;
-      const options = [[di, dj], [dj, -di], [-dj, di]].filter(([a, b]) => ok(gi + a, gj + b) && !visited.has((gi + a) * 100 + gj + b));
-      const straight = options.find(([a, b]) => a === di && b === dj);
-      const pick = straight && r() < 0.6 ? straight : (options[Math.floor(r() * options.length)] ?? [-di, -dj]);
-      if (pick[0] !== di || pick[1] !== dj) {
-        push(lineAt(gi), lineAt(gj), di + pick[0], dj + pick[1]);
-        di = pick[0];
-        dj = pick[1];
-      }
-    }
-    const start = new THREE.Vector3(lineAt(def.i), 0, lineAt(def.j));
+    const route = raceRoute(def.path);
+    route.forEach((pt, n) => {
+      const next = route[n + 1];
+      const deck = deckAt(pt.x, pt.z);
+      const h = deck ? deck + 7 : n % 5 === 3 ? 9 + r() * 4 : clamp(heightNear(pt.x, pt.z, 30) * (0.35 + r() * 0.3), 10, 58);
+      ringsAt.push(new THREE.Vector3(pt.x, h, pt.z));
+      _v.set(pt.dx + (next ? next.dx : 0), 0, pt.dz + (next ? next.dz : 0));
+      if (_v.lengthSq() < 1e-4) _v.set(pt.dx, 0, pt.dz);
+      quats.push(new THREE.Quaternion().setFromUnitVectors(FWD, _v.normalize()));
+    });
+    const start = new THREE.Vector3(def.path[0][0], 0, def.path[0][1]);
     let len = 0;
     let p = start.clone().setY(ringsAt[0].y);
     for (const q of ringsAt) {
@@ -277,17 +318,17 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
 
   const bossSlots: BossSlot[] = [];
   for (const name of BOSS_ORDER) {
-    let pos = bossArena(city, name);
     const taken = (x: number, z: number) => bossSlots.some((b) => Math.hypot(b.pos.x - x, b.pos.z - z) < 120);
+    let pos = bossArena(city, name, taken);
     const clash = (x: number, z: number) => taken(x, z) || races.some((q) => Math.hypot(q.start.x - x, q.start.z - z) < 80);
     if (taken(pos.x, pos.z)) {
       let best = -1;
-      for (let i = 2; i < BLOCKS - 1; i++) {
-        for (let j = 2; j < BLOCKS - 1; j++) {
-          const x = lineAt(i);
-          const z = lineAt(j);
-          if (clash(x, z) || insideAny(x, 1, z, 4)) continue;
-          const d = Math.min(...bossSlots.map((b) => Math.hypot(b.pos.x - x, b.pos.z - z))) - Math.hypot(x, z) * 0.5;
+      for (const q of ROADS) {
+        if (q.axis !== 1) continue;
+        for (const z of CROSS[ROAD_IDX.get(q)!]) {
+          const x = q.line;
+          if (!onLand(x, z) || clash(x, z) || insideAny(x, 1, z, 4)) continue;
+          const d = Math.min(...bossSlots.map((b) => Math.hypot(b.pos.x - x, b.pos.z - z))) - Math.hypot(x - SPAWN.x, z - SPAWN.z) * 0.5;
           if (d > best) [best, pos] = [d, new THREE.Vector3(x, 0, z)];
         }
       }
@@ -348,13 +389,10 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     c.noticed = false;
     c.farT = 0;
     if (def.car) {
-      const kx = Math.round((best.x + HALF) / PERIOD);
-      const kz = Math.round((best.z + HALF) / PERIOD);
-      const lx = lineAt(kx);
-      const lz = lineAt(kz);
-      const alongZ = Math.abs(best.x - lx) < Math.abs(best.z - lz);
-      if (alongZ) c.center.x = lx + Math.sign(best.x - lx || 1) * 7.5;
-      else c.center.z = lz + Math.sign(best.z - lz || 1) * 7.5;
+      const q = nearestRoad(best.x, best.z);
+      const alongZ = q.axis === 1;
+      if (alongZ) c.center.set(q.line + Math.sign(best.x - q.line || 1) * 7.5, 0, clamp(best.z, q.min + 4, q.max - 4));
+      else c.center.set(clamp(best.x, q.min + 4, q.max - 4), 0, q.line + Math.sign(best.z - q.line || 1) * 7.5);
       _e.set(0, alongZ ? 0 : Math.PI / 2, 0, "XYZ");
       _m.makeRotationFromEuler(_e).setPosition(c.center);
       cars.setMatrixAt(1 + slot, _m);
@@ -381,28 +419,33 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     hazards.setMatrixAt(1 + slot, ZERO);
   };
 
-  const chase = { state: "none" as "none" | "active" | "webbed", nextAt: 45, axis: 0, fixed: 0, nextK: 0, dir: 1, s: 0, speed: 0, yaw: 0, pos: new THREE.Vector3(), touched: false, hits: 0, farT: 0, doneT: 0, webbed: false };
+  const chase = { state: "none" as "none" | "active" | "webbed", nextAt: 45, axis: 0, road: ROADS[0], next: 0, dir: 1, s: 0, speed: 0, yaw: 0, pos: new THREE.Vector3(), touched: false, hits: 0, farT: 0, doneT: 0, webbed: false };
   const carTarget = (out: THREE.Vector3) => {
-    const line = lineAt(chase.fixed);
+    const line = chase.road.line;
     return chase.axis === 0 ? out.set(chase.s, 0, line + 3.5 * chase.dir) : out.set(line - 3.5 * chase.dir, 0, chase.s);
   };
   const carYaw = () => (chase.axis === 0 ? (chase.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : chase.dir > 0 ? 0 : Math.PI);
+  const onRoad = (q: GeoRoad, s: number, dir: number) => {
+    chase.road = q;
+    chase.axis = q.axis;
+    chase.s = s;
+    chase.dir = dir;
+    chase.next = nextStop(q, s, dir);
+  };
   const spawnChase = (p: THREE.Vector3, out: GameEvent[]) => {
-    let gi = 7;
-    let gj = 7;
-    for (let n = 0; n < 40; n++) {
-      gi = 1 + Math.floor(r() * (BLOCKS - 1));
-      gj = 1 + Math.floor(r() * (BLOCKS - 1));
-      const d = Math.hypot(lineAt(gi) - p.x, lineAt(gj) - p.z);
-      if (d > 180 && d < 380) break;
+    let q = ROADS[0];
+    let s = 0;
+    for (let n = 0; n < 60; n++) {
+      q = ROADS[Math.floor(r() * ROADS.length)];
+      const cs = CROSS[ROAD_IDX.get(q)!];
+      if (!cs.length) continue;
+      s = cs[Math.floor(r() * cs.length)];
+      const [x, z] = q.axis === 0 ? [s, q.line] : [q.line, s];
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d > 180 && d < 380 && onLand(x, z)) break;
     }
-    chase.axis = r() < 0.5 ? 0 : 1;
-    const along = chase.axis === 0 ? gi : gj;
-    chase.fixed = chase.axis === 0 ? gj : gi;
-    chase.s = lineAt(along);
-    const away = chase.axis === 0 ? lineAt(gi) - p.x : lineAt(gj) - p.z;
-    chase.dir = away >= 0 ? 1 : -1;
-    chase.nextK = along + chase.dir;
+    const away = q.axis === 0 ? s - p.x : s - p.z;
+    onRoad(q, s, away >= 0 ? 1 : -1);
     chase.state = "active";
     chase.speed = 24;
     chase.touched = false;
@@ -414,21 +457,17 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     out.push({ type: "sfx", name: "siren" }, { type: "toast", title: "GETAWAY CAR", text: "Chase down the fleeing car" });
   };
   const steer = () => {
-    const ok = (k: number) => k >= 0 && k <= BLOCKS;
-    const straight = ok(chase.nextK + chase.dir);
-    const turnL = ok(chase.fixed - 1);
-    const turnR = ok(chase.fixed + 1);
-    if (straight && (r() < 0.55 || (!turnL && !turnR))) {
-      chase.nextK += chase.dir;
+    const q = chase.road;
+    const at = chase.next;
+    const straight = chase.dir > 0 ? at < q.max - 1 : at > q.min + 1;
+    const o = crossRoad(q, at);
+    const turns = o ? [-1, 1].filter((d) => (d > 0 ? o.max - q.line : q.line - o.min) > 20) : [];
+    if (straight && (r() < 0.55 || !turns.length)) {
+      chase.next = nextStop(q, at, chase.dir);
       return;
     }
-    const dir = turnL && turnR ? (r() < 0.5 ? -1 : 1) : turnL ? -1 : 1;
-    const at = chase.nextK;
-    chase.s = lineAt(chase.fixed);
-    chase.nextK = chase.fixed + dir;
-    chase.fixed = at;
-    chase.axis = 1 - chase.axis;
-    chase.dir = dir;
+    if (o && turns.length) onRoad(o, q.line, turns[Math.floor(r() * turns.length)]);
+    else onRoad(q, at, -chase.dir);
   };
   const webCar = () => {
     _e.set(0, chase.yaw, 0, "XYZ");
@@ -685,12 +724,12 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     const speed = (d < 40 ? 30 : 24) * (1 - 0.22 * chase.hits);
     let move = speed * dt;
     while (move > 0) {
-      const remain = (lineAt(chase.nextK) - chase.s) * chase.dir;
+      const remain = (chase.next - chase.s) * chase.dir;
       if (move < remain) {
         chase.s += move * chase.dir;
         break;
       }
-      chase.s = lineAt(chase.nextK);
+      chase.s = chase.next;
       move -= Math.max(remain, 0);
       steer();
       if (move < 0.01) break;
@@ -849,7 +888,7 @@ export function createMissions(scene: THREE.Scene, city: City, combat: Combat) {
     }
 
     const q = races[race.idx];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < RINGS; i++) {
       const ring = racing ? q.rings[i] : undefined;
       if (!ring) {
         rings.setMatrixAt(i, ZERO);
