@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { SKY } from "./sky-state";
+import { freeOnUpload } from "./city-textures";
 
 type G = CanvasRenderingContext2D;
 type R = () => number;
@@ -28,7 +29,7 @@ export type FacadeStyle = {
   draw: (p: Paint, cell: CellFn) => void;
 };
 
-type Paint = { a: G; h: G; o: G; r: R; S: number };
+type Paint = { a: G; h: G; o: G; r: R; S: number; mx: number; my: number };
 type CellFn = (fn: (x: number, y: number, w: number, h: number, wx: number, wy: number, ww: number, wh: number, cx: number, cy: number) => void) => void;
 
 const orm = (ao: number, rough: number, metal: number) => `rgb(${Math.round(ao * 255)},${Math.round(rough * 255)},${Math.round(metal * 255)})`;
@@ -75,20 +76,30 @@ function grime(p: Paint, n: number, a = 0.1) {
   }
 }
 
-function bricks(p: Paint, base: string, mortar: string, bw: number, bh: number, vary: number) {
+/** Modular bricks at real size: 0.215 m by 0.076 m with mortar. */
+function bricks(p: Paint, base: string, mortar: string, vary: number) {
   const { a, h, r, S } = p;
-  rect(p, 0, 0, S, S, mortar, 96, orm(0.7, 0.95, 0));
-  for (let y = 0, row = 0; y < S; y += bh, row++) {
-    for (let x = row % 2 ? 0 : -bw / 2; x < S; x += bw) {
-      a.fillStyle = base;
-      a.fillRect(x, y, bw - 1, bh - 1);
+  const nb = Math.max(4, Math.round(S / p.mx / 0.215));
+  const nc = Math.max(4, 2 * Math.round(S / p.my / 0.0762 / 2));
+  const bw = S / nb, bh = S / nc;
+  const jw = Math.max(0.5, 0.011 * p.mx), jh = Math.max(0.5, 0.011 * p.my);
+  rect(p, 0, 0, S, S, mortar, 100, orm(0.72, 0.95, 0));
+  for (let row = 0; row < nc; row++) {
+    const y = row * bh;
+    const x0 = row % 2 ? 0 : -bw / 2;
+    for (let i = 0; i < nb + (row % 2 ? 0 : 1); i++) {
+      const x = x0 + i * bw;
       const k = r();
-      a.fillStyle = k < 0.5 ? `rgba(0,0,0,${r() * vary})` : `rgba(255,220,190,${r() * vary * 0.7})`;
-      a.fillRect(x, y, bw - 1, bh - 1);
-      h.fillStyle = hgt(140 + Math.floor(r() * 16));
-      h.fillRect(x, y, bw - 1, bh - 1);
-      p.o.fillStyle = orm(1, 0.85 + r() * 0.1, 0);
-      p.o.fillRect(x, y, bw - 1, bh - 1);
+      const tint = k < 0.04 ? "rgba(0,0,0,0.38)" : k < 0.52 ? `rgba(0,0,0,${r() * vary})` : `rgba(255,220,190,${r() * vary * 0.7})`;
+      const ht = hgt(140 + Math.floor(r() * 18));
+      for (const ox of x0 < 0 && i === 0 ? [x, x + S] : [x]) {
+        a.fillStyle = base;
+        a.fillRect(ox, y, bw - jw, bh - jh);
+        a.fillStyle = tint;
+        a.fillRect(ox, y, bw - jw, bh - jh);
+        h.fillStyle = ht;
+        h.fillRect(ox, y, bw - jw, bh - jh);
+      }
     }
   }
 }
@@ -215,7 +226,7 @@ export const FACADES: FacadeStyle[] = [
     cw: 2.6, ch: 3.1, cols: 4, rows: 4, win: [0.24, 0.14, 0.76, 0.82], inset: 0.3, depth: 5, room: 1, mull: [0, 1], frame: 0xe6e0d4,
     glass: 0x14100e, glassRM: [0.08, 0.2], lit: 0.45, warm: 0.88, row: 0, glow: 1.3, masonry: true, wallPt: [0.08, 0.5],
     draw(p, cell) {
-      bricks(p, "#7a3324", "#9a8f84", 16, 6, 0.18);
+      bricks(p, "#7a3324", "#9a8f84", 0.2);
       cell((x, y, w, h, wx, wy, ww, wh) => {
         for (let k = 0; k < ww + 8; k += 5) rect(p, wx - 4 + k, wy - 12, 4, 11, "#6a2a1e", 150, orm(1, 0.9, 0));
         rect(p, wx - 6, wy + wh, ww + 12, 7, "#cfc6b8", 205, orm(1, 0.7, 0));
@@ -248,7 +259,7 @@ export const FACADES: FacadeStyle[] = [
     cw: 4.5, ch: 4.6, cols: 4, rows: 4, win: [0.12, 0.1, 0.88, 0.84], inset: 0.35, depth: 9, room: 2, mull: [3, 3], frame: 0x24332c,
     glass: 0x101614, glassRM: [0.12, 0.3], lit: 0.28, warm: 0.55, row: 0.3, glow: 1.15, masonry: true, wallPt: [0.05, 0.5],
     draw(p, cell) {
-      bricks(p, "#553328", "#6a5a50", 18, 6, 0.2);
+      bricks(p, "#553328", "#6a5a50", 0.22);
       cell((x, y, w, h, wx, wy, ww, wh) => {
         p.a.fillStyle = "#3a2018";
         p.a.beginPath();
@@ -298,7 +309,7 @@ export const FACADES: FacadeStyle[] = [
     cw: 2.6, ch: 3.1, cols: 4, rows: 4, win: [0.22, 0.16, 0.78, 0.82], inset: 0.25, depth: 5, room: 1, mull: [1, 1], frame: 0xf2efe8,
     glass: 0x16110e, glassRM: [0.08, 0.2], lit: 0.5, warm: 0.85, row: 0, glow: 1.3, masonry: true, wallPt: [0.08, 0.5],
     draw(p, cell) {
-      bricks(p, "#d8d0bf", "#b9b09e", 16, 6, 0.08);
+      bricks(p, "#d8d0bf", "#b9b09e", 0.08);
       noise(p, 5000, "rgba(255,255,255,0.08)", "rgba(80,60,40,0.1)", 3, 0.03);
       cell((x, y, w, h, wx, wy, ww, wh) => {
         rect(p, wx - 6, wy - 9, ww + 12, 8, "#bfb5a2", 190);
@@ -340,7 +351,7 @@ export const FACADES: FacadeStyle[] = [
     cw: 2.8, ch: 3.2, cols: 4, rows: 4, win: [0.25, 0.13, 0.75, 0.83], inset: 0.35, depth: 5, room: 1, mull: [0, 1], frame: 0xece6da,
     glass: 0x15120f, glassRM: [0.08, 0.2], lit: 0.48, warm: 0.82, row: 0, glow: 1.28, masonry: true, wallPt: [0.08, 0.5],
     draw(p, cell) {
-      bricks(p, "#b8956a", "#cfc2ad", 16, 6, 0.12);
+      bricks(p, "#b8956a", "#cfc2ad", 0.14);
       cell((x, y, w, h, wx, wy, ww, wh, _cx, cy) => {
         rect(p, wx - 8, wy - 13, ww + 16, 11, "#e2d8c4", 215, orm(1, 0.8, 0));
         rect(p, wx - 6, wy + wh, ww + 12, 7, "#e2d8c4", 210);
@@ -363,28 +374,33 @@ export const FACADE_SETS: Record<"brownstone" | "warehouse" | "glassTower" | "de
   deco: [STYLE.deco, STYLE.limestone, STYLE.granite],
 };
 
+/** Two-channel normal map from a height canvas. Frees the canvas and, after upload, the data. */
 function toNormal(src: HTMLCanvasElement, strength: number) {
   const S = src.width;
   const h = src.getContext("2d")!.getImageData(0, 0, S, S).data;
-  const c = document.createElement("canvas");
-  c.width = c.height = S;
-  const g = c.getContext("2d")!;
-  const out = g.createImageData(S, S);
+  src.width = src.height = 0;
+  const out = new Uint8Array(S * S * 2);
   const H = (x: number, y: number) => h[(((y + S) % S) * S + ((x + S) % S)) * 4] / 255;
   for (let y = 0; y < S; y++) {
+    const row = (S - 1 - y) * S;
     for (let x = 0; x < S; x++) {
       const dx = (H(x + 1, y) - H(x - 1, y)) * strength;
       const dy = (H(x, y + 1) - H(x, y - 1)) * strength;
       const l = Math.hypot(dx, dy, 1);
-      const i = (y * S + x) * 4;
-      out.data[i] = (-dx / l * 0.5 + 0.5) * 255;
-      out.data[i + 1] = (dy / l * 0.5 + 0.5) * 255;
-      out.data[i + 2] = (1 / l * 0.5 + 0.5) * 255;
-      out.data[i + 3] = 255;
+      const i = (row + x) * 2;
+      out[i] = (-dx / l * 0.5 + 0.5) * 255;
+      out[i + 1] = (dy / l * 0.5 + 0.5) * 255;
     }
   }
-  g.putImageData(out, 0, 0);
-  return c;
+  const t = new THREE.DataTexture(out, S, S, THREE.RGFormat, THREE.UnsignedByteType);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 8;
+  t.needsUpdate = true;
+  freeOnUpload(t);
+  return t;
 }
 
 function texOf(c: HTMLCanvasElement, srgb: boolean) {
@@ -400,8 +416,8 @@ const col3 = (hex: number) => new THREE.Color(hex);
 const FRAG_PARS = /* glsl */ `
 uniform vec2 uCells; uniform vec2 uCellM; uniform vec4 uWin; uniform vec4 uRoom; uniform vec2 uMull;
 uniform vec3 uFrame; uniform vec3 uGlass; uniform vec2 uGlassRM; uniform vec3 uLit; uniform vec2 uWallPt;
-uniform float uNight; uniform vec3 uReflHi; uniform vec3 uReflLo;
-varying vec3 vFcD;
+uniform float uNight; uniform vec3 uReflHi; uniform vec3 uReflLo; uniform sampler2D uNoise; uniform float uGrime;
+varying vec4 vFcD;
 float fcH(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 fcPal(float h, float warm) {
   vec3 w = h < 0.33 ? vec3(1.0, 0.62, 0.32) : h < 0.66 ? vec3(1.0, 0.76, 0.48) : vec3(0.95, 0.52, 0.26);
@@ -411,7 +427,7 @@ vec3 fcPal(float h, float warm) {
 `;
 
 const VERT_PARS = /* glsl */ `
-varying vec3 vFcD;
+varying vec4 vFcD;
 float fcH(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float fcN(vec2 p) {
   vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -422,12 +438,19 @@ float fcN(vec2 p) {
 const VERT_DISTRICT = /* glsl */ `
 {
   vec3 w = (modelMatrix * vec4(transformed, 1.0)).xyz;
-  vFcD = vec3(0.65 * fcN(w.xz / 260.0) + 0.35 * fcN(w.xz / 70.0 + 17.0), fcN(w.xz / 180.0 + 41.0) - 0.5, smoothstep(0.0, 90.0, w.y));
+  vFcD = vec4(0.65 * fcN(w.xz / 260.0) + 0.35 * fcN(w.xz / 70.0 + 17.0), fcN(w.xz / 180.0 + 41.0) - 0.5, smoothstep(0.0, 90.0, w.y), w.y);
 }
 `;
 
 const FRAG_MAP = /* glsl */ `
 #include <map_fragment>
+{
+  vec2 fm = vMapUv * uCells * uCellM;
+  vec4 gN = texture2D(uNoise, vec2(fm.x / 23.0 + vFcD.y * 3.7, fm.y / 47.0 + vFcD.x * 2.3));
+  float st = texture2D(uNoise, vec2(fm.x / 5.0 + vFcD.y * 9.1, fm.y / 70.0)).g;
+  float soot = 1.0 - smoothstep(0.3, 2.0 + 3.0 * gN.g, vFcD.w);
+  diffuseColor.rgb *= mix(1.0, (0.86 + 0.26 * gN.b) * (1.0 - 0.24 * smoothstep(0.55, 0.85, st)), uGrime) * (1.0 - 0.4 * soot);
+}
 vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0; vec3 fcE = vec3(0.0); vec3 fcAmb = vec3(0.0);
 {
   vec2 cu = vMapUv * uCells;
@@ -524,21 +547,27 @@ vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0
   }
   fcE = mix(mix(nearE, lc * lit * 0.6 * inside, lod1), farE, lod2) * uRoom.z + refl * glassAmt;
   fcAmb = mix(uReflLo, uReflHi, 0.6) * (0.5 + 0.5 * vFcD.z) * 0.16;
+  fcAmb += nightK * (vec3(0.03, 0.035, 0.05) + vec3(0.14, 0.09, 0.045) * (1.0 - smoothstep(2.0, 14.0, vFcD.w)));
 }
 diffuseColor.rgb = mix(diffuseColor.rgb, fcCol, fcW);
 `;
 
-export function facadeMaterial(style: FacadeStyle, r: R) {
+const FINE = new Set(["brick", "industrial", "painted", "tanbrick"]);
+
+export function facadeMaterial(style: FacadeStyle, r: R, noise: THREE.Texture) {
   const S = 512;
-  const mk = () => {
+  const mk = (k: number) => {
     const c = document.createElement("canvas");
-    c.width = c.height = S;
-    return [c, c.getContext("2d")!] as const;
+    c.width = c.height = S * k;
+    const g = c.getContext("2d")!;
+    g.scale(k, k);
+    return [c, g] as const;
   };
-  const [ca, a] = mk();
-  const [ch, h] = mk();
-  const [co, o] = mk();
-  const p: Paint = { a, h, o, r, S };
+  const k = FINE.has(style.name) ? 2 : 1;
+  const [ca, a] = mk(k);
+  const [ch, h] = mk(k);
+  const [co, o] = mk(1);
+  const p: Paint = { a, h, o, r, S, mx: S / (style.cols * style.cw), my: S / (style.rows * style.ch) };
   const cw = S / style.cols, chh = S / style.rows;
   const [wx0, wy0, wx1, wy1] = style.win;
   const cell: CellFn = (fn) => {
@@ -552,7 +581,7 @@ export function facadeMaterial(style: FacadeStyle, r: R) {
   };
   style.draw(p, cell);
   const map = texOf(ca, true);
-  const normalMap = texOf(toNormal(ch, 3.5), false);
+  const normalMap = toNormal(ch, 3.5);
   const ormMap = texOf(co, false);
   const m = new THREE.MeshStandardMaterial({
     map,
@@ -579,6 +608,8 @@ export function facadeMaterial(style: FacadeStyle, r: R) {
     uNight: SKY.night,
     uReflHi: SKY.reflHi,
     uReflLo: SKY.reflLo,
+    uNoise: { value: noise },
+    uGrime: { value: style.masonry ? 1 : 0.45 },
   };
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, uniforms);
@@ -593,6 +624,6 @@ export function facadeMaterial(style: FacadeStyle, r: R) {
       .replace("#include <common>", "#include <common>\n" + VERT_PARS)
       .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n" + VERT_DISTRICT);
   };
-  m.customProgramCacheKey = () => "facade3";
+  m.customProgramCacheKey = () => "facade4";
   return m;
 }

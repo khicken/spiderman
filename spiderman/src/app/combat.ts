@@ -3,6 +3,7 @@ import type { Box, City } from "./city";
 import type { GameEvent, HeroPose, HudState, Input, Marker, PlayerApi } from "./contracts";
 import * as EM from "./enemy-models";
 import { createBosses, type BossName } from "./bosses";
+import { pushHitMark } from "./combat-fx";
 
 export type EnemyKind = "thug" | "brute" | "shield" | "gunner" | "rocket" | "sniper";
 export type Bounds = { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -34,8 +35,10 @@ export type CombatCtx = {
   events: GameEvent[];
   now(): number;
   player(): PlayerApi;
-  hurt(dmg: number, from: THREE.Vector3, knock?: number): boolean;
+  hurt(dmg: number, from: THREE.Vector3, knock?: number, force?: boolean): boolean;
   downed(): boolean;
+  evading(): boolean;
+  focus(): number;
   warn(th: Threat, at: number): void;
   unwarn(th: Threat): void;
   spawnGroup(kind: EnemyKind, pos: THREE.Vector3, count: number, opts?: GroupOpts): number;
@@ -92,7 +95,7 @@ type Enemy = {
   seen: boolean;
   walker: boolean;
 };
-type ActKind = "none" | "punch" | "launch" | "dodge" | "shoot" | "strike" | "yank" | "finisher" | "gadget" | "hurt" | "down" | "takedown" | "counter";
+type ActKind = "none" | "punch" | "launch" | "dive" | "dodge" | "shoot" | "strike" | "yank" | "finisher" | "gadget" | "hurt" | "down" | "takedown" | "counter";
 type Proj = {
   active: boolean;
   kind: "web" | "impact" | "bomb" | "rocket" | "blast" | "feather";
@@ -146,6 +149,9 @@ const CONE = Math.cos((35 * Math.PI) / 180);
 const VIEW = 24;
 const VIEW_SNIPER = 60;
 const STEALTH_R = 60;
+const LAUNCH_HOLD = 0.25;
+const PERFECT_LO = -0.04;
+const PERFECT_HI = 0.14;
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const inBox = (b: Box, x: number, z: number, m = 0) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m;
@@ -363,6 +369,14 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
   let tdHang = false;
   let counterT = 0;
   let counterTgt: Hittable | null = null;
+  let perfectT = 0;
+  let airHang = 0;
+  let webTaken = false;
+  let lmbLaunch = false;
+  let cam: THREE.Camera | null = null;
+  let pendSlow = 0;
+  let pendScale = 1;
+  let pendDur = 0;
   let slowEnd = 0;
   const slowmo = (scale: number, duration: number, force = false) => {
     if (!force && now < slowEnd) return;
@@ -389,8 +403,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     act.lungeT = 0;
   };
 
-  const hurt = (dmg: number, from: THREE.Vector3, knock = 4) => {
-    if (!P || invuln > 0 || act.kind === "down") return false;
+  const hurt = (dmg: number, from: THREE.Vector3, knock = 4, force = false) => {
+    if (!P || act.kind === "down" || (invuln > 0 && !(force && perfectT <= 0))) return false;
     health = Math.max(0, health - dmg / 100);
     hits = 0;
     comboStep = 0;
@@ -399,7 +413,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     _u.normalize().multiplyScalar(knock);
     _u.y = Math.min(4, knock * 0.4);
     P.push(_u);
-    events.push({ type: "hurt", amount: dmg / 100 }, { type: "sfx", name: "hurt" }, { type: "shake", strength: 0.25 + dmg / 50 });
+    events.push({ type: "hurt", amount: dmg / 100 }, { type: "sfx", name: "hurt" }, { type: "shake", strength: 0.12 + dmg / 80 }, { type: "kick", x: _u.x / knock || 0, z: _u.z / knock || 0, strength: 0.3 + dmg / 60 });
     burst(_v.copy(P.pos), 8, 6, 3, 0.4, 0.3);
     invuln = 0.45;
     if (health <= 0) {
@@ -533,13 +547,13 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     switch (h.kind) {
       case "launch":
         setState(e, "launched");
-        e.vel.set(h.dir.x * 0.6, 13.5, h.dir.z * 0.6);
-        e.hang = 0;
+        e.vel.set(h.dir.x * 0.6, 12.5, h.dir.z * 0.6);
+        e.hang = 0.8;
         break;
       case "air":
         setState(e, "launched");
-        e.vel.set(h.dir.x * 0.8, Math.max(e.vel.y, 1.2), h.dir.z * 0.8);
-        e.hang = 0.55;
+        e.vel.set(h.dir.x * 0.6, Math.max(e.vel.y, 1.2), h.dir.z * 0.6);
+        e.hang = 0.8;
         break;
       case "slam":
         setState(e, "flying");
@@ -731,10 +745,10 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
 
   const physics = (e: Enemy, dt: number) => {
     const g = e.g!;
-    const grav = e.st === "launched" && e.hang > 0 ? G * 0.12 : G;
-    e.hang -= dt;
-    e.vel.y -= grav * dt;
-    if (e.st === "launched" && e.hang > 0) e.vel.y = Math.max(e.vel.y, -1);
+    const float = e.st === "launched" && e.hang > 0 && e.vel.y < 2;
+    if (float) e.hang -= dt;
+    e.vel.y -= (float ? G * 0.12 : G) * dt;
+    if (float) e.vel.y = Math.max(e.vel.y, -1);
     const nx = e.pos.x + e.vel.x * dt;
     const nz = e.pos.z + e.vel.z * dt;
     const wall = blocked(g.near, nx, nz, e.pos.y, 0.3);
@@ -870,7 +884,15 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
           setState(e, "fire");
           e.shots = 0;
           if (e.kind === "sniper") pickPerch(e, p.pos);
-          if (d < s.range + 10 && (e.kind !== "sniper" || sees(muzzle(e, _u), _w.set(p.pos.x, p.pos.y + 0.3, p.pos.z)))) hurt(s.dmg, e.pos, s.knock);
+          const clear = d < s.range + 10 && sees(muzzle(e, _u), _w.set(p.pos.x, p.pos.y + 0.3, p.pos.z));
+          const spd = Math.hypot(p.vel.x, p.vel.z) + Math.abs(p.vel.y) * 0.5;
+          const odds = e.kind === "sniper" ? 1 : clamp(0.9 - spd * 0.05 - d * 0.008, 0.3, 0.9);
+          if (clear && rnd() < odds) hurt(s.dmg, e.pos, s.knock);
+          else {
+            _v.set(p.pos.x + (rnd() - 0.5) * 3, p.pos.y + (rnd() - 0.3) * 2, p.pos.z + (rnd() - 0.5) * 3);
+            if (!clear) _v.lerpVectors(_u, _w, 0.15 + rnd() * 0.2);
+            burst(_v, 3, 3, 3, 2.2, 1);
+          }
         }
         e.cd = s.cd * (0.8 + rnd() * 0.5);
       }
@@ -913,7 +935,12 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
           return;
         }
       }
-      if (e.cd <= 0 && rangedTokens < 2 && d < s.range && Math.abs(dy) < 60 && attackGap <= 0) {
+      e.losT -= dt;
+      if (e.losT <= 0 && e.cd <= 0) {
+        e.losT = 0.3;
+        e.los = sees(muzzle(e, _u), _w.set(p.pos.x, p.pos.y + 0.3, p.pos.z));
+      }
+      if (e.cd <= 0 && e.los && rangedTokens < 2 && d < s.range && Math.abs(dy) < 60 && attackGap <= 0) {
         setState(e, "aim");
         e.aim.set(p.pos.x + (rnd() - 0.5) * 4, p.pos.y + 1, p.pos.z + (rnd() - 0.5) * 4);
         warn(e.threat, now + s.windup);
@@ -922,7 +949,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         return;
       }
       if (e.kind === "sniper") return;
-      const want = e.kind === "rocket" ? 15 : 11;
+      const want = !e.los && e.cd <= 0 ? 4 : e.kind === "rocket" ? 15 : 11;
       const k = d > want + 3 ? 1 : d < want - 3 ? -1 : 0;
       const tx = (dx / (d || 1)) * k + (-dz / (d || 1)) * e.strafe * 0.5;
       const tz = (dz / (d || 1)) * k + (dx / (d || 1)) * e.strafe * 0.5;
@@ -1273,6 +1300,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     player: () => P!,
     hurt,
     downed: () => act.kind === "down",
+    evading: () => perfectT > 0,
+    focus: () => focus,
     warn,
     unwarn,
     spawnGroup: (k, p, n, o) => spawnGroup(k, p, n, o),
@@ -1298,7 +1327,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     return targetList;
   };
 
-  const pick = (range: number, dir: THREE.Vector3, cone: number, filter?: (h: Hittable) => boolean) => {
+  const pick = (range: number, dir: THREE.Vector3, cone: number, filter?: (h: Hittable) => boolean, wDot = 3) => {
     const p = P!;
     let best: Hittable | null = null;
     let bestS = Infinity;
@@ -1311,7 +1340,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       if (d > range || Math.abs(dy) > Math.max(4, range * 0.6)) continue;
       const dot = d > 0.01 ? _v.dot(dir) / d : 1;
       if (dot < cone && d > 2.5) continue;
-      const score = d - dot * 3 + Math.abs(dy) * 0.5;
+      const score = d - dot * wDot + Math.abs(dy) * 0.5;
       if (score < bestS) {
         bestS = score;
         best = h;
@@ -1332,6 +1361,13 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     return out.normalize();
   };
 
+  const mark = (tgt: Hittable, text: string, kind: "hit" | "heavy" | "block" | "ko") => {
+    if (!cam) return;
+    _w.set(tgt.center.x, tgt.center.y + tgt.radius + 0.5, tgt.center.z).project(cam);
+    if (_w.z > 1) return;
+    pushHitMark((_w.x + 1) / 2, (1 - _w.y) / 2, text, kind);
+  };
+
   const doHit = (tgt: Hittable, dmg: number, kind: HitKind) => {
     const p = P!;
     hitInfo.dmg = dmg;
@@ -1342,8 +1378,9 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     const y = tgt.yaw();
     hitInfo.behind = Math.sin(y) * -hitInfo.dir.x + Math.cos(y) * -hitInfo.dir.z < -0.35;
     const res = tgt.hit(hitInfo);
+    if (res !== "none") mark(tgt, res === "block" ? "BLOCK" : res === "ko" ? "KO" : String(Math.round(dmg * (hitInfo.behind ? 15 : 10))), res === "block" ? "block" : res === "ko" ? "ko" : kind === "punch" || kind === "air" ? "hit" : "heavy");
     if (res === "block") {
-      events.push({ type: "sfx", name: "metal" }, { type: "shake", strength: 0.15 });
+      events.push({ type: "sfx", name: "metal" }, { type: "kick", x: -hitInfo.dir.x, z: -hitInfo.dir.z, strength: 0.15 });
       burst(_v.copy(tgt.center).addScaledVector(hitInfo.dir, -0.4), 6, 5, 1.2, 1.8, 3);
       comboStep = 0;
       p.push(_v.copy(hitInfo.dir).multiplyScalar(p.grounded ? -5 : -3).setY(0));
@@ -1355,13 +1392,16 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     const air = !p.grounded;
     addFocus(air ? 0.2 : 0.12);
     const heavy = kind !== "punch" && kind !== "air";
-    events.push({ type: "sfx", name: heavy ? "punchHeavy" : "punch", volume: 0.8 }, { type: "shake", strength: heavy ? 0.35 : 0.12 });
-    if (kind === "heavy" || kind === "slam" || kind === "counter") slowmo(0.35, 0.07);
+    const big = heavy || res === "ko";
+    events.push({ type: "sfx", name: heavy ? "punchHeavy" : "punch", volume: 0.8 }, { type: "kick", x: hitInfo.dir.x, z: hitInfo.dir.z, strength: big ? 0.5 : 0.2 });
+    if (big) events.push({ type: "shake", strength: 0.2 });
+    if (big) slowmo(0.04, kind === "slam" || kind === "counter" || res === "ko" ? 0.085 : 0.065, true);
     else slowmo(0.05, 0.035);
     burst(_v.copy(tgt.center).addScaledVector(hitInfo.dir, -0.3), heavy ? 12 : 6, heavy ? 8 : 5, 3, 2.2, 1);
     if (air) {
-      const up = 3.2 - p.vel.y;
-      if (up > 0) p.push(_v.set(0, up, 0));
+      airHang = kind === "slam" ? 0 : 0.8;
+      const up = 2 - p.vel.y;
+      if (up > 0 && kind !== "slam") p.push(_v.set(0, up, 0));
     }
     return res;
   };
@@ -1377,23 +1417,92 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     p.lunge(_w, speed);
     const rise = _w.y - p.pos.y;
     if (Math.abs(rise) > 0.4 && (tgt.airborne() || !p.grounded)) {
-      const vy = clamp(rise * 6, -16, 16) - p.vel.y;
+      const vy = clamp(rise * 6, -Math.max(16, speed), 16) - p.vel.y;
       if (Math.abs(vy) > 0.5) p.push(_u.set(0, vy, 0));
     }
     p.face(_u.set(_v.x, 0, _v.z).normalize());
     return false;
   };
 
+  const airOk = (h: Hittable) => h.airborne() || h.center.y > P!.pos.y - 2;
+  // Move keys first, then the camera, then the nearest target all around.
+  const lockOn = (input: Input, air: boolean) => {
+    const f = air ? airOk : undefined;
+    if (input.wish.lengthSq() > 0.01) {
+      _dir.set(input.wish.x, 0, input.wish.z).normalize();
+      const t = pick(8, _dir, 0.35, f);
+      if (t) return t;
+    }
+    lookFlat(input, _dir);
+    return pick(8, _dir, 0.5, f) ?? pick(8, _dir, -2, f, 0) ?? (air ? null : pick(12, _dir, -2, (h) => h.airborne(), 0));
+  };
+
+  const diveTarget = () => {
+    const p = P;
+    if (!p || (p.mode !== "perch" && !p.grounded)) return null;
+    const feet = p.pos.y - FEET;
+    let best: Enemy | null = null;
+    let bs = Infinity;
+    for (const e of enemies) {
+      if (!e.active || !e.g?.aware || defeated(e)) continue;
+      const dy = feet - e.pos.y;
+      if (dy < 3 || dy > 30) continue;
+      const d = Math.hypot(e.pos.x - p.pos.x, e.pos.z - p.pos.z);
+      if (d > 10 + dy * 0.5) continue;
+      const sc = d + dy * 0.3;
+      if (sc < bs) {
+        bs = sc;
+        best = e;
+      }
+    }
+    return best;
+  };
+
+  const startDive = (e: Enemy) => {
+    const p = P!;
+    start("dive", 0.36, "kick", e.hit, 0.05);
+    act.lunging = true;
+    act.air = false;
+    _v.set(e.pos.x - p.pos.x, 0, e.pos.z - p.pos.z);
+    if (_v.lengthSq() > 1e-4) _v.normalize();
+    p.push(_u.set(_v.x * 4, 5, _v.z * 4));
+    events.push({ type: "sfx", name: "whoosh" });
+  };
+
+  const diveImpact = (tgt: Hittable) => {
+    const p = P!;
+    doHit(tgt, 3, "heavy");
+    _u.set(p.pos.x, p.pos.y - FEET + 0.1, p.pos.z);
+    ring(_u, 12, 4, 0, 2.6, 2.4, 2.2);
+    burst(_u, 14, 7, 2.4, 2.2, 2);
+    for (const h of targets()) {
+      if (h === tgt || h.center.distanceTo(_u) > 3.5) continue;
+      hitInfo.dmg = 1;
+      hitInfo.kind = "heavy";
+      hitInfo.behind = false;
+      hitInfo.dir.set(h.center.x - _u.x, 0, h.center.z - _u.z);
+      if (hitInfo.dir.lengthSq() < 1e-4) hitInfo.dir.set(1, 0, 0);
+      hitInfo.dir.normalize();
+      h.hit(hitInfo);
+    }
+    if (civilians && civilians.count(_u, 5) > 0) events.push({ type: "penalty", reason: "Dive strike near civilians" });
+  };
+
   const tryAttack = (input: Input, launch: boolean) => {
     const p = P!;
-    flatAim(input, _dir);
     const air = !p.grounded;
-    const tgt = pick(8, _dir, 0.25, air ? (h) => h.airborne() || h.center.y > p.pos.y - 2 : undefined);
+    const tgt = lockOn(input, air);
+    if (launch && (!tgt || air || tgt.airborne())) return false;
     if (!tgt) {
+      const dv = diveTarget();
+      if (dv) {
+        startDive(dv);
+        return true;
+      }
       if (air || !inCombat()) return false;
       if (comboGap > 1.1) comboStep = 0;
       comboGap = 0;
-      start("punch", 0.32, (`punch${(comboStep % 4) + 1}` as HeroPose), null, 0.14);
+      start("punch", 0.24, (`punch${(comboStep % 4) + 1}` as HeroPose), null, 0.1);
       comboStep = (comboStep + 1) % 4;
       events.push({ type: "sfx", name: "whiff", volume: 0.5 });
       return true;
@@ -1402,28 +1511,29 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     comboGap = 0;
     if (launch && !air && !tgt.airborne()) {
       start("launch", 0.42, "uppercut", tgt, 0.17);
+      act.lunging = true;
       comboStep = 0;
       return true;
     }
+    const up = air || tgt.airborne();
     const step = comboStep;
     comboStep = (comboStep + 1) % 4;
     const last = step === 3;
-    const pose: HeroPose = air ? "airPunch" : (`punch${step + 1}` as HeroPose);
-    start("punch", last ? 0.46 : 0.32, pose, tgt, last ? 0.2 : 0.13);
+    const pose: HeroPose = up ? "airPunch" : (`punch${step + 1}` as HeroPose);
+    start("punch", last ? 0.42 : 0.28, pose, tgt, last ? 0.16 : 0.08);
     act.step = step;
-    act.air = air;
+    act.air = up;
     act.lunging = true;
+    if (up && tgt.center.distanceTo(p.pos) > 3.5) events.push({ type: "sfx", name: "zip", volume: 0.6 });
     return true;
   };
 
   const tryDodge = (input: Input) => {
     const p = P!;
     let perfect = false;
-    let soon = Infinity;
     for (const th of threats) {
       const k = th.at - now;
-      if (k > -0.05 && k < 0.28) perfect = true;
-      if (k > -0.05 && k < soon) soon = k;
+      if (k > PERFECT_LO && k < PERFECT_HI) perfect = true;
     }
     flatAim(input, _dir);
     if (input.wish.lengthSq() < 0.01) {
@@ -1448,7 +1558,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       if (d < 4.5 && _v.dot(_dir) / (d || 1) > 0.6) slide = e;
     }
     start("dodge", 0.4, "dodge");
-    invuln = Math.max(invuln, perfect ? 0.7 : 0.42, soon < 0.65 ? soon + 0.15 : 0);
+    invuln = Math.max(invuln, perfect ? 0.6 : 0.12);
+    if (perfect) perfectT = 0.6;
     if (slide) {
       _v.subVectors(slide.pos, p.pos).setY(0).normalize();
       p.push(_v.multiplyScalar(15));
@@ -1471,7 +1582,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       counterTgt = null;
       for (const e of enemies) {
         const k = e.threat.at - now;
-        if (e.active && threats.has(e.threat) && k > -0.05 && k < 0.28 && e.pos.distanceTo(p.pos) < 12) counterTgt = e.hit;
+        if (e.active && threats.has(e.threat) && k > PERFECT_LO && k < PERFECT_HI && e.pos.distanceTo(p.pos) < 12) counterTgt = e.hit;
       }
       for (const pr of projs) {
         if (pr.active && pr.kind === "rocket" && !pr.back && pr.owner && pr.threat.at - now < 0.5) {
@@ -1636,12 +1747,18 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     events.push({ type: "sfx", name: "takedown" }, { type: "shake", strength: 0.2 });
     burst(e.center, 12, 5, 2.4, 2.4, 2.6);
     queueXp(50, "Silent takedown");
+    if (witnessed(e)) alarm(g);
+  };
+
+  const witnessed = (e: Enemy) => {
+    const g = e.g;
+    if (!g || g.aware) return false;
     for (const o of g.members) {
-      if (g.aware || o === e || !o.active || defeated(o)) continue;
+      if (o === e || !o.active || defeated(o)) continue;
       if (inView(o, e.center.x, e.center.y, e.center.z) < 0 || !sees(eyeOf(o, _u), e.center)) continue;
-      o.sus = Math.max(o.sus + 0.6, 0.75);
-      if (o.sus >= 1) alarm(g);
+      return true;
     }
+    return false;
   };
 
   const tryCounter = (input: Input) => {
@@ -1662,11 +1779,12 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     if (act.kind === "none") return;
     if (act.lunging && act.tgt) {
       act.lungeT += dt;
-      const stop = 1.5 + act.tgt.radius;
-      const speed = act.kind === "strike" ? 34 : act.kind === "finisher" ? 22 : act.kind === "takedown" ? 16 : act.kind === "counter" ? 30 : 24;
+      const stop = (act.kind === "punch" || act.kind === "launch" ? 2 : 1.5) + act.tgt.radius;
+      const speed = act.kind === "strike" || act.kind === "dive" ? 34 : act.kind === "finisher" ? 22 : act.kind === "takedown" ? 16 : act.kind === "counter" ? 30 : 28;
       const there = !act.tgt.targetable() && act.kind !== "finisher" ? true : lungeTo(act.tgt, speed, stop);
-      if (!there && act.lungeT < (act.kind === "strike" ? 0.8 : 0.45)) {
-        p.act(act.pose, 0);
+      if (!there && act.lungeT < (act.kind === "dive" ? 1.8 : act.kind === "strike" ? 0.8 : 0.45)) {
+        p.act(act.kind === "dive" ? "dive" : act.pose, 0);
+        if (act.air && !p.grounded && act.tgt.airborne()) line(_v.copy(p.pos).setY(p.pos.y + 0.4), act.tgt.center, 2.4, 2.4, 2.6);
         if (act.kind === "strike") line(_v.copy(p.pos).setY(p.pos.y + 0.4), act.tgt.center, 2.4, 2.4, 2.6);
         return;
       }
@@ -1689,13 +1807,18 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
             const last = act.step === 3;
             if (act.air) doHit(tgt, last ? 2 : 1, last ? "slam" : "air");
             else doHit(tgt, last ? 2 : 1, last ? "heavy" : "punch");
-          }
+          } else if (tgt) events.push({ type: "sfx", name: "whiff", volume: 0.5 });
           break;
         case "launch":
           if (tgt && reach && doHit(tgt, 1, "launch") === "hit") {
-            p.push(_v.set(0, 12.5, 0));
+            p.push(_v.set(0, 12.5 - Math.max(0, p.vel.y), 0));
+            airHang = 0.8;
             addFocus(0.1);
-          }
+          } else if (!tgt || !reach) events.push({ type: "sfx", name: "whiff", volume: 0.6 });
+          break;
+        case "dive":
+          if (tgt && reach) diveImpact(tgt);
+          else events.push({ type: "sfx", name: "whiff", volume: 0.6 });
           break;
         case "strike":
           if (tgt && reach) doHit(tgt, 2, "strike");
@@ -1724,8 +1847,11 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
             focus = Math.max(0, focus - tgt.finishCost());
             _v.subVectors(tgt.center, p.pos).setY(0).normalize();
             tgt.finish(_v);
-            events.push({ type: "sfx", name: "finisher" }, { type: "shake", strength: 0.7 });
-            slowmo(0.25, 0.55, true);
+            events.push({ type: "sfx", name: "finisher" }, { type: "shake", strength: 0.4 }, { type: "kick", x: _v.x, z: _v.z, strength: 0.8 });
+            slowmo(0.04, 0.09, true);
+            pendSlow = now + 0.004;
+            pendScale = 0.3;
+            pendDur = 0.45;
             burst(tgt.center, 22, 10, 4, 3, 1.4);
           }
           break;
@@ -1756,7 +1882,9 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     if (input.pressed.has("attack")) {
       lmbT = 0;
       lmbUsed = false;
+      lmbLaunch = false;
     } else if (lmbT >= 0 && input.held.has("attack")) lmbT += dt;
+    else lmbT = -1;
     if (input.pressed.has("strike")) {
       fT = 0;
       fUsed = false;
@@ -1810,6 +1938,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       lookFlat(input, _dir);
       const tgt = pick(32, _dir, 0.82) ?? pick(16, _dir, 0.2);
       if (tgt) {
+        webTaken = true;
         start("shoot", 0.22, "webShoot", tgt, 0.05);
         return;
       }
@@ -1831,26 +1960,24 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         }
       }
     }
+    // A press fires at once or fills the buffer, never both. Holding past LAUNCH_HOLD turns it into a launch.
     if (!lmbUsed) {
-      buffer = 0.35;
-      const held = input.held.has("attack");
-      if (held && lmbT < 0.22) return;
+      lmbUsed = true;
       if (free) {
-        lmbUsed = true;
-        tryAttack(input, held && lmbT >= 0.22);
-      } else if (!held) {
-        lmbUsed = true;
-        buffer = 0.35;
-      }
+        buffer = 0;
+        tryAttack(input, false);
+      } else buffer = 0.3;
     } else if (buffer > 0) {
       buffer -= dt;
-      if (free && act.kind !== "punch") {
-        buffer = 0;
-        tryAttack(input, false);
-      } else if (free && act.kind === "punch") {
+      if (free) {
         buffer = 0;
         tryAttack(input, false);
       }
+    }
+    if (!lmbLaunch && lmbT >= LAUNCH_HOLD && p.grounded && (free || (act.kind === "punch" && act.hitDone))) {
+      lmbLaunch = true;
+      buffer = 0;
+      tryAttack(input, true);
     }
   };
 
@@ -2242,9 +2369,17 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
   const update = (dt: number, t: number, input: Input, player: PlayerApi, camera: THREE.Camera): GameEvent[] => {
     lineN = 0;
     P = player;
+    cam = camera;
+    frameN++;
+    webTaken = false;
     camPos.setFromMatrixPosition(camera.matrixWorld);
     now += dt;
     invuln -= dt;
+    perfectT -= dt;
+    if (pendSlow > 0 && now >= pendSlow) {
+      pendSlow = 0;
+      slowmo(pendScale, pendDur, true);
+    }
     comboGap += dt;
     hitsT += dt;
     attackGap -= dt;
@@ -2262,6 +2397,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     handleInput(dt, input);
     runAction(dt, input);
     player.busy = act.kind !== "none" && act.kind !== "shoot";
+    airHang -= dt;
+    if (airHang > 0 && player.mode === "air" && player.vel.y < -1 && act.kind !== "hurt" && act.kind !== "down") player.push(_u.set(0, -1 - player.vel.y, 0));
     if (act.kind === "down") downT += dt;
     else downT = 0;
 
@@ -2328,7 +2465,16 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     return out;
   };
 
+  let frameN = 0;
+  let hudFrame = -1;
+  let hudLast: ReturnType<typeof hudNow> | null = null;
   const hud = () => {
+    if (hudLast && hudFrame === frameN) return hudLast;
+    hudFrame = frameN;
+    hudLast = hudNow();
+    return hudLast;
+  };
+  const hudNow = () => {
     const prompts: { key: string; label: string }[] = [];
     const markers: Marker[] = [];
     const p = P;
@@ -2336,7 +2482,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
       for (const e of enemies) if (e.active && !defeated(e) && e.g?.aware && e.pos.distanceTo(p.pos) < 220) markers.push({ x: e.pos.x, z: e.pos.z, kind: "enemy" });
       bosses.markers(markers);
       bosses.prompts(prompts);
-      if (act.kind === "none" && findTakedown()) prompts.push({ key: "F", label: "Takedown" });
+      const td = act.kind === "none" ? findTakedown() : null;
+      if (td) prompts.push({ key: "F", label: witnessed(td) ? "Takedown, a guard will see" : "Takedown" });
       if (act.kind === "none" && prompts.length === 0) {
         _dir.copy(p.facing);
         const fin = pick(7, _dir, -1, (h) => h.finishable() && focus >= h.finishCost());
@@ -2376,7 +2523,15 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     return best ? best.center : null;
   };
 
-  const nearEnemy = (pos: THREE.Vector3, r: number) => strikeTarget(pos, r) !== null;
+  // Aware enemies at the same level within r, or below a perch for a dive strike.
+  const nearEnemy = (pos: THREE.Vector3, r: number) => {
+    for (const h of bosses.targets()) if (h.targetable() && h.center.distanceTo(pos) < r) return true;
+    for (const e of enemies) {
+      if (!e.active || !e.g?.aware || defeated(e)) continue;
+      if (Math.abs(pos.y - FEET - e.pos.y) < 4 && Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) < r) return true;
+    }
+    return diveTarget() !== null;
+  };
 
   const setDetail = (level: 0 | 1 | 2) => {
     detail = level;
@@ -2422,6 +2577,9 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     cancelBoss: () => bosses.cancel(),
     strikeTarget,
     nearEnemy,
+    inCombat,
+    webTaken: () => webTaken,
+    debug: { enemies, act },
     takeXp,
     stealth: (): HudState["stealth"] => (stealthOn ? { hidden: stealthOut.hidden, alert: stealthOut.alert } : null),
     setDetail,

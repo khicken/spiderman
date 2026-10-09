@@ -4,8 +4,13 @@ import type { PlayerMode } from "./contracts";
 import { raycast } from "./player";
 
 const UP = new THREE.Vector3(0, 1, 0);
-const FOV_REST = 60;
-const FOV_FAST = 78;
+export const FOV_BASE = 60;
+const FOV_FAST = 18;
+const PITCH_MIN = -1.45;
+const PITCH_MAX = 0.9;
+const FOLLOW_IDLE = 0.6;
+const JOLT_T = 0.15;
+const JOLT_MAX = 0.6;
 const ROLL_MAX = 6 * (Math.PI / 180);
 const BASE_SENS = 0.0022;
 const FREE_RANGE = 30;
@@ -30,7 +35,11 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
   let yaw = Math.PI;
   let pitch = -0.15;
   let roll = 0;
-  let fov = FOV_REST;
+  let fovRest = FOV_BASE;
+  let fov = FOV_BASE;
+  let joltX = 0;
+  let joltZ = 0;
+  let joltT = JOLT_T;
   let shake = 0;
   let wallBlend = 0;
   let wallD = 0;
@@ -48,7 +57,7 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
   let ready = false;
   let menu = 1;
   let free = false;
-  let freeFov = FOV_REST;
+  let freeFov = FOV_BASE;
   const freePos = new THREE.Vector3();
   const flyMove = new THREE.Vector3();
   const offset = new THREE.Vector3();
@@ -69,14 +78,15 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
     get pitch() {
       return pitch;
     },
-    configure(s: { sensitivity?: number; invertY?: boolean }) {
+    configure(s: { sensitivity?: number; invertY?: boolean; fov?: number }) {
       if (s.sensitivity !== undefined) sensitivity = s.sensitivity;
       if (s.invertY !== undefined) invertY = s.invertY;
+      if (typeof s.fov === "number" && Number.isFinite(s.fov)) fovRest = THREE.MathUtils.clamp(s.fov, 50, 90);
     },
     mouse(dx: number, dy: number) {
       const k = BASE_SENS * sensitivity;
       yaw -= dx * k;
-      pitch = THREE.MathUtils.clamp(pitch - dy * k * (invertY ? -1 : 1), -1.25, 0.9);
+      pitch = THREE.MathUtils.clamp(pitch - dy * k * (invertY ? -1 : 1), PITCH_MIN, PITCH_MAX);
     },
     get freeFov() {
       return freeFov;
@@ -100,6 +110,14 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
     addShake(s: number) {
       shake = Math.max(shake, s);
     },
+    kick(x: number, z: number, strength: number) {
+      const len = Math.hypot(x, z);
+      if (len < 1e-6 || !(strength > 0)) return;
+      const k = Math.min(JOLT_MAX, strength) / len;
+      joltX = x * k;
+      joltZ = z * k;
+      joltT = 0;
+    },
     update(dt: number, p: CameraTarget, playing: boolean, mouseIdle: number) {
       if (free) {
         updateFree(p);
@@ -109,8 +127,8 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
       const flatSpeed = Math.hypot(p.vel.x, p.vel.z);
       if (!playing) yaw += dt * 0.07;
       // Auto-follow only while the mouse rests, so it never fights the player.
-      else if (mouseIdle > 1.5 && flatSpeed > 12 && p.mode !== "ground" && p.mode !== "wall" && p.mode !== "perch") {
-        const k = Math.min(1, 1.2 * dt) * Math.min(1, (mouseIdle - 1.5) / 1.5);
+      else if (mouseIdle > FOLLOW_IDLE && flatSpeed > (p.mode === "ground" ? 15 : 12) && p.mode !== "wall" && p.mode !== "perch") {
+        const k = Math.min(1, 1.2 * dt) * Math.min(1, (mouseIdle - FOLLOW_IDLE) / 1);
         const d = Math.atan2(p.vel.x, p.vel.z) - yaw;
         yaw += Math.atan2(Math.sin(d), Math.cos(d)) * k;
         pitch += (-0.18 - pitch) * k * 0.5;
@@ -190,6 +208,12 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
 
       shake *= Math.exp(-6 * dt);
       if (shake > 0.01) camera.position.add(tmp.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake));
+      if (joltT < JOLT_T) {
+        joltT += dt;
+        const e = (1 - Math.min(1, joltT / JOLT_T)) ** 2;
+        camera.position.x += joltX * e;
+        camera.position.z += joltZ * e;
+      }
       if (menu > 0) {
         tmp.copy(focus).addScaledVector(look, 2).addScaledVector(UP, 0.6).sub(camera.position).normalize();
         dir.copy(look).lerp(tmp, menu).normalize();
@@ -221,7 +245,7 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
       if (kickT < KICK_RISE + KICK_FALL) kickT += dt;
       const kick =
         kickT < KICK_RISE ? kickT / KICK_RISE : kickT < KICK_RISE + KICK_FALL ? (1 - (kickT - KICK_RISE) / KICK_FALL) ** 2 : 0;
-      const goal = FOV_REST + (FOV_FAST - FOV_REST) * fast + (p.boost > 0 ? 3 : 0);
+      const goal = fovRest + FOV_FAST * fast + (p.boost > 0 ? 3 : 0);
       fov += (goal - fov) * (1 - Math.exp(-3 * dt));
       camera.fov = fov + KICK_FOV * kick;
       camera.updateProjectionMatrix();

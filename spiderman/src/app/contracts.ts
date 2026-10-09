@@ -3,7 +3,7 @@ import type * as THREE from "three";
 // Shared types between modules. Change only with the lead.
 
 export type Action =
-  | "swing" // hold LMB with no enemy near, or hold Shift in air (Shift on ground: parkour sprint)
+  | "swing" // hold LMB with no aware enemy near, or hold Shift (sprint starts by itself after 0.8 s of running)
   | "jump" // Space (in air: forward web zip)
   | "attack" // LMB with an enemy near
   | "trick" // T in air
@@ -17,7 +17,8 @@ export type Action =
   | "gadgetNext" // Tab: next gadget
   | "heal" // H
   | "finisher" // X
-  | "scan"; // V: spider-sense pulse, shows nearby activities
+  | "scan" // V: spider-sense pulse, shows nearby activities
+  | "reset"; // hold R 1 s: back to the spawn roof
 
 export type Input = {
   wish: THREE.Vector3; // camera-relative flat move direction, unit length or zero
@@ -28,6 +29,7 @@ export type Input = {
   released: ReadonlySet<Action>; // went up this frame
   holdTime: (a: Action) => number; // seconds the action has been held, 0 if up
   swingFromMouse: boolean; // the swing hold comes from LMB, so it may start from the ground
+  chain: boolean; // settings "Hold to chain swings": a held swing fires the next web by itself
 };
 
 export type PlayerMode = "ground" | "air" | "swing" | "wall" | "zip" | "perch" | "wings" | "launch";
@@ -52,6 +54,7 @@ export type GameEvent =
   | { type: "toast"; title: string; text?: string }
   | { type: "xp"; amount: number; reason: string }
   | { type: "shake"; strength: number }
+  | { type: "kick"; x: number; z: number; strength: number } // camera jolt along a flat hit direction
   | { type: "slowmo"; scale: number; duration: number }
   | { type: "hurt"; amount: number } // damage to the player, fraction of max health 0..1
   | { type: "penalty"; reason: string } // a civilian was endangered; costs XP
@@ -73,7 +76,8 @@ export interface PlayerApi {
   readonly facing: THREE.Vector3; // flat unit vector
   readonly grounded: boolean;
   readonly airTime: number;
-  readonly aim: AimState; // what the next swing press would use, refreshed every frame
+  readonly aim: AimState;
+  readonly swingCue: number; // 0..1, strength of the release boost window right now // what the next swing press would use, refreshed every frame
   // Combat control. While busy, movement input is ignored and the given pose is shown.
   act(pose: HeroPose, progress: number): void; // call every frame the action runs
   lunge(to: THREE.Vector3, speed: number): void; // move toward a point this frame (melee close-in)
@@ -116,6 +120,8 @@ export type HudState = {
   tokens: number;
   clock: number; // time of day in hours, 0..24
   aim: AimKind;
+  swingCue: number;
+  mode: PlayerMode;
   aimDist: number;
   stealth: null | { hidden: boolean; alert: number }; // set while unaware enemies are near; alert 0..1 is the highest suspicion
   progress: {

@@ -656,50 +656,87 @@ export function tickerTexture() {
   return t;
 }
 
-function asphalt(g: G, S: number, rand: R) {
-  g.fillStyle = "#47484d";
+function asphalt(g: G, S: number, rand: R, px: number) {
+  g.fillStyle = "#424347";
   g.fillRect(0, 0, S, S);
-  for (let i = 0; i < 9000; i++) {
-    g.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${rand() * 0.06})`;
-    g.fillRect(rand() * S, rand() * S, 2, 2);
+  const dots = Math.round(S * S * 0.04);
+  for (let i = 0; i < dots; i++) {
+    const v = rand();
+    g.fillStyle = v < 0.45 ? `rgba(255,255,255,${0.03 + rand() * 0.07})` : `rgba(0,0,0,${0.04 + rand() * 0.08})`;
+    const s = rand() < 0.1 ? 2 : 1;
+    g.fillRect(rand() * S, rand() * S, s, s);
   }
-  for (let i = 0; i < 30; i++) {
-    g.fillStyle = `rgba(14,14,18,${0.15 + rand() * 0.2})`;
+  g.strokeStyle = "rgba(18,18,20,0.55)";
+  g.lineCap = "round";
+  for (let i = 0; i < Math.round(S / 40); i++) {
+    let x = rand() * S, y = rand() * S, a = rand() * Math.PI * 2;
+    g.lineWidth = 0.6 + rand() * 0.8;
     g.beginPath();
-    g.ellipse(rand() * S, rand() * S, 6 + rand() * 24, 4 + rand() * 12, rand() * 3, 0, Math.PI * 2);
-    g.fill();
+    g.moveTo(x, y);
+    for (let k = 0, n = 4 + Math.floor(rand() * 8); k < n; k++) {
+      a += (rand() - 0.5) * 1.2;
+      x += Math.cos(a) * 0.5 * px;
+      y += Math.sin(a) * 0.5 * px;
+      g.lineTo(x, y);
+    }
+    g.stroke();
   }
 }
 
-/** Road cross-section: u runs across ROAD_W, v runs 22 m along the road. */
+/** Road cross-section: u runs across ROAD_W, v runs 22 m along the road. Curb snow is drawn in the shader. */
 export function roadTexture(roadW: number) {
-  const S = 512;
+  const S = 1024;
   const px = S / roadW;
   const [c, g] = canvas(S);
   const rand = Math.random;
-  asphalt(g, S, rand);
+  asphalt(g, S, rand, px);
   const mid = S / 2;
-  g.fillStyle = "rgba(20,20,24,0.25)";
-  for (const o of [2.4, 6.5]) for (const s of [-1, 1]) for (const t of [-0.8, 0.8]) g.fillRect(mid + s * (o + t) * px - 0.25 * px, 0, 0.5 * px, S);
+  const band = (x: number, w: number, a: number) => {
+    const gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+    gr.addColorStop(0, "rgba(16,16,19,0)");
+    gr.addColorStop(0.5, `rgba(16,16,19,${a})`);
+    gr.addColorStop(1, "rgba(16,16,19,0)");
+    g.fillStyle = gr;
+    g.fillRect(x - w / 2, 0, w, S);
+  };
+  for (const o of [2.4, 6.5]) for (const s of [-1, 1]) {
+    for (const t of [-0.85, 0.85]) band(mid + s * (o + t) * px, 0.7 * px, 0.32);
+    band(mid + s * o * px, 0.5 * px, 0.2);
+  }
+  band(0.6 * px, 0.6 * px, 0.45);
+  band(S - 0.6 * px, 0.6 * px, 0.45);
   const lw = 0.14 * px;
   g.fillStyle = "#c9a43a";
   for (const o of [-0.18, 0.18]) g.fillRect(mid + o * px - lw / 2, 0, lw, S);
   g.fillStyle = "rgba(230,232,236,0.75)";
   for (let t = 0; t < S; t += S / 2) for (const s of [-1, 1]) g.fillRect(mid + s * 4.5 * px - lw / 2, t + 2 * px, lw, 3 * px);
-  g.fillStyle = "rgba(248,250,255,0.8)";
-  for (let i = 0; i < 260; i++) {
-    const side = rand() < 0.5 ? 0 : 1;
-    const w = (0.4 + rand() * 1.1) * px, h = 4 + rand() * 30;
-    g.fillRect(side ? S - 0.35 * px - w : 0.35 * px, rand() * S, w * (0.4 + rand() * 0.6), h);
-  }
+  g.fillStyle = "rgba(0,0,0,0.18)";
+  for (let i = 0; i < 260; i++) g.fillRect(rand() * S, rand() * S, 1.5, 1.5);
   g.fillStyle = "#8a8d94";
   g.fillRect(0, 0, 0.35 * px, S);
   g.fillRect(S - 0.35 * px, 0, 0.35 * px, S);
-  g.fillStyle = "#18191c";
+  g.fillStyle = "rgba(0,0,0,0.35)";
+  g.fillRect(0.33 * px, 0, 2, S);
+  g.fillRect(S - 0.33 * px - 2, 0, 2, S);
   for (const [x, y] of [[0.3, 0.2], [0.68, 0.7]]) {
+    const r = 0.45 * px;
+    g.fillStyle = "#26272a";
     g.beginPath();
-    g.arc(x * S, y * S, 0.45 * px, 0, Math.PI * 2);
+    g.arc(x * S, y * S, r + 3, 0, Math.PI * 2);
     g.fill();
+    g.fillStyle = "#18191c";
+    g.beginPath();
+    g.arc(x * S, y * S, r, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = "rgba(90,90,96,0.6)";
+    g.lineWidth = 1.5;
+    for (let k = -3; k <= 3; k++) {
+      const h = Math.sqrt(Math.max(0, 1 - (k / 4) ** 2)) * r * 0.85;
+      g.beginPath();
+      g.moveTo(x * S + (k / 4) * r, y * S - h);
+      g.lineTo(x * S + (k / 4) * r, y * S + h);
+      g.stroke();
+    }
   }
   return tex(c, true, 16);
 }
@@ -709,9 +746,9 @@ export function crossTexture(roadW: number) {
   const S = 512;
   const px = S / roadW;
   const [c, g] = canvas(S);
-  asphalt(g, S, Math.random);
+  asphalt(g, S, Math.random, px);
   g.fillStyle = "rgba(235,238,242,0.85)";
-  for (let t = 1.2; t < roadW - 1.2; t += 1.1) {
+  for (let t = 3.8; t < roadW - 3.8; t += 1.1) {
     const a = t * px;
     for (const e of [0.4 * px, S - 3.4 * px]) {
       g.fillRect(a, e, 0.55 * px, 3 * px);
@@ -721,7 +758,7 @@ export function crossTexture(roadW: number) {
   return tex(c, false, 16);
 }
 
-/** Sidewalk and plaza slabs with snow, tiled in world space every 6 m. */
+/** Sidewalk and plaza slabs, tiled in world space every 6 m. Snow and stains come from the shader. */
 export function pavingTexture() {
   const S = 512;
   const px = S / 6;
@@ -729,11 +766,11 @@ export function pavingTexture() {
   const rand = Math.random;
   g.fillStyle = "#b9bcc3";
   g.fillRect(0, 0, S, S);
-  for (let i = 0; i < 6000; i++) {
-    g.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${rand() * 0.05})`;
-    g.fillRect(rand() * S, rand() * S, 2, 2);
+  for (let i = 0; i < 16000; i++) {
+    g.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${rand() * 0.06})`;
+    g.fillRect(rand() * S, rand() * S, 1.5, 1.5);
   }
-  g.strokeStyle = "rgba(60,62,70,0.4)";
+  g.strokeStyle = "rgba(60,62,70,0.45)";
   g.lineWidth = 1.5;
   for (let t = 0; t <= S; t += 1.5 * px) {
     g.beginPath();
@@ -743,15 +780,109 @@ export function pavingTexture() {
     g.lineTo(S, t);
     g.stroke();
   }
-  g.fillStyle = "rgba(245,248,255,0.8)";
-  for (let i = 0; i < 90; i++) {
+  g.strokeStyle = "rgba(50,52,58,0.35)";
+  g.lineWidth = 0.8;
+  for (let i = 0; i < 14; i++) {
+    let x = rand() * S, y = rand() * S;
     g.beginPath();
-    g.ellipse(rand() * S, rand() * S, 8 + rand() * 40, 5 + rand() * 18, rand() * 3, 0, Math.PI * 2);
-    g.fill();
+    g.moveTo(x, y);
+    for (let k = 0; k < 5; k++) g.lineTo((x += (rand() - 0.5) * 30), (y += (rand() - 0.5) * 30));
+    g.stroke();
   }
   return tex(c, true, 16);
 }
 
+/** Tileable value noise. R fine grain, G medium, B coarse, A medium with another seed. */
+export function noiseTexture() {
+  const S = 256;
+  let seed = 9187;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const layer = (cells: number) => {
+    const lat = new Float32Array(cells * cells);
+    for (let i = 0; i < lat.length; i++) lat[i] = rnd();
+    const out = new Float32Array(S * S);
+    for (let y = 0; y < S; y++) {
+      const fy = (y / S) * cells, iy = Math.floor(fy), ty = fy - iy, sy = ty * ty * (3 - 2 * ty);
+      const y0 = (iy % cells) * cells, y1 = ((iy + 1) % cells) * cells;
+      for (let x = 0; x < S; x++) {
+        const fx = (x / S) * cells, ix = Math.floor(fx), tx = fx - ix, sx = tx * tx * (3 - 2 * tx);
+        const x0 = ix % cells, x1 = (ix + 1) % cells;
+        const a = lat[y0 + x0] + (lat[y0 + x1] - lat[y0 + x0]) * sx;
+        const b = lat[y1 + x0] + (lat[y1 + x1] - lat[y1 + x0]) * sx;
+        out[y * S + x] = a + (b - a) * sy;
+      }
+    }
+    return out;
+  };
+  const mix = (parts: [Float32Array, number][]) => {
+    const out = new Float32Array(S * S);
+    for (const [l, w] of parts) for (let i = 0; i < out.length; i++) out[i] += l[i] * w;
+    let lo = Infinity, hi = -Infinity;
+    for (const v of out) {
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+    for (let i = 0; i < out.length; i++) out[i] = (out[i] - lo) / (hi - lo);
+    return out;
+  };
+  const ch = [
+    mix([[layer(32), 0.45], [layer(64), 0.3], [layer(128), 0.25]]),
+    mix([[layer(8), 0.6], [layer(16), 0.28], [layer(32), 0.12]]),
+    mix([[layer(2), 0.55], [layer(4), 0.3], [layer(8), 0.15]]),
+    mix([[layer(4), 0.6], [layer(8), 0.28], [layer(16), 0.12]]),
+  ];
+  const data = new Uint8Array(S * S * 4);
+  for (let i = 0; i < S * S; i++) for (let k = 0; k < 4; k++) data[i * 4 + k] = Math.round(ch[k][i] * 255);
+  const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 8;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Drops the CPU copy once the texture is on the GPU. A separate scope keeps big locals out of the closure. */
+export function freeOnUpload(t: THREE.DataTexture) {
+  t.onUpdate = () => {
+    (t.image as { data: Uint8Array | null }).data = null;
+  };
+}
+
+/** Street lamp light on the ground as one red channel over the lamp extent. pts: x, z, radius. */
+export function lampTexture(pts: number[]) {
+  const M = 1.6;
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (let i = 0; i < pts.length; i += 3) {
+    x0 = Math.min(x0, pts[i] - pts[i + 2]);
+    x1 = Math.max(x1, pts[i] + pts[i + 2]);
+    z0 = Math.min(z0, pts[i + 1] - pts[i + 2]);
+    z1 = Math.max(z1, pts[i + 1] + pts[i + 2]);
+  }
+  if (!pts.length) x0 = z0 = 0, x1 = z1 = 8;
+  const W = Math.ceil((x1 - x0) / M / 4) * 4 + 4, H = Math.ceil((z1 - z0) / M) + 2;
+  const acc = new Float32Array(W * H);
+  for (let i = 0; i < pts.length; i += 3) {
+    const cx = (pts[i] - x0) / M, cz = (pts[i + 1] - z0) / M, R = pts[i + 2] / M;
+    for (let y = Math.max(0, Math.floor(cz - R)); y <= Math.min(H - 1, Math.ceil(cz + R)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W - 1, Math.ceil(cx + R)); x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cz) / R;
+        if (d < 1) acc[y * W + x] += (1 - d * d) ** 2 * (0.55 + 0.45 / (1 + 30 * d * d));
+      }
+    }
+  }
+  const data = new Uint8Array(W * H);
+  for (let i = 0; i < data.length; i++) data[i] = Math.min(255, Math.round(acc[i] * 200));
+  const t = new THREE.DataTexture(data, W, H, THREE.RedFormat, THREE.UnsignedByteType);
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  t.unpackAlignment = 1;
+  t.needsUpdate = true;
+  freeOnUpload(t);
+  return { tex: t, rect: new THREE.Vector4(x0, z0, 1 / (W * M), 1 / (H * M)) };
+}
 
 export function parkTexture(r: R) {
   const S = 1024;

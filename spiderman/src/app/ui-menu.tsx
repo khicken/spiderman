@@ -24,9 +24,9 @@ const CONTROLS: { group: string; keys: [string[], string][] }[] = [
     group: "Traversal",
     keys: [
       [["Mouse"], "Look"],
-      [["W", "A", "S", "D"], "Move"],
+      [["W", "A", "S", "D"], "Move, sprint starts by itself"],
       [["LMB"], "Hold to swing"],
-      [["Shift"], "Sprint, or hold to swing in air"],
+      [["Shift"], "Hold to swing"],
       [["Space"], "Jump, web zip in air"],
       [["RMB"], "Web zip to aimed point"],
       [["E"], "Point launch, hold to perch"],
@@ -49,10 +49,34 @@ const CONTROLS: { group: string; keys: [string[], string][] }[] = [
     ],
   },
   {
+    group: "Gamepad",
+    keys: [
+      [["LS"], "Move"],
+      [["RS"], "Look"],
+      [["RT"], "Hold to swing"],
+      [["A"], "Jump, web zip in air"],
+      [["X"], "Punch, or swing"],
+      [["Y"], "Web strike, hold to yank"],
+      [["B"], "Dodge"],
+      [["LB"], "Web zip, web shooter"],
+      [["RB"], "Point launch, hold to perch"],
+      [["LT"], "Hold to dive"],
+      [["L3"], "Web wings"],
+      [["R3"], "Finisher"],
+      [["Up"], "Use gadget"],
+      [["Right"], "Next gadget"],
+      [["Down"], "Heal"],
+      [["Left"], "Scan"],
+      [["Start"], "Pause"],
+      [["View"], "Map"],
+    ],
+  },
+  {
     group: "Other",
     keys: [
       [["E"], "Greet a civilian"],
       [["V"], "Scan, ping a signal, take a photo"],
+      [["R"], "Hold to go back to the start"],
       [["P"], "Photo mode"],
       [["M"], "Mute"],
       [["Esc"], "Pause"],
@@ -248,6 +272,8 @@ export function SettingsPanel({ s, set, onClose, wallet }: { s: Settings; set: (
         <Toggle label="Mute" on={s.muted} onChange={(v) => set({ muted: v })} />
         <Slider label="Mouse sensitivity" value={s.sensitivity} min={0.5} max={2} step={0.05} text={`${s.sensitivity.toFixed(2)}x`} onChange={(v) => set({ sensitivity: v })} />
         <Toggle label="Invert Y" on={s.invertY} onChange={(v) => set({ invertY: v })} />
+        <Slider label="Field of view" value={s.fov} min={50} max={90} step={1} text={`${s.fov}°`} onChange={(v) => set({ fov: v })} />
+        <Toggle label="Hold to chain swings" on={s.holdChain} onChange={(v) => set({ holdChain: v })} />
       </div>
     </PanelFrame>
   );
@@ -258,9 +284,9 @@ export function ControlsPanel({ onClose }: { onClose: () => void }) {
     <PanelFrame title="Controls" onClose={onClose} wide>
       <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
         {CONTROLS.map((g) => (
-          <div key={g.group} className={g.group === "Other" ? "sm:col-span-2" : ""}>
+          <div key={g.group} className={g.group === "Other" || g.group === "Gamepad" ? "sm:col-span-2" : ""}>
             <Label>{g.group}</Label>
-            <div className={`grid gap-y-1.5 ${g.group === "Other" ? "sm:grid-cols-2 sm:gap-x-6" : ""}`}>
+            <div className={`grid gap-y-1.5 ${g.group === "Other" || g.group === "Gamepad" ? "sm:grid-cols-2 sm:gap-x-6" : ""}`}>
               {g.keys.map(([keys, action]) => (
                 <div key={keys.join() + action} className="flex items-center gap-3">
                   <span className="flex w-[7.5rem] shrink-0 gap-1">
