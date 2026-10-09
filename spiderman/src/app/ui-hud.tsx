@@ -2,7 +2,7 @@
 
 import { useRef, type ReactNode } from "react";
 import type { HudState, Marker } from "./contracts";
-import { BLOCKS, HALF, PERIOD } from "./city";
+import { BOUNDS, BRIDGES, CENTRAL_PARK, LAND, ROADS, ROAD_W, type Pt } from "./city-geo";
 import { Key } from "./ui-menu";
 
 export type Pop =
@@ -56,7 +56,32 @@ const relAngle = (h: HudState, t: Target) => {
 };
 const meters = (d: number) => (d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.round(d)} m`);
 
-const GRID = Array.from({ length: BLOCKS + 1 }, (_, i) => -HALF + i * PERIOD);
+const pathOf = (p: readonly Pt[]) => `M${p.map(([x, z]) => `${x.toFixed(1)} ${z.toFixed(1)}`).join("L")}Z`;
+const rectPath = (minX: number, minZ: number, maxX: number, maxZ: number) => `M${minX.toFixed(1)} ${minZ.toFixed(1)}H${maxX.toFixed(1)}V${maxZ.toFixed(1)}H${minX.toFixed(1)}Z`;
+export const GEO = {
+  land: LAND.map((l) => ({ borough: l.borough, d: pathOf(l.poly) })),
+  roads: ROADS.map((q) => (q.axis === 0 ? `M${q.min.toFixed(1)} ${q.line.toFixed(1)}H${q.max.toFixed(1)}` : `M${q.line.toFixed(1)} ${q.min.toFixed(1)}V${q.max.toFixed(1)}`)).join(""),
+  park: rectPath(CENTRAL_PARK.minX, CENTRAL_PARK.minZ, CENTRAL_PARK.maxX, CENTRAL_PARK.maxZ),
+  bridges: BRIDGES.map((b) => ({ name: b.name, d: `M${b.a[0].toFixed(1)} ${b.a[1].toFixed(1)}L${b.b[0].toFixed(1)} ${b.b[1].toFixed(1)}`, w: b.width })),
+  rectPath,
+};
+
+const MINI_PAD = 320;
+const MINI = (() => {
+  const x0 = BOUNDS.minX - MINI_PAD;
+  const z0 = BOUNDS.minZ - MINI_PAD;
+  const w = BOUNDS.maxX - BOUNDS.minX + MINI_PAD * 2;
+  const hh = BOUNDS.maxZ - BOUNDS.minZ + MINI_PAD * 2;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${z0} ${w} ${hh}" width="${Math.round(w * K)}" height="${Math.round(hh * K)}">` +
+    `<rect x="${x0}" y="${z0}" width="${w}" height="${hh}" fill="rgba(30,80,140,0.35)"/>` +
+    GEO.land.map((l) => `<path d="${l.d}" fill="rgba(255,255,255,0.07)"/>`).join("") +
+    `<path d="${GEO.park}" fill="rgba(70,150,90,0.35)"/>` +
+    `<path d="${GEO.roads}" stroke="rgba(255,255,255,0.2)" stroke-width="${ROAD_W}" fill="none"/>` +
+    GEO.bridges.map((b) => `<path d="${b.d}" stroke="rgba(255,255,255,0.3)" stroke-width="${b.w}" fill="none"/>`).join("") +
+    `</svg>`;
+  return { src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, x: x0 * K, z: z0 * K, w: Math.round(w * K), h: Math.round(hh * K) };
+})();
 const SHADOW = "drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]";
 
 // Heading without the jump at +-PI, so CSS transitions never spin the long way round.
@@ -79,19 +104,7 @@ function Minimap({ h }: { h: HudState }) {
     <div className="relative shrink-0 overflow-hidden rounded-full bg-black/60 ring-2 ring-white/25 backdrop-blur-sm" style={{ width: R * 2, height: R * 2 }}>
       <div className="absolute" style={{ left: R, top: R, transform: `rotate(${rot}rad)`, transition: ease }}>
         <div style={{ transform: `translate(${-h.x * K}px, ${-h.z * K}px)`, transition: ease }}>
-          <svg className="absolute overflow-visible" style={{ left: 0, top: 0 }} width={1} height={1}>
-            <g transform={`scale(${K})`}>
-              <rect x={-HALF} y={-HALF} width={HALF * 2} height={HALF * 2} fill="rgba(255,255,255,0.04)" />
-              <g stroke="rgba(255,255,255,0.17)" strokeWidth={22}>
-                {GRID.map((l) => (
-                  <g key={l}>
-                    <line x1={l} y1={-HALF} x2={l} y2={HALF} />
-                    <line x1={-HALF} y1={l} x2={HALF} y2={l} />
-                  </g>
-                ))}
-              </g>
-            </g>
-          </svg>
+          <img src={MINI.src} alt="" draggable={false} className="absolute max-w-none" style={{ left: MINI.x, top: MINI.z, width: MINI.w, height: MINI.h }} />
         </div>
       </div>
       <svg className="absolute inset-0" width={R * 2} height={R * 2}>
@@ -385,6 +398,39 @@ function NextUp({ m }: { m: Labeled & { d: number } }) {
   );
 }
 
+const AIM: Record<HudState["aim"], { color: string; op: number; gap: number }> = {
+  aim: { color: "#ffffff", op: 1, gap: 5 },
+  auto: { color: "#ffffff", op: 0.85, gap: 7 },
+  far: { color: "#9aa0a8", op: 0.8, gap: 8 },
+  blocked: { color: "#e2231a", op: 0.95, gap: 8 },
+  none: { color: "#ffffff", op: 0.3, gap: 8 },
+};
+
+function Crosshair({ h }: { h: HudState }) {
+  const st = AIM[h.aim] ?? AIM.none;
+  const g = st.gap;
+  const glow = h.aim === "aim" ? "drop-shadow(0 0 3px rgba(255,255,255,0.9)) drop-shadow(0 1px 2px #000)" : "drop-shadow(0 1px 2px rgba(0,0,0,0.9))";
+  const showDist = (h.aim === "aim" || h.aim === "auto" || h.aim === "far") && h.aimDist > 0;
+  return (
+    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ opacity: st.op, transition: "opacity 120ms" }}>
+      <svg viewBox="-30 -30 60 60" className="h-[60px] w-[60px] overflow-visible" style={{ filter: glow }}>
+        <g stroke={st.color} strokeWidth={h.aim === "aim" ? 2 : 1.6} strokeLinecap="round" fill="none" style={{ transition: "stroke 120ms" }}>
+          <path d={`M${-g} 0h${-5}M${g} 0h5M0 ${-g}v-5M0 ${g}v5`} />
+          {h.aim === "blocked" && <path d="M-4 -4L4 4M4 -4L-4 4" />}
+        </g>
+        {h.aim !== "blocked" && <circle r={h.aim === "aim" ? 1.8 : 1.3} fill={st.color} />}
+        {h.aim === "aim" && <path d="M-16 -9L-19 0L-16 9M16 -9L19 0L16 9" stroke="#e2231a" strokeWidth={2} fill="none" strokeLinejoin="round" />}
+        {h.aim === "auto" && <path d="M13 -13l4 -4M13 -17h4v4" stroke={st.color} strokeWidth={1.6} fill="none" strokeLinecap="round" />}
+      </svg>
+      {showDist && (
+        <div className={`absolute left-1/2 top-[50px] -translate-x-1/2 font-cond text-xs font-bold italic tabular-nums tracking-wider ${SHADOW}`} style={{ color: st.color }}>
+          {Math.round(h.aimDist)} m
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Hud({ h, pops, showVitals, tip }: { h: HudState; pops: Pop[]; showVitals: boolean; tip?: ReactNode }) {
   const lines = Math.min(Math.max((h.speed - 110) / 160, 0), 0.45);
   const toast = [...pops].reverse().find((p) => p.type === "toast");
@@ -434,7 +480,7 @@ export function Hud({ h, pops, showVitals, tip }: { h: HudState; pops: Pop[]; sh
       {h.sense && <Sense s={h.sense} />}
       {h.stealth && <Stealth s={h.stealth} />}
 
-      <div className="absolute left-1/2 top-1/2 -ml-[2px] -mt-[2px] h-1 w-1 rounded-full bg-white/80" />
+      <Crosshair h={h} />
 
       {toast?.type === "toast" && (
         <div key={toast.id} className="banner-in absolute left-1/2 top-[20%] w-max max-w-[calc(100%-32px)] -translate-x-1/2 text-center">

@@ -21,7 +21,7 @@ import {
   type Surf,
 } from "./hero-body";
 import { ANGLES, CH, JOINTS, NCH, SWIM_WRAP, poseTarget, type Ctx } from "./hero-poses";
-import { SUITS, paintSuit, suitMaterial, type Suit, type SuitName } from "./hero-suit";
+import { SUITS, paintSuitSteps, suitMaterial, type Suit, type SuitName } from "./hero-suit";
 
 export type { HeroPose, SuitName };
 export { SUITS };
@@ -29,6 +29,46 @@ export { SUITS };
 export type AnimExtra = { swingAngle?: number; speed?: number; lean?: number };
 
 const SUIT_CACHE = new Map<SuitName, Suit>();
+const PAINTING = new Map<SuitName, Generator<void, Suit, void>>();
+
+function paintStep(name: SuitName) {
+  let g = PAINTING.get(name);
+  if (!g) PAINTING.set(name, (g = paintSuitSteps(name)));
+  const r = g.next();
+  if (!r.done) return false;
+  SUIT_CACHE.set(name, r.value);
+  PAINTING.delete(name);
+  return true;
+}
+
+function suitNow(name: SuitName) {
+  while (!SUIT_CACHE.has(name)) paintStep(name);
+  return SUIT_CACHE.get(name)!;
+}
+
+let warming = false;
+
+/** Paints every suit in idle slices so a later suit change does not stall. */
+export function warmSuits() {
+  if (warming || typeof window === "undefined") return;
+  warming = true;
+  const queue = SUITS.map((s) => s.id);
+  const run = (left: () => number) => {
+    while (queue.length && left() > 1) {
+      if (SUIT_CACHE.has(queue[0]) || paintStep(queue[0])) queue.shift();
+    }
+    if (queue.length) next();
+  };
+  const next = () => {
+    if (typeof requestIdleCallback === "function") requestIdleCallback((d) => run(() => d.timeRemaining()));
+    else
+      setTimeout(() => {
+        const end = performance.now() + 4;
+        run(() => end - performance.now());
+      }, 30);
+  };
+  next();
+}
 
 // Spring per channel: [omega, zeta]. Low zeta on head and arms gives follow-through.
 function springs() {
@@ -177,16 +217,13 @@ export function createHero() {
   });
 
   const setSuit = (name: SuitName) => {
-    let suit = SUIT_CACHE.get(name);
-    if (!suit) {
-      suit = paintSuit(name);
-      SUIT_CACHE.set(name, suit);
-    }
+    const suit = suitNow(name);
     for (const key of Object.keys(mats) as PartKey[]) mats[key].apply(suit, key);
     wingMat.map = suit.wing;
     wingMat.needsUpdate = true;
   };
   setSuit("miles");
+  warmSuits();
 
   const { om, ze } = springs();
   const cur = new Float32Array(NCH);

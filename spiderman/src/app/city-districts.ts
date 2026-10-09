@@ -11,25 +11,6 @@ import { scaffold, sidewalkShed } from "./city-detail";
 
 const pick = <T,>(r: () => number, a: readonly T[]) => a[Math.floor(r() * a.length)];
 
-export type DistrictRect = { name: string; i0: number; i1: number; j0: number; j1: number };
-
-export const DISTRICT_RECTS: DistrictRect[] = [
-  { name: "Central Park", i0: 5, i1: 8, j0: 2, j1: 4 },
-  { name: "Harlem", i0: 0, i1: 13, j0: 0, j1: 1 },
-  { name: "Upper West Side", i0: 0, i1: 4, j0: 2, j1: 5 },
-  { name: "Upper East Side", i0: 9, i1: 13, j0: 2, j1: 5 },
-  { name: "Hell's Kitchen", i0: 0, i1: 4, j0: 6, j1: 9 },
-  { name: "Midtown", i0: 5, i1: 13, j0: 5, j1: 9 },
-  { name: "Greenwich Village", i0: 0, i1: 5, j0: 10, j1: 13 },
-  { name: "Chinatown", i0: 6, i1: 9, j0: 10, j1: 11 },
-  { name: "Lower East Side", i0: 10, i1: 13, j0: 10, j1: 11 },
-  { name: "Financial District", i0: 6, i1: 13, j0: 12, j1: 13 },
-];
-
-export function districtOf(i: number, j: number) {
-  return DISTRICT_RECTS.find((d) => i >= d.i0 && i <= d.i1 && j >= d.j0 && j <= d.j1)?.name ?? "";
-}
-
 function lots(b: Block, depth: number, minW: number, maxW: number, r: () => number) {
   const out: { x0: number; x1: number; z0: number; z1: number; front: number }[] = [];
   const run = (a0: number, a1: number, fn: (s: number, e: number) => void) => {
@@ -197,9 +178,9 @@ export function genFiDi(c: Ctx, b: Block, big: boolean) {
     c.landmarks.push({ name: "Downtown Tower", pos: new THREE.Vector3(cx, top, cz) });
     return;
   }
-  const nx = r() < 0.5 ? 2 : 3, nz = 2;
+  const nx = Math.max(1, Math.min(r() < 0.5 ? 2 : 3, Math.floor((b.x1 - b.x0) / 20))), nz = b.z1 - b.z0 >= 40 ? 2 : 1;
   const lw = (b.x1 - b.x0) / nx, ld = (b.z1 - b.z0) / nz;
-  const merge = nx === 2 && r() < 0.35;
+  const merge = nx === 2 && nz === 2 && r() < 0.35;
   for (let a = 0; a < nx; a++) {
     for (let q = 0; q < (merge ? 1 : nz); q++) {
       const x0 = b.x0 + a * lw + (a ? 0.3 : 0), x1 = b.x0 + (a + 1) * lw - (a < nx - 1 ? 0.3 : 0);
@@ -289,6 +270,58 @@ export function genLES(c: Ctx, b: Block) {
   if (half) {
     for (const [z0, z1] of [[b.z0, (b.z0 + b.z1) / 2 - 0.2], [(b.z0 + b.z1) / 2 + 0.2, b.z1]]) {
       tenement(c, b, (b.x0 + b.x1) / 2 + 0.3, b.x1, z0, z1, r() < 0.7 ? 8 + Math.floor(r() * 4) : 4 + Math.floor(r() * 3), pick(r, [STYLE.brick, STYLE.painted]));
+    }
+  }
+}
+
+export type Profile = { styles: readonly number[]; h: readonly [number, number]; corner: number; tower: number; towerStyles?: readonly number[] };
+
+const MASONRY_LOW = new Set([STYLE.brick, STYLE.painted, STYLE.tanbrick]);
+
+/** Any block size: lots along the long side, corner lots taller. */
+export function genLots(c: Ctx, b: Block, p: Profile) {
+  const r = c.r;
+  const W = b.x1 - b.x0, D = b.z1 - b.z0;
+  const alongX = W >= D;
+  const L = alongX ? W : D, S = alongX ? D : W;
+  const rows = S >= 40 ? 2 : 1;
+  for (let q = 0; q < rows; q++) {
+    const s0 = (S * q) / rows + (q ? 0.3 : 0), s1 = (S * (q + 1)) / rows - (q < rows - 1 ? 0.3 : 0);
+    let a = 0;
+    while (a < L - 0.1) {
+      let w = 14 + r() * 14;
+      if (L - (a + w) < 12) w = L - a;
+      const a0 = a + (a ? 0.3 : 0), a1 = a + w;
+      a += w;
+      const [x0, x1, z0, z1] = alongX ? [b.x0 + a0, b.x0 + a1, b.z0 + s0, b.z0 + s1] : [b.x0 + s0, b.x0 + s1, b.z0 + a0, b.z0 + a1];
+      const lw = x1 - x0, ld = z1 - z0;
+      if (lw < 4 || ld < 4) continue;
+      const corner = a0 < 0.5 || a1 > L - 0.5;
+      let h = p.h[0] + r() ** 1.5 * (p.h[1] - p.h[0]);
+      if (corner) h = Math.max(h, p.corner * (0.9 + r() * 0.3));
+      h = Math.min(h, 6 * Math.min(lw, ld) + 24);
+      const sf = streetFaces(b, x0, x1, z0, z1);
+      if (h > 70 && lw >= 16 && ld >= 16 && r() < p.tower) {
+        const podStyle = pick(r, [STYLE.limestone, STYLE.granite, STYLE.office]);
+        const ph = floors(podStyle, SHOP_H, 2 + Math.floor(r() * 3));
+        mass(c, x0, x1, z0, z1, 0, ph, { style: podStyle, shop: 2, vBase: SHOP_H });
+        roofKit(c, x0, x1, z0, z1, ph, "office", 0);
+        const i = 2 + r() * 2;
+        tower(c, x0 + i, x1 - i, z0 + i, z1 - i, ph, h, pick(r, p.towerStyles ?? p.styles));
+        continue;
+      }
+      let style = pick(r, p.styles);
+      if (style === STYLE.brownstone) style = STYLE.brick;
+      if (MASONRY_LOW.has(style) && h < 55) {
+        tenement(c, b, x0, x1, z0, z1, Math.max(2, Math.round((h - SHOP_H) / FACADES[style].ch)), style);
+        continue;
+      }
+      const top = floors(style, SHOP_H, Math.max(2, Math.round((h - SHOP_H) / FACADES[style].ch)));
+      const shop = FACADES[style].masonry ? (r() < 0.5 ? 0 : 1) : 2;
+      mass(c, x0, x1, z0, z1, 0, top, { style, shop, vBase: SHOP_H });
+      if (FACADES[style].masonry) cornice(c, x0, x1, z0, z1, top - 0.1, sf, 0x8f8572, 0.7, 1.1);
+      for (let f = 0; f < 4; f++) if (sf & (1 << f) && shop < 2) shopFront(c, face(f, x0, x1, z0, z1), face(f, x0, x1, z0, z1).len, false);
+      roofKit(c, x0, x1, z0, z1, top, FACADES[style].masonry && top < 70 ? "res" : "office", sf);
     }
   }
 }

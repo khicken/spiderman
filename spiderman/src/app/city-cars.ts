@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Bucket, UNIT, blinkify, mat, type Blink } from "./city-kit";
+import { BRIDGES, ROADS, crossingsOf, streetZ, type GeoRoad } from "./city-geo";
 import { SKY } from "./sky-state";
 
 type Kind = "body" | "fixed" | "light" | "bar";
@@ -134,163 +135,262 @@ export function bakeCar(b: Bucket, name: ModelName, x: number, z: number, ry: nu
 export type Road = { axis: 0 | 1; line: number; min: number; max: number };
 export const LANES = [2.4, 6.5] as const;
 export const PARK_LANE = 9.7;
-const CYCLE = 24;
+const CYCLE = 30;
+const STOP = 13.5;
+const PARTS = 4;
 
 /** Signal state for traffic on `axis` at intersection group g: 0 green, 1 yellow, 2 red. */
 export function signal(t: number, axis: number, g: number) {
-  const T = (t + g * 12) % CYCLE;
-  if (axis === 0) return T < 10 ? 0 : T < 12 ? 1 : 2;
-  return T < 12 ? 2 : T < 22 ? 0 : 1;
+  const T = (t + g * 15) % CYCLE;
+  if (axis === 0) return T < 4 ? 2 : T < 13 ? 0 : T < 15 ? 1 : 2;
+  return T < 19 ? 2 : T < 28 ? 0 : 1;
 }
 
-type Car = { model: number; slot: number; road: number; dir: number; lane: number; s: number; v: number; vmax: number; len: number; next: number; g: number };
-export type CarBox = { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number; vx: number; vz: number };
+/** Signal group (0 or 1) of the intersection at road lines x and z. */
+export const signalGroup = (x: number, z: number) => (Math.imul(Math.round(x), 73856093) ^ Math.imul(Math.round(z), 19349663)) & 1;
+
+type Ring = { ax: number; az: number; ux: number; uz: number; len: number; off: number; y: number; road: GeoRoad | null; s0: number; cross: Float64Array; groups: Uint8Array; loop: number };
+type Car = { model: number; slot: number; ring: number; u: number; v: number; vmax: number; len: number; next: number; g: number };
+export type CarBox = { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number; vx: number; vz: number };
 const SIZE: Record<ModelName, [number, number]> = { sedan: [1.9, 1.5], taxi: [1.9, 1.75], police: [1.9, 1.75], bus: [2.6, 3.2], truck: [2.5, 3.4] };
 
-export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: number) => number; lines: number; max: number; time: { value: number } }) {
-  const { r, roads, max } = o;
+function roadRings(rd: GeoRoad): Ring[] {
+  const cs = crossingsOf(rd);
+  let lo = rd.min + 3, hi = rd.max - 3;
+  if (cs.length && cs[0] - rd.min < 20) lo = Math.max(lo, cs[0] + STOP + 1);
+  if (cs.length && rd.max - cs[cs.length - 1] < 20) hi = Math.min(hi, cs[cs.length - 1] - STOP - 1);
+  const out: Ring[] = [];
+  for (const off of LANES) {
+    const tuck = off < 4 ? 6 : 0;
+    const L = hi - lo - 2 * (off + tuck);
+    if (L < 24) continue;
+    const s0 = lo + off + tuck;
+    const keep = cs.filter((c) => c > s0 - STOP + 2 && c < s0 + L + STOP - 2);
+    const ax = rd.axis === 0 ? s0 : rd.line, az = rd.axis === 0 ? rd.line : s0;
+    out.push({
+      ax, az, ux: rd.axis === 0 ? 1 : 0, uz: rd.axis === 0 ? 0 : 1, len: L, off, y: 0, road: rd, s0,
+      cross: Float64Array.from(keep), groups: Uint8Array.from(keep.map((c) => (rd.axis === 0 ? signalGroup(c, rd.line) : signalGroup(rd.line, c)))),
+      loop: 2 * L + 2 * Math.PI * off,
+    });
+  }
+  return out;
+}
+
+function bridgeRings(): Ring[] {
+  const out: Ring[] = [];
+  for (const br of BRIDGES) {
+    const [ax, az] = br.a, [bx, bz] = br.b;
+    const D = Math.hypot(bx - ax, bz - az);
+    const ux = (bx - ax) / D, uz = (bz - az) / D;
+    for (const off of LANES) {
+      const tuck = off < 4 ? 6 : 0;
+      const L = D - 16 - 2 * (off + tuck);
+      if (L < 24) continue;
+      const t = 8 + off + tuck;
+      out.push({ ax: ax + ux * t, az: az + uz * t, ux, uz, len: L, off, y: br.deckY, road: null, s0: 0, cross: new Float64Array(0), groups: new Uint8Array(0), loop: 2 * L + 2 * Math.PI * off });
+    }
+  }
+  return out;
+}
+
+const pose = { x: 0, z: 0, hx: 0, hz: 0, s: 0, dir: 0 };
+
+function place(R: Ring, u: number) {
+  const { ax, az, ux, uz, len: L, off } = R;
+  const rx = -uz, rz = ux;
+  const arc = Math.PI * off;
+  pose.dir = 0;
+  if (u < L) {
+    pose.x = ax + ux * u + rx * off;
+    pose.z = az + uz * u + rz * off;
+    pose.hx = ux;
+    pose.hz = uz;
+    pose.s = u;
+    pose.dir = 1;
+    return pose;
+  }
+  if (u >= L + arc && u < 2 * L + arc) {
+    const t = L - (u - L - arc);
+    pose.x = ax + ux * t - rx * off;
+    pose.z = az + uz * t - rz * off;
+    pose.hx = -ux;
+    pose.hz = -uz;
+    pose.s = t;
+    pose.dir = -1;
+    return pose;
+  }
+  const end = u < 2 * L ? L : 0;
+  const f = (u < 2 * L ? u - L : u - 2 * L - arc) / off;
+  const cx = ax + ux * end, cz = az + uz * end;
+  const k = end ? 1 : -1;
+  const c = Math.cos(f), sn = Math.sin(f);
+  pose.x = cx + k * (rx * off * c + ux * off * sn);
+  pose.z = cz + k * (rz * off * c + uz * off * sn);
+  pose.hx = k * (-rx * sn + ux * c);
+  pose.hz = k * (-rz * sn + uz * c);
+  pose.s = end;
+  return pose;
+}
+
+const BUSY = { z0: streetZ(59), z1: streetZ(14) };
+
+export function createTraffic(o: { r: () => number; max: number; time: { value: number } }) {
+  const { r, max } = o;
   const names: ModelName[] = ["sedan", "taxi", "police", "bus", "truck"];
   const weights = [0.42, 0.33, 0.07, 0.07, 0.11];
   const group = new THREE.Group();
   const counts = names.map(() => 0);
   const cars: Car[] = [];
-  const lineAt = o.lineAt;
-  const mid = (o.lines - 1) / 2;
-  const rw = roads.map((rd) => 1 + 2.5 * Math.exp(-(((rd.line - lineAt(mid)) / (lineAt(3) - lineAt(0))) ** 2)));
+  const rings = [...ROADS.flatMap(roadRings), ...bridgeRings()];
+  const rw = rings.map((R) => {
+    const mz = R.az + R.uz * (R.len / 2);
+    const busy = R.road && mz > BUSY.z0 && mz < BUSY.z1 ? 2.2 : 1;
+    return R.loop * busy * (R.road ? 1 : 1.6);
+  });
   const rsum = rw.reduce((a, b) => a + b, 0);
+  const used = rings.map(() => 0);
   for (let g = 0; g < max; g++) {
     let x = r();
     let m = 0;
     while (x > weights[m] && m < names.length - 1) x -= weights[m++];
-    let pickW = r() * rsum;
-    let road = 0;
-    while (road < roads.length - 1 && pickW > rw[road]) pickW -= rw[road++];
     const big = names[m] === "bus" || names[m] === "truck";
-    const rd = roads[road];
+    let ring = -1;
+    for (let tries = 0; tries < 20 && ring < 0; tries++) {
+      let pickW = r() * rsum;
+      let k = 0;
+      while (k < rings.length - 1 && pickW > rw[k]) pickW -= rw[k++];
+      if ((big && rings[k].off < 4) || used[k] + 1 > rings[k].loop / 16) continue;
+      ring = k;
+    }
+    if (ring < 0) continue;
+    used[ring]++;
     const vmax = big ? 8 + r() * 3 : 11 + r() * 6;
-    cars.push({ model: m, slot: counts[m]++, road, dir: r() < 0.5 ? 1 : -1, lane: big || r() < 0.4 ? 1 : 0, s: rd.min + r() * (rd.max - rd.min), v: vmax, vmax, len: MODELS[names[m]].len, next: -1, g });
+    cars.push({ model: m, slot: counts[m]++, ring, u: r() * rings[ring].loop, v: vmax, vmax, len: MODELS[names[m]].len, next: -1, g: cars.length });
   }
 
-  const rings = new Map<string, Car[]>();
+  const byRing = new Map<number, Car[]>();
   for (const c of cars) {
-    const k = `${c.road}|${c.dir}|${c.lane}`;
-    if (!rings.has(k)) rings.set(k, []);
-    rings.get(k)!.push(c);
+    if (!byRing.has(c.ring)) byRing.set(c.ring, []);
+    byRing.get(c.ring)!.push(c);
   }
-  for (const ring of rings.values()) {
-    ring.sort((a, b) => (a.s - b.s) * a.dir);
-    const rd = roads[ring[0].road];
-    for (let i = 1; i < ring.length; i++) {
-      const a = ring[i - 1];
-      const b = ring[i];
-      const need = (a.len + b.len) / 2 + 3;
-      if ((b.s - a.s) * b.dir < need) b.s = a.s + need * b.dir;
-      if (b.s > rd.max) b.s -= rd.max - rd.min;
-      if (b.s < rd.min) b.s += rd.max - rd.min;
+  for (const list of byRing.values()) {
+    list.sort((a, b) => a.u - b.u);
+    const loop = rings[list[0].ring].loop;
+    for (let i = 1; i < list.length; i++) {
+      const need = (list[i - 1].len + list[i].len) / 2 + 3;
+      if (list[i].u - list[i - 1].u < need) list[i].u = list[i - 1].u + need;
     }
-    ring.forEach((c, i) => (c.next = cars.indexOf(ring[(i + 1) % ring.length])));
+    for (const c of list) c.u %= loop;
+    list.forEach((c, i) => (c.next = cars.indexOf(list[(i + 1) % list.length])));
   }
 
   const meshes = names.map((n, m) => {
     const geos = modelGeos(n);
-    const body = new THREE.InstancedMesh(geos.body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.55 }), counts[m]);
+    const body = new THREE.InstancedMesh(geos.body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.55 }), Math.max(1, counts[m]));
     body.castShadow = true;
     body.receiveShadow = true;
     const cols = MODELS[n].colors;
     for (let i = 0; i < counts[m]; i++) body.setColorAt(i, tcol.setHex(cols[Math.floor(r() * cols.length)]));
     group.add(body);
-    const light = geos.light ? new THREE.InstancedMesh(geos.light, Object.assign(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), { color: SKY.headlight }), counts[m]) : null;
+    const light = geos.light ? new THREE.InstancedMesh(geos.light, Object.assign(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), { color: SKY.headlight }), Math.max(1, counts[m])) : null;
     if (light) group.add(light);
-    const bar = geos.bar ? new THREE.InstancedMesh(geos.bar, blinkify(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), o.time), counts[m]) : null;
+    const bar = geos.bar ? new THREE.InstancedMesh(geos.bar, blinkify(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), o.time), Math.max(1, counts[m])) : null;
     if (bar) group.add(bar);
     const ims: THREE.InstancedMesh[] = [];
     for (const x of [body, light, bar]) if (x) ims.push(x);
-    for (const im of ims) im.frustumCulled = false;
+    for (const im of ims) {
+      im.frustumCulled = false;
+      im.count = counts[m];
+    }
     return { ims, ordered: cars.filter((c) => c.model === m).map((c) => c.g) };
   });
 
-  let active = max;
-  const P = lineAt(1) - lineAt(0);
-  const boxes: CarBox[] = cars.map(() => ({ minX: 0, maxX: 0, minZ: 0, maxZ: 0, maxY: 0, vx: 0, vz: 0 }));
-  const obstacle = { x: 0, z: 0, on: false };
+  let active = cars.length;
+  const boxes: CarBox[] = Array.from({ length: cars.length * PARTS }, () => ({ minX: 0, maxX: 0, minZ: 0, maxZ: 0, minY: 0, maxY: 0, vx: 0, vz: 0 }));
+  const parts = new Uint8Array(cars.length);
+  const obstacle = { x: 0, z: 0, y: 0, on: false };
+
+  const nextCross = (R: Ring, s: number, dir: number) => {
+    const c = R.cross;
+    if (dir > 0) {
+      for (let k = 0; k < c.length; k++) if (c[k] - STOP - s > -0.5) return k;
+    } else for (let k = c.length - 1; k >= 0; k--) if (s - (c[k] + STOP) > -0.5) return k;
+    return -1;
+  };
 
   const update = (dt: number, t: number) => {
     dt = Math.min(dt, 0.1);
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
       if (c.g >= active) continue;
-      const rd = roads[c.road];
-      const span = rd.max - rd.min;
+      const R = rings[c.ring];
       let target = c.vmax;
       let j = c.next;
       while (j !== i && cars[j].g >= active) j = cars[j].next;
       if (j !== i) {
         const L = cars[j];
-        let gap = (L.s - c.s) * c.dir;
-        if (gap < 0) gap += span;
+        let gap = L.u - c.u;
+        if (gap < 0) gap += R.loop;
         const free = gap - (c.len + L.len) / 2 - 2.5;
         target = Math.min(target, Math.sqrt(Math.max(0, free) * 12));
       }
-      const pos = (c.s - lineAt(0)) / P;
-      const m = c.dir > 0 ? Math.ceil(pos + 13.5 / P) : Math.floor(pos - 13.5 / P);
-      if (m >= 0 && m < o.lines) {
-        const stop = lineAt(m) - c.dir * 13.5;
-        const d = (stop - c.s) * c.dir;
-        const lineIdx = Math.round((rd.line - lineAt(0)) / P);
-        const st = signal(t, rd.axis, (m + lineIdx) & 1);
-        if (d > -0.5 && d < 40 && st !== 0 && !(st === 1 && d < 5 && c.v > 6)) target = Math.min(target, Math.sqrt(Math.max(0, d - 0.3) * 10));
+      let p = place(R, c.u);
+      if (p.dir !== 0 && R.road) {
+        const s = R.s0 + p.s;
+        const k = nextCross(R, s, p.dir);
+        if (k >= 0) {
+          const d = (R.cross[k] - p.dir * STOP - s) * p.dir;
+          const st = signal(t, R.road.axis, R.groups[k]);
+          if (d > -0.5 && d < 40 && st !== 0 && !(st === 1 && d < 3 && c.v > 8)) target = Math.min(target, Math.sqrt(Math.max(0, d - 0.3) * 10));
+        }
       }
       let soft = Infinity;
-      if (obstacle.on) {
-        const lat = rd.axis === 0 ? obstacle.z - (rd.line + c.dir * LANES[c.lane]) : obstacle.x - (rd.line - c.dir * LANES[c.lane]);
-        const ahead = ((rd.axis === 0 ? obstacle.x : obstacle.z) - c.s) * c.dir - c.len / 2;
+      if (obstacle.on && Math.abs(obstacle.y - R.y) < 3) {
+        const rx = obstacle.x - p.x, rz = obstacle.z - p.z;
+        const ahead = rx * p.hx + rz * p.hz - c.len / 2;
+        const lat = -rx * p.hz + rz * p.hx;
         if (Math.abs(lat) < 1.8 && ahead > -1 && ahead < 14) soft = Math.sqrt(Math.max(0, ahead - 1.5) * 8);
       }
+      if (p.dir === 0) target = Math.min(target, 3 + R.off);
       c.v = target > c.v ? Math.min(target, c.v + 5 * dt) : target;
       if (soft < c.v) c.v = Math.max(soft, c.v - 12 * dt);
-      c.s += c.v * c.dir * dt;
-      if (c.s > rd.max) c.s -= span;
-      if (c.s < rd.min) c.s += span;
+      c.u += c.v * dt;
+      if (c.u >= R.loop) c.u -= R.loop;
+      p = place(R, c.u);
       const mesh = meshes[c.model];
-      const off = LANES[c.lane];
-      let x: number, z: number, cs: number, sn: number;
-      if (rd.axis === 0) {
-        x = c.s;
-        z = rd.line + c.dir * off;
-        cs = 0;
-        sn = c.dir;
-      } else {
-        x = rd.line - c.dir * off;
-        z = c.s;
-        cs = c.dir;
-        sn = 0;
-      }
       const [w, hgt] = SIZE[names[c.model]];
-      const bx = boxes[i];
-      const hx = rd.axis === 0 ? c.len / 2 : w / 2;
-      const hz = rd.axis === 0 ? w / 2 : c.len / 2;
-      bx.minX = x - hx;
-      bx.maxX = x + hx;
-      bx.minZ = z - hz;
-      bx.maxZ = z + hz;
-      bx.maxY = hgt;
-      bx.vx = rd.axis === 0 ? c.v * c.dir : 0;
-      bx.vz = rd.axis === 0 ? 0 : c.v * c.dir;
+      const n = Math.abs(p.hx) > 0.03 && Math.abs(p.hz) > 0.03 ? PARTS : 1;
+      const seg = c.len / n;
+      const ex = (Math.abs(p.hx) * seg + Math.abs(p.hz) * w) / 2;
+      const ez = (Math.abs(p.hz) * seg + Math.abs(p.hx) * w) / 2;
+      parts[i] = n;
+      for (let q = 0; q < n; q++) {
+        const bx = boxes[i * PARTS + q];
+        const o = (q + 0.5) * seg - c.len / 2;
+        const x = p.x + p.hx * o, z = p.z + p.hz * o;
+        bx.minX = x - ex;
+        bx.maxX = x + ex;
+        bx.minZ = z - ez;
+        bx.maxZ = z + ez;
+        bx.minY = R.y;
+        bx.maxY = R.y + hgt;
+        bx.vx = p.hx * c.v;
+        bx.vz = p.hz * c.v;
+      }
       for (let q = 0; q < mesh.ims.length; q++) {
-        const im = mesh.ims[q];
-        const e = im.instanceMatrix.array as Float32Array;
+        const e = mesh.ims[q].instanceMatrix.array as Float32Array;
         const k = c.slot * 16;
-        e[k] = cs; e[k + 1] = 0; e[k + 2] = -sn; e[k + 3] = 0;
+        e[k] = p.hz; e[k + 1] = 0; e[k + 2] = -p.hx; e[k + 3] = 0;
         e[k + 4] = 0; e[k + 5] = 1; e[k + 6] = 0; e[k + 7] = 0;
-        e[k + 8] = sn; e[k + 9] = 0; e[k + 10] = cs; e[k + 11] = 0;
-        e[k + 12] = x; e[k + 13] = 0; e[k + 14] = z; e[k + 15] = 1;
+        e[k + 8] = p.hx; e[k + 9] = 0; e[k + 10] = p.hz; e[k + 11] = 0;
+        e[k + 12] = p.x; e[k + 13] = R.y; e[k + 14] = p.z; e[k + 15] = 1;
       }
     }
     for (let m = 0; m < meshes.length; m++) for (let q = 0; q < meshes[m].ims.length; q++) meshes[m].ims[q].instanceMatrix.needsUpdate = true;
   };
 
   const setCount = (n: number) => {
-    active = Math.max(0, Math.min(n, max));
+    active = Math.max(0, Math.min(n, cars.length));
     for (const mesh of meshes) {
       let k = 0;
       while (k < mesh.ordered.length && mesh.ordered[k] < active) k++;
@@ -298,20 +398,25 @@ export function createTraffic(o: { r: () => number; roads: Road[]; lineAt: (k: n
     }
   };
 
-  const near = (x: number, z: number, r: number, out: CarBox[]) => {
+  /** With y, returns cars that overlap y in height. Without y, returns street cars only. */
+  const near = (x: number, z: number, r: number, out: CarBox[], y?: number) => {
     out.length = 0;
     for (let i = 0; i < cars.length; i++) {
       if (cars[i].g >= active) continue;
-      const b = boxes[i];
-      if (b.maxX > x - r && b.minX < x + r && b.maxZ > z - r && b.minZ < z + r) out.push(b);
+      for (let q = 0; q < parts[i]; q++) {
+        const b = boxes[i * PARTS + q];
+        if (y === undefined ? b.minY > 0 : y < b.minY - r || y > b.maxY + r) continue;
+        if (b.maxX > x - r && b.minX < x + r && b.maxZ > z - r && b.minZ < z + r) out.push(b);
+      }
     }
     return out;
   };
-  const setObstacle = (x: number, z: number, on: boolean) => {
+  const setObstacle = (x: number, z: number, on: boolean, y = 0) => {
     obstacle.x = x;
     obstacle.z = z;
+    obstacle.y = y;
     obstacle.on = on;
   };
 
-  return { group, update, setCount, near, setObstacle };
+  return { group, update, setCount, near, setObstacle, rings: rings.length, cars: cars.length };
 }

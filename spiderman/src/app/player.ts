@@ -2,21 +2,39 @@ import * as THREE from "three";
 import type { Box, City } from "./city";
 import type { CarBox } from "./city-cars";
 import type { Hero } from "./hero";
-import type { GameEvent, HeroPose, Input, PlayerApi, PlayerMode, Sfx } from "./contracts";
+import { createWebLine } from "./player-web";
+import type { AimKind, AimState, GameEvent, HeroPose, Input, PlayerApi, PlayerMode, Sfx } from "./contracts";
 
 export const R = 0.95;
+const STEP = 1 / 120;
+const MAX_STEPS = 30;
 const G = 24;
-const G_SWING = 16;
+const G_SWING = 30;
+const AIR_DRAG = G / (55 * 55);
+const DIVE_DRAG = (G * 1.9) / (70 * 70);
+const AIR_CONTROL = 14;
+const SOFT_SPEED = 35;
 const RUN = 11;
 const SPRINT = 20;
 const JUMP = 11;
 const ZIP = 70;
 const LAUNCH = 50;
 const MAX_SPEED = 75;
-const SWING_MIN = 18;
-const SWING_MAX = 45;
-const ROPE_MIN = 12;
-const ROPE_MAX = 35;
+const SWING_PUSH = 6;
+const SOFT_DRAG = 8;
+const AIR_SOFT = 2.5;
+const WALL_GAP = 4;
+const ROPE_MAX = 40;
+const REEL = 1.5;
+const WEB_TRAVEL = 0.08;
+const AIM_RANGE = 60;
+const AIM_UP = 4;
+const DASH_RANGE = 40;
+const SWING_RETRY = 0.15;
+const COYOTE = 0.1;
+const WALL_LET_GO = 0.15;
+const WALL_IDLE = 1.5;
+const WALL_ENTRY = 16;
 const DASH_CD = 0.8;
 const PROMPT_RANGE = 30;
 const PERCH_HOLD = 0.28;
@@ -55,9 +73,24 @@ export function rayBox(o: THREE.Vector3, d: THREE.Vector3, b: Box, n?: THREE.Vec
 }
 
 const _n = new THREE.Vector3();
+const _n2 = new THREE.Vector3();
+function castList(list: readonly Box[], o: THREE.Vector3, d: THREE.Vector3, maxT: number, n?: THREE.Vector3) {
+  let best = -1;
+  for (const b of list) {
+    const t = rayBox(o, d, b, _n2);
+    if (t >= 0 && t <= maxT && (best < 0 || t < best)) {
+      best = t;
+      n?.copy(_n2);
+    }
+  }
+  return best;
+}
+
+const rayBuf: Box[] = [];
+const ptBuf: Box[] = [];
 export function raycast(city: City, o: THREE.Vector3, d: THREE.Vector3, maxT: number, n?: THREE.Vector3) {
   let best = -1;
-  for (const b of city.near(o.x + (d.x * maxT) / 2, o.z + (d.z * maxT) / 2, maxT / 2 + 2)) {
+  for (const b of city.near(o.x + (d.x * maxT) / 2, o.z + (d.z * maxT) / 2, maxT / 2 + 2, rayBuf)) {
     const t = rayBox(o, d, b, _n);
     if (t >= 0 && t <= maxT && (best < 0 || t < best)) {
       best = t;
@@ -68,20 +101,20 @@ export function raycast(city: City, o: THREE.Vector3, d: THREE.Vector3, maxT: nu
 }
 
 export function insideAny(city: City, x: number, y: number, z: number, pad = 0) {
-  for (const b of city.near(x, z, 2)) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad && y < b.maxY + pad && y > (b.minY ?? -Infinity) - pad) return true;
+  for (const b of city.near(x, z, 2, ptBuf)) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad && y < b.maxY + pad && y > (b.minY ?? -Infinity) - pad) return true;
   return false;
 }
 
 export function groundAt(city: City, x: number, z: number, y: number) {
   let g = 0;
-  for (const b of city.near(x, z, 2)) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && b.maxY <= y + 0.5 && b.maxY > g) g = b.maxY;
+  for (const b of city.near(x, z, 2, ptBuf)) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && b.maxY <= y + 0.5 && b.maxY > g) g = b.maxY;
   return g;
 }
 
 // Debug assert: an anchor must lie on a collider face.
 function onCollider(city: City, c: THREE.Vector3) {
   const e = 0.05;
-  for (const b of city.near(c.x, c.z, 2)) {
+  for (const b of city.near(c.x, c.z, 2, ptBuf)) {
     if (c.y > b.maxY + e || c.y < (b.minY ?? 0) - e) continue;
     const inX = c.x >= b.minX - e && c.x <= b.maxX + e;
     const inZ = c.z >= b.minZ - e && c.z <= b.maxZ + e;
@@ -104,12 +137,26 @@ export type PlayerHooks = {
 };
 const ZIP_RANGE = 60;
 
-type Candidate = { p: THREE.Vector3; n: THREE.Vector3; side: number; score: number };
+type Candidate = { p: THREE.Vector3; n: THREE.Vector3; side: number; score: number; done: boolean };
 const POOL = 400;
+const AHEAD_K = [0.6, 1, 1.4];
+const SIM_DT = 1 / 30;
+const SIM_T = 1;
+const SIM_PAD = 0.6;
+const AUTO_EVERY = 3;
+const FAR_RANGE = 150;
+const GLANCE_KEEP = 0.7;
+const ROLL_TIME = 0.5;
+const TOP_SKIN = 0.35;
+const UNDER_MAX = 0.5;
+const XAXIS = new THREE.Vector3(1, 0, 0);
 const DEV = process.env.NODE_ENV !== "production";
 
 export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: THREE.Vector3, spawnDir: THREE.Vector3, hooks: PlayerHooks) {
   const p = spawn.clone();
+  const pPrev = spawn.clone();
+  const rp = spawn.clone();
+  let acc = 0;
   const v = new THREE.Vector3();
   const facing = new THREE.Vector3(0, 0, -1);
   let mode: PlayerMode = "ground";
@@ -123,29 +170,51 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   // Swing state. The anchor is locked from attach to release.
   const anchor = new THREE.Vector3();
   const anchorN = new THREE.Vector3();
-  // Physics pivot: the anchor moved toward the travel plane, so the arc runs along the street.
-  const pivot = new THREE.Vector3();
   let rope = 0;
   let ropeGoal = 0;
-  let swingCap = SWING_MAX;
+  let ropeLive = false;
+  let webT = 0;
   let swingT = 0;
   let lastSide = 0;
   let sinceRelease = 9;
-  let retryT = 0;
+  let diveCheckT = 0;
+  let swingRetry = 0;
+  let retryFrom: PlayerMode = "air";
+  let coyoteT = 0;
   let swingFloor = 0;
   let diveAssist = false;
   let dove = false;
   let webHand: "L" | "R" = "R";
   let webGrow = 0;
 
+  const aim: AimState = { kind: "none", dist: 0, point: new THREE.Vector3() };
+  const aimN = new THREE.Vector3();
+  const pickP = new THREE.Vector3();
+  const missP = new THREE.Vector3();
+  let pickOk = false;
+  let aimHand: "L" | "R" = "R";
+  let aimSide = 1;
+  const aimList: Box[] = [];
+  const scanBuf: Box[] = [];
+  const camRight = new THREE.Vector3();
+  const ringUp = new THREE.Vector3();
+  const rayO = new THREE.Vector3();
+  const rayD = new THREE.Vector3();
+  const eye = new THREE.Vector3();
+  const hitP = new THREE.Vector3();
+  const hitN = new THREE.Vector3();
+
   const wallN = new THREE.Vector3();
+  const preV = new THREE.Vector3();
   let wallBox: Box | null = null;
   let wallContact = false;
+  let cornerHit = false;
+  const cornerHitN = new THREE.Vector3();
   let wallMomentum = 0;
+  let wallAwayT = 0;
+  let wallIdleT = 0;
   let cornerBox: Box | null = null;
   let cornerT = 0;
-  const vPre = new THREE.Vector3();
-  const nPre = new THREE.Vector3();
 
   const zipTarget = new THREE.Vector3();
   const zipDir = new THREE.Vector3();
@@ -175,13 +244,12 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let trick: { kind: Trick; t: number } | null = null;
   let kickT = 1;
   let landT = 1;
+  let rollT = 1;
   let boostT = 0;
   let vaultT = 0;
   let phase = 0;
 
   const wingDir = new THREE.Vector3();
-  let wingSpeed = 0;
-  let wingVy = 0;
 
   let actPose: HeroPose | null = null;
   let actProgress = 0;
@@ -190,22 +258,20 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const events: GameEvent[] = [];
   const prompts: { key: string; label: string }[] = [];
-  const pool: Candidate[] = Array.from({ length: POOL }, () => ({ p: new THREE.Vector3(), n: new THREE.Vector3(), side: 0, score: 0 }));
+  const pool: Candidate[] = Array.from({ length: POOL }, () => ({ p: new THREE.Vector3(), n: new THREE.Vector3(), side: 0, score: 0, done: false }));
   const cands: Candidate[] = [];
   const tmp = new THREE.Vector3();
   const tmp2 = new THREE.Vector3();
   const heading = new THREE.Vector3();
   const right = new THREE.Vector3();
   const wish = new THREE.Vector3();
+  const wishIn = wish;
 
   const sfx = (name: Sfx, volume?: number) => events.push({ type: "sfx", name, volume });
   const shake = (strength: number) => events.push({ type: "shake", strength });
 
-  const webMat = new THREE.MeshBasicMaterial({ color: "#f4f6ff" });
-  const web = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 1, 5).translate(0, 0.5, 0), webMat);
-  web.visible = false;
-  const splat = new THREE.Mesh(new THREE.CircleGeometry(0.45, 10), new THREE.MeshBasicMaterial({ color: "#eef2ff", side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
-  splat.visible = false;
+  const webLine = createWebLine(scene);
+  const ZERO = new THREE.Vector3();
   const marker = new THREE.Mesh(
     new THREE.OctahedronGeometry(0.32),
     new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.2, 2.2), toneMapped: false, depthTest: false, transparent: true }),
@@ -229,7 +295,69 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }),
   );
   blob.renderOrder = 1;
-  scene.add(web, splat, marker, blob);
+  scene.add(marker, blob);
+
+  const simP = new THREE.Vector3();
+  const simV = new THREE.Vector3();
+  const simD = new THREE.Vector3();
+  const simN = new THREE.Vector3();
+  const simList: Box[] = [];
+  // Predicts the first part of a swing on c. Returns the time of the first side hit (normal in simN), or -1.
+  const simSwing = (c: Candidate) => {
+    const a = c.p;
+    simP.copy(p);
+    simV.copy(v);
+    const dist = p.distanceTo(a);
+    const floor = groundAt(city, a.x + c.n.x * 1.5, a.z + c.n.z * 1.5, a.y);
+    const goal = Math.max(4, Math.min(dist - REEL, ROPE_MAX, a.y - floor - 5));
+    let rope = dist;
+    for (let t = SIM_DT; t <= SIM_T; t += SIM_DT) {
+      const live = t > WEB_TRAVEL;
+      simV.y -= (live ? G_SWING : G) * SIM_DT;
+      if (live && rope > goal) rope = Math.max(goal, rope - Math.min(45, 10 + 4 * (rope - goal)) * SIM_DT);
+      if (live && (c.n.x || c.n.z)) {
+        const out = (simP.x - a.x) * c.n.x + (simP.z - a.z) * c.n.z;
+        const vn = simV.x * c.n.x + simV.z * c.n.z;
+        const want = (WALL_GAP - out) * 2;
+        if (vn < want) {
+          const s0 = simV.length();
+          const k = (want - vn) * Math.min(1, 10 * SIM_DT);
+          simV.x += c.n.x * k;
+          simV.z += c.n.z * k;
+          simV.setLength(s0);
+        }
+      }
+      simP.addScaledVector(simV, SIM_DT);
+      if (live) {
+        simD.copy(simP).sub(a);
+        const len = simD.length();
+        if (len > rope) {
+          simD.divideScalar(len);
+          simP.copy(a).addScaledVector(simD, rope);
+          const vr = simV.dot(simD);
+          if (vr > 0) {
+            const s0 = simV.length();
+            simV.addScaledVector(simD, -vr);
+            const ts = simV.length();
+            if (ts > 0.5) simV.multiplyScalar(s0 / ts);
+          }
+        }
+      }
+      for (const b of simList) {
+        const x = simP.x;
+        const z = simP.z;
+        if (x <= b.minX - SIM_PAD || x >= b.maxX + SIM_PAD || z <= b.minZ - SIM_PAD || z >= b.maxZ + SIM_PAD) continue;
+        if (simP.y >= b.maxY + SIM_PAD || simP.y <= (b.minY ?? -Infinity) - SIM_PAD) continue;
+        if (simP.y > b.maxY - 0.3) return -1;
+        const ex = Math.min(x - b.minX, b.maxX - x);
+        const ez = Math.min(z - b.minZ, b.maxZ - z);
+        if (ex < ez) simN.set(x - b.minX < b.maxX - x ? -1 : 1, 0, 0);
+        else simN.set(0, 0, z - b.minZ < b.maxZ - z ? -1 : 1);
+        return t;
+      }
+    }
+    return -1;
+  };
 
   const findAnchor = (look: THREE.Vector3) => {
     const speed = v.length();
@@ -240,33 +368,37 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     heading.normalize();
     right.set(-heading.z, 0, heading.x);
     const idealAhead = THREE.MathUtils.clamp(12 + speed * 0.35, 12, 26);
-    const idealUp = THREE.MathUtils.clamp(13 + speed * 0.15, 12, 22);
+    const low = Math.max(0, 16 - (p.y - groundAt(city, p.x, p.z, p.y)));
+    const idealUp = THREE.MathUtils.clamp(13 + speed * 0.15 + low * 0.5, 12, 22);
     const minAhead = speed < 8 ? 3 : 8;
     cands.length = 0;
-    const consider = (x: number, y: number, z: number, nx: number, nz: number) => {
+    const consider = (x: number, y: number, z: number, nx: number, nz: number, corner: boolean) => {
       if (cands.length >= POOL) return;
       const dx = x - p.x;
       const dy = y - p.y;
       const dz = z - p.z;
       const ahead = dx * heading.x + dz * heading.z;
       const side = dx * right.x + dz * right.z;
-      if (ahead < minAhead || ahead > 44 || dy < 4 || Math.abs(side) > 30) return;
-      if (dx * dx + dy * dy + dz * dz > 60 * 60) return;
+      if (ahead < minAhead || ahead > 44 || dy < AIM_UP || Math.abs(side) > 30) return;
+      if (dx * dx + dy * dy + dz * dz > AIM_RANGE * AIM_RANGE) return;
+      const as = Math.abs(side);
       const fwd = Math.max(0, 1 - Math.abs(ahead - idealAhead) / 22);
       const alt = lastSide === 0 ? 0.7 : Math.sign(side) === -lastSide ? 1 : 0.35;
       const along = nx || nz ? 0.4 + 0.6 * (1 - Math.abs(nx * heading.x + nz * heading.z)) : 0.7;
-      const sidePref = alt * along * (Math.abs(side) < 3 ? 0.4 : 1);
-      const fit = Math.max(0, 1 - Math.abs(dy - idealUp) / idealUp);
+      const wide = as > 16 ? Math.max(0, 1 - (as - 16) / 14) : 1;
+      const sidePref = alt * along * wide * (as < 3 ? 0.4 : 1) * (corner ? 0.8 : 1);
+      const fit = dy < 10 ? 0.15 + (0.6 * (dy - AIM_UP)) / (10 - AIM_UP) : dy <= 22 ? 1 : Math.max(0, 1 - (dy - 22) / 20);
       const c = pool[cands.length];
       c.p.set(x, y, z);
       c.n.set(nx, 0, nz);
       c.side = side;
-      c.score = fwd * 0.5 + sidePref * 0.3 + fit * 0.2;
+      c.score = fwd * 0.4 + sidePref * 0.25 + fit * 0.35;
+      c.done = false;
       cands.push(c);
     };
-    for (const b of city.near(p.x, p.z, 60)) {
-      if (b.maxY < p.y + 4) continue;
-      const lo = Math.max(b.maxY * 0.6, p.y + 4, b.minY ?? 0);
+    for (const b of city.near(p.x, p.z, AIM_RANGE, scanBuf)) {
+      if (b.maxY < p.y + AIM_UP) continue;
+      const lo = Math.max(b.maxY * 0.6, p.y + AIM_UP, b.minY ?? 0);
       const hi = b.maxY - 0.2;
       if (lo > hi) continue;
       const y = THREE.MathUtils.clamp(p.y + idealUp, lo, hi);
@@ -280,91 +412,239 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         const a0 = (xFace ? b.minZ : b.minX) + 0.5;
         const a1 = (xFace ? b.maxZ : b.maxX) - 0.5;
         if (a1 <= a0) continue;
-        for (const k of [0.6, 1, 1.4]) {
-          const ix = p.x + heading.x * idealAhead * k;
-          const iz = p.z + heading.z * idealAhead * k;
-          const along = THREE.MathUtils.clamp(xFace ? iz : ix, a0, a1);
-          if (xFace) consider(fixed, y, along, nx, nz);
-          else consider(along, y, fixed, nx, nz);
+        let last = NaN;
+        for (let i = 0; i < AHEAD_K.length; i++) {
+          const k = AHEAD_K[i];
+          const raw = xFace ? p.z + heading.z * idealAhead * k : p.x + heading.x * idealAhead * k;
+          const along = THREE.MathUtils.clamp(raw, a0, a1);
+          if (Math.abs(along - last) < 1) continue;
+          last = along;
+          if (xFace) consider(fixed, y, along, nx, nz, along !== raw);
+          else consider(along, y, fixed, nx, nz, along !== raw);
         }
       }
     }
     const extra = (city as { anchors?: THREE.Vector3[] }).anchors;
-    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < 60 && Math.abs(a.z - p.z) < 60) consider(a.x, a.y, a.z, 0, 0);
-    cands.sort((a, b) => b.score - a.score);
+    if (extra) for (const a of extra) if (Math.abs(a.x - p.x) < AIM_RANGE && Math.abs(a.z - p.z) < AIM_RANGE) consider(a.x, a.y, a.z, 0, 0, false);
+    city.near(p.x + v.x * 0.25, p.z + v.z * 0.25, 24, simList);
     tmp.copy(p).addScaledVector(UP, 0.6);
-    for (const c of cands) {
+    let glance: Candidate | null = null;
+    let turn: Candidate | null = null;
+    for (let tries = 0; tries < 12; ) {
+      let c: Candidate | null = null;
+      for (const k of cands) if (!k.done && (!c || k.score > c.score)) c = k;
+      if (!c) break;
+      c.done = true;
+      if ((c.n.x || c.n.z) && insideAny(city, c.p.x + c.n.x * 0.3, c.p.y, c.p.z + c.n.z * 0.3)) continue;
+      tries++;
       tmp2.copy(c.p).sub(tmp);
       const len = tmp2.length();
       tmp2.divideScalar(len);
       const hit = raycast(city, tmp, tmp2, len);
       if (hit >= 0 && hit < len - 0.3) continue;
-      return c;
+      const st = simSwing(c);
+      if (st < 0) {
+        const prog = (simP.x - p.x) * heading.x + (simP.z - p.z) * heading.z;
+        if (prog > 0.5 * (speed * SIM_T + 2)) return c;
+        if (!turn) turn = c;
+        continue;
+      }
+      // A swing that would hit a wall head on is never picked. A glancing hit is the last choice.
+      if (!glance && Math.abs(simN.x * heading.x + simN.z * heading.z) < 0.5) glance = c;
     }
-    return null;
+    return turn ?? glance;
   };
 
-  const attach = (look: THREE.Vector3, fresh: boolean) => {
+  const sideOf = (pt: THREE.Vector3, camPos: THREE.Vector3): "L" | "R" => ((pt.x - camPos.x) * camRight.x + (pt.z - camPos.z) * camRight.z >= 0 ? "R" : "L");
+
+  // 0 valid, 1 too low, 2 too far, 3 line of sight blocked.
+  const checkAnchor = (pt: THREE.Vector3) => {
+    if (pt.y - p.y < AIM_UP) return 1;
+    if (pt.distanceTo(p) > AIM_RANGE) return 2;
+    tmp2.copy(pt).sub(eye);
+    const len = tmp2.length();
+    if (len < 0.5) return 3;
+    tmp2.divideScalar(len);
+    const hit = castList(aimList, eye, tmp2, len);
+    return hit >= 0 && hit < len - 0.3 ? 3 : 0;
+  };
+
+  const castAim = (o: THREE.Vector3, d: THREE.Vector3, ahead: number, maxT: number) => {
+    rayO.copy(o).addScaledVector(d, ahead);
+    const t = castList(aimList, rayO, d, maxT - ahead, hitN);
+    if (t < 0) return false;
+    hitP.copy(rayO).addScaledVector(d, t);
+    return true;
+  };
+
+  // Fallback pick, refreshed every few frames or after the hero moves 1 m.
+  const autoP = new THREE.Vector3();
+  const autoN = new THREE.Vector3();
+  const autoAt = new THREE.Vector3(Infinity, 0, 0);
+  let autoSide = 1;
+  let autoFound = false;
+  let autoAge = AUTO_EVERY;
+  const refreshAuto = (look: THREE.Vector3, force: boolean) => {
+    autoAge++;
+    if (!force && autoAge < AUTO_EVERY && autoAt.distanceToSquared(p) < 1) return;
+    autoAge = 0;
+    autoAt.copy(p);
     const c = findAnchor(look);
-    if (!c) {
-      if (fresh) sfx("whiff", 0.6);
-      return false;
+    autoFound = !!c;
+    if (!c) return;
+    autoP.copy(c.p);
+    autoN.copy(c.n);
+    autoSide = Math.sign(c.side) || 1;
+  };
+
+  // HUD kind: aim when the crosshair or its rings hold a valid anchor, far or blocked when the
+  // crosshair hits geometry out of range or behind cover, else auto, else none. A press uses aim, else auto.
+  const computeAim = (camPos: THREE.Vector3, look: THREE.Vector3, force = false) => {
+    const d = look;
+    camRight.set(-d.z, 0, d.x);
+    if (camRight.lengthSq() < 1e-6) camRight.set(1, 0, 0);
+    camRight.normalize();
+    ringUp.crossVectors(camRight, d).normalize();
+    eye.copy(p).addScaledVector(UP, 0.6);
+    const ahead = Math.max(0, tmp.copy(p).sub(camPos).dot(d));
+    const maxT = AIM_RANGE + ahead + 2;
+    city.near(camPos.x + (d.x * maxT) / 2, camPos.z + (d.z * maxT) / 2, maxT / 2 + 8, aimList);
+    let miss: AimKind = "none";
+    let found = false;
+    let center = castAim(camPos, d, ahead, maxT);
+    if (!center) {
+      const t = raycast(city, rayO, d, FAR_RANGE, hitN);
+      if (t >= 0) hitP.copy(rayO).addScaledVector(d, t);
+      center = t >= 0;
     }
-    anchor.copy(c.p);
-    anchorN.copy(c.n);
-    if (DEV && c.n.lengthSq() > 0 && !onCollider(city, anchor)) console.error("anchor off collider", anchor.toArray());
-    lastSide = Math.sign(c.side) || 1;
-    webHand = lastSide > 0 ? "R" : "L";
-    pivot.copy(anchor).addScaledVector(right, -0.9 * c.side);
-    const dist = p.distanceTo(pivot);
-    swingFloor = groundAt(city, pivot.x, pivot.z, pivot.y);
-    ropeGoal = Math.max(5, Math.min(THREE.MathUtils.clamp(dist, ROPE_MIN, ROPE_MAX), pivot.y - swingFloor - 3));
-    rope = Math.max(dist, ropeGoal);
-    swingCap = Math.min(60, Math.max(SWING_MAX, v.length()));
+    if (center) {
+      let r = checkAnchor(hitP);
+      if (r === 0 && hitN.y > 0.5) r = 1;
+      if (r === 0) found = true;
+      else if (r > 1) {
+        miss = r === 2 ? "far" : "blocked";
+        missP.copy(hitP);
+      }
+    }
+    for (let ring = 1; ring <= 2 && !found; ring++) {
+      for (let k = 0; k < 8 && !found; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const r = ring * 0.045;
+        rayD.copy(d).addScaledVector(camRight, Math.cos(a) * r).addScaledVector(ringUp, Math.sin(a) * r).normalize();
+        if (castAim(camPos, rayD, ahead, maxT) && hitN.y <= 0.5 && checkAnchor(hitP) === 0) found = true;
+      }
+    }
+    if (found) {
+      aim.kind = "aim";
+      aim.point.copy(hitP);
+      aimN.copy(hitN);
+      heading.set(v.x, 0, v.z);
+      if (heading.lengthSq() < 16) heading.set(look.x, 0, look.z);
+      aimSide = Math.sign((hitP.x - p.x) * -heading.z + (hitP.z - p.z) * heading.x) || 1;
+      pickP.copy(hitP);
+    } else {
+      refreshAuto(look, force);
+      if (autoFound) {
+        aimN.copy(autoN);
+        aimSide = autoSide;
+        pickP.copy(autoP);
+      }
+      aim.kind = miss !== "none" ? miss : autoFound ? "auto" : "none";
+      aim.point.copy(miss !== "none" ? missP : autoFound ? autoP : aim.point);
+    }
+    pickOk = found || autoFound;
+    aimHand = sideOf(pickP, camPos);
+    aim.dist = aim.kind === "none" ? 0 : aim.point.distanceTo(p);
+  };
+  const aimOk = () => pickOk;
+
+  const attach = () => {
+    if (!aimOk()) return false;
+    anchor.copy(pickP);
+    anchorN.copy(aimN);
+    if (DEV && !onCollider(city, anchor) && aim.kind === "aim") console.error("anchor off collider", anchor.toArray());
+    lastSide = aimSide;
+    webHand = aimHand;
+    ropeLive = false;
+    webT = 0;
     swingT = 0;
     webGrow = 0;
     trick = null;
-    wingSpeed = 0;
+    swingRetry = 0;
     mode = "swing";
     sfx("thwip");
     return true;
   };
 
+  const tryAttach = (from: PlayerMode) => {
+    if (!attach()) return false;
+    if (from === "wall") v.copy(wallN).multiplyScalar(8).addScaledVector(UP, 6);
+    else if (from === "ground" || from === "perch") v.y = Math.max(v.y, JUMP * 0.8);
+    return true;
+  };
+
+  const landWeb = () => {
+    ropeLive = true;
+    const dist = p.distanceTo(anchor);
+    swingFloor = groundAt(city, anchor.x + anchorN.x * 1.5, anchor.z + anchorN.z * 1.5, anchor.y);
+    rope = dist;
+    ropeGoal = Math.max(4, Math.min(dist - REEL, ROPE_MAX, anchor.y - swingFloor - 5));
+    sfx("webImpact", 0.25);
+  };
+
   const pastBottom = () => {
-    tmp.copy(p).sub(pivot);
+    tmp.copy(p).sub(anchor);
     const fl = Math.hypot(v.x, v.z) || 1;
     return Math.atan2((tmp.x * v.x + tmp.z * v.z) / fl, -tmp.y);
   };
 
   const release = (manual: boolean, jump: boolean) => {
-    const ang = pastBottom();
-    tmp.set(v.x, 0, v.z).normalize();
-    v.addScaledVector(UP, manual ? 4 : 1.5).addScaledVector(tmp, 2);
-    if (manual && ang > 10 * DEG && ang < 35 * DEG) {
-      v.multiplyScalar(1.2);
-      if (v.length() > 55) v.setLength(55);
-      boostT = 0.5;
-      sfx("whoosh");
-    }
-    if (jump) v.y += 6;
     mode = "air";
     sinceRelease = 0;
-    retryT = 0.25;
+    diveCheckT = 0.25;
+    if (!ropeLive) return;
+    const ang = pastBottom();
+    const flat = Math.hypot(v.x, v.z);
+    if (wish.lengthSq() > 0 && flat > 1) {
+      tmp.set(v.x / flat, 0, v.z / flat).lerp(wish, 0.6);
+      if (tmp.lengthSq() > 1e-4) {
+        tmp.normalize();
+        v.x = tmp.x * flat;
+        v.z = tmp.z * flat;
+      }
+    }
+    if (manual && ang > 15 * DEG && ang < 40 * DEG) {
+      v.multiplyScalar(1.1);
+      const s1 = v.length();
+      v.y += 6;
+      v.setLength(s1);
+      boostT = 0.5;
+      sfx("whoosh");
+    } else v.y += manual ? 3 : 1.5;
+    if (jump) v.y += 4;
+  };
+
+  // Camera ray to the first surface past the hero, within range of the hero.
+  const camRay = (look: THREE.Vector3, camPos: THREE.Vector3, range: number) => {
+    const ahead = Math.max(0, tmp.copy(p).sub(camPos).dot(look));
+    rayO.copy(camPos).addScaledVector(look, ahead);
+    const t = raycast(city, rayO, look, range + 2, hitN);
+    if (t < 0) return false;
+    hitP.copy(rayO).addScaledVector(look, t);
+    return hitP.distanceTo(p) <= range;
   };
 
   const startZip = (look: THREE.Vector3, camPos: THREE.Vector3) => {
-    const skip = camPos.distanceTo(p);
-    const t = raycast(city, camPos, look, skip + ZIP_RANGE, tmp);
-    if (t < skip || t - skip > ZIP_RANGE) {
+    if (!camRay(look, camPos, ZIP_RANGE)) {
       sfx("whiff", 0.6);
       return false;
     }
-    anchor.copy(camPos).addScaledVector(look, t);
-    anchorN.copy(tmp);
-    zipTarget.copy(anchor).addScaledVector(tmp, R + 0.2);
-    if (tmp.y > 0.5) zipTarget.y += 0.5;
+    anchor.copy(hitP);
+    anchorN.copy(hitN);
+    zipTarget.copy(anchor).addScaledVector(hitN, R + 0.2);
+    if (hitN.y > 0.5) zipTarget.y += 0.5;
     zipDir.copy(zipTarget).sub(p).normalize();
-    webHand = "R";
+    webHand = sideOf(anchor, camPos);
     webGrow = 0;
     zipT = 0;
     striking = false;
@@ -374,14 +654,14 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     return true;
   };
 
-  const startStrike = () => {
+  const startStrike = (camPos: THREE.Vector3) => {
     const target = hooks.strikeTarget(p, 40);
     if (!target) return;
     zipTarget.copy(target);
     zipDir.copy(target).sub(p).normalize();
     anchor.copy(target);
     anchorN.set(0, 0, 0);
-    webHand = "R";
+    webHand = sideOf(target, camPos);
     webGrow = 0;
     zipT = 0;
     striking = true;
@@ -389,7 +669,6 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     mode = "zip";
     sfx("zip");
   };
-
   const startLaunch = (perch: boolean) => {
     launchTarget.copy(promptTarget);
     launchFrom.copy(p);
@@ -421,10 +700,12 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const enterWall = (speed: number) => {
     mode = "wall";
-    wallMomentum = speed * 0.9;
+    wallMomentum = Math.min(speed, WALL_ENTRY);
+    wallAwayT = 0;
+    wallIdleT = 0;
     tmp.copy(v).addScaledVector(wallN, -v.dot(wallN));
     if (tmp.lengthSq() < 1) tmp.copy(UP);
-    v.copy(tmp.normalize()).multiplyScalar(Math.max(speed * 0.9, 4));
+    v.copy(tmp.normalize()).multiplyScalar(Math.max(wallMomentum, 4));
     trick = null;
   };
 
@@ -433,7 +714,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (mode !== "ground" && mode !== "air" && mode !== "wall" && mode !== "perch" && mode !== "wings") return;
     let best = 0.9;
     const eye = tmp.copy(p).addScaledVector(UP, 0.6);
-    for (const b of city.near(p.x, p.z, PROMPT_RANGE)) {
+    for (const b of city.near(p.x, p.z, PROMPT_RANGE, scanBuf)) {
       if (b.maxX - b.minX < 4 || b.maxZ - b.minZ < 4) continue;
       for (let k = 0; k < 4; k++) {
         const ox = k & 1 ? 1 : -1;
@@ -471,8 +752,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let carCd = 0;
   const collideCars = (h: number) => {
     carCd -= h;
-    if (p.y > 6) return;
-    for (const b of city.carsNear(p.x, p.z, 4, carList)) {
+    for (const b of city.carsNear(p.x, p.z, 4, carList, p.y)) {
+      if (p.y < (b.minY ?? 0) - R) continue;
       const x0 = b.minX - 0.45;
       const x1 = b.maxX + 0.45;
       const z0 = b.minZ - 0.45;
@@ -513,10 +794,19 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   };
 
   const hits: Box[] = [];
-  const overlaps = (b: Box, x: number, y: number, z: number) =>
-    x > b.minX - R && x < b.maxX + R && z > b.minZ - R && z < b.maxZ + R && y < b.maxY + R && y > (b.minY ?? -Infinity) - R;
+  // Vertical box edges are round, so the hero slides around corners instead of catching on them.
+  const overlaps = (b: Box, x: number, y: number, z: number) => {
+    if (!(x > b.minX - R && x < b.maxX + R && z > b.minZ - R && z < b.maxZ + R && y < b.maxY + R && y > (b.minY ?? -Infinity) - R)) return false;
+    if (y >= b.maxY || y <= (b.minY ?? -Infinity)) return true;
+    const ex = x < b.minX ? b.minX - x : x > b.maxX ? x - b.maxX : 0;
+    const ez = z < b.minZ ? b.minZ - z : z > b.maxZ ? z - b.maxZ : 0;
+    return ex === 0 || ez === 0 || ex * ex + ez * ez < R * R;
+  };
+  const cornerN = new THREE.Vector3();
+  const bestCorner = new THREE.Vector3();
+  // A shallow contact with a box top does not block a push: the step-up resolves it next.
   const clearAt = (x: number, y: number, z: number) => {
-    for (const b of hits) if (overlaps(b, x, y, z)) return false;
+    for (const b of hits) if (overlaps(b, x, y, z) && y < b.maxY + R - TOP_SKIN) return false;
     return true;
   };
 
@@ -531,7 +821,22 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         if (!overlaps(b, p.x, p.y, p.z)) continue;
         const up = b.maxY + R - p.y;
         const stepUp = (mode === "ground" || mode === "air") && up < 1.0 && v.y <= 1;
-        for (let m = 0; m < 6; m++) {
+        const cx = p.x < b.minX ? b.minX : p.x > b.maxX ? b.maxX : NaN;
+        const cz = p.z < b.minZ ? b.minZ : p.z > b.maxZ ? b.maxZ : NaN;
+        const corner = cx === cx && cz === cz && p.y < b.maxY && p.y > (b.minY ?? -Infinity);
+        if (corner) {
+          const dx = p.x - cx;
+          const dz = p.z - cz;
+          const d = Math.hypot(dx, dz);
+          if (d > 1e-6) cornerN.set(dx / d, 0, dz / d);
+          else cornerN.set(Math.sign(p.x - (b.minX + b.maxX) / 2), 0, Math.sign(p.z - (b.minZ + b.maxZ) / 2)).normalize();
+          const cost = R - d;
+          if (cost < bestCost && clearAt(cx + cornerN.x * (R + 1e-4), p.y, cz + cornerN.z * (R + 1e-4))) {
+            [bestCost, bestM, bestBox] = [cost, 6, b];
+            bestCorner.set(cx, 0, cz).addScaledVector(cornerN, R + 1e-4);
+          }
+        }
+        for (let m = corner ? 4 : 0; m < 6; m++) {
           let val: number;
           let cost: number;
           if (m === 0) [val, cost] = [b.minX - R, p.x - b.minX + R];
@@ -540,7 +845,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
           else if (m === 3) [val, cost] = [b.maxZ + R, b.maxZ + R - p.z];
           else if (m === 4) [val, cost] = [b.maxY + R, stepUp ? 0 : up];
           else {
-            if (b.minY === undefined) continue;
+            // Push down only out of a shallow underside contact, never through a deck the hero stands on.
+            if (b.minY === undefined || p.y > b.minY + UNDER_MAX) continue;
             [val, cost] = [b.minY - R, p.y - b.minY + R];
           }
           if (cost >= bestCost) continue;
@@ -551,6 +857,19 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       }
       if (!bestBox) return;
       const b = bestBox;
+      if (bestM === 6) {
+        cornerN.set(bestCorner.x - p.x, 0, bestCorner.z - p.z);
+        p.x = bestCorner.x;
+        p.z = bestCorner.z;
+        if (cornerN.lengthSq() > 1e-12) {
+          cornerN.normalize();
+          const vn = v.dot(cornerN);
+          if (vn < 0) v.addScaledVector(cornerN, -vn);
+          cornerHit = true;
+          cornerHitN.copy(cornerN);
+        }
+        continue;
+      }
       if (bestM === 4) {
         p.y = bestVal;
         if (v.y < 0) v.y = 0;
@@ -584,6 +903,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   const collide = () => {
     grounded = false;
     wallContact = false;
+    cornerHit = false;
     swimming = false;
     const fl = hooks.floorAt?.(p.x, p.z) ?? 0;
     if (p.y < fl + R) {
@@ -592,8 +912,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       grounded = true;
       swimming = fl < -0.5;
     }
-    hits.length = 0;
-    for (const b of city.near(p.x, p.z, 8)) hits.push(b);
+    city.near(p.x, p.z, 8, hits);
     if (hooks.extraBoxes) for (const b of hooks.extraBoxes(p.x, p.z)) hits.push(b);
     solve();
     if (p.y > ceiling - R) {
@@ -623,8 +942,207 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     }
   };
 
+  const airStep = (h: number, dive: boolean) => {
+    const g = dive ? G * 1.9 : diveAssist ? G * 1.6 : G;
+    v.y -= g * h;
+    if (v.y < 0) v.y += (dive || diveAssist ? DIVE_DRAG : AIR_DRAG) * v.y * v.y * h;
+    const flat = Math.hypot(v.x, v.z);
+    if (flat > SOFT_SPEED) {
+      const k = Math.max(0, 1 - (AIR_SOFT * (flat - SOFT_SPEED) * h) / flat);
+      v.x *= k;
+      v.z *= k;
+    }
+    const along = v.x * wish.x + v.z * wish.z;
+    if (along < 16) v.addScaledVector(wish, AIR_CONTROL * h);
+  };
+
+  const swingStep = (h: number) => {
+    swingT += h;
+    v.y -= G_SWING * h;
+    if (rope > ropeGoal) rope = Math.max(ropeGoal, rope - Math.min(45, 10 + 4 * (rope - ropeGoal)) * h);
+    const n = tmp.copy(anchor).sub(p).normalize();
+    if (p.y < anchor.y && v.y < 0) {
+      const tan = tmp2.copy(v).addScaledVector(n, -v.dot(n));
+      const ts = tan.length();
+      if (ts > 0.1) v.addScaledVector(tan, (SWING_PUSH * THREE.MathUtils.clamp((SOFT_SPEED - ts) / 10, 0, 1) * h) / ts);
+    }
+    const sp = v.length();
+    if (sp > 0.1 && wish.lengthSq() > 0) {
+      const s = tmp2.copy(wish).addScaledVector(n, -wish.dot(n));
+      s.addScaledVector(v, -s.dot(v) / (sp * sp));
+      v.addScaledVector(s, 8 * h);
+    }
+    const clear = p.y - R - swingFloor;
+    if (n.y > 0.85 && clear < 9) v.y += 12 * (1 - clear / 9) * h;
+    // The rope pulls toward the anchor wall. Turn speed into that wall into speed along it.
+    if (anchorN.y < 0.5 && anchorN.lengthSq() > 0) {
+      const out = (p.x - anchor.x) * anchorN.x + (p.z - anchor.z) * anchorN.z;
+      const vn = v.dot(anchorN);
+      const want = (WALL_GAP - out) * 2;
+      if (vn < want) {
+        const s0 = v.length();
+        v.addScaledVector(anchorN, (want - vn) * Math.min(1, 10 * h));
+        v.setLength(s0);
+      }
+    }
+    const s2 = v.length();
+    if (s2 > SOFT_SPEED) v.multiplyScalar(Math.max(0, s2 - SOFT_DRAG * (s2 - SOFT_SPEED) * h) / s2);
+  };
+
+  // One-sided rope: it only pulls. Outward speed turns into speed along the arc, so a taut rope never brakes.
+  const ropeConstraint = () => {
+    tmp.copy(p).sub(anchor);
+    const len = tmp.length();
+    // Before the bottom of the arc the web takes up slack, so the hero never free falls inside the rope.
+    if (len < rope && v.y < 0 && tmp.y < 0 && tmp.x * v.x + tmp.z * v.z < 0) {
+      rope = Math.max(4, len);
+      ropeGoal = Math.min(ropeGoal, rope);
+    }
+    if (len <= rope || len < 1e-6) return;
+    tmp.divideScalar(len);
+    p.copy(anchor).addScaledVector(tmp, rope);
+    const vr = v.dot(tmp);
+    if (vr <= 0) return;
+    const s0 = v.length();
+    v.addScaledVector(tmp, -vr);
+    const ts = v.length();
+    if (ts > 0.5) v.multiplyScalar(s0 / ts);
+    else {
+      tmp2.set(facing.x, 0, facing.z).addScaledVector(tmp, -(facing.x * tmp.x + facing.z * tmp.z));
+      if (tmp2.lengthSq() > 1e-6) v.addScaledVector(tmp2.normalize(), Math.sqrt(Math.max(0, s0 * s0 - ts * ts)));
+    }
+  };
+
+  const wallWish = new THREE.Vector3();
+  let wrapT = 0;
+  let wrapAng = 0;
+  const wallStep = (h: number, held: ReadonlySet<string>) => {
+    const n = wallN;
+    // After a corner wrap the held key keeps its meaning on the new face until the camera turns.
+    const wish = wrapT > 0 ? wallWish.copy(wishIn).applyAxisAngle(UP, wrapAng) : wishIn;
+    wrapT -= h;
+    const away = wish.dot(n);
+    wallAwayT = away > 0.5 ? wallAwayT + h : 0;
+    if (wallAwayT >= WALL_LET_GO) {
+      v.addScaledVector(n, 6 - v.dot(n));
+      v.y = Math.max(v.y, 1);
+      mode = "air";
+      cornerBox = wallBox;
+      cornerT = 0.35;
+      return;
+    }
+    tmp.copy(wish).addScaledVector(n, -away);
+    const run = Math.max(held.has("swing") ? 12 : 8, wallMomentum);
+    wallMomentum = Math.max(0, wallMomentum - (WALL_ENTRY / 0.6) * h);
+    if (wish.lengthSq() === 0) {
+      wallIdleT += h;
+      if (wallIdleT > WALL_IDLE) tmp2.set(0, -2, 0);
+      else {
+        tmp2.copy(v);
+        if (tmp2.lengthSq() > 1e-6) tmp2.setLength(wallMomentum);
+      }
+    } else {
+      wallIdleT = 0;
+      if (-away > 0.5) tmp2.copy(UP).multiplyScalar(run).addScaledVector(tmp, run * 0.5);
+      else tmp2.copy(tmp).normalize().multiplyScalar(run).addScaledVector(UP, Math.max(0, v.y) * 0.5);
+    }
+    v.lerp(tmp2, 1 - Math.exp(-8 * h));
+    v.addScaledVector(n, -v.dot(n) - 2);
+  };
+
+  // Past the end of a face, the run turns onto the next face of the same box.
+  const wrapCorner = () => {
+    const b = wallBox;
+    if (!b) return;
+    const xFace = wallN.x !== 0;
+    const along = xFace ? p.z : p.x;
+    const va = xFace ? v.z : v.x;
+    const lo = xFace ? b.minZ : b.minX;
+    const hi = xFace ? b.maxZ : b.maxX;
+    const dir = along > hi && va > 0.5 ? 1 : along < lo && va < -0.5 ? -1 : 0;
+    if (dir === 0) return;
+    const plane = xFace ? (wallN.x > 0 ? b.maxX : b.minX) : wallN.z > 0 ? b.maxZ : b.minZ;
+    const inX = xFace ? plane - wallN.x * 0.5 : p.x;
+    const inZ = xFace ? p.z : plane - wallN.z * 0.5;
+    if (insideAny(city, inX, p.y, inZ)) return;
+    const st = Math.abs(va);
+    const edgeV = dir > 0 ? hi : lo;
+    const ax = xFace ? 0 : dir;
+    const az = xFace ? dir : 0;
+    wrapAng = Math.atan2(az * -wallN.x - ax * -wallN.z, -ax * wallN.x - az * wallN.z);
+    wrapT = 0.6;
+    if (xFace) {
+      p.z = edgeV + dir * (R - 0.02);
+      p.x = plane - wallN.x * 0.3;
+      v.set(-wallN.x * st, v.y, 0);
+      wallN.set(0, 0, dir);
+    } else {
+      p.x = edgeV + dir * (R - 0.02);
+      p.z = plane - wallN.z * 0.3;
+      v.set(0, v.y, -wallN.z * st);
+      wallN.set(dir, 0, 0);
+    }
+  };
+
+  const wingStep = (h: number, look: THREE.Vector3, dive: boolean) => {
+    tmp.set(look.x, 0, look.z);
+    if (wish.lengthSq() > 0) tmp.addScaledVector(wish, 0.8);
+    if (tmp.lengthSq() > 1e-4) {
+      tmp.normalize();
+      const turn = Math.atan2(wingDir.x * tmp.z - wingDir.z * tmp.x, wingDir.dot(tmp));
+      const a = THREE.MathUtils.clamp(turn, -1.7 * h, 1.7 * h);
+      wingDir.applyAxisAngle(UP, -a).normalize();
+    }
+    let hf = Math.hypot(v.x, v.z);
+    if (hf < 10) hf += (10 - hf) * 3 * h;
+    v.x = wingDir.x * hf;
+    v.z = wingDir.z * hf;
+    v.y -= G * h;
+    const s = v.length();
+    if (s < 0.1) return;
+    tmp.copy(v).divideScalar(s);
+    tmp2.copy(UP).addScaledVector(tmp, -tmp.y);
+    const cl = (dive ? 0.012 : 0.07) * Math.max(0, 1 - 2 * Math.max(0, tmp.y));
+    // A fast fall allows a harder pull-out, so the wings catch a dive within about 0.6 s.
+    const maxLift = G * (2.5 + 3 * THREE.MathUtils.clamp((-v.y - 10) / 25, 0, 1));
+    if (tmp2.lengthSq() > 1e-6) v.addScaledVector(tmp2.normalize(), Math.min(maxLift, cl * s * s) * h);
+    const drag = 0.12 * s + 0.006 * s * s;
+    v.addScaledVector(tmp, -Math.min(s, drag * h));
+  };
+
+  const land = (fall: number, held: ReadonlySet<string>) => {
+    const glided = mode === "wings";
+    trick = null;
+    mode = "ground";
+    if (swimming) return;
+    if (glided && wish.lengthSq() > 0 && Math.hypot(v.x, v.z) > 5 && !held.has("dive")) {
+      rollT = 0;
+      sfx("land", 0.7);
+      if (fall > 20) shake(0.15);
+      v.x *= 0.85;
+      v.z *= 0.85;
+      return;
+    }
+    if (fall > 35) {
+      if (held.has("dive") || diveAssist) {
+        events.push(...hooks.strikeHit(p, 2));
+        shake(0.7);
+      } else shake(0.35);
+      sfx("bigLand");
+      landT = 0;
+      v.x *= 0.3;
+      v.z *= 0.3;
+      return;
+    }
+    if (fall > 4) sfx("land");
+    const k = wish.lengthSq() === 0 ? 0.4 : Math.hypot(v.x, v.z) >= 15 ? 0.7 : 1;
+    v.x *= k;
+    v.z *= k;
+  };
+
   const physics = (h: number, inp: Input) => {
     const held = inp.held;
+    const dive = held.has("dive");
     switch (mode) {
       case "ground": {
         const target = swimming ? (sprinting ? SWIM_FAST : SWIM) : sprinting ? SPRINT : RUN;
@@ -635,54 +1153,23 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         v.y -= G * h;
         break;
       }
-      case "air": {
-        let g = G;
-        if (held.has("dive")) g *= 1.9;
-        else if (diveAssist) g *= 1.6;
-        v.y = Math.max(v.y - g * h, held.has("dive") ? -62 : -48);
-        const along = v.x * wish.x + v.z * wish.z;
-        if (along < 16) v.addScaledVector(wish, 9 * h);
+      case "air":
+        airStep(h, dive);
         break;
-      }
-      case "swing": {
-        v.y -= G_SWING * h;
-        if (rope > ropeGoal) rope = Math.max(ropeGoal, rope - 30 * h);
-        const n = tmp.copy(pivot).sub(p).normalize();
-        const below = p.y < pivot.y - 2;
-        const tan = tmp2.copy(v).addScaledVector(n, -v.dot(n));
-        const ts = tan.length();
-        if (below && ts > 0.1) {
-          tan.divideScalar(ts);
-          v.addScaledVector(tan, (9 + (ts < SWING_MIN ? 22 : 0)) * h);
+      case "swing":
+        if (ropeLive) swingStep(h);
+        else {
+          airStep(h, false);
+          webT += h;
+          if (webT >= WEB_TRAVEL) landWeb();
         }
-        const steer = wish.dot(n);
-        v.addScaledVector(wish, 10 * h).addScaledVector(n, -steer * 10 * h);
-        if (anchorN.lengthSq() > 0) {
-          const out = (p.x - anchor.x) * anchorN.x + (p.z - anchor.z) * anchorN.z;
-          v.addScaledVector(anchorN, (2.5 + Math.max(0, 6 - out) * 4) * h);
-        }
-        const clear = p.y - R - swingFloor;
-        if (n.y > 0.85 && clear < 9) v.y += 12 * (1 - clear / 9) * h;
-        if (v.length() > swingCap) v.setLength(swingCap);
         break;
-      }
-      case "wall": {
-        const n = wallN;
-        tmp.copy(wish).addScaledVector(n, -wish.dot(n));
-        const into = -wish.dot(n);
-        const run = Math.max(held.has("swing") ? 12 : 8, wallMomentum);
-        wallMomentum = Math.max(0, wallMomentum - 20 * h);
-        if (wish.lengthSq() === 0) {
-          tmp2.copy(v).multiplyScalar(wallMomentum > 13 ? 1 : 0);
-          if (wallMomentum > 13) tmp2.setLength(wallMomentum);
-        } else if (into > 0.5) tmp2.copy(UP).multiplyScalar(run).addScaledVector(tmp, run * 0.5);
-        else tmp2.copy(tmp).normalize().multiplyScalar(run).addScaledVector(UP, Math.max(0, v.y) * 0.5);
-        v.lerp(tmp2, 1 - Math.exp(-8 * h));
-        v.addScaledVector(n, -v.dot(n) - 2);
+      case "wall":
+        wallStep(h, held);
         break;
-      }
       case "zip":
         v.copy(zipDir).multiplyScalar(ZIP);
+        if (zipT < WEB_TRAVEL && zipT + h >= WEB_TRAVEL) sfx("webImpact", 0.25);
         zipT += h;
         break;
       case "launch":
@@ -708,28 +1195,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       case "perch":
         v.set(0, 0, 0);
         break;
-      case "wings": {
-        tmp.set(inp.look.x, 0, inp.look.z);
-        if (wish.lengthSq() > 0) tmp.addScaledVector(wish, 0.8);
-        if (tmp.lengthSq() > 1e-4) {
-          tmp.normalize();
-          const turn = Math.atan2(wingDir.x * tmp.z - wingDir.z * tmp.x, wingDir.dot(tmp));
-          const a = THREE.MathUtils.clamp(turn, -1.7 * h, 1.7 * h);
-          wingDir.applyAxisAngle(UP, -a).normalize();
-        }
-        if (held.has("dive")) {
-          wingVy += (-30 - wingVy) * 1.2 * h;
-          wingSpeed = Math.min(55, wingSpeed + 12 * h);
-        } else {
-          if (wingVy < -4) wingSpeed = Math.min(55, wingSpeed + -wingVy * 0.2 * h);
-          wingVy += (-3 - wingVy) * 1.6 * h;
-          wingSpeed += (Math.min(wingSpeed, 14) - wingSpeed) * 0.2 * h;
-          wingSpeed = Math.max(wingSpeed - 0.6 * h, 10);
-        }
-        v.copy(wingDir).multiplyScalar(wingSpeed).addScaledVector(UP, wingVy);
+      case "wings":
+        wingStep(h, inp.look, dive);
         break;
-      }
     }
+    if (mode !== "wall") wallAwayT = 0;
 
     if (lungeSpeed > 0) {
       tmp.set(lungeTo.x - p.x, 0, lungeTo.z - p.z);
@@ -744,37 +1214,19 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (v.length() > MAX_SPEED) v.setLength(MAX_SPEED);
     p.addScaledVector(v, h);
 
-    if (mode === "swing") {
-      tmp.copy(p).sub(pivot);
-      const len = tmp.length();
-      if (len > rope) {
-        tmp.multiplyScalar(rope / len);
-        p.copy(pivot).add(tmp);
-        const n = tmp.normalize();
-        const vr = v.dot(n);
-        if (vr > 0) v.addScaledVector(n, -vr);
-      }
-      if (p.y > pivot.y - 0.5) release(false, false);
+    if (mode === "swing" && ropeLive) {
+      ropeConstraint();
+      if (swingT > 0.3 && v.y > 0 && p.y > anchor.y - 3) release(false, false);
     }
+    if (mode === "wall") wrapCorner();
 
     if (mode === "launch" && !launchArrived) return;
     const pre = v.length();
     const fall = -v.y;
-    const wasWall = mode === "wall";
-    vPre.copy(v);
-    nPre.copy(wallN);
-    const boxPre = wallBox;
+    preV.copy(v);
     collide();
     collideCars(h);
     edge(h);
-    if (wasWall && wallContact && wallBox === boxPre && wallN.dot(nPre) < 0.5) {
-      v.copy(vPre).addScaledVector(nPre, 3);
-      wallN.copy(nPre);
-      cornerBox = boxPre;
-      cornerT = 0.35;
-      mode = "air";
-      wallContact = false;
-    }
 
     if (mode === "zip" && striking && p.distanceTo(zipTarget) < 2.4) {
       events.push(...hooks.strikeHit(p, 1));
@@ -790,25 +1242,23 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       striking = false;
       mode = "air";
     }
-    if (grounded && (mode === "air" || mode === "swing" || mode === "wings" || (mode === "wall" && v.y <= 0.1 && !wallContact))) {
-      if (swimming) {
-        // The water module plays the splash.
-      } else if (fall > 28) {
-        events.push(...hooks.strikeHit(p, 2));
-        sfx("bigLand");
-        shake(0.7);
-        landT = 0;
-      } else if (fall > 4) sfx("land");
-      trick = null;
-      mode = "ground";
+    if (grounded && (mode === "air" || mode === "swing" || mode === "wings" || (mode === "wall" && v.y <= 0.1 && !wallContact))) land(fall, held);
+    if (mode === "ground" && !grounded) {
+      mode = "air";
+      coyoteT = COYOTE;
     }
-    if (mode === "ground" && !grounded) mode = "air";
+    if (cornerHit && !wallContact && (mode === "swing" || mode === "wings")) {
+      mode = "air";
+      glance(cornerHitN);
+      v.addScaledVector(cornerHitN, 3);
+    }
     if (wallContact && !(cornerT > 0 && wallBox === cornerBox) && mode !== "wall" && mode !== "zip" && mode !== "launch" && mode !== "perch") {
       const into = -wish.dot(wallN);
       if (mode === "swing" || mode === "wings") {
         mode = "air";
+        glance(wallN);
         v.addScaledVector(wallN, 3);
-      } else if (ceiling === Infinity && into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? Math.min(pre, 12) : 0);
+      } else if (ceiling === Infinity && into > 0.7 && (mode === "ground" || (mode === "air" && !held.has("swing")))) enterWall(mode === "air" ? pre : 0);
     }
     if (mode === "wall") {
       if (!wallContact) {
@@ -822,6 +1272,20 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (p.y < -30) reset();
   };
 
+  // A swing or glide that hits a wall slides along it and keeps most of its flat speed.
+  const glance = (n: THREE.Vector3) => {
+    const flat0 = Math.hypot(preV.x, preV.z);
+    tmp.set(-n.z, 0, n.x);
+    let along = v.x * tmp.x + v.z * tmp.z;
+    const keep = flat0 * GLANCE_KEEP;
+    if (Math.abs(along) >= keep) return;
+    const sgn = Math.sign(preV.x * tmp.x + preV.z * tmp.z) || Math.sign(facing.x * tmp.x + facing.z * tmp.z) || 1;
+    along = sgn * keep;
+    const vn = v.x * n.x + v.z * n.z;
+    v.x = tmp.x * along + n.x * vn;
+    v.z = tmp.z * along + n.z * vn;
+  };
+
   const wallAhead = (look: THREE.Vector3) => {
     if (wallContact) return true;
     heading.set(v.x, 0, v.z);
@@ -832,7 +1296,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     return raycast(city, p, heading, 6) >= 0;
   };
 
-  const decide = (inp: Input) => {
+  const decide = (inp: Input, dt: number) => {
     const pressed = inp.pressed;
     const look = inp.look;
     const airborne = mode === "air" || mode === "wings";
@@ -850,20 +1314,26 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       eT = -1;
     }
 
-    if (pressed.has("swing") && airborne) attach(look, true);
-    else if (pressed.has("swing") && inp.swingFromMouse && (mode === "ground" || mode === "wall" || mode === "perch")) {
-      const from = mode;
-      if (attach(look, true)) {
-        if (from === "wall") v.copy(wallN).multiplyScalar(8).addScaledVector(UP, 6);
-        else v.y = Math.max(v.y, JUMP * 0.8);
+    const canSwing = (m: PlayerMode) => m === "air" || m === "wings" || (inp.swingFromMouse && (m === "ground" || m === "wall" || m === "perch"));
+    if (pressed.has("swing") && canSwing(mode) && !tryAttach(mode)) {
+      swingRetry = SWING_RETRY;
+      retryFrom = mode;
+    } else if (swingRetry > 0) {
+      if (!inp.held.has("swing") || mode !== retryFrom) {
+        swingRetry = 0;
+        if (mode === retryFrom) sfx("whiff", 0.6);
+      } else if (!tryAttach(mode)) {
+        swingRetry -= dt;
+        if (swingRetry <= 0) sfx("whiff", 0.6);
       }
     }
     if (inp.released.has("swing") && mode === "swing") release(true, false);
 
     if (pressed.has("jump")) {
-      if (mode === "ground") {
+      if (mode === "ground" || (mode === "air" && coyoteT > 0)) {
         v.y = swimming ? JUMP + 2 : JUMP + (sprinting ? 3 : 0);
         mode = "air";
+        coyoteT = 0;
       } else if (mode === "swing") release(true, true);
       else if (mode === "wall") {
         v.copy(wallN).multiplyScalar(13).addScaledVector(UP, 10);
@@ -876,11 +1346,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       } else if (mode === "launch") {
         if (launchArrived) highLaunch(look);
         else if (launchT * LAUNCH > launchLen - 14) launchBuffered = true;
-      } else if (airborne && dashCd <= 0 && raycast(city, p, look, 40, tmp2) < 0) {
+      } else if (airborne && dashCd <= 0 && !camRay(look, inp.camPos, DASH_RANGE)) {
         sfx("whiff", 0.6);
         dashCd = 0.3;
       } else if (airborne && dashCd <= 0) {
-        const hitT = raycast(city, p, look, 40, tmp2);
+        dashTo.copy(hitP);
         tmp.set(look.x, 0, look.z).normalize();
         const s = Math.max(30, Math.hypot(v.x, v.z) + 6);
         v.copy(tmp).multiplyScalar(s);
@@ -888,8 +1358,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         mode = "air";
         dashCd = DASH_CD;
         dashT = 0.3;
-        dashTo.copy(p).addScaledVector(look, hitT);
-        webHand = webHand === "R" ? "L" : "R";
+        webHand = sideOf(dashTo, inp.camPos);
         webGrow = 0;
         trick = null;
         sfx("zip");
@@ -902,8 +1371,6 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         wingDir.set(v.x, 0, v.z);
         if (wingDir.lengthSq() < 1) wingDir.set(look.x, 0, look.z);
         wingDir.normalize();
-        wingSpeed = Math.max(12, Math.hypot(v.x, v.z));
-        wingVy = Math.max(v.y, -12);
         trick = null;
         sfx("glide");
       } else if (mode === "wings") mode = "air";
@@ -918,20 +1385,21 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       sfx("whoosh", 0.5);
     }
     if (pressed.has("web") && !hooks.inCombat() && mode !== "zip" && mode !== "launch") startZip(look, inp.camPos);
-    if (pressed.has("strike") && mode !== "zip" && mode !== "launch") startStrike();
+    if (pressed.has("strike") && mode !== "zip" && mode !== "launch") startStrike(inp.camPos);
 
     if (mode === "perch" && wish.lengthSq() > 0) mode = "ground";
 
     // A new web needs a new press. Holding swing in the air with no anchor in reach dives toward the roofs.
-    if (inp.held.has("swing") && mode === "air" && airTime > 0.15 && retryT <= 0) {
-      retryT = 0.2;
-      dove = !wallAhead(look) && findAnchor(look) === null;
+    if (inp.held.has("swing") && mode === "air" && airTime > 0.15 && diveCheckT <= 0 && swingRetry <= 0) {
+      diveCheckT = 0.2;
+      dove = !wallAhead(look) && !aimOk();
     }
     diveAssist = dove && !wallContact && inp.held.has("swing") && mode === "air";
     if (mode === "swing" && swingT > 4) release(false, false);
   };
 
   const quatTarget = new THREE.Quaternion();
+  const rollQ = new THREE.Quaternion();
   const basis = new THREE.Matrix4();
   const ou = new THREE.Vector3();
   const of = new THREE.Vector3();
@@ -952,7 +1420,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   const vdir = new THREE.Vector3();
   const lean = new THREE.Vector3();
 
-  const visuals = (dt: number, t: number) => {
+  const visuals = (dt: number, t: number, camPos: THREE.Vector3) => {
     const flat = Math.hypot(v.x, v.z);
     if (flat > 0.5 && mode !== "wall" && mode !== "perch") facing.set(v.x, 0, v.z).normalize();
     let pose: HeroPose = "idle";
@@ -971,6 +1439,15 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       phase += Math.max(flat, 1.2) * dt * 0.45;
       progress = phase;
       orient(ou.copy(UP).lerp(facing, 0.82 * stroke), of.copy(facing).lerp(DOWN, 0.82 * stroke), dt);
+    } else if (mode === "ground" && rollT < 1) {
+      pose = "crouch";
+      progress = rollT;
+      of.copy(facing);
+      ox.crossVectors(UP, of);
+      basis.makeBasis(ox, UP, of);
+      quatTarget.setFromRotationMatrix(basis);
+      rollQ.setFromAxisAngle(XAXIS, Math.PI * 2 * THREE.MathUtils.smootherstep(rollT, 0, 1));
+      hero.root.quaternion.copy(quatTarget).multiply(rollQ);
     } else if (mode === "ground") {
       pose = landT < 1 ? "land" : flat > 14 ? "sprint" : flat > 0.5 ? "run" : "idle";
       phase += flat * dt * 0.85;
@@ -989,7 +1466,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     } else if (mode === "swing") {
       pose = "swing";
       phase += dt * 2.2;
-      orient(tmp.copy(anchor).sub(p), v.lengthSq() > 1 ? v : facing, dt);
+      orient(ropeLive ? tmp.copy(anchor).sub(p) : UP, v.lengthSq() > 1 ? v : facing, dt);
     } else if (mode === "wall") {
       pose = "wall";
       phase += Math.max(v.length(), 3) * dt * 0.85;
@@ -1009,28 +1486,21 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       progress = striking ? 0.3 : zipT;
       orient(UP, zipDir, dt);
     }
-    hero.root.position.copy(p);
+    hero.root.position.copy(rp);
+    if (mode === "ground" && rollT < 1) hero.root.position.y -= 0.35 * Math.sin(Math.PI * rollT);
     if (swimming) hero.root.position.y += Math.sin(t * 2.6) * 0.06;
     hero.animate(pose as Parameters<Hero["animate"]>[0], progress, webHand, t, dt);
     hero.root.updateMatrixWorld(true);
 
     const webOn = mode === "swing" || mode === "zip" || (mode === "launch" && !launchArrived) || dashT > 0.1;
+    const dashing = dashT > 0.1 && mode === "air";
     if (webOn) {
-      webGrow = Math.min(1, webGrow + dt * 9);
+      webGrow = mode === "swing" ? Math.min(1, webT / WEB_TRAVEL) : mode === "zip" ? Math.min(1, zipT / WEB_TRAVEL) : Math.min(1, webGrow + dt / WEB_TRAVEL);
       hero.handWorld(webHand, handPos);
-      tmp.copy(dashT > 0.1 && mode === "air" ? dashTo : anchor).sub(handPos);
-      const len = tmp.length() * webGrow;
-      web.position.copy(handPos);
-      web.quaternion.setFromUnitVectors(UP, tmp.normalize());
-      web.scale.set(1, len, 1);
     }
-    web.visible = webOn;
-    splat.visible = mode === "swing" && webGrow >= 1;
-    if (splat.visible) {
-      splat.position.copy(anchor).addScaledVector(anchorN, 0.03);
-      if (anchorN.lengthSq() > 0) splat.lookAt(tmp.copy(anchor).add(anchorN));
-      else splat.lookAt(p);
-    }
+    const taut = mode !== "swing" || (ropeLive && p.distanceTo(anchor) > rope - 0.1);
+    webLine.update(dt, handPos, dashing ? dashTo : anchor, dashing ? ZERO : anchorN, webGrow, taut, webOn, camPos);
+    webLine.preview(aimOk() && mode !== "zip" && mode !== "launch" ? pickP : null, aim.kind === "aim" ? "aim" : "auto");
 
     marker.visible = hasPrompt && mode !== "launch";
     if (marker.visible) {
@@ -1039,11 +1509,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       marker.scale.setScalar(Math.max(1, p.distanceTo(promptCorner) / 9));
     }
 
-    const gy = groundAt(city, p.x, p.z, p.y);
-    const hgt = p.y - R - gy;
+    const gy = groundAt(city, rp.x, rp.z, rp.y);
+    const hgt = rp.y - R - gy;
     blob.visible = hgt < 14 && mode !== "wall" && !swimming;
     if (blob.visible) {
-      blob.position.set(p.x, gy + 0.04, p.z);
+      blob.position.set(rp.x, gy + 0.04, rp.z);
       const s = 0.7 + hgt * 0.06;
       blob.scale.set(s, 1, s);
       (blob.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - hgt / 14) * 0.9;
@@ -1051,8 +1521,15 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   };
 
   const spawnFacing = new THREE.Vector3(0, 0, -1);
+  let snapped = false;
+  const snap = () => {
+    pPrev.copy(p);
+    rp.copy(p);
+    snapped = true;
+  };
   const reset = () => {
     p.copy(spawn);
+    snap();
     v.set(0, 0, 0);
     facing.copy(spawnFacing);
     hero.root.quaternion.setFromUnitVectors(tmp.set(0, 0, 1), facing);
@@ -1071,8 +1548,9 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   };
 
   const api = {
+    // Drawn position: the fixed physics step blended to the frame time.
     get pos() {
-      return p;
+      return rp;
     },
     get vel() {
       return v;
@@ -1127,6 +1605,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     },
     teleport(pos: THREE.Vector3) {
       p.copy(pos);
+      snap();
       v.set(0, 0, 0);
       mode = "air";
     },
@@ -1139,6 +1618,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     get boost() {
       return boostT;
     },
+    aim,
     prompts,
     reset,
     update(dt: number, inp: Input, t: number) {
@@ -1146,8 +1626,20 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       if (api.busy) wish.set(0, 0, 0);
       else wish.copy(inp.wish);
       sprinting = !api.busy && inp.held.has("swing") && wish.lengthSq() > 0;
-      if (!api.busy) decide(inp);
-      for (let i = 0; i < 3; i++) physics(dt / 3, inp);
+      computeAim(inp.camPos, inp.look, inp.pressed.has("swing") || swingRetry > 0);
+      if (!api.busy) decide(inp, dt);
+      acc += dt;
+      let steps = 0;
+      while (acc >= STEP && steps < MAX_STEPS) {
+        pPrev.copy(p);
+        physics(STEP, inp);
+        if (snapped) pPrev.copy(p);
+        snapped = false;
+        acc -= STEP;
+        steps++;
+      }
+      if (steps === MAX_STEPS) acc = 0;
+      rp.lerpVectors(pPrev, p, acc / STEP);
 
       dashCd = Math.max(0, dashCd - dt);
       dashT = Math.max(0, dashT - dt);
@@ -1155,13 +1647,14 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       vaultT = Math.max(0, vaultT - dt);
       cornerT -= dt;
       edgeT -= dt;
-      retryT -= dt;
+      diveCheckT -= dt;
+      coyoteT = Math.max(0, coyoteT - dt);
       sinceRelease += dt;
-      if (mode === "swing") swingT += dt;
       if (mode === "launch" && launchArrived && launchT > 0.35) mode = "ground";
       airTime = mode === "air" || mode === "swing" || mode === "zip" || mode === "wings" ? airTime + dt : 0;
       kickT = Math.min(1, kickT + dt / 0.45);
       landT = Math.min(1, landT + dt / 0.5);
+      rollT = mode === "ground" ? Math.min(1, rollT + dt / ROLL_TIME) : 1;
       if (trick) {
         trick.t += dt / 0.6;
         if (mode !== "air") trick = null;
@@ -1180,14 +1673,15 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       if (hasPrompt && mode !== "launch") prompts.push({ key: "E", label: mode === "perch" ? "Launch" : "Launch, hold to perch" });
       if (mode === "launch" && launchArrived) prompts.push({ key: "Space", label: "High launch" });
 
-      visuals(dt, t);
+      visuals(dt, t, inp.camPos);
       actPose = null;
       lungeSpeed = 0;
       return events;
     },
     dispose() {
-      scene.remove(web, splat, marker, blob);
-      for (const m of [web, splat, marker, blob]) {
+      webLine.dispose();
+      scene.remove(marker, blob);
+      for (const m of [marker, blob]) {
         m.geometry.dispose();
         (m.material as THREE.Material).dispose();
       }

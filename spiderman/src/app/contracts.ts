@@ -73,6 +73,7 @@ export interface PlayerApi {
   readonly facing: THREE.Vector3; // flat unit vector
   readonly grounded: boolean;
   readonly airTime: number;
+  readonly aim: AimState; // what the next swing press would use, refreshed every frame
   // Combat control. While busy, movement input is ignored and the given pose is shown.
   act(pose: HeroPose, progress: number): void; // call every frame the action runs
   lunge(to: THREE.Vector3, speed: number): void; // move toward a point this frame (melee close-in)
@@ -81,6 +82,9 @@ export interface PlayerApi {
   teleport(pos: THREE.Vector3): void;
   busy: boolean; // set by combat while an attack or dodge animation runs
 }
+
+export type AimKind = "none" | "aim" | "auto" | "far" | "blocked"; // aim: anchor under the crosshair, auto: fallback pick
+export type AimState = { kind: AimKind; dist: number; point: THREE.Vector3 };
 
 export type Marker = {
   x: number;
@@ -111,6 +115,8 @@ export type HudState = {
   combo: number;
   tokens: number;
   clock: number; // time of day in hours, 0..24
+  aim: AimKind;
+  aimDist: number;
   stealth: null | { hidden: boolean; alert: number }; // set while unaware enemies are near; alert 0..1 is the highest suspicion
   progress: {
     level: number;

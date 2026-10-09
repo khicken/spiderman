@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { HALF, PERIOD, type Box, type City } from "./city";
+import type { Box, City } from "./city";
+import { BOUNDS, ROAD_W, SIDEWALK, blockAt, districtAt, onLand, streetDist } from "./city-geo";
 import { Bucket, UNIT, box, mat } from "./city-kit";
 import type { GameEvent, Input } from "./contracts";
 import { R, groundAt, insideAny, rayBox, type Player } from "./player";
@@ -12,8 +13,7 @@ const DOOR_RANGE = 2.4;
 const ACT_RANGE = 2.2;
 const ICON_RANGE = 14;
 const CAM_ARM = 3.2;
-const EDGE = 15; // block edge offset from a street center line
-const LAMPS = [EDGE + 3.5, PERIOD / 2, PERIOD - EDGE - 3.5];
+const EDGE = ROAD_W / 2 + SIDEWALK;
 
 type Door = {
   name: string;
@@ -34,10 +34,18 @@ const NAMES: Record<Exclude<ShopKind, "lobby">, string[]> = {
 const LOBBIES = ["The Ashford", "Parkview Tower", "The Calloway", "Hudson Court"];
 const SHOP_ORDER: Exclude<ShopKind, "lobby">[] = ["bodega", "pizza", "coffee", "comic", "laundromat"];
 
-const near = (v: number, k: number) => {
-  const m = (((v + HALF - k * EDGE) % PERIOD) + PERIOD) % PERIOD;
-  return Math.min(m, PERIOD - m) < 1.5;
-};
+const streetFace = (x: number, z: number) => Math.abs(streetDist(x, z) - EDGE) < 1.5;
+const inBounds = (b: { minX: number; maxX: number; minZ: number; maxZ: number }) => b.minX > BOUNDS.minX && b.maxX < BOUNDS.maxX && b.minZ > BOUNDS.minZ && b.maxZ < BOUNDS.maxZ;
+
+// Street lamps stand at each block face's ends and middle (city-props blockStreet).
+function lampsClear(x: number, z: number, alongZ: boolean) {
+  const k = blockAt(x, z);
+  if (!k) return false;
+  const lo = alongZ ? k.minZ : k.minX, hi = alongZ ? k.maxZ : k.maxX, v = alongZ ? z : x;
+  const L = hi - lo;
+  const lamps = L < 12 ? [L / 2] : [3.5, L / 2, L - 3.5];
+  return lamps.every((l) => Math.abs(v - lo - l) > 2.5);
+}
 
 function findDoors(city: City, spawn: THREE.Vector3) {
   type Cand = { b: Box; pos: THREE.Vector3; n: THREE.Vector3; district: string; tall: boolean };
@@ -45,27 +53,28 @@ function findDoors(city: City, spawn: THREE.Vector3) {
   const free = (x: number, z: number) => !insideAny(city, x, 1, z, 0.3);
   for (const b of city.boxes) {
     if (b.maxY < 9 || b.maxX - b.minX < 10 || b.maxZ - b.minZ < 10) continue;
-    if (b.minX < -HALF || b.maxX > HALF || b.minZ < -HALF || b.maxZ > HALF) continue;
+    if (!inBounds(b)) continue;
+    const mx = (b.minX + b.maxX) / 2, mz = (b.minZ + b.maxZ) / 2;
     const faces: [number, number, number, number, boolean][] = [
-      [b.minX, (b.minZ + b.maxZ) / 2, -1, 0, near(b.minX, 1)],
-      [b.maxX, (b.minZ + b.maxZ) / 2, 1, 0, near(b.maxX, -1)],
-      [(b.minX + b.maxX) / 2, b.minZ, 0, -1, near(b.minZ, 1)],
-      [(b.minX + b.maxX) / 2, b.maxZ, 0, 1, near(b.maxZ, -1)],
+      [b.minX, mz, -1, 0, streetFace(b.minX, mz)],
+      [b.maxX, mz, 1, 0, streetFace(b.maxX, mz)],
+      [mx, b.minZ, 0, -1, streetFace(mx, b.minZ)],
+      [mx, b.maxZ, 0, 1, streetFace(mx, b.maxZ)],
     ];
     for (const [cx, cz, nx, nz, edge] of faces) {
       if (!edge) continue;
       const sx = -nz;
       const sz = nx;
-      // Street lamps stand at the block corners and middle, so slide the door off them.
       const half = (nx ? b.maxZ - b.minZ : b.maxX - b.minX) / 2 - 1.8;
-      const along = [5, -5, 8, -8, 0].find((o) => Math.abs(o) <= half && LAMPS.every((l) => Math.abs((((nx ? cz : cx) + o + HALF) % PERIOD + PERIOD) % PERIOD - l) > 2.5));
+      const along = [5, -5, 8, -8, 0].find((o) => Math.abs(o) <= half && lampsClear(cx - nx * 0.5 + sx * o, cz - nz * 0.5 + sz * o, nx !== 0) && streetFace(cx + sx * o, cz + sz * o));
       if (along === undefined) continue;
       const x = cx + sx * along;
       const z = cz + sz * along;
       let ok = true;
       for (const out of [1.2, 3, 6]) for (const s of [-1.6, 0, 1.6]) if (!free(x + nx * out + sx * s, z + nz * out + sz * s)) ok = false;
       if (!ok) continue;
-      const district = city.districts.find((d) => x >= d.minX && x <= d.maxX && z >= d.minZ && z <= d.maxZ)?.name ?? "";
+      if (!onLand(x + nx * 3, z + nz * 3)) continue;
+      const district = districtAt(x, z);
       if (!district || district === "Central Park") continue;
       cands.push({ b, pos: new THREE.Vector3(x, 0, z), n: new THREE.Vector3(nx, 0, nz), district, tall: b.maxY > 30 && b.maxY < 130 });
     }
@@ -289,6 +298,7 @@ export function createInteriors(scene: THREE.Scene, city: City, keep: THREE.Obje
   const dir = new THREE.Vector3();
 
   return {
+    doors,
     get inside() {
       return room !== null;
     },
@@ -306,7 +316,7 @@ export function createInteriors(scene: THREE.Scene, city: City, keep: THREE.Obje
     prompts,
     boxes(x: number, z: number): readonly Box[] {
       if (room) return room.boxes;
-      return Math.abs(x) < HALF + 50 && Math.abs(z) < HALF + 50 ? roofBoxes : [];
+      return x > BOUNDS.minX - 50 && x < BOUNDS.maxX + 50 && z > BOUNDS.minZ - 50 && z < BOUNDS.maxZ + 50 ? roofBoxes : [];
     },
     update(dt: number, t: number, input: Input, player: Player, fade: Fade, blocked: boolean) {
       events.length = 0;
