@@ -5,7 +5,7 @@ import type { Allies, Blade, Fx, GameEvent, SquadLead, SquadOrder, TitanPart, Ti
 const MAX = 8;
 const BASE = 5;
 const NAMES = ["Petra", "Oluo", "Eld", "Gunther", "Nifa", "Moblit", "Thomas", "Mina", "Nac", "Mylius", "Ness", "Siss", "Lynne", "Henning", "Abel", "Keiji"];
-const SLOTS: [number, number, number][] = [[-5, 2, -6], [5, 2, -6], [-10, 3, -11], [10, 3, -11], [0, 4, -15], [-14, 3, -3]];
+const SLOTS: [number, number, number][] = [[-5, 2, -6], [5, 2, -6], [-10, 3, -11], [10, 3, -11], [0, 4, -15], [-14, 3, -3], [14, 3, -3], [0, 5, -21]]; // one per MAX
 const NEAR = 30;
 const CALL_GAP = 8;
 const G = 9.8;

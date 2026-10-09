@@ -16,12 +16,18 @@ export function rng(seed: number): Rng {
 }
 
 const noiseBufs = new WeakMap<C, AudioBuffer>();
+const noiseData = new Map<number, Float32Array<ArrayBuffer>>();
 export function noiseBuffer(c: C) {
   let b = noiseBufs.get(c);
   if (!b) {
-    b = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
-    const d = b.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    let d = noiseData.get(c.sampleRate);
+    if (!d) {
+      d = new Float32Array(c.sampleRate * 2);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      noiseData.set(c.sampleRate, d);
+    }
+    b = c.createBuffer(1, d.length, c.sampleRate);
+    b.copyToChannel(d, 0);
     noiseBufs.set(c, b);
   }
   return b;

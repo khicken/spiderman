@@ -36,11 +36,16 @@ function reverbIR(c: BaseAudioContext, seconds: number) {
   for (let ch = 0; ch < 2; ch++) {
     const d = b.getChannelData(ch);
     let lp = 0;
+    let ek = 1;
+    let ed = 1;
+    const dk = Math.exp(-1 / (c.sampleRate * 0.6));
+    const dd = Math.exp(-1 / (c.sampleRate * 0.55));
+    const pre = Math.floor(c.sampleRate * 0.012);
     for (let i = 0; i < n; i++) {
-      const t = i / c.sampleRate;
-      const k = 0.15 + 0.8 * Math.exp(-t / 0.6);
-      lp += k * (Math.random() * 2 - 1 - lp);
-      d[i] = t < 0.012 ? 0 : lp * Math.exp(-t / 0.55);
+      lp += (0.15 + 0.8 * ek) * (Math.random() * 2 - 1 - lp);
+      d[i] = i < pre ? 0 : lp * ed;
+      ek *= dk;
+      ed *= dd;
     }
   }
   return b;
