@@ -712,8 +712,10 @@ const toCanvas = (im: ImageData) => {
   return c;
 };
 
-export function paintSuit(name: SuitName): Suit {
+/** Yields about every 4k texels so the work can run in idle slices. */
+export function* paintSuitSteps(name: SuitName): Generator<void, Suit, void> {
   const def = suitDef(name);
+  let work = 0;
   const P = { x: 0, y: 0, z: 0, t: 0 };
   const o: Texel = { col: [0, 0, 0], emi: [0, 0, 0], h: 0, rough: 0.6, coat: 0, metal: 0, lw: 1 };
   const tex = {} as SuitTex;
@@ -735,7 +737,11 @@ export function paintSuit(name: SuitName): Suit {
       const ei = new ImageData(w, h);
       const hgt = L === 0 ? new Float32Array(w * h) : null;
       if (L === 0) si = new ImageData(w, h);
-      for (let y = 0; y < h; y++)
+      for (let y = 0; y < h; y++) {
+        if ((work += w) > 4096) {
+          work = 0;
+          yield;
+        }
         for (let x = 0; x < w; x++) {
           const u = (x + 0.5) / w;
           const tv = 1 - (y + 0.5) / h;
@@ -759,6 +765,7 @@ export function paintSuit(name: SuitName): Suit {
             si.data[q + 3] = 255;
           }
         }
+      }
       maps.push(toCanvas(mi));
       emis.push(toCanvas(ei));
       if (hgt) ni = normals(hgt, w, h);

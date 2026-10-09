@@ -14,6 +14,7 @@ import { createInput } from "./input";
 import { createPlayer, raycast, R, type PlayerHooks } from "./player";
 import { createCameraRig } from "./camera";
 import { createRender, QUALITIES, type Quality } from "./render";
+import { clockRate } from "./render-clock";
 import { createWater, riverFloor } from "./water";
 import { createInteriors } from "./interiors";
 import { createFade } from "./interiors-fade";
@@ -227,7 +228,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
 
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
-    const real = Math.min((now - last) / 1000, 1 / 30);
+    const real = Math.min((now - last) / 1000, 1 / 15);
     last = now;
     frames++;
     fpsT += real;
@@ -242,8 +243,9 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (musicT <= 0) forcedMusic = null;
     const sim = playing && !photo.active;
     const dt = sim ? real * timeScale : 0;
-    if (sim) clock = (clock + real / 60) % 24;
+    if (sim) clock = (clock + (real / 60) * clockRate(clock)) % 24;
     view.setClock(clock);
+    view.setSpeed(player.vel.length());
     audio?.setNight(view.night);
     t += dt;
 
@@ -326,6 +328,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         combo: mh.combo,
         tokens: unlocks.tokens,
         clock,
+        aim: player.aim.kind,
+        aimDist: player.aim.dist,
         stealth,
         progress: mh.progress,
       });
@@ -336,6 +340,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   raf = requestAnimationFrame(frame);
 
+  (window as any).__dbg = { player, combat, city, missions, activities, crowd, water, interiors, rig, view, hero };
   return {
     play() {
       if (!audio) {

@@ -355,6 +355,14 @@ export const FACADES: FacadeStyle[] = [
 
 export const STYLE = Object.fromEntries(FACADES.map((f, i) => [f.name, i])) as Record<string, number>;
 
+/** Facade styles per borough look, for a map phase to pick from. */
+export const FACADE_SETS: Record<"brownstone" | "warehouse" | "glassTower" | "deco", number[]> = {
+  brownstone: [STYLE.brownstone, STYLE.brick, STYLE.painted],
+  warehouse: [STYLE.industrial, STYLE.brick, STYLE.tanbrick],
+  glassTower: [STYLE.glass, STYLE.greenglass, STYLE.darkglass, STYLE.modern],
+  deco: [STYLE.deco, STYLE.limestone, STYLE.granite],
+};
+
 function toNormal(src: HTMLCanvasElement, strength: number) {
   const S = src.width;
   const h = src.getContext("2d")!.getImageData(0, 0, S, S).data;
@@ -393,17 +401,34 @@ const FRAG_PARS = /* glsl */ `
 uniform vec2 uCells; uniform vec2 uCellM; uniform vec4 uWin; uniform vec4 uRoom; uniform vec2 uMull;
 uniform vec3 uFrame; uniform vec3 uGlass; uniform vec2 uGlassRM; uniform vec3 uLit; uniform vec2 uWallPt;
 uniform float uNight; uniform vec3 uReflHi; uniform vec3 uReflLo;
+varying vec3 vFcD;
 float fcH(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 fcPal(float h, float warm) {
-  vec3 w = h < 0.33 ? vec3(1.0, 0.70, 0.40) : h < 0.66 ? vec3(1.0, 0.80, 0.56) : vec3(1.0, 0.62, 0.34);
-  vec3 c = h < 0.5 ? vec3(0.78, 0.88, 1.0) : vec3(0.95, 0.97, 1.0);
+  vec3 w = h < 0.33 ? vec3(1.0, 0.62, 0.32) : h < 0.66 ? vec3(1.0, 0.76, 0.48) : vec3(0.95, 0.52, 0.26);
+  vec3 c = h < 0.5 ? vec3(0.34, 0.46, 0.68) : vec3(0.52, 0.6, 0.74);
   return step(fract(h * 7.31), warm) > 0.5 ? w : c;
+}
+`;
+
+const VERT_PARS = /* glsl */ `
+varying vec3 vFcD;
+float fcH(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float fcN(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(fcH(i), fcH(i + vec2(1.0, 0.0)), f.x), mix(fcH(i + vec2(0.0, 1.0)), fcH(i + vec2(1.0)), f.x), f.y);
+}
+`;
+
+const VERT_DISTRICT = /* glsl */ `
+{
+  vec3 w = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vFcD = vec3(0.65 * fcN(w.xz / 260.0) + 0.35 * fcN(w.xz / 70.0 + 17.0), fcN(w.xz / 180.0 + 41.0) - 0.5, smoothstep(0.0, 90.0, w.y));
 }
 `;
 
 const FRAG_MAP = /* glsl */ `
 #include <map_fragment>
-vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0; vec3 fcE = vec3(0.0);
+vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0; vec3 fcE = vec3(0.0); vec3 fcAmb = vec3(0.0);
 {
   vec2 cu = vMapUv * uCells;
   vec2 cid = floor(cu);
@@ -411,7 +436,6 @@ vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0
   vec2 fw = fwidth(cu);
   float fwm = max(fw.x, fw.y);
   float lod1 = smoothstep(0.12, 0.35, fwm);
-  float lod2 = smoothstep(0.6, 1.4, fwm);
   float roomW = uRoom.w;
   vec2 rid = vec2(floor(cid.x / roomW), cid.y);
   float h1 = fcH(rid + 0.37);
@@ -419,12 +443,14 @@ vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0
   float h3 = fcH(rid * 2.3 + 47.1);
   float hRow = fcH(vec2(cid.y, floor(cid.x / 24.0)) + 5.1);
   float nightK = smoothstep(0.3, 1.0, uNight);
-  float litP = mix(uLit.x, 0.35 + 0.5 * uLit.x, nightK);
+  float warmK = clamp(uLit.y + vFcD.y * 0.5, 0.0, 1.0);
+  float litP = min(mix(uLit.x, 0.2 + 0.5 * uLit.x, nightK) * mix(0.5, 1.45, vFcD.x), 0.9);
   float lit = step(mix(h1, hRow, uLit.z), litP);
-  float litS = uNight < 0.3 ? mix(0.4, 1.0, uNight / 0.3) : mix(1.0, 1.7, nightK);
-  vec3 lc = fcPal(h2, uLit.y) * (0.75 + 0.5 * h3) * litS;
+  float litS = mix(0.4, 0.85, smoothstep(0.0, 0.3, uNight));
+  vec3 lc = fcPal(h2, warmK) * (0.75 + 0.5 * h3) * litS;
   float area = (min(uWin.z, 1.0) - max(uWin.x, 0.0)) * (uWin.w - uWin.y);
-  vec3 farE = lc * lit * 0.55 * area;
+  vec3 farE = mix(vec3(0.43, 0.53, 0.71), vec3(0.98, 0.63, 0.35), warmK) * litS * litP * 0.6 * area;
+  float lod2 = smoothstep(0.35, 1.0, fwm);
   float inside = step(uWin.x, f.x) * step(f.x, uWin.z) * step(uWin.y, f.y) * step(f.y, uWin.w);
   vec3 nearE = vec3(0.0);
   vec3 N = normalize(vNormal);
@@ -497,6 +523,7 @@ vec3 fcCol = diffuseColor.rgb; float fcW = 0.0; float fcR = 0.5; float fcM = 0.0
     fcW = 1.0 - lod1;
   }
   fcE = mix(mix(nearE, lc * lit * 0.6 * inside, lod1), farE, lod2) * uRoom.z + refl * glassAmt;
+  fcAmb = mix(uReflLo, uReflHi, 0.6) * (0.5 + 0.5 * vFcD.z) * 0.16;
 }
 diffuseColor.rgb = mix(diffuseColor.rgb, fcCol, fcW);
 `;
@@ -561,8 +588,11 @@ export function facadeMaterial(style: FacadeStyle, r: R) {
       .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, fcR, fcW);")
       .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, fcM, fcW);")
       .replace("#include <normal_fragment_maps>", "vec3 fcN0 = normal;\n#include <normal_fragment_maps>\nnormal = normalize(mix(normal, fcN0, fcW));")
-      .replace("#include <emissivemap_fragment>", "totalEmissiveRadiance = fcE;");
+      .replace("#include <emissivemap_fragment>", "totalEmissiveRadiance = fcE + diffuseColor.rgb * fcAmb;");
+    s.vertexShader = s.vertexShader
+      .replace("#include <common>", "#include <common>\n" + VERT_PARS)
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n" + VERT_DISTRICT);
   };
-  m.customProgramCacheKey = () => "facade2";
+  m.customProgramCacheKey = () => "facade3";
   return m;
 }

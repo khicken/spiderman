@@ -385,6 +385,39 @@ function NextUp({ m }: { m: Labeled & { d: number } }) {
   );
 }
 
+const AIM: Record<HudState["aim"], { color: string; op: number; gap: number }> = {
+  aim: { color: "#ffffff", op: 1, gap: 5 },
+  auto: { color: "#ffffff", op: 0.85, gap: 7 },
+  far: { color: "#9aa0a8", op: 0.8, gap: 8 },
+  blocked: { color: "#e2231a", op: 0.95, gap: 8 },
+  none: { color: "#ffffff", op: 0.3, gap: 8 },
+};
+
+function Crosshair({ h }: { h: HudState }) {
+  const st = AIM[h.aim] ?? AIM.none;
+  const g = st.gap;
+  const glow = h.aim === "aim" ? "drop-shadow(0 0 3px rgba(255,255,255,0.9)) drop-shadow(0 1px 2px #000)" : "drop-shadow(0 1px 2px rgba(0,0,0,0.9))";
+  const showDist = (h.aim === "aim" || h.aim === "auto" || h.aim === "far") && h.aimDist > 0;
+  return (
+    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ opacity: st.op, transition: "opacity 120ms" }}>
+      <svg viewBox="-30 -30 60 60" className="h-[60px] w-[60px] overflow-visible" style={{ filter: glow }}>
+        <g stroke={st.color} strokeWidth={h.aim === "aim" ? 2 : 1.6} strokeLinecap="round" fill="none" style={{ transition: "stroke 120ms" }}>
+          <path d={`M${-g} 0h${-5}M${g} 0h5M0 ${-g}v-5M0 ${g}v5`} />
+          {h.aim === "blocked" && <path d="M-4 -4L4 4M4 -4L-4 4" />}
+        </g>
+        {h.aim !== "blocked" && <circle r={h.aim === "aim" ? 1.8 : 1.3} fill={st.color} />}
+        {h.aim === "aim" && <path d="M-16 -9L-19 0L-16 9M16 -9L19 0L16 9" stroke="#e2231a" strokeWidth={2} fill="none" strokeLinejoin="round" />}
+        {h.aim === "auto" && <path d="M13 -13l4 -4M13 -17h4v4" stroke={st.color} strokeWidth={1.6} fill="none" strokeLinecap="round" />}
+      </svg>
+      {showDist && (
+        <div className={`absolute left-1/2 top-[50px] -translate-x-1/2 font-cond text-xs font-bold italic tabular-nums tracking-wider ${SHADOW}`} style={{ color: st.color }}>
+          {Math.round(h.aimDist)} m
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Hud({ h, pops, showVitals, tip }: { h: HudState; pops: Pop[]; showVitals: boolean; tip?: ReactNode }) {
   const lines = Math.min(Math.max((h.speed - 110) / 160, 0), 0.45);
   const toast = [...pops].reverse().find((p) => p.type === "toast");
@@ -434,7 +467,7 @@ export function Hud({ h, pops, showVitals, tip }: { h: HudState; pops: Pop[]; sh
       {h.sense && <Sense s={h.sense} />}
       {h.stealth && <Stealth s={h.stealth} />}
 
-      <div className="absolute left-1/2 top-1/2 -ml-[2px] -mt-[2px] h-1 w-1 rounded-full bg-white/80" />
+      <Crosshair h={h} />
 
       {toast?.type === "toast" && (
         <div key={toast.id} className="banner-in absolute left-1/2 top-[20%] w-max max-w-[calc(100%-32px)] -translate-x-1/2 text-center">

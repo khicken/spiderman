@@ -673,14 +673,14 @@ export function groundTexture(PERIOD: number, STREET: number) {
   const px = S / PERIOD;
   const [c, g] = canvas(S);
   const rand = Math.random;
-  g.fillStyle = "#24252a";
+  g.fillStyle = "#47484d";
   g.fillRect(0, 0, S, S);
   for (let i = 0; i < 14000; i++) {
-    g.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${rand() * 0.05})`;
+    g.fillStyle = `rgba(${rand() < 0.5 ? "255,255,255" : "0,0,0"},${rand() * 0.06})`;
     g.fillRect(rand() * S, rand() * S, 2, 2);
   }
-  for (let i = 0; i < 40; i++) {
-    g.fillStyle = "rgba(10,10,14,0.25)";
+  for (let i = 0; i < 70; i++) {
+    g.fillStyle = `rgba(14,14,18,${0.2 + rand() * 0.2})`;
     g.beginPath();
     g.ellipse(rand() * S, rand() * S, 10 + rand() * 40, 6 + rand() * 20, rand() * 3, 0, Math.PI * 2);
     g.fill();
@@ -819,29 +819,48 @@ export function parkTexture(r: R) {
   return tex(c, true, 8);
 }
 
+/** Tiles with no seam: every wave has a whole number of cycles per tile. */
 export function waterNormal() {
   const S = 256;
   const [c, g] = canvas(S);
   const img = g.createImageData(S, S);
-  const h = (x: number, y: number) => {
-    let v = 0;
-    for (let k = 1; k <= 4; k++) v += Math.sin((x * (k + 1) * 0.11 + y * k * 0.07) * (2 * Math.PI) / 4.4 + k) / k + Math.sin((y * (k + 2) * 0.09 - x * k * 0.05) * (2 * Math.PI) / 3.7) / k;
-    return v;
-  };
-  for (let y = 0; y < S; y++) {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const waves: [number, number, number, number][] = [];
+  for (let i = 0; i < 28; i++) {
+    const k = 3 * Math.pow(8, (i + rnd()) / 28);
+    const th = (i * 2.39996) % (Math.PI * 2);
+    const a = Math.round(k * Math.cos(th)), b = Math.round(k * Math.sin(th));
+    if (a === 0 && b === 0) continue;
+    waves.push([a, b, 1 / Math.pow(Math.hypot(a, b), 1.4), rnd() * Math.PI * 2]);
+  }
+  const gx = new Float32Array(S * S), gy = new Float32Array(S * S);
+  let sum = 0;
+  for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const dx = h(x + 1, y) - h(x - 1, y);
-      const dy = h(x, y + 1) - h(x, y - 1);
-      const i = (y * S + x) * 4;
-      img.data[i] = 128 + dx * 40;
-      img.data[i + 1] = 128 + dy * 40;
-      img.data[i + 2] = 255;
-      img.data[i + 3] = 255;
+      let dx = 0, dy = 0;
+      for (const [a, b, amp, ph] of waves) {
+        const cs = amp * Math.cos((2 * Math.PI * (a * x + b * y)) / S + ph);
+        dx += cs * a;
+        dy += cs * b;
+      }
+      const i = y * S + x;
+      gx[i] = dx;
+      gy[i] = dy;
+      sum += dx * dx + dy * dy;
     }
+  const k = 0.35 / Math.sqrt(sum / (S * S));
+  for (let i = 0; i < S * S; i++) {
+    const nx = -gx[i] * k, ny = gy[i] * k, l = Math.hypot(nx, ny, 1);
+    img.data[i * 4] = (nx / l) * 127.5 + 127.5;
+    img.data[i * 4 + 1] = (ny / l) * 127.5 + 127.5;
+    img.data[i * 4 + 2] = (1 / l) * 127.5 + 127.5;
+    img.data[i * 4 + 3] = 255;
   }
   g.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
   return t;
 }
 
