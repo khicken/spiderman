@@ -1,0 +1,271 @@
+@import "tailwindcss";
+
+@theme {
+  --color-night: #07080a;
+  --color-panel: #111418;
+  --color-glass: rgb(10 12 16 / 0.62);
+  --color-glass-hi: rgb(26 30 38 / 0.72);
+  --color-line: rgb(255 255 255 / 0.12);
+  --color-line-hi: rgb(255 255 255 / 0.28);
+  --color-mute: #8a93a0;
+  --color-dim: #5b636e;
+  --color-hot: #ff2d55;
+  --color-hot-soft: rgb(255 45 85 / 0.18);
+  --color-volt: #d4ff2a;
+  --color-ice: #4cc9ff;
+  --color-good: #3ddc84;
+  --color-bad: #ff4d4d;
+  --color-gold: #ffc53d;
+  --color-silver: #c9d1db;
+  --color-bronze: #d08a52;
+  --color-s2: #3b82f6;
+  --color-s1: #a855f7;
+  --color-a: #ef4444;
+  --color-b: #f59e0b;
+  --font-body: var(--font-barlow), "Barlow", system-ui, sans-serif;
+  --font-cond: var(--font-cond), "Barlow Condensed", "Arial Narrow", sans-serif;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-spin-slow: spin 1.2s linear infinite;
+}
+
+/* Root size scales the whole UI: 16px at 1600x900, 11px floor on phones, 40px cap at 4K. */
+html {
+  font-size: clamp(11px, min(1vw, 1.78vh), 40px);
+}
+
+html,
+body {
+  background: var(--color-night);
+  overscroll-behavior: none;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  font-family: var(--font-body);
+}
+
+@layer components {
+.num {
+  font-family: var(--font-cond);
+  font-style: italic;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.ttl {
+  font-family: var(--font-cond);
+  font-style: italic;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.glass {
+  background: var(--color-glass);
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+}
+
+.safe {
+  padding: max(1.25rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) max(1.25rem, env(safe-area-inset-bottom))
+    max(1.5rem, env(safe-area-inset-left));
+}
+
+/* Focusable control: one look for mouse hover, keyboard focus and gamepad focus. */
+.nav {
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition:
+    transform 180ms var(--ease-out),
+    translate 180ms var(--ease-out),
+    scale 120ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    color 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out),
+    opacity 180ms var(--ease-out);
+}
+.nav:hover {
+  border-color: var(--color-line-hi);
+  background-color: var(--color-glass-hi);
+}
+.nav:focus-visible,
+.nav[data-on="1"] {
+  border-color: var(--color-hot);
+  box-shadow:
+    0 0 0 1px var(--color-hot),
+    0 0 1.5rem -0.25rem var(--color-hot);
+}
+.nav:focus-visible {
+  transform: translateY(-2px);
+}
+.nav:active {
+  transform: scale(0.97);
+}
+.nav:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.skew {
+  transform: skewX(-10deg);
+}
+.unskew {
+  transform: skewX(10deg);
+}
+
+.rise {
+  animation: rise 240ms var(--ease-out) both;
+}
+.fade {
+  animation: fade 200ms var(--ease-out) both;
+}
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes count {
+  0% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(0.94);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.5rem) scale(0.96);
+  }
+  12%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+@keyframes speed {
+  from {
+    transform: translateX(30%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-60%);
+    opacity: 0;
+  }
+}
+@keyframes shimmer {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.blink {
+  animation: blink 0.5s steps(1) infinite;
+}
+
+/* Shift light: set by the tachometer handle per frame through data-shift. */
+.tach[data-shift="1"] .shift-lamp {
+  opacity: 1;
+  animation: blink 0.12s steps(1) infinite;
+}
+.tach[data-shift="1"] .tach-gear {
+  color: var(--color-hot);
+}
+
+input[type="range"].rng {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 2.25rem;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+input[type="range"].rng::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: 1px;
+  background: linear-gradient(to right, var(--color-hot) var(--v, 50%), var(--color-line-hi) var(--v, 50%));
+}
+input[type="range"].rng::-moz-range-track {
+  height: 0.25rem;
+  background: linear-gradient(to right, var(--color-hot) var(--v, 50%), var(--color-line-hi) var(--v, 50%));
+}
+input[type="range"].rng::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: -0.5rem;
+  border-radius: 2px;
+  transform: skewX(-10deg);
+  background: white;
+  transition: box-shadow 180ms;
+}
+input[type="range"].rng::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 0;
+  border-radius: 2px;
+  background: white;
+}
+input[type="range"].rng:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 2px var(--color-hot),
+    0 0 1rem var(--color-hot);
+}
+
+.noscroll {
+  scrollbar-width: none;
+}
+.noscroll::-webkit-scrollbar {
+  display: none;
+}
+
+.touch-ui {
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
