@@ -1414,8 +1414,10 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     if (d <= stop) return true;
     _w.copy(tgt.center).addScaledVector(_v.normalize(), -stop * 0.9);
     if (p.grounded && !tgt.airborne()) _w.y = p.pos.y;
-    p.lunge(_w, speed);
     const rise = _w.y - p.pos.y;
+    // player.lunge ignores a goal within 0.8 m flat, so the lunge would stall to its timeout.
+    if (Math.abs(rise) <= 0.4 && Math.hypot(_w.x - p.pos.x, _w.z - p.pos.z) <= 0.8) return true;
+    p.lunge(_w, speed);
     if (Math.abs(rise) > 0.4 && (tgt.airborne() || !p.grounded)) {
       const vy = clamp(rise * 6, -Math.max(16, speed), 16) - p.vel.y;
       if (Math.abs(vy) > 0.5) p.push(_u.set(0, vy, 0));
@@ -1439,7 +1441,7 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
 
   const diveTarget = () => {
     const p = P;
-    if (!p || (p.mode !== "perch" && !p.grounded)) return null;
+    if (!p || p.mode !== "perch") return null;
     const feet = p.pos.y - FEET;
     let best: Enemy | null = null;
     let bs = Infinity;
@@ -1789,6 +1791,8 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
         return;
       }
       act.lunging = false;
+      // The lunge sets 28 m/s and the air keeps it, so the hero flies past the target.
+      if (!p.grounded) p.push(_v.set(-p.vel.x, 0, -p.vel.z));
     }
     act.t += dt;
     const prog = Math.min(1, act.t / act.dur);
@@ -2577,7 +2581,6 @@ export function createCombat(scene: THREE.Scene, city: City, civilians?: Civilia
     cancelBoss: () => bosses.cancel(),
     strikeTarget,
     nearEnemy,
-    inCombat,
     webTaken: () => webTaken,
     debug: { enemies, act },
     takeXp,

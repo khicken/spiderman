@@ -76,8 +76,8 @@ export interface PlayerApi {
   readonly facing: THREE.Vector3; // flat unit vector
   readonly grounded: boolean;
   readonly airTime: number;
-  readonly aim: AimState;
-  readonly swingCue: number; // 0..1, strength of the release boost window right now // what the next swing press would use, refreshed every frame
+  readonly aim: AimState; // what the next swing press would use, refreshed every frame
+  readonly swingCue: number; // 0..1, strength of the release boost window right now
   // Combat control. While busy, movement input is ignored and the given pose is shown.
   act(pose: HeroPose, progress: number): void; // call every frame the action runs
   lunge(to: THREE.Vector3, speed: number): void; // move toward a point this frame (melee close-in)

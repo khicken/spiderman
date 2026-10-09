@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { HudState, PlayerMode } from "./contracts";
+import type { HudState } from "./contracts";
 import { Key } from "./ui-menu";
 
 const STORE = "spiderman-tips";
 const SHOW_S = 7;
 
-type H = HudState & { mode?: PlayerMode };
 type Ctx = { t: number; seen: Set<string>; fall: number };
-type Tip = { id: string; keys: [string, string][]; when: (h: H, c: Ctx) => boolean; done?: (h: H) => boolean };
+type Tip = { id: string; keys: [string, string][]; when: (h: HudState, c: Ctx) => boolean; done?: (h: HudState) => boolean };
 
 const TIPS: Tip[] = [
   { id: "swing", keys: [["LMB", "Hold to web-swing"]], when: (_h, c) => c.t > 1.5, done: (h) => h.speed > 80 && h.height > 12 },

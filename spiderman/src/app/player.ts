@@ -581,18 +581,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   };
   const aimOk = () => pickOk;
 
-  (globalThis as any).__fa = (pp: THREE.Vector3, look: THREE.Vector3, vv: THREE.Vector3, cam?: THREE.Vector3) => {
-    p.copy(pp);
-    v.copy(vv);
-    const c = findAnchor(look);
-    const res = { found: !!c, c: c && { p: c.p.clone(), n: c.n.clone(), side: c.side, score: c.score }, aim: { kind: aim.kind, dist: 0, point: new THREE.Vector3() } };
-    computeAim(cam ?? tmp.copy(pp).addScaledVector(look, -6).addScaledVector(UP, 2).clone(), look, true);
-    res.aim = { kind: aim.kind, dist: aim.dist, point: aim.point.clone() };
-    return res;
-  };
-
   const attach = () => {
-    if (!aimOk()) return false;
+    if (!aimOk() || pickP.y - p.y < AIM_UP) return false;
     anchor.copy(pickP);
     anchorN.copy(aimN);
     if (DEV && !onCollider(city, anchor) && aim.kind === "aim") console.error("anchor off collider", anchor.toArray());

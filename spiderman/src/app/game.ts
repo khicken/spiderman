@@ -240,7 +240,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (musicT <= 0) forcedMusic = null;
     const sim = playing && !photo.active;
     const dt = sim ? real * timeScale : 0;
-    clockT += real;
+    if (!photo.active) clockT += real;
     if (clockT > 1) {
       clockT = 0;
       clock = localHours();
@@ -329,7 +329,9 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         objective: mh.objective,
         prompts: interiors.prompts.length
           ? [...interiors.prompts, ...player.prompts.filter((p) => p.key !== "E"), ...mh.prompts.filter((p) => p.key !== "E")]
-          : [...(mh.greet ? player.prompts.filter((p) => p.key !== "E") : player.prompts), ...mh.prompts],
+          : mh.greet && player.prompts.some((p) => p.key === "E")
+            ? [...player.prompts, ...mh.prompts.filter((p) => p.key !== "E")]
+            : [...player.prompts, ...mh.prompts],
         markers: mh.markers,
         combo: mh.combo,
         tokens: unlocks.tokens,
@@ -348,7 +350,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   raf = requestAnimationFrame(frame);
 
-  (window as any).__dbg = { player, combat, city, missions, activities, crowd, water, interiors, rig, view, hero };
   return {
     play() {
       if (!audio) {
