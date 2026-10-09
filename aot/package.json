@@ -1,0 +1,25 @@
+{
+  "name": "aot",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "16.1.5",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.186.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
