@@ -26,7 +26,8 @@ import {
   ResultsCard,
   type Results,
 } from "./ui-char";
-import { Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
+import { ControlsCard, ControlsOverlay } from "./ui-controls";
+import { DepotArrow, Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
 import { Drill, LevelUp } from "./ui-run";
 import {
   ControlsPanel,
@@ -89,6 +90,7 @@ function loadSettings(): Settings {
 export default function TitanPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reticleRef = useRef<HTMLDivElement>(null);
+  const depotRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Game | null>(null);
   const screenRef = useRef<Screen>("title");
   const [hud, setHud] = useState<HudState | null>(null);
@@ -243,6 +245,7 @@ export default function TitanPage() {
     };
     const game = startGame(canvasRef.current!, onHud, onEvent, initial);
     game.bindReticle(reticleRef.current);
+    game.bindDepot(depotRef.current);
     gameRef.current = game;
     return () => {
       portrait.removeEventListener("change", onTurn);
@@ -350,6 +353,9 @@ export default function TitanPage() {
           <LockReticle lock={hud.lock} />
         )}
       </div>
+      <div ref={depotRef} className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0">
+        {screen === "playing" && hud && !hud.intro && <DepotArrow h={hud} />}
+      </div>
 
       {screen === "playing" && hud && (
         <div className={touch ? "touch-hud" : undefined}>
@@ -377,6 +383,7 @@ export default function TitanPage() {
           onPause={() => gameRef.current?.pause()}
         />
       )}
+      {screen === "playing" && hud && !hud.intro && <ControlsOverlay touch={touch} />}
       {screen === "playing" && hud && (hud.run.choice || hud.run.drill) && !hud.intro && (
         <div className={touch ? "touch-hud" : undefined}>
           <Drill run={hud.run} onSkip={() => gameRef.current?.skipDrill()} />
@@ -433,6 +440,13 @@ export default function TitanPage() {
               )}
               <Menu key={screen} items={items} active={panel} />
             </div>
+            {screen === "title" && !panel && (
+              <div className={`flex min-w-0 flex-col gap-4 ${touch ? "flex-1" : "w-full lg:max-w-[480px]"}`}>
+                <div className="panel-in hud-z">
+                  <ControlsCard touch={touch} />
+                </div>
+              </div>
+            )}
             {panel && settings && (
               <div
                 key={panel}
