@@ -15,7 +15,7 @@ const AIR_DRAG = G / (55 * 55);
 const DIVE_DRAG = (G * 1.9) / (70 * 70);
 const AIR_CONTROL = 14;
 const AIR_CAP = 16;
-const SWING_STEER = 22;
+const SWING_STEER = 34;
 const SPRINT_AFTER = 0.8;
 const SOFT_SPEED = 35;
 const RUN = 11;
@@ -31,6 +31,7 @@ const WALL_GAP = 4;
 const ROPE_MAX = 40;
 const REEL = 1.5;
 const WEB_TRAVEL = 0.08;
+const WEB_SPEED = 600;
 const AIM_RANGE = 60;
 const AIM_UP = 4;
 const DASH_RANGE = 40;
@@ -40,12 +41,18 @@ const CHAIN_GAP = 0.15;
 const CHAIN_REL = 20;
 const CHAIN_APEX = 3;
 const CHAIN_WAIT = 0.4;
-const PULL_T = 0.2;
-const PULL_ACC = 34;
-const PULL_IN = 6;
-const LIFT_H = 14;
-const LIFT = 26;
-const AVOID = 30;
+const REEL_RAMP = 0.45;
+const PULL_ACC = 40;
+const PULL_CAP = 12;
+const PULL_FADE = 0.5;
+const PULL_END = 0.9;
+const REEL_RATE = 30;
+const CATCH_W = 14;
+const CATCH_MAX = 3;
+const CATCH_GAIN = 4;
+const WALL_PUSH = 100;
+const CONE_COS = Math.cos(45 * (Math.PI / 180));
+const AVOID = 50;
 const SWING_CLEAR = 10;
 const SWING_SAG = 8;
 const RELEASE_TOP = 0;
@@ -68,9 +75,10 @@ let hitAxis = 0;
 let hitSign = 0;
 function slab(o: number, d: number, lo: number, hi: number, axis: number) {
   if (Math.abs(d) < 1e-9) return o >= lo && o <= hi;
-  let a = (lo - o) / d;
-  let b = (hi - o) / d;
-  if (a > b) [a, b] = [b, a];
+  const t0 = (lo - o) / d;
+  const t1 = (hi - o) / d;
+  const a = Math.min(t0, t1);
+  const b = Math.max(t0, t1);
   if (a > tMin) {
     tMin = a;
     hitAxis = axis;
@@ -92,16 +100,29 @@ export function rayBox(o: THREE.Vector3, d: THREE.Vector3, b: Box, n?: THREE.Vec
 
 const _n = new THREE.Vector3();
 const _n2 = new THREE.Vector3();
+let hitBox: Box | null = null;
 function castList(list: readonly Box[], o: THREE.Vector3, d: THREE.Vector3, maxT: number, n?: THREE.Vector3) {
   let best = -1;
+  hitBox = null;
   for (const b of list) {
     const t = rayBox(o, d, b, _n2);
     if (t >= 0 && t <= maxT && (best < 0 || t < best)) {
       best = t;
+      hitBox = b;
       n?.copy(_n2);
     }
   }
   return best;
+}
+
+// AoT-style ease: the reel and the pull start at 30% and reach full strength at REEL_RAMP.
+const easeIn = (t: number) => {
+  const k = Math.min(1, t / REEL_RAMP);
+  return 0.3 + 0.7 * k * k * (3 - 2 * k);
+};
+function reelStep(rope: number, goal: number, t: number, h: number) {
+  if (rope <= goal) return rope;
+  return Math.max(goal, rope - Math.min(REEL_RATE, 4 + 3 * (rope - goal)) * easeIn(t) * h);
 }
 
 const rayBuf: Box[] = [];
@@ -155,13 +176,12 @@ export type PlayerHooks = {
 };
 const ZIP_RANGE = 60;
 
-type Candidate = { p: THREE.Vector3; n: THREE.Vector3; side: number; score: number; done: boolean };
+type Candidate = { p: THREE.Vector3; n: THREE.Vector3; score: number; done: boolean };
 const POOL = 400;
 const AHEAD_K = [0.6, 1, 1.4];
 const SIM_DT = 1 / 30;
-const SIM_T = 1;
+const SIM_T = 1.5;
 const SIM_PAD = 0.6;
-const AUTO_EVERY = 3;
 const FAR_RANGE = 150;
 const GLANCE_KEEP = 0.7;
 const ROLL_TIME = 0.5;
@@ -196,7 +216,6 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   let ropeLive = false;
   let webT = 0;
   let swingT = 0;
-  let lastSide = 0;
   let sinceRelease = 9;
   let diveCheckT = 0;
   let swingRetry = 0;
@@ -213,7 +232,6 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
   const missP = new THREE.Vector3();
   let pickOk = false;
   let aimHand: "L" | "R" = "R";
-  let aimSide = 1;
   const aimList: Box[] = [];
   const scanBuf: Box[] = [];
   const camRight = new THREE.Vector3();
@@ -278,7 +296,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const events: GameEvent[] = [];
   const prompts: { key: string; label: string }[] = [];
-  const pool: Candidate[] = Array.from({ length: POOL }, () => ({ p: new THREE.Vector3(), n: new THREE.Vector3(), side: 0, score: 0, done: false }));
+  const pool: Candidate[] = Array.from({ length: POOL }, () => ({ p: new THREE.Vector3(), n: new THREE.Vector3(), score: 0, done: false }));
   const cands: Candidate[] = [];
   const tmp = new THREE.Vector3();
   const tmp2 = new THREE.Vector3();
@@ -331,17 +349,24 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const floor = groundAt(city, a.x + c.n.x * 1.5, a.z + c.n.z * 1.5, a.y);
     const goal = Math.max(4, Math.min(dist - REEL, ROPE_MAX, a.y - floor - SWING_CLEAR, a.y - p.y + SWING_SAG));
     let rope = dist;
+    const fly = dist / WEB_SPEED;
     for (let t = SIM_DT; t <= SIM_T; t += SIM_DT) {
-      const live = t > WEB_TRAVEL;
+      const live = t > fly;
       simV.y -= (live ? G_SWING : G) * SIM_DT;
-      if (live && rope > goal) rope = Math.max(goal, rope - Math.min(45, 10 + 4 * (rope - goal)) * SIM_DT);
+      if (live) {
+        rope = reelStep(rope, goal, t - fly, SIM_DT);
+        const pull = PULL_ACC * easeIn(t - fly) * (1 - THREE.MathUtils.smoothstep(t - fly, PULL_FADE, PULL_END));
+        simD.copy(a).sub(simP).normalize();
+        const vin = simV.dot(simD);
+        if (pull > 0 && vin < PULL_CAP) simV.addScaledVector(simD, pull * Math.min(1, (PULL_CAP - vin) / 4) * SIM_DT);
+      }
       if (live && (c.n.x || c.n.z)) {
         const out = (simP.x - a.x) * c.n.x + (simP.z - a.z) * c.n.z;
         const vn = simV.x * c.n.x + simV.z * c.n.z;
-        const want = (WALL_GAP - out) * 2;
+        const want = (WALL_GAP - out) * 3;
         if (vn < want) {
           const s0 = simV.length();
-          const k = (want - vn) * Math.min(1, 10 * SIM_DT);
+          const k = Math.min((want - vn) * 10, WALL_PUSH) * SIM_DT;
           simV.x += c.n.x * k;
           simV.z += c.n.z * k;
           simV.setLength(s0);
@@ -379,15 +404,16 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     return -1;
   };
 
-  const findAnchor = (look: THREE.Vector3) => {
+  // Anchors stay in a cone around dir.
+  const findAnchor = (dir: THREE.Vector3) => {
     const speed = v.length();
-    heading.set(v.x, 0, v.z);
-    if (heading.lengthSq() < 16) heading.set(look.x, 0, look.z);
+    heading.set(dir.x, 0, dir.z);
+    if (heading.lengthSq() < 1e-4) return null;
     heading.normalize();
     // A held side key picks anchors on that side, so the next arc curves the way the player steers.
     const steer = wish.x * -heading.z + wish.z * heading.x;
     heading.addScaledVector(wish, 0.6);
-    if (heading.lengthSq() < 1e-4) heading.set(look.x, 0, look.z);
+    if (heading.lengthSq() < 1e-4) heading.set(dir.x, 0, dir.z);
     heading.normalize();
     right.set(-heading.z, 0, heading.x);
     const idealAhead = THREE.MathUtils.clamp(12 + speed * 0.35, 12, 26);
@@ -402,20 +428,21 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       const dz = z - p.z;
       const ahead = dx * heading.x + dz * heading.z;
       const side = dx * right.x + dz * right.z;
-      if (ahead < (Math.abs(side) > 10 ? 0 : minAhead) || ahead > 50 || dy < AIM_UP || Math.abs(side) > 36) return;
+      const flat = Math.hypot(dx, dz);
+      if (ahead < minAhead || ahead < flat * CONE_COS || ahead > 50 || dy < AIM_UP) return;
       if (dx * dx + dy * dy + dz * dz > AIM_RANGE * AIM_RANGE) return;
       const as = Math.abs(side);
       const fwd = Math.max(0, 1 - Math.abs(ahead - idealAhead) / 22);
-      const alt = Math.abs(steer) > 0.3 ? (Math.sign(side) === Math.sign(steer) ? 1 : 0.2) : lastSide === 0 ? 0.7 : Math.sign(side) === -lastSide ? 1 : 0.35;
+      const cone = (ahead / flat - CONE_COS) / (1 - CONE_COS);
+      const turn = Math.abs(steer) > 0.3 ? (Math.sign(side) === Math.sign(steer) ? 1 : 0.2) : 1;
       const along = nx || nz ? 0.4 + 0.6 * (1 - Math.abs(nx * heading.x + nz * heading.z)) : 0.7;
-      const wide = as > 16 ? Math.max(0, 1 - (as - 16) / 14) : 1;
-      const sidePref = alt * along * wide * (as < 3 ? 0.4 : 1) * (corner ? 0.8 : 1);
+      const wide = as > 14 ? Math.max(0, 1 - (as - 14) / 14) : 1;
+      const sidePref = turn * along * wide * (as < 3 ? 0.4 : 1) * (corner ? 0.8 : 1);
       const fit = dy < 10 ? 0.15 + (0.6 * (dy - AIM_UP)) / (10 - AIM_UP) : dy <= 22 ? 1 : Math.max(0, 1 - (dy - 22) / 20);
       const c = pool[cands.length];
       c.p.set(x, y, z);
       c.n.set(nx, 0, nz);
-      c.side = side;
-      c.score = fwd * 0.4 + sidePref * 0.25 + fit * 0.35;
+      c.score = fwd * 0.3 + cone * 0.2 + sidePref * 0.2 + fit * 0.3;
       c.done = false;
       cands.push(c);
     };
@@ -472,8 +499,8 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         if (!turn) turn = c;
         continue;
       }
-      // A swing that would hit a wall head on is never picked. A glancing hit is the last choice.
-      if (!glance && Math.abs(simN.x * heading.x + simN.z * heading.z) < 0.5) glance = c;
+      // A swing that would hit a wall head on is never picked. A late glancing hit is the last choice.
+      if (!glance && st > 0.8 && Math.abs(simN.x * v.x + simN.z * v.z) < 0.5 * Math.max(1, Math.hypot(v.x, v.z))) glance = c;
     }
     return turn ?? glance;
   };
@@ -500,29 +527,48 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     return true;
   };
 
-  // Fallback pick, refreshed every few frames or after the hero moves 1 m.
   const autoP = new THREE.Vector3();
   const autoN = new THREE.Vector3();
-  const autoAt = new THREE.Vector3(Infinity, 0, 0);
-  let autoSide = 1;
   let autoFound = false;
-  let autoAge = AUTO_EVERY;
-  const refreshAuto = (look: THREE.Vector3, force: boolean) => {
-    autoAge++;
-    if (!force && autoAge < AUTO_EVERY && autoAt.distanceToSquared(p) < 1) return;
-    autoAge = 0;
-    autoAt.copy(p);
-    const c = findAnchor(look);
+  // The look cone keeps the pick on screen. The velocity cone is the fallback while the camera turns.
+  const refreshAuto = (look: THREE.Vector3) => {
+    const c = findAnchor(look) ?? (v.x * v.x + v.z * v.z > 16 ? findAnchor(v) : null);
     autoFound = !!c;
     if (!c) return;
     autoP.copy(c.p);
     autoN.copy(c.n);
-    autoSide = Math.sign(c.side) || 1;
+  };
+
+  // A low hit on a tall box moves up the same face. A roof hit moves to the nearest roof edge.
+  // The moved point must pass the same swing check as an auto pick.
+  const liftC: Candidate = { p: new THREE.Vector3(), n: new THREE.Vector3(), score: 0, done: false };
+  const liftHit = () => {
+    const b = hitBox;
+    if (!b || b.maxY - 0.2 < p.y + AIM_UP || hitN.y < -0.5) return false;
+    if (hitN.y > 0.5) {
+      const x0 = hitP.x - b.minX;
+      const x1 = b.maxX - hitP.x;
+      const z0 = hitP.z - b.minZ;
+      const z1 = b.maxZ - hitP.z;
+      const m = Math.min(x0, x1, z0, z1);
+      if (m === x0) hitP.x = b.minX;
+      else if (m === x1) hitP.x = b.maxX;
+      else if (m === z0) hitP.z = b.minZ;
+      else hitP.z = b.maxZ;
+      hitN.set(m === x0 ? -1 : m === x1 ? 1 : 0, 0, m === z0 ? -1 : m === z1 ? 1 : 0);
+      hitP.y = b.maxY - 0.2;
+    } else hitP.y = Math.min(b.maxY - 0.2, p.y + 12);
+    if (insideAny(city, hitP.x + hitN.x * 0.3, hitP.y, hitP.z + hitN.z * 0.3) || checkAnchor(hitP) !== 0) return false;
+    liftC.p.copy(hitP);
+    liftC.n.copy(hitN);
+    city.near(p.x + v.x * 0.25, p.z + v.z * 0.25, 24, simList);
+    const st = simSwing(liftC);
+    return st < 0 || (st > 0.8 && Math.abs(simN.x * v.x + simN.z * v.z) < 0.5 * Math.max(1, Math.hypot(v.x, v.z)));
   };
 
   // HUD kind: aim when the crosshair or its rings hold a valid anchor, far or blocked when the
   // crosshair hits geometry out of range or behind cover, else auto, else none. A press uses aim, else auto.
-  const computeAim = (camPos: THREE.Vector3, look: THREE.Vector3, force = false) => {
+  const computeAim = (camPos: THREE.Vector3, look: THREE.Vector3) => {
     const d = look;
     camRight.set(-d.z, 0, d.x);
     if (camRight.lengthSq() < 1e-6) camRight.set(1, 0, 0);
@@ -543,6 +589,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (center) {
       let r = checkAnchor(hitP);
       if (r === 0 && hitN.y > 0.5) r = 1;
+      if (r === 1 && liftHit()) r = 0;
       if (r === 0) found = true;
       else if (r > 1) {
         miss = r === 2 ? "far" : "blocked";
@@ -561,15 +608,11 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       aim.kind = "aim";
       aim.point.copy(hitP);
       aimN.copy(hitN);
-      heading.set(v.x, 0, v.z);
-      if (heading.lengthSq() < 16) heading.set(look.x, 0, look.z);
-      aimSide = Math.sign((hitP.x - p.x) * -heading.z + (hitP.z - p.z) * heading.x) || 1;
       pickP.copy(hitP);
     } else {
-      refreshAuto(look, force);
+      refreshAuto(look);
       if (autoFound) {
         aimN.copy(autoN);
-        aimSide = autoSide;
         pickP.copy(autoP);
       }
       aim.kind = miss !== "none" ? miss : autoFound ? "auto" : "none";
@@ -586,7 +629,6 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     anchor.copy(pickP);
     anchorN.copy(aimN);
     if (DEV && !onCollider(city, anchor) && aim.kind === "aim") console.error("anchor off collider", anchor.toArray());
-    lastSide = aimSide;
     webHand = aimHand;
     ropeLive = false;
     webT = 0;
@@ -612,16 +654,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     swingFloor = groundAt(city, anchor.x + anchorN.x * 1.5, anchor.z + anchorN.z * 1.5, anchor.y);
     rope = dist;
     ropeGoal = Math.max(4, Math.min(dist - REEL, ROPE_MAX, anchor.y - swingFloor - SWING_CLEAR, anchor.y - p.y + SWING_SAG));
-    // The catch takes half the fall speed and gives half of that back as forward speed.
-    if (v.y < 0) {
-      const flat = Math.hypot(v.x, v.z);
-      const cut = -v.y * 0.5;
-      v.y += cut;
-      if (flat > 1) {
-        v.x *= 1 + (cut * 0.5) / flat;
-        v.z *= 1 + (cut * 0.5) / flat;
-      }
-    }
+    swingT = 0;
     sfx("webImpact", 0.25);
   };
 
@@ -642,7 +675,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const ang = pastBottom();
     const flat = Math.hypot(v.x, v.z);
     if (wish.lengthSq() > 0 && flat > 1) {
-      tmp.set(v.x / flat, 0, v.z / flat).lerp(wish, 0.6);
+      tmp.set(v.x / flat, 0, v.z / flat).lerp(wish, 0.35);
       if (tmp.lengthSq() > 1e-4) {
         tmp.normalize();
         v.x = tmp.x * flat;
@@ -1029,13 +1062,13 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
 
   const swingStep = (h: number) => {
     swingT += h;
-    // The first pull holds the hero up. A low anchor pulls less, so the hero never climbs over its roof.
-    const below = anchor.y - p.y;
-    const pullTo = THREE.MathUtils.clamp(below - 6, 0, PULL_IN);
-    if (swingT < PULL_T && v.y < pullTo) v.y += Math.min(pullTo - v.y, PULL_ACC * h);
-    else v.y -= (v.y > 0 && below > 8 ? G_SWING_UP : G_SWING) * h;
-    if (rope > ropeGoal) rope = Math.max(ropeGoal, rope - Math.min(45, 10 + 4 * (rope - ropeGoal)) * h);
+    v.y -= (v.y > 0 && anchor.y - p.y > 8 ? G_SWING_UP : G_SWING) * h;
+    rope = reelStep(rope, ropeGoal, swingT, h);
     const n = tmp.copy(anchor).sub(p).normalize();
+    // AoT-style pull toward the anchor. It eases in, fades out by PULL_END and stops at PULL_CAP inward speed.
+    const pull = PULL_ACC * easeIn(swingT) * (1 - THREE.MathUtils.smoothstep(swingT, PULL_FADE, PULL_END));
+    const vin = v.dot(n);
+    if (pull > 0 && vin < PULL_CAP) v.addScaledVector(n, pull * Math.min(1, (PULL_CAP - vin) / 4) * h);
     if (p.y < anchor.y && v.y < 0) {
       const tan = tmp2.copy(v).addScaledVector(n, -v.dot(n));
       const ts = tan.length();
@@ -1047,8 +1080,14 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       const fx = v.x / fl;
       const fz = v.z / fl;
       const along = wish.x * fx + wish.z * fz;
-      const sx = wish.x - fx * along;
-      const sz = wish.z - fz * along;
+      let sx = wish.x - fx * along;
+      let sz = wish.z - fz * along;
+      // Near the anchor wall, steering never pushes into it.
+      const into = sx * anchorN.x + sz * anchorN.z;
+      if (into < 0 && anchorN.y < 0.5 && (p.x - anchor.x) * anchorN.x + (p.z - anchor.z) * anchorN.z < 10) {
+        sx -= anchorN.x * into;
+        sz -= anchorN.z * into;
+      }
       const sl = Math.hypot(sx, sz);
       if (sl > 0.05) {
         const s0 = v.length();
@@ -1059,16 +1098,14 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       }
     }
     avoidWall(h);
-    const clear = p.y - R - swingFloor;
-    if (clear < LIFT_H) v.y += LIFT * (1 - clear / LIFT_H) * h;
     // The rope pulls toward the anchor wall. Turn speed into that wall into speed along it.
     if (anchorN.y < 0.5 && anchorN.lengthSq() > 0) {
       const out = (p.x - anchor.x) * anchorN.x + (p.z - anchor.z) * anchorN.z;
       const vn = v.dot(anchorN);
-      const want = (WALL_GAP - out) * 2;
+      const want = (WALL_GAP - out) * 3;
       if (vn < want) {
         const s0 = v.length();
-        v.addScaledVector(anchorN, (want - vn) * Math.min(1, 10 * h));
+        v.addScaledVector(anchorN, Math.min((want - vn) * 10, WALL_PUSH) * h);
         v.setLength(s0);
       }
     }
@@ -1076,28 +1113,32 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     if (s2 > SOFT_SPEED) v.multiplyScalar(Math.max(0, s2 - SOFT_DRAG * (s2 - SOFT_SPEED) * h) / s2);
   };
 
-  // One-sided rope: it only pulls. Outward speed turns into speed along the arc, so a taut rope never brakes.
-  const ropeConstraint = () => {
+  // One-sided rope with a short damped catch. Outward speed turns into speed along the arc.
+  const ropeConstraint = (h: number) => {
     tmp.copy(p).sub(anchor);
     const len = tmp.length();
     // Before the bottom of the arc the web takes up slack, so the hero never free falls inside the rope.
-    if (len < rope && v.y < 0 && tmp.y < 0 && tmp.x * v.x + tmp.z * v.z < 0) {
+    if (len < rope && (swingT < PULL_END || (v.y < 0 && tmp.y < 0 && tmp.x * v.x + tmp.z * v.z < 0))) {
       rope = Math.max(4, len);
       ropeGoal = Math.min(ropeGoal, rope);
     }
     if (len <= rope || len < 1e-6) return;
     tmp.divideScalar(len);
-    p.copy(anchor).addScaledVector(tmp, rope);
     const vr = v.dot(tmp);
-    if (vr <= 0) return;
     const s0 = v.length();
-    v.addScaledVector(tmp, -vr);
-    const ts = v.length();
-    if (ts > 0.5) v.multiplyScalar(s0 / ts);
-    else {
-      tmp2.set(facing.x, 0, facing.z).addScaledVector(tmp, -(facing.x * tmp.x + facing.z * tmp.z));
-      if (tmp2.lengthSq() > 1e-6) v.addScaledVector(tmp2.normalize(), Math.sqrt(Math.max(0, s0 * s0 - ts * ts)));
+    if (len > rope + CATCH_MAX) {
+      p.copy(anchor).addScaledVector(tmp, rope + CATCH_MAX);
+      if (vr > 0) v.addScaledVector(tmp, -vr);
+    } else {
+      // The catch always stops outward speed inside CATCH_MAX.
+      const over = len - rope;
+      const stop = vr > 0 ? (vr * vr) / (2 * Math.max(0.1, CATCH_MAX - over)) : 0;
+      v.addScaledVector(tmp, -Math.max(0, CATCH_W * CATCH_W * over + (vr < 0 ? 1.8 * CATCH_W * vr : 0), stop) * h);
     }
+    if (vr <= 0) return;
+    // The kept speed grows slowly, so a fall straight onto the rope brakes instead of jumping sideways.
+    const ts = v.length();
+    if (ts > 0.5) v.multiplyScalar(Math.min(s0 / ts, 1 + CATCH_GAIN * h));
   };
 
   const wallWish = new THREE.Vector3();
@@ -1253,7 +1294,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
         else {
           airStep(h, false);
           webT += h;
-          if (webT >= WEB_TRAVEL) landWeb();
+          if (webT * WEB_SPEED >= p.distanceTo(anchor)) landWeb();
         }
         break;
       case "wall":
@@ -1307,7 +1348,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     p.addScaledVector(v, h);
 
     if (mode === "swing" && ropeLive) {
-      ropeConstraint();
+      ropeConstraint(h);
       if (swingT > 0.3 && v.y > 0 && p.y > anchor.y - 3) release(false, false);
     }
     if (mode === "wall") wrapCorner();
@@ -1434,7 +1475,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     // Hold to chain: past the boost peak the held web lets go, and the next web fires once an anchor is in reach.
     const chain = inp.chain && swingHeld && swingRetry <= 0;
     if (chain && mode === "swing" && ropeLive && swingT > 0.35 && pastBottom() > CHAIN_REL * DEG) release(true, false, 2);
-    else if (chain && (mode === "air" || mode === "wings") && sinceRelease > CHAIN_GAP && (v.y < CHAIN_APEX || sinceRelease > CHAIN_WAIT)) tryAttach(mode);
+    else if (chain && (mode === "air" || mode === "wings") && sinceRelease > CHAIN_GAP && (v.y < CHAIN_APEX || sinceRelease > CHAIN_WAIT || avoidK > 0)) tryAttach(mode);
     else if (chain && mode === "ground" && canSwing(mode)) tryAttach(mode);
 
     if (pressed.has("jump")) {
@@ -1603,7 +1644,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
     const webOn = mode === "swing" || mode === "zip" || (mode === "launch" && !launchArrived) || dashT > 0.1;
     const dashing = dashT > 0.1 && mode === "air";
     if (webOn) {
-      webGrow = mode === "swing" ? Math.min(1, webT / WEB_TRAVEL) : mode === "zip" ? Math.min(1, zipT / WEB_TRAVEL) : Math.min(1, webGrow + dt / WEB_TRAVEL);
+      webGrow = mode === "swing" ? (ropeLive ? 1 : Math.min(1, (webT * WEB_SPEED) / Math.max(1, p.distanceTo(anchor)))) : mode === "zip" ? Math.min(1, zipT / WEB_TRAVEL) : Math.min(1, webGrow + dt / WEB_TRAVEL);
       hero.handWorld(webHand, handPos);
     }
     const taut = mode !== "swing" || (ropeLive && p.distanceTo(anchor) > rope - 0.1);
@@ -1738,7 +1779,7 @@ export function createPlayer(scene: THREE.Scene, city: City, hero: Hero, spawn: 
       else wish.copy(inp.wish);
       runT = mode === "ground" && !api.busy && wish.lengthSq() > 0 ? runT + dt : 0;
       sprinting = runT >= SPRINT_AFTER;
-      computeAim(inp.camPos, inp.look, inp.pressed.has("swing") || swingRetry > 0);
+      computeAim(inp.camPos, inp.look);
       findWall(mode === "swing" || (mode === "air" && inp.held.has("swing")));
       if (!api.busy) decide(inp, dt);
       acc += dt;
