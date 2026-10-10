@@ -70,7 +70,7 @@ export function Hud({
       {free && <Crosshair h={h} />}
       {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} />}
       {free && <Prompt h={h} touch={touch} />}
-      <Toasts pops={pops} touch={touch} />
+      <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
       <ScorePops pops={pops} />
       {h.combo > 1 && <Combo n={h.combo} />}
       <GearPanel h={h} who={who} />
@@ -274,24 +274,28 @@ function WavePanel({ h }: { h: HudState }) {
     <div className="hud-z absolute left-4 top-3 origin-top-left">
       <div className="relative pl-3">
         <div className="absolute bottom-1 left-0 top-1 w-1 bg-blood" />
-        <div className="flex items-baseline gap-2">
-          <span className="font-cond text-xs font-semibold uppercase tracking-[0.35em] text-brass">
-            Wave
-          </span>
-          <span className="font-jp text-xs font-bold text-bone/50">襲来</span>
-        </div>
-        <div className="font-display text-5xl leading-none tracking-wide ink-shadow">
-          {pad(h.wave, 2)}
-        </div>
-        <div className="mt-1 flex items-center gap-2 text-sm uppercase tracking-[0.15em] ink-shadow">
-          <TitanIcon kind="normal" className="h-4 w-2 text-ember" />
-          <span className="font-display text-lg tabular-nums tracking-normal">
-            {h.left}
-          </span>
-          <span className="text-bone/70">
-            {h.left === 1 ? "titan remains" : "titans remain"}
-          </span>
-        </div>
+        {h.wave > 0 && (
+          <>
+            <div className="flex items-baseline gap-2">
+              <span className="font-cond text-xs font-semibold uppercase tracking-[0.35em] text-brass">
+                Wave
+              </span>
+              <span className="font-jp text-xs font-bold text-bone/50">襲来</span>
+            </div>
+            <div className="font-display text-5xl leading-none tracking-wide ink-shadow">
+              {pad(h.wave, 2)}
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-sm uppercase tracking-[0.15em] ink-shadow">
+              <TitanIcon kind="normal" className="h-4 w-2 text-ember" />
+              <span className="font-display text-lg tabular-nums tracking-normal">
+                {h.left}
+              </span>
+              <span className="text-bone/70">
+                {h.left === 1 ? "titan remains" : "titans remain"}
+              </span>
+            </div>
+          </>
+        )}
         {h.breakT > 0 && (
           <div className="mt-1 text-xs uppercase tracking-[0.25em] text-parch/80">
             Next wave in{" "}
@@ -300,7 +304,7 @@ function WavePanel({ h }: { h: HudState }) {
             </span>
           </div>
         )}
-        {h.wave > 0 && <Tracker run={h.run} />}
+        {h.wave > 0 && !h.run.drill && <Tracker run={h.run} />}
       </div>
     </div>
   );
@@ -519,9 +523,9 @@ export function LockReticle({ lock }: { lock: Lock | null }) {
   );
 }
 
-function Toasts({ pops, touch }: { pops: Pop[]; touch: boolean }) {
+function Toasts({ pops, touch, low }: { pops: Pop[]; touch: boolean; low: boolean }) {
   return (
-    <div className="hud-z absolute left-4 top-[34%] flex w-[300px] origin-left flex-col gap-2">
+    <div className={`hud-z absolute left-4 ${low ? "top-[44%]" : "top-[34%]"} flex w-[300px] origin-left flex-col gap-2`}>
       {pops.map((p) =>
         p.type === "toast" ? (
           <div

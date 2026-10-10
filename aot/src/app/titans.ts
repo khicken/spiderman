@@ -1502,6 +1502,15 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     get escape() {
       return heldBy ? esc : null;
     },
+    drill(n) {
+      if (wave !== 0) return;
+      for (let i = 0; i < n; i++) {
+        const t = spawn("normal", R(5, 7), nearBreach(_d, true));
+        t.yaw = Math.atan2(inward.x, inward.z);
+        t.cool = R(2, 3);
+        place(t);
+      }
+    },
     start() {
       if (wave !== 0) return;
       beginWave(1);

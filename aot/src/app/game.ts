@@ -100,7 +100,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const endIntro = () => {
     if (introT < 0) return;
     if (!world.gateOpen) kickGate();
-    if (titans.wave === 0) titans.start();
+    run.begin();
     introT = -1;
     for (const e of introToasts.splice(0)) onEvent(e);
     rig.cinematic(null);
@@ -109,7 +109,10 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (code === "Escape") {
       if (introT >= 0) endIntro();
       else pause();
-    } else if (code === "Enter" && introT >= 0) endIntro();
+    } else if (code === "Enter") {
+      if (introT >= 0) endIntro();
+      else route(run.skip());
+    }
     else if (code === "KeyG") route(allies.toggle());
     else if (code.startsWith("Digit")) route(run.pick(Number(code.slice(5)) - 1));
     else if (code === "KeyM") {
@@ -191,7 +194,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     camLook.copy(head).lerp(world.breach, Math.max(0, (introT - INTRO.kick) / (INTRO.end - INTRO.kick)));
     rig.cinematic(camPos, camLook, 50 + 12 * e);
     if (introT >= INTRO.kick && !world.gateOpen) kickGate();
-    if (introT >= INTRO.titans && titans.wave === 0) titans.start();
+    if (introT >= INTRO.titans) run.begin();
     if (introT >= INTRO.end) endIntro();
   };
 
@@ -226,7 +229,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     slowT -= real;
     if (slowT <= 0) timeScale = 1;
     stopT -= real;
-    const dt = stopT > 0 || run.choosing ? 0 : real * timeScale;
+    const dt = stopT > 0 ? 0 : real * timeScale;
     t += dt;
 
     input.takeMouse(mouse);
@@ -322,6 +325,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     },
     pause,
     skipIntro: endIntro,
+    skipDrill: () => route(run.skip()),
     order: () => route(allies.toggle()),
     pick: (i: number) => route(run.pick(i)),
     virtual: input.virtual,

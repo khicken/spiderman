@@ -141,6 +141,7 @@ export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolea
 export interface Titans {
   update(dt: number, t: number, player: PlayerView): GameEvent[];
   start(): void; // starts wave 1
+  drill(n: number): void; // bootcamp: spawns n small titans near the breach while wave is 0
   readonly wave: number;
   readonly kills: number;
   readonly left: number;
@@ -293,8 +294,9 @@ export type RunHud = {
   need: number;
   total: number;
   objectives: Objective[];
-  choice: Upgrade[] | null; // level-up picks, the game is frozen while set
+  choice: Upgrade[] | null; // level-up picks while the game runs. Keys 1-3 or a tap pick, the timer takes the first
   choiceT: number; // seconds until the first pick is taken
   done: number;
   count: number;
+  drill: boolean; // bootcamp before wave 1, objectives hold its drills
 };
