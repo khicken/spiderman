@@ -238,6 +238,7 @@ export interface Player {
   hud(): PlayerHud;
   cameraView(): CameraView;
   setVisible(on: boolean): void;
+  unhook(): void; // drops both hooks
   setCharacter(id: string): void; // swaps the model and stats
   setBoost(b: Boost): void; // run upgrades and gear tier
   dispose(): void;

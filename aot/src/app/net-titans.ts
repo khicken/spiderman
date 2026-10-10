@@ -52,13 +52,25 @@ export function wrapTitans(titans: Titans, role: () => NetRole, send: (id: numbe
   Object.defineProperty(w, "drill", { get: () => (role() === "solo" ? titans.drill : undefined) });
   w.start = () => role() !== "guest" && titans.start();
   w.lure = (p) => role() !== "guest" && titans.lure(p);
+  const hp = new WeakMap<TitanView, number[]>();
+  let stamp = 0;
   w.strike = (blade, target) => {
-    const guest = role() === "guest";
-    const hp = new Map<TitanView, number[]>();
-    if (guest) for (const t of titans.list()) if (t.alive) hp.set(t, NET_PARTS.map((p) => titans.partHealth(t, p)));
+    stamp++;
+    if (role() === "guest") {
+      const list = titans.list();
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        if (!t.alive) continue;
+        let a = hp.get(t);
+        if (!a) hp.set(t, (a = [0, 0, 0, 0, 0, 0, 0]));
+        for (let j = 0; j < 6; j++) a[j] = titans.partHealth(t, NET_PARTS[j]);
+        a[6] = stamp;
+      }
+    }
     const r = titans.strike(blade, target);
     const { titan: t, zone: z } = r;
-    const was = t && z && z !== "body" ? hp.get(t)?.[NET_PARTS.indexOf(z)] : undefined;
+    const a = t && z && z !== "body" ? hp.get(t) : undefined;
+    const was = a && a[6] === stamp ? a[NET_PARTS.indexOf(z as TitanPart)] : undefined;
     if (t && z && z !== "body" && was) {
       const now = titans.partHealth(t, z);
       const dmg = r.killed || now <= 0 ? 1 : was - now;

@@ -230,7 +230,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
       try {
         seen = !!localStorage.getItem(DRILL_KEY);
       } catch {}
-      if (seen) return titans.start();
+      if (seen || !titans.drill) return titans.start();
       drill = true;
       drillT = 0;
       finT = 0;
@@ -292,7 +292,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         gasWas = h.gas;
         if (objs.every((ob) => ob.state === "done")) {
           if ((finT += real) > 2.5) endDrill();
-        } else if (dt > 0 && objs.some((ob) => ob.spec.count === "kill" && ob.state === "on") && !titans.list().some((t) => t.alive)) titans.drill(1);
+        } else if (dt > 0 && objs.some((ob) => ob.spec.count === "kill" && ob.state === "on") && !titans.list().some((t) => t.alive)) titans.drill?.(1);
       }
       if (choice) {
         choiceT -= real;

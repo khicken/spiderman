@@ -199,6 +199,8 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   let hitI = 0;
   let player: PlayerView | null = null;
   const netOwn = new Map<number, number>();
+  const netSeen = new Set<number>();
+  const netJunk: GameEvent[] = [];
 
   const sfx = (name: Sfx, at?: THREE.Vector3, volume?: number) => out.push({ type: "sfx", name, at: at?.clone(), volume });
 
@@ -1723,12 +1725,13 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         quota = s[1];
         killedWave = 0;
         breakT = s[2];
-        const seen = new Set<number>();
-        const junk: GameEvent[] = [];
+        netSeen.clear();
+        netJunk.length = 0;
         for (let i = 3; i + NET_REC <= s.length; i += NET_REC) {
           const id = s[i];
-          seen.add(id);
-          let t = list.find((x) => x.id === id);
+          netSeen.add(id);
+          let t: T | undefined;
+          for (let j = 0; j < list.length && !t; j++) if (list[j].id === id) t = list[j];
           if (!t) {
             t = spawn(NET_KINDS[s[i + 1]], s[i + 3], _d.set(s[i + 4], 0, s[i + 6]), s[i + 2]);
             t.id = id;
@@ -1743,12 +1746,12 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           t.flash = s[i + 11];
           t.blind = s[i + 12];
           if (!netOwn.has(id)) {
-            for (let k = 0; k < 4; k++) if (s[i + 19 + k] > 0 && t.sev[k] <= 0) sever(t, k, _a.set(Math.sin(t.yaw), 0, Math.cos(t.yaw)), junk);
-            NET_PARTS.forEach((k, j) => (t.hp[k] = s[i + 13 + j]));
+            for (let k = 0; k < 4; k++) if (s[i + 19 + k] > 0 && t.sev[k] <= 0) sever(t, k, _a.set(Math.sin(t.yaw), 0, Math.cos(t.yaw)), netJunk);
+            for (let j = 0; j < NET_PARTS.length; j++) t.hp[NET_PARTS[j]] = s[i + 13 + j];
             for (let k = 0; k < 4; k++) t.sev[k] = s[i + 19 + k];
           }
           for (let k = 0; k < 4; k++) p.sev[k] = t.sev[k] > 0 ? clamp01(1 - t.sev[k] / 3) : 1;
-          NET_POSE.forEach((k, j) => (p[k] = s[i + 23 + j]));
+          for (let j = 0; j < NET_POSE.length; j++) p[NET_POSE[j]] = s[i + 23 + j];
           const o = i + 23 + NET_POSE.length;
           p.curl[0] = s[o];
           p.curl[1] = s[o + 1];
@@ -1767,7 +1770,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         }
         for (const t of list) {
           if (t.removed) continue;
-          if (t.alive && !seen.has(t.id)) {
+          if (t.alive && !netSeen.has(t.id)) {
             t.alive = false;
             t.dead = 0;
             fx.blood(t.nape, UP, t.height * 0.3);
@@ -1777,14 +1780,15 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         }
         for (let i = list.length - 1; i >= 0; i--) if (list[i].removed) list.splice(i, 1);
         for (const [id, left] of netOwn) if (left - dt <= 0) netOwn.delete(id); else netOwn.set(id, left - dt);
-        for (const e of junk) if (e.type === "sfx") out.push(e);
+        for (const e of netJunk) if (e.type === "sfx") out.push(e);
         tickDrops(dt);
         return out;
       },
       hit(id, part, dmg) {
         const t = list.find((x) => x.id === id && x.alive);
         const ev: GameEvent[] = [];
-        if (!t || !(dmg > 0)) return ev;
+        if (!t || !(dmg > 0) || !NET_PARTS.includes(part)) return ev;
+        dmg = Math.min(1, dmg);
         t.flash = 1;
         _b.set(Math.sin(t.yaw), 0, Math.cos(t.yaw));
         if (part === "eyes") {
