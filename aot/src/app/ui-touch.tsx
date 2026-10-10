@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type PointerEvent, type ReactNode } from "react";
 import type { Action, HudState, VirtualPad } from "./contracts";
+import { ControlsGrid } from "./ui-controls";
 import { PARTS } from "./ui-hud";
 
 const STICK_R = 58;
@@ -37,6 +38,9 @@ const ACTIONS: Record<Kind, Action[]> = {
   cycle: ["cycle"],
   autoHook: ["autoHook"],
   swap: ["swap"],
+  weapon: ["weapon"],
+  teamAttack: ["teamAttack"],
+  shift: ["shift"],
 };
 
 const at = (right: number, bottom: number, size: number) => ({
@@ -156,13 +160,21 @@ export function TouchControls({ pad, h, onPause, onOrder }: { pad: VirtualPad; h
       <HoldButton pad={pad} kind="swap" style={at(168, 246, 44)} small>
         <Face jp="刃" en={`Swap ${h.blades}`} small />
       </HoldButton>
+      <HoldButton pad={pad} kind="weapon" style={at(284, 246, 44)} small>
+        <Face jp="武器" en={h.weapon} small />
+      </HoldButton>
+      {(h.shift.active || h.shift.meter >= 1) && (
+        <HoldButton pad={pad} kind="shift" style={at(168, 304, 44)} small lit>
+          <Face jp="巨人" en="Shift" small />
+        </HoldButton>
+      )}
       {h.squad.max > 0 && (
         <div
           role="button"
           aria-label="order"
           className="touch-btn text-[calc(var(--u)*13)]"
           data-lit={h.squad.order === "attack" ? "1" : undefined}
-          style={at(226, 236, 44)}
+          style={at(226, 246, 44)}
           onPointerDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -173,6 +185,11 @@ export function TouchControls({ pad, h, onPause, onOrder }: { pad: VirtualPad; h
         >
           <Face jp={h.squad.order === "attack" ? "攻撃" : "集合"} en="Squad" small />
         </div>
+      )}
+      {h.squad.max > 0 && h.lock && h.squad.team <= 0 && (
+        <HoldButton pad={pad} kind="teamAttack" style={at(226, 304, 44)} small lit={h.squad.opening > 0}>
+          <Face jp="連携" en="Team" small />
+        </HoldButton>
       )}
 
       <button
@@ -219,6 +236,12 @@ function HoldButton({
   lit?: boolean;
   pulse?: boolean;
 }) {
+  useEffect(
+    () => () => {
+      for (const a of ACTIONS[kind]) pad.up(a);
+    },
+    [pad, kind],
+  );
   const down = (e: PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -306,22 +329,6 @@ export function RotateHint() {
   );
 }
 
-const TOUCH_HELP: [string, string][] = [
-  ["Left side", "Drag to move"],
-  ["Right side", "Drag to look"],
-  ["L / R", "Tap to latch, hold to reel"],
-  ["L+R", "Fire both anchors"],
-  ["Gas", "Hold to boost, tap on ground to jump"],
-  ["Dash", "Gas dash"],
-  ["Slash", "Hold to charge, release to strike"],
-  ["Lock", "Tap to lock, tap again for next part"],
-  ["Lock hold", "Hold to drop the lock"],
-  ["Hook", "Anchor to the locked titan"],
-  ["Swap", "Swap blades"],
-  ["Squad", "Attack my target or regroup"],
-  ["Grabbed", "Tap Slash fast"],
-];
-
 export function TouchHelp({ onClose }: { onClose: () => void }) {
   return (
     <section className="panel-in relative w-full max-w-[620px] border border-brass/40 bg-gradient-to-b from-char/95 to-ink/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
@@ -335,14 +342,7 @@ export function TouchHelp({ onClose }: { onClose: () => void }) {
           Back
         </button>
       </header>
-      <div className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs sm:grid-cols-[max-content_1fr_max-content_1fr]">
-        {TOUCH_HELP.map(([k, v]) => (
-          <div key={k} className="contents">
-            <span className="font-semibold uppercase tracking-wider text-brass">{k}</span>
-            <span className="text-bone/85">{v}</span>
-          </div>
-        ))}
-      </div>
+      <ControlsGrid touch />
     </section>
   );
 }

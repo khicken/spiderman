@@ -17,8 +17,11 @@ export type Action =
   | "attack" // hold E to charge, release to strike
   | "lock" // Q: lock on or off
   | "cycle" // Tab or mouse wheel: next part on the locked titan
-  | "autoHook" // F: fire both anchors at the locked titan
-  | "swap"; // R: swap blades
+  | "autoHook" // X or middle mouse: fire both anchors at the locked titan
+  | "swap" // R: swap blades
+  | "weapon" // Z: next weapon slot
+  | "teamAttack" // F: squad attacks the locked titan
+  | "shift"; // T: titan shifting
 
 export type Input = {
   wish: THREE.Vector3; // camera-relative flat move direction, unit length or zero
@@ -63,6 +66,7 @@ export interface Render {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   setQuality(q: Quality): void;
+  setMaxRatio(r: number): void; // pixel ratio cap on top of the preset
   resize(): void;
   frame(dt: number, focus: THREE.Vector3, speed01: number): void; // speed01 drives speed lines
   impact(kind: "hit" | "crit" | "kill"): void;
@@ -112,6 +116,7 @@ export interface World {
   inside(x: number, z: number): boolean; // inside the walls
   readonly depotDown: boolean[]; // per supply depot: fallen, no refills
   kickGate(): GameEvent[]; // the Colossal Titan breaks the gate, once
+  smash(at: THREE.Vector3, radius: number): void; // flattens houses within radius of a ground point
   update(dt: number, t: number): GameEvent[];
   setQuality(q: Quality): void;
 }
@@ -127,12 +132,19 @@ export interface TitanView {
   readonly alive: boolean;
 }
 export type TitanHit = { t: number; point: THREE.Vector3; titan: TitanView; zone: HitZone; obj: THREE.Object3D }; // anchors attach to obj
-export type Blade = { pos: THREE.Vector3; dir: THREE.Vector3; speed: number; charge: number; radius: number }; // charge 0..1, 1 is a perfect release
+// charge 0..1, 1 is a perfect release. speed is the real speed, damage multiplies the hit (bonuses), weapon defaults to blades.
+export type Blade = { pos: THREE.Vector3; dir: THREE.Vector3; speed: number; charge: number; radius: number; damage?: number; weapon?: Weapon };
+// Weapon slots. Spears stick and blow up, pierce armor and hardening. Pistols are hitscan: stun eyes and limbs, scratch the nape.
+export type Weapon = "blades" | "spears" | "pistols";
 export type StrikeResult = { events: GameEvent[]; zone: HitZone | null; titan: TitanView | null; killed: boolean };
 export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; grounded: boolean };
+// Squad play: the host sends snap() to guests, guests draw it with show(). Guests own hp of a titan they just hit for a moment.
+export type TitanNet = { snap(): number[]; show(snap: number[], dt: number): GameEvent[]; hit(id: number, part: TitanPart, dmg: number): GameEvent[]; own(id: number): void };
 export interface Titans {
   update(dt: number, t: number, player: PlayerView): GameEvent[];
   start(): void; // starts wave 1
+  drill(n: number): void; // bootcamp: spawns n small titans near the breach while wave is 0
+  hold(titan: TitanView, side: "armL" | "armR", on: boolean): void; // an ally is held in that hand, off lets go
   readonly wave: number;
   readonly kills: number;
   readonly left: number;
@@ -149,6 +161,7 @@ export interface Titans {
   pushOut(pos: THREE.Vector3, radius: number, vel: THREE.Vector3): void;
   boss(): { name: string; kind: TitanKind; health: number; hardened: boolean } | null;
   lure(p: THREE.Vector3 | null): void; // half the titans march on this point
+  net?: TitanNet;
   dispose(): void;
 }
 
@@ -205,7 +218,11 @@ export type PlayerHud = {
   aimDist: number;
   supply: boolean;
   dead: boolean;
-  combo: number;
+  combo: number; // chain count, 0 when no chain
+  comboT: number; // 0..1, time left in the chain window
+  comboBonus: number; // damage multiplier from the chain, 1 is none
+  weapon: Weapon;
+  ammo: number; // spears or pistol shots left, blades show as spare sets
 };
 export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; health: number; spare: number }; // multipliers, spare adds
 export interface Player {
@@ -221,6 +238,7 @@ export interface Player {
   hud(): PlayerHud;
   cameraView(): CameraView;
   setVisible(on: boolean): void;
+  unhook(): void; // drops both hooks
   setCharacter(id: string): void; // swaps the model and stats
   setBoost(b: Boost): void; // run upgrades and gear tier
   dispose(): void;
@@ -239,16 +257,21 @@ export interface Audio {
 
 // ---- allies.ts: createAllies(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Allies
 export type SquadOrder = "attack" | "regroup";
-export type SquadHud = { alive: number; max: number; order: SquadOrder };
+export type SquadHud = { alive: number; max: number; order: SquadOrder; team: number; opening: number }; // team: cooldown seconds, opening: nape window seconds
 export type SquadLead = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; lock: Lock | null };
 export interface Allies {
   update(dt: number, t: number, lead: SquadLead, yaw: number): GameEvent[]; // yaw: camera yaw for clock callouts
   order(o: SquadOrder): GameEvent[];
   toggle(): GameEvent[]; // attack my target <-> regroup
   grow(): GameEvent[]; // one more soldier in the squad
+  team(lock: Lock | null): GameEvent[]; // squad stuns the locked titan, then the nape opens
+  readonly opening: number; // seconds left in the nape window, 0 when closed
   hud(): SquadHud;
   dispose(): void;
 }
+
+// ---- shifter.ts: createShifter(scene: THREE.Scene, world: World, titans: Titans, fx: Fx)
+export type ShiftHud = { meter: number; active: boolean; hp: number }; // 0..1 each, meter fills from kills and drains while shifted
 
 // ---- game.ts to the UI
 export type TitanBlip = { bearing: number; dist: number; height: number; kind: TitanKind };
@@ -256,6 +279,7 @@ export type HudState = {
   playing: boolean;
   intro: boolean; // the opening cinematic plays
   fps: number;
+  quality: Quality; // active preset, can drop below the saved one
   speed: number; // km/h
   wave: number;
   kills: number;
@@ -268,6 +292,7 @@ export type HudState = {
   blips: TitanBlip[];
   depots: { bearing: number; dist: number }[];
   squad: SquadHud;
+  shift: ShiftHud;
   run: RunHud;
 } & PlayerHud;
 
@@ -280,8 +305,9 @@ export type RunHud = {
   need: number;
   total: number;
   objectives: Objective[];
-  choice: Upgrade[] | null; // level-up picks, the game is frozen while set
+  choice: Upgrade[] | null; // level-up picks while the game runs. Keys 1-3 or a tap pick, the timer takes the first
   choiceT: number; // seconds until the first pick is taken
   done: number;
   count: number;
+  drill: boolean; // bootcamp before wave 1, objectives hold its drills
 };

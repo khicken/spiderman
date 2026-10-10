@@ -1,19 +1,22 @@
 import * as THREE from "three";
 import type { Action, Controls, Input, VirtualPad } from "./contracts";
 
-const KEYS: Record<string, Action> = {
+export const KEYS: Record<string, Action> = {
   Space: "gas",
   ShiftLeft: "dash",
   ShiftRight: "dash",
   KeyE: "attack",
   KeyQ: "lock",
   Tab: "cycle",
-  KeyF: "autoHook",
+  KeyX: "autoHook",
   KeyR: "swap",
+  KeyZ: "weapon",
+  KeyF: "teamAttack",
+  KeyT: "shift",
   KeyC: "anchorL",
   KeyV: "anchorR",
 };
-const BUTTONS: Record<number, Action> = { 0: "anchorL", 2: "anchorR" };
+export const BUTTONS: Record<number, Action> = { 0: "anchorL", 1: "autoHook", 2: "anchorR" };
 const MOVE = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 const SYSTEM = new Set(["Escape", "Enter", "KeyM", "KeyG", "Digit1", "Digit2", "Digit3"]);
 

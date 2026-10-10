@@ -26,8 +26,12 @@ import {
   ResultsCard,
   type Results,
 } from "./ui-char";
-import { Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
-import { LevelUp } from "./ui-run";
+import { ControlsCard, ControlsOverlay } from "./ui-controls";
+import { DepotArrow, Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
+import { Leaderboard } from "./ui-leaderboard";
+import { SQUAD_ON, type SquadInfo } from "./net";
+import { SquadPanel } from "./ui-net";
+import { Drill, LevelUp } from "./ui-run";
 import {
   ControlsPanel,
   Disclaimer,
@@ -49,8 +53,16 @@ import {
 type Screen = "title" | "playing" | "pause" | "results";
 
 const KEY = "aot-settings";
+const STALE_MS = 1500;
 const POP_MS = { toast: 2800, score: 1900, hurt: 700, kill: 2200, banner: 2800, radio: 3200, callout: 1600 } as const;
 const MAX_TOASTS = 2;
+
+function save(s: Settings) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {}
+  return s;
+}
 
 function loadSettings(): Settings {
   const s: Settings = {
@@ -82,12 +94,14 @@ function loadSettings(): Settings {
 export default function TitanPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reticleRef = useRef<HTMLDivElement>(null);
+  const depotRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Game | null>(null);
   const screenRef = useRef<Screen>("title");
   const [hud, setHud] = useState<HudState | null>(null);
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [screen, setScreenState] = useState<Screen>("title");
-  const [panel, setPanel] = useState<Panel>(null);
+  const [panel, setPanel] = useState<Panel | "squad">(null);
+  const [squad, setSquad] = useState<SquadInfo | null>(null);
   const [started, setStarted] = useState(false);
   const [touch, setTouch] = useState(false);
   const [pops, setPops] = useState<Pop[]>([]);
@@ -168,8 +182,10 @@ export default function TitanPage() {
       }
     };
     const bannerQ: Pop[] = [];
+    const queuedAt = new WeakMap<Pop, number>();
     let banner: Pop | null = null;
     const showBanner = () => {
+      while (!banner && bannerQ.length && performance.now() - (queuedAt.get(bannerQ[0]) ?? 0) > STALE_MS) bannerQ.shift();
       if (banner || !bannerQ.length) return;
       const b = (banner = bannerQ.shift()!);
       setMsgs((m) => ({ ...m, banner: b }));
@@ -197,11 +213,12 @@ export default function TitanPage() {
         toastQ.push(pop);
         pumpToasts();
       } else if (e.type === "kill") {
-        if (banner?.type === "banner") bannerQ.unshift({ ...banner, id: ++id });
         banner = null;
+        queuedAt.set(pop, performance.now());
         bannerQ.unshift(pop);
         showBanner();
       } else if (e.type === "banner") {
+        queuedAt.set(pop, performance.now());
         bannerQ.push(pop);
         showBanner();
       } else if (e.type === "radio" || e.type === "callout") flash(e.type, pop);
@@ -231,6 +248,7 @@ export default function TitanPage() {
     };
     const game = startGame(canvasRef.current!, onHud, onEvent, initial);
     game.bindReticle(reticleRef.current);
+    game.bindDepot(depotRef.current);
     gameRef.current = game;
     return () => {
       portrait.removeEventListener("change", onTurn);
@@ -243,14 +261,15 @@ export default function TitanPage() {
     };
   }, [run, endRun]);
 
+  useEffect(() => {
+    if (!squad?.ended) return;
+    if (!started) return void gameRef.current?.squad(null);
+    const h = setTimeout(() => endRun("retreat"), 2500);
+    return () => clearTimeout(h);
+  }, [squad?.ended, started, endRun]);
+
   const update = useCallback((p: Partial<Settings>) => {
-    setSettingsState((s) => {
-      const next = { ...s!, ...p };
-      try {
-        localStorage.setItem(KEY, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+    setSettingsState((s) => save({ ...s!, ...p }));
     gameRef.current?.setSettings(p);
   }, []);
 
@@ -269,7 +288,7 @@ export default function TitanPage() {
     if (touch) enterFullscreen();
     gameRef.current?.play();
   };
-  const toggle = (p: Panel) => setPanel((cur) => (cur === p ? null : p));
+  const toggle = (p: Panel | "squad") => setPanel((cur) => (cur === p ? null : p));
 
   const items: MenuItem[] =
     screen === "pause"
@@ -302,6 +321,7 @@ export default function TitanPage() {
             onSelect: play,
             disabled: !hud,
           },
+          ...(started || !SQUAD_ON ? [] : [{ id: "squad", label: "Squad", jp: "分隊", onSelect: () => toggle("squad") }]),
           {
             id: "characters",
             label: "Soldiers",
@@ -323,6 +343,7 @@ export default function TitanPage() {
         ];
   const closeResults = () => {
     setResults(null);
+    setSquad(null);
     setStarted(false);
     setHud(null);
     setScreen("title");
@@ -344,6 +365,9 @@ export default function TitanPage() {
           <LockReticle lock={hud.lock} />
         )}
       </div>
+      <div ref={depotRef} className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0">
+        {screen === "playing" && hud && !hud.intro && <DepotArrow h={hud} />}
+      </div>
 
       {screen === "playing" && hud && (
         <div className={touch ? "touch-hud" : undefined}>
@@ -356,6 +380,11 @@ export default function TitanPage() {
             final={runRef.current.deaths >= 3}
             onSkip={() => gameRef.current?.skipIntro()}
           />
+          {!hud.intro && !hud.run.choice && !msgs.banner && (
+            <div className="pointer-events-none absolute left-1/2 top-[74px] -translate-x-1/2 font-display text-[11px] uppercase tracking-[0.2em] text-bone/70 [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
+              {hud.fps} fps · {QUALITIES[hud.quality].label}
+            </div>
+          )}
         </div>
       )}
       {touch && screen === "playing" && hud && !hud.intro && !hud.dead && (
@@ -366,8 +395,10 @@ export default function TitanPage() {
           onPause={() => gameRef.current?.pause()}
         />
       )}
-      {screen === "playing" && hud?.run.choice && !hud.intro && (
+      {screen === "playing" && hud && !hud.intro && <ControlsOverlay touch={touch} />}
+      {screen === "playing" && hud && (hud.run.choice || hud.run.drill) && !hud.intro && (
         <div className={touch ? "touch-hud" : undefined}>
+          <Drill run={hud.run} onSkip={() => gameRef.current?.skipDrill()} />
           <LevelUp run={hud.run} onPick={(i) => gameRef.current?.pick(i)} />
         </div>
       )}
@@ -381,8 +412,9 @@ export default function TitanPage() {
           <div className="pointer-events-none fixed inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent" />
           <div className="pointer-events-none fixed inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 to-transparent" />
           {screen === "results" && results ? (
-            <div className={`relative flex min-h-full items-center justify-center ${touch ? "touch-menu py-3" : "px-4 py-10"}`}>
+            <div className={`relative flex min-h-full flex-wrap items-center justify-center gap-4 ${touch ? "touch-menu py-3" : "px-4 py-10"}`}>
               <ResultsCard r={results} onClose={closeResults} />
+              <Leaderboard run={{ score: results.run.score, wave: hud?.wave ?? 0, level: results.run.level }} />
             </div>
           ) : panel === "characters" && settings && career ? (
             <div className={`relative flex min-h-full items-center justify-center ${touch ? "touch-menu py-2" : "px-4 py-10 sm:px-12"}`}>
@@ -421,11 +453,34 @@ export default function TitanPage() {
               )}
               <Menu key={screen} items={items} active={panel} />
             </div>
+            {screen === "title" && !panel && (
+              <div className={`flex min-w-0 flex-col gap-4 ${touch ? "flex-1" : "w-full lg:max-w-[480px]"}`}>
+                <div className="panel-in hud-z">
+                  <ControlsCard touch={touch} />
+                </div>
+                <Leaderboard />
+              </div>
+            )}
             {panel && settings && (
               <div
                 key={panel}
                 className={touch ? "min-w-0 flex-1" : "w-full lg:max-w-[720px]"}
               >
+                {panel === "squad" && (
+                  <SquadPanel
+                    info={squad}
+                    onOpen={(name, code, create) => {
+                      setSquad({ code, host: create, ready: false, names: [], ended: null });
+                      gameRef.current?.squad({ code, create, name, char: settings.character }, setSquad);
+                    }}
+                    onLeave={() => {
+                      gameRef.current?.squad(null);
+                      setSquad(null);
+                    }}
+                    onPlay={play}
+                    onClose={() => setPanel(null)}
+                  />
+                )}
                 {panel === "settings" && (
                   <SettingsPanel
                     qualities={QUALITIES}
