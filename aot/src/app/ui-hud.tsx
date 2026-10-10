@@ -6,6 +6,7 @@ import type { UiEvent } from "./game";
 import type { Character } from "./progression-chars";
 import { BOSS, isBoss } from "./titan-waves";
 import { Brush, SHIELD_PATH, TitanIcon } from "./ui-art";
+import { HELP, keyFor } from "./ui-controls";
 import { Key } from "./ui-menu";
 import { Tracker } from "./ui-run";
 
@@ -63,16 +64,16 @@ export function Hud({
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden font-cond text-bone">
       <Vignettes h={h} pops={pops} />
-      <Compass blips={h.blips} depots={h.depots} />
+      <Compass blips={h.blips} depots={h.depots} low={lowSupply(h)} />
       {h.boss && <BossBar boss={h.boss} />}
       <WavePanel h={h} />
       <KillPanel h={h} />
       {free && <Crosshair h={h} />}
-      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} />}
-      {free && <Prompt h={h} touch={touch} />}
-      <Toasts pops={pops} touch={touch} />
+      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b} />}
+      {free && !h.shift.active && <Prompt h={h} touch={touch} />}
+      <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
       <ScorePops pops={pops} />
-      {h.combo > 1 && <Combo n={h.combo} />}
+      {h.combo > 1 && <Combo n={h.combo} t={h.comboT} bonus={h.comboBonus} />}
       <GearPanel h={h} who={who} />
       <SpeedPanel h={h} />
       {msgs.radio?.type === "radio" && <Radio key={msgs.radio.id} who={msgs.radio.who} text={msgs.radio.text} />}
@@ -142,9 +143,29 @@ function Vignettes({ h, pops }: { h: HudState; pops: Pop[] }) {
 }
 
 const SPAN = (100 * Math.PI) / 180;
+const lowSupply = (h: HudState) => !h.supply && (h.gas < 0.25 || (h.blades === 0 && h.sharp < 0.5));
+const nearest = <T extends { dist: number }>(list: T[]) => list.reduce<T | undefined>((m, d) => (!m || d.dist < m.dist ? d : m), undefined);
 
-function Compass({ blips, depots }: { blips: TitanBlip[]; depots: HudState["depots"] }) {
-  const depot = [...depots].sort((a, b) => a.dist - b.dist)[0];
+export function DepotArrow({ h }: { h: HudState }) {
+  const d = nearest(h.depots);
+  if (!d || h.dead || !lowSupply(h)) return null;
+  return (
+    <div className="absolute left-0 top-0 [transform:rotate(var(--depot,0rad))]">
+      <div className="absolute left-0 top-[calc(min(30vh,34vw)*-1)] flex -translate-x-1/2 flex-col items-center">
+        <div className="mb-1 whitespace-nowrap bg-ink/70 px-2 py-0.5 font-cond text-xs font-semibold uppercase tracking-[0.2em] text-[#bff0c8] [transform:rotate(calc(var(--depot,0rad)*-1))]">
+          <span className="mr-1.5 font-jp">補給</span>
+          {Math.round(d.dist)}m
+        </div>
+        <svg viewBox="0 0 24 16" className="blink h-6 w-9 text-[#6fdc8c] drop-shadow-[0_0_6px_rgba(80,220,120,0.95)]">
+          <path d="M12 0L24 16L12 10L0 16Z" fill="currentColor" stroke="#0b0807" strokeWidth="1.2" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function Compass({ blips, depots, low }: { blips: TitanBlip[]; depots: HudState["depots"]; low: boolean }) {
+  const depot = nearest(depots);
   const near = [...blips].sort((a, b) => a.dist - b.dist).slice(0, 3);
   return (
     <div className="hud-z absolute left-1/2 top-3 -translate-x-1/2">
@@ -174,9 +195,9 @@ function Compass({ blips, depots }: { blips: TitanBlip[]; depots: HudState["depo
             <div
               key={`d${i}`}
               className="absolute bottom-[4px] flex -translate-x-1/2 flex-col items-center"
-              style={{ left: `${x}%`, opacity: behind ? 0.4 : 0.95 }}
+              style={{ left: `${x}%`, opacity: behind && !(low && d === depot) ? 0.4 : 0.95 }}
             >
-              <svg viewBox="0 0 10 14" className="h-3.5 w-2.5 text-[#6fdc8c] drop-shadow-[0_0_3px_rgba(80,220,120,0.9)]">
+              <svg viewBox="0 0 10 14" className={`text-[#6fdc8c] drop-shadow-[0_0_3px_rgba(80,220,120,0.9)] ${low && d === depot ? "blink h-5 w-3.5" : "h-3.5 w-2.5"}`}>
                 <path d="M5 0C8 3 9 5 7 8C9 9 8 13 5 14C2 13 1 9 3 8C1 5 2 3 5 0Z" fill="currentColor" />
               </svg>
               <span className={`mt-px font-cond text-[9px] leading-none tabular-nums ${d === depot ? "text-[#bff0c8]" : "text-transparent"}`}>
@@ -274,24 +295,28 @@ function WavePanel({ h }: { h: HudState }) {
     <div className="hud-z absolute left-4 top-3 origin-top-left">
       <div className="relative pl-3">
         <div className="absolute bottom-1 left-0 top-1 w-1 bg-blood" />
-        <div className="flex items-baseline gap-2">
-          <span className="font-cond text-xs font-semibold uppercase tracking-[0.35em] text-brass">
-            Wave
-          </span>
-          <span className="font-jp text-xs font-bold text-bone/50">襲来</span>
-        </div>
-        <div className="font-display text-5xl leading-none tracking-wide ink-shadow">
-          {pad(h.wave, 2)}
-        </div>
-        <div className="mt-1 flex items-center gap-2 text-sm uppercase tracking-[0.15em] ink-shadow">
-          <TitanIcon kind="normal" className="h-4 w-2 text-ember" />
-          <span className="font-display text-lg tabular-nums tracking-normal">
-            {h.left}
-          </span>
-          <span className="text-bone/70">
-            {h.left === 1 ? "titan remains" : "titans remain"}
-          </span>
-        </div>
+        {h.wave > 0 && (
+          <>
+            <div className="flex items-baseline gap-2">
+              <span className="font-cond text-xs font-semibold uppercase tracking-[0.35em] text-brass">
+                Wave
+              </span>
+              <span className="font-jp text-xs font-bold text-bone/50">襲来</span>
+            </div>
+            <div className="font-display text-5xl leading-none tracking-wide ink-shadow">
+              {pad(h.wave, 2)}
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-sm uppercase tracking-[0.15em] ink-shadow">
+              <TitanIcon kind="normal" className="h-4 w-2 text-ember" />
+              <span className="font-display text-lg tabular-nums tracking-normal">
+                {h.left}
+              </span>
+              <span className="text-bone/70">
+                {h.left === 1 ? "titan remains" : "titans remain"}
+              </span>
+            </div>
+          </>
+        )}
         {h.breakT > 0 && (
           <div className="mt-1 text-xs uppercase tracking-[0.25em] text-parch/80">
             Next wave in{" "}
@@ -300,7 +325,7 @@ function WavePanel({ h }: { h: HudState }) {
             </span>
           </div>
         )}
-        {h.wave > 0 && <Tracker run={h.run} />}
+        {h.wave > 0 && !h.run.drill && <Tracker run={h.run} />}
       </div>
     </div>
   );
@@ -329,6 +354,9 @@ function KillPanel({ h }: { h: HudState }) {
         <span className="font-display text-2xl tabular-nums tracking-wide ink-shadow">
           {pad(h.score, 7)}
         </span>
+      </div>
+      <div data-keyhint className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] uppercase tracking-[0.25em] text-bone/55">
+        <Key>{HELP.key}</Key> Controls
       </div>
     </div>
   );
@@ -420,10 +448,10 @@ function Prompt({ h, touch }: { h: HudState; touch: boolean }) {
   );
 }
 
-function Callout({ text }: { text: string }) {
+function Callout({ text, low }: { text: string; low: boolean }) {
   return (
     <div
-      className="toast-in hud-z absolute left-1/2 top-[calc(50%-96px)] -translate-x-1/2 whitespace-nowrap font-display text-2xl uppercase tracking-wide text-[#ffd27a] ink-shadow"
+      className={`toast-in hud-z absolute left-1/2 ${low ? "top-[calc(50%+48px)]" : "top-[calc(50%-96px)]"} -translate-x-1/2 whitespace-nowrap font-display text-2xl uppercase tracking-wide text-[#ffd27a] ink-shadow`}
       style={{ animationDuration: "1.6s" }}
     >
       {text}
@@ -445,7 +473,7 @@ function Radio({ who, text }: { who: string; text: string }) {
 
 function Banner({ jp, en, text }: { jp: string; en: string; text?: string }) {
   return (
-    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2">
+    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2 [.touch-hud_&]:left-[40%] [.touch-hud_&]:top-[12%] [.touch-hud_&]:w-[600px]">
       <div className="kill-banner" style={{ animationDuration: "2.8s" }}>
         <div className="relative">
           <Brush className="brush-in absolute -inset-x-8 -inset-y-6 h-[calc(100%+3rem)] w-[calc(100%+4rem)]" />
@@ -519,9 +547,9 @@ export function LockReticle({ lock }: { lock: Lock | null }) {
   );
 }
 
-function Toasts({ pops, touch }: { pops: Pop[]; touch: boolean }) {
+function Toasts({ pops, touch, low }: { pops: Pop[]; touch: boolean; low: boolean }) {
   return (
-    <div className="hud-z absolute left-4 top-[34%] flex w-[300px] origin-left flex-col gap-2">
+    <div className={`hud-z absolute left-4 ${low ? "top-[44%]" : "top-[34%]"} flex w-[300px] origin-left flex-col gap-2`}>
       {pops.map((p) =>
         p.type === "toast" ? (
           <div
@@ -563,7 +591,7 @@ function ScorePops({ pops }: { pops: Pop[] }) {
   );
 }
 
-function Combo({ n }: { n: number }) {
+function Combo({ n, t, bonus }: { n: number; t: number; bonus: number }) {
   return (
     <div
       key={n}
@@ -577,6 +605,10 @@ function Combo({ n }: { n: number }) {
       </div>
       <div className="text-xs font-semibold uppercase tracking-[0.35em] text-ember">
         <span className="mr-2 font-jp">連撃</span>Combo
+        {bonus > 1 && <span className="ml-2 text-brass">+{Math.round((bonus - 1) * 100)}%</span>}
+      </div>
+      <div className="ml-auto mt-1 h-1 w-28 bg-bone/15">
+        <div className="ml-auto h-full bg-ember" style={{ width: `${t * 100}%` }} />
       </div>
     </div>
   );
@@ -655,6 +687,7 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
           </span>
         )}
       </div>
+      <ShiftTeam h={h} />
       {h.supply && (
         <div className="blink mb-2 inline-flex items-center gap-2 border border-[#6fbf7f]/60 bg-corps/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-[#bff0c8]">
           <span className="font-jp">補給</span> Resupplying
@@ -709,6 +742,10 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
             </span>
             <span className="font-display text-sm">{h.blades}</span>
           </div>
+          <div className="mb-1 flex items-baseline justify-between text-[9px] font-semibold uppercase tracking-[0.25em] text-bone/70">
+            {h.weapon}
+            {h.weapon !== "blades" && <span className="font-display text-sm tracking-normal text-brass">{h.ammo}</span>}
+          </div>
           <div className="grid grid-cols-4 gap-x-1.5 gap-y-1">
             {Array.from({ length: 8 }, (_, i) => (
               <svg key={i} viewBox="0 0 10 36" className="h-8 w-[9px]">
@@ -732,6 +769,43 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Meter({ v, color }: { v: number; color: string }) {
+  return (
+    <span className="inline-block h-2 w-14 -skew-x-[25deg] border border-black bg-black/70">
+      <span className="block h-full" style={{ width: `${clamp01(v) * 100}%`, background: color }} />
+    </span>
+  );
+}
+
+function ShiftTeam({ h }: { h: HudState }) {
+  const { meter, active, hp } = h.shift;
+  const team = h.squad.max > 0;
+  if (!team && meter <= 0 && !active) return null;
+  return (
+    <div className="plate mb-2 flex items-center gap-4 bg-ink/75 py-1 pl-2 pr-3 text-xs uppercase tracking-[0.2em] text-bone/80">
+      <span className={`flex items-center gap-1.5 ${active || meter >= 1 ? "text-ember" : ""}`}>
+        <span className="font-jp text-bone/60">巨人</span>
+        {active ? "HP" : "Shift"}
+        <Meter v={active ? hp : meter} color={active ? "#c3161c" : meter >= 1 ? "#ff8a3a" : "#9e9282"} />
+        {!active && meter >= 1 && <span data-keyhint><Key>{keyFor("shift")}</Key></span>}
+      </span>
+      {team && (
+        <span className={`flex items-center gap-1.5 ${h.squad.opening > 0 ? "blink text-[#ffd27a]" : ""}`}>
+          <span className="font-jp text-bone/60">連携</span>
+          {h.squad.opening > 0 ? (
+            <>Nape open <span className="font-display text-sm tabular-nums tracking-normal">{Math.ceil(h.squad.opening)}s</span></>
+          ) : h.squad.team > 0 ? (
+            <>Team <span className="font-display text-sm tabular-nums tracking-normal text-bone/60">{Math.ceil(h.squad.team)}s</span></>
+          ) : (
+            <>Team ready</>
+          )}
+          <span data-keyhint><Key>{keyFor("teamAttack")}</Key></span>
+        </span>
+      )}
     </div>
   );
 }
@@ -798,7 +872,7 @@ function Grab({ escape, touch }: { escape: number; touch: boolean }) {
 function KillBanner({ height, speed, kind }: { height: number; speed: number; kind: TitanKind }) {
   if (isBoss(kind)) return <Banner jp={`${BOSS[kind].jp} 討伐`} en={`${BOSS[kind].name} down`} text={`${Math.round(speed)} km/h`} />;
   return (
-    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2">
+    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2 [.touch-hud_&]:left-[40%] [.touch-hud_&]:top-[12%] [.touch-hud_&]:w-[600px]">
       <div className="kill-banner">
         <div className="relative">
           <Brush className="brush-in absolute -inset-x-8 -inset-y-6 h-[calc(100%+3rem)] w-[calc(100%+4rem)]" />

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ALLY_HALF, createFlares, createKit, type Pose, type Soldier } from "./allies-model";
-import type { Allies, Blade, Fx, GameEvent, SquadLead, SquadOrder, TitanPart, Titans, TitanView, World } from "./contracts";
+import type { Allies, Blade, Fx, GameEvent, Lock, SquadLead, SquadOrder, TitanPart, Titans, TitanView, World } from "./contracts";
+import { BN, type Rig } from "./titan-model";
 
 const MAX = 8;
 const BASE = 5;
@@ -9,6 +10,9 @@ const SLOTS: [number, number, number][] = [[-5, 2, -6], [5, 2, -6], [-10, 3, -11
 const NEAR = 30;
 const CALL_GAP = 8;
 const G = 9.8;
+const TEAM_CD = 25;
+const OPEN = 3.5;
+const STEP = 0.4;
 
 type Hook = { on: boolean; p: THREE.Vector3; titan: TitanView | null; part: TitanPart; age: number };
 type Ally = {
@@ -33,6 +37,7 @@ type Ally = {
   heldT: number;
   heldSide: "armL" | "armR";
   heldBy: TitanView | null;
+  team: boolean;
 };
 
 export function createAllies(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Allies {
@@ -43,7 +48,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   const hook = (): Hook => ({ on: false, p: new THREE.Vector3(), titan: null, part: "nape", age: 0 });
   const squad: Ally[] = Array.from({ length: MAX }, (_, i) => ({
     name: "", s: kit.build(i), pos: new THREE.Vector3(), vel: new THREE.Vector3(), mode: "dead", grounded: false, target: null, part: "nape",
-    run: 0, cd: 0, slash: 0, hooks: [hook(), hook()], hookT: 0, gasT: 0, acc: 0, skip: i, phase: (i / MAX) * Math.PI * 2, yaw: 0, heldT: 0, heldSide: "armL", heldBy: null,
+    run: 0, cd: 0, slash: 0, hooks: [hook(), hook()], hookT: 0, gasT: 0, acc: 0, skip: i, phase: (i / MAX) * Math.PI * 2, yaw: 0, heldT: 0, heldSide: "armL", heldBy: null, team: false,
   }));
   let order: SquadOrder = "attack";
   let size = BASE;
@@ -54,6 +59,10 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   let nameI = 0;
   let time = 0;
   let lead: SquadLead | null = null;
+  let teamCd = 0;
+  let open = 0;
+  let teamTi: TitanView | null = null;
+  let killsWas = 0;
   const blade: Blade = { pos: new THREE.Vector3(), dir: new THREE.Vector3(), speed: 0, charge: 0, radius: 2 };
   const pose: Pose = { anim: "stand", t: 0, k: 0, vel: new THREE.Vector3(), yaw: 0 };
   const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), goal = new THREE.Vector3(), acc = new THREE.Vector3();
@@ -82,6 +91,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     a.cd = rnd(2, 5);
     a.run = a.slash = 0;
     a.heldBy = null;
+    a.team = false;
     a.hooks[0].on = a.hooks[1].on = false;
     a.s.root.visible = true;
     a.yaw = Math.atan2(-at.x, -at.z);
@@ -114,7 +124,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     const counts = new Map<number, number>();
     let i = 0;
     for (const a of squad) {
-      if (a.mode !== "fly") continue;
+      if (a.mode !== "fly" || a.team) continue;
       const t = order === "regroup" || !near.length ? null : locked ?? near[i++ % Math.min(2, near.length)];
       if (t !== a.target) {
         a.target = t;
@@ -145,10 +155,18 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     const nape = a.part === "nape";
     blade.pos.copy(a.pos);
     blade.dir.copy(a.vel).normalize();
-    blade.speed = nape ? 13 : 22;
-    blade.charge = nape ? 0.3 : 0.5;
+    blade.speed = a.team ? 32 : nape ? 13 : 22;
+    blade.charge = a.team ? 1 : nape ? 0.3 : 0.5;
     const r = titans.strike(blade, { titan: t, part: a.part });
     filter(r.events, a.pos);
+    if (a.team && r.zone && t === teamTi && t.alive) {
+      if (open <= 0) {
+        out.push({ type: "callout", text: "Nape open! Cut now" }, { type: "sfx", name: "bell" }, { type: "slowmo", scale: 0.5, duration: 0.6 });
+        say("It's down! Take the nape!", a.name, true);
+      }
+      open = OPEN;
+    }
+    a.team = false;
     if (lead!.pos.distanceTo(a.pos) < 120) {
       v1.set(-blade.dir.z, 0, blade.dir.x).normalize();
       v2.copy(a.pos).addScaledVector(v1, -1.6).y -= 0.6;
@@ -199,6 +217,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       a.heldT = 0;
       a.run = 0;
       a.hooks[0].on = a.hooks[1].on = false;
+      titans.hold(t, side, true);
       out.push({ type: "sfx", name: "grabbed", at: a.pos.clone() });
       say("It's got me! Cut that arm!", a.name, true);
       return;
@@ -209,6 +228,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     const t = a.heldBy!;
     a.heldT += dt;
     if (!t.alive || !titans.partPos(t, a.heldSide, v1)) {
+      titans.hold(t, a.heldSide, false);
       a.mode = "fly";
       a.heldBy = null;
       a.vel.set(0, 6, 0);
@@ -216,12 +236,11 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       out.push({ type: "feat", name: "save", kind: t.kind });
       return say("Thanks for the save!", a.name, true);
     }
-    const H = t.height;
-    v2.set(t.pos.x + Math.sin(t.yaw) * H * 0.1, t.pos.y + H * 0.84, t.pos.z + Math.cos(t.yaw) * H * 0.1);
-    v1.lerp(v3.set(t.pos.x + Math.sin(t.yaw) * H * 0.18, t.pos.y + H * 0.6, t.pos.z + Math.cos(t.yaw) * H * 0.18), 0.6);
-    a.pos.copy(v1).lerp(v2, THREE.MathUtils.smoothstep(a.heldT, 2.2, 3.2));
+    const hand = (t as TitanView & { rig?: Rig }).rig?.bones[a.heldSide === "armL" ? BN.handL : BN.handR];
+    if (hand) a.pos.set(0, -0.06, 0).applyMatrix4(hand.matrixWorld);
+    else a.pos.copy(v1);
     a.vel.set(0, 0, 0);
-    if (a.heldT < 3.3) return;
+    if (a.heldT < 3.55) return;
     a.mode = "dead";
     a.heldBy = null;
     a.target = null;
@@ -245,14 +264,15 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         a.run -= dt;
         goal.copy(v3);
         if (a.part === "nape") goal.y += 0.6;
-        speed = 34;
-        if (a.pos.distanceTo(goal) < 2.8) {
+        speed = a.team ? 60 : 34;
+        if (a.run <= 0) a.team = false;
+        if (a.pos.distanceTo(goal) < (a.team ? 4 : 2.8)) {
           a.run = 0;
           a.slash = 0.45;
           a.cd = rnd(6, 9);
-          if (Math.random() < 0.7) strike(a, t);
+          if (a.team || Math.random() < 0.7) strike(a, t);
           else a.vel.y += 8;
-        } else if (Math.random() < dt * (t.kind === "female" ? 0.5 : 0.25)) grab(a, t);
+        } else if (!a.team && Math.random() < dt * (t.kind === "female" ? 0.5 : 0.25)) grab(a, t);
       } else {
         const ang = a.phase + time * 0.45;
         const r = t.height * 0.55 + 7;
@@ -260,6 +280,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         if (a.cd <= 0 && a.pos.distanceTo(goal) < 14) a.run = 2;
       }
     } else {
+      a.team = false;
       const fast = L.vel.lengthSq() > 16;
       const hy = fast ? Math.atan2(L.vel.x, L.vel.z) : yaw;
       const [sx, sy, sz] = SLOTS[i];
@@ -298,9 +319,14 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     a.vel.addScaledVector(acc, dt);
     a.vel.y -= G * dt;
     a.vel.multiplyScalar(1 - Math.min(0.5, (resting ? 8 : 0.3) * dt));
-    a.pos.addScaledVector(a.vel, dt);
-    a.grounded = world.collide(a.pos, a.vel, 0.35, ALLY_HALF * 2).grounded;
+    const n = Math.min(8, Math.ceil((a.vel.length() * dt) / STEP));
+    a.grounded = false;
+    for (let k = 0; k < n; k++) {
+      a.pos.addScaledVector(a.vel, dt / n);
+      if (world.collide(a.pos, a.vel, 0.4, ALLY_HALF * 2).grounded) a.grounded = true;
+    }
     titans.pushOut(a.pos, 0.4, a.vel);
+    world.collide(a.pos, a.vel, 0.4, ALLY_HALF * 2);
 
     a.gasT -= dt;
     if (near && !resting && a.gasT <= 0 && acc.lengthSq() > 120) {
@@ -343,6 +369,17 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       time += dt;
       callT -= dt;
       flares.update(dt);
+      teamCd = Math.max(0, teamCd - dt);
+      if (open > 0) {
+        open = Math.max(0, open - dt);
+        if (teamTi && !teamTi.alive) {
+          open = 0;
+          if (titans.kills > killsWas) {
+            out.push({ type: "score", amount: 300, reason: "Team attack" });
+            say("That's how it's done!", alive()[0]?.name ?? "Command", true);
+          }
+        }
+      }
       if (titans.wave !== lastWave) {
         lastWave = titans.wave;
         if (lastWave > 0) reinforce(lastWave);
@@ -373,10 +410,42 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         else step(a, step_dt, i, yaw, !far && a.pos.distanceTo(l.pos) < 90);
         if (a.s.root.visible) draw(a);
       });
+      killsWas = titans.kills;
       return out;
     },
     order: command,
     toggle: () => command(order === "attack" ? "regroup" : "attack"),
+    team(lock: Lock | null) {
+      const t = lock?.titan.alive ? lock.titan : null;
+      if (teamCd > 0) return [{ type: "callout", text: `Squad ready in ${Math.ceil(teamCd)} s` }];
+      if (!t) return [{ type: "callout", text: "Lock a titan first (Q)" }];
+      const free = squad.filter((a) => a.mode === "fly");
+      if (!free.length) return [{ type: "callout", text: "No squad to call" }];
+      let sent = 0;
+      free.forEach((a, k) => {
+        const leg: TitanPart = k % 2 ? "legR" : "legL";
+        const parts: TitanPart[] = k === 0 ? ["eyes", leg, "legR", "legL"] : [leg, leg === "legL" ? "legR" : "legL", "eyes"];
+        const part = parts.find((p) => titans.partPos(t, p, v1));
+        if (!part) return;
+        a.target = t;
+        a.part = part;
+        a.team = true;
+        a.run = 3;
+        a.cd = 0;
+        sent++;
+      });
+      if (!sent) return [{ type: "callout", text: "No squad to call" }];
+      teamCd = TEAM_CD;
+      teamTi = t;
+      return [
+        { type: "radio", who: "You", text: "Team attack! Hit it now!" },
+        { type: "sfx", name: "horn", volume: 0.7 },
+        { type: "callout", text: "Squad strikes. Get ready for the nape" },
+      ];
+    },
+    get opening() {
+      return open;
+    },
     grow() {
       out.length = 0;
       size = Math.min(MAX - 1, size + 1);
@@ -386,7 +455,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       return out.slice();
     },
     hud() {
-      return { alive: alive().length, max: size + 1, order };
+      return { alive: alive().length, max: size + 1, order, team: teamCd, opening: open };
     },
     dispose() {
       kit.dispose();
