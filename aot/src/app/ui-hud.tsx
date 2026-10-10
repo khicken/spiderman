@@ -69,7 +69,7 @@ export function Hud({
       <WavePanel h={h} />
       <KillPanel h={h} />
       {free && <Crosshair h={h} />}
-      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={b?.type === "kill"} />}
+      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b} />}
       {free && !h.shift.active && <Prompt h={h} touch={touch} />}
       <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
       <ScorePops pops={pops} />
@@ -473,7 +473,7 @@ function Radio({ who, text }: { who: string; text: string }) {
 
 function Banner({ jp, en, text }: { jp: string; en: string; text?: string }) {
   return (
-    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2">
+    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2 [.touch-hud_&]:left-[40%] [.touch-hud_&]:top-[12%] [.touch-hud_&]:w-[600px]">
       <div className="kill-banner" style={{ animationDuration: "2.8s" }}>
         <div className="relative">
           <Brush className="brush-in absolute -inset-x-8 -inset-y-6 h-[calc(100%+3rem)] w-[calc(100%+4rem)]" />
@@ -872,7 +872,7 @@ function Grab({ escape, touch }: { escape: number; touch: boolean }) {
 function KillBanner({ height, speed, kind }: { height: number; speed: number; kind: TitanKind }) {
   if (isBoss(kind)) return <Banner jp={`${BOSS[kind].jp} 討伐`} en={`${BOSS[kind].name} down`} text={`${Math.round(speed)} km/h`} />;
   return (
-    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2">
+    <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2 [.touch-hud_&]:left-[40%] [.touch-hud_&]:top-[12%] [.touch-hud_&]:w-[600px]">
       <div className="kill-banner">
         <div className="relative">
           <Brush className="brush-in absolute -inset-x-8 -inset-y-6 h-[calc(100%+3rem)] w-[calc(100%+4rem)]" />
