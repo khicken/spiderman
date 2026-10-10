@@ -6,6 +6,8 @@ import { createCameraRig } from "./camera";
 import type { Audio, Boost, GameEvent, HudState, MusicState, Quality, TitanBlip, TitanKind } from "./contracts";
 import { createFx } from "./fx";
 import { createInput } from "./input";
+import { createSquad, type Squad, type SquadInfo, type SquadOpts } from "./net";
+import { wrapTitans } from "./net-titans";
 import { createPlayer } from "./player";
 import { gearTier, loadCareer } from "./progression";
 import { createRender } from "./render";
@@ -37,9 +39,11 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const border = createBorder(view.scene);
   setTitanDetail(settings.quality);
   const titans = createTitans(view.scene, world, fx);
-  const player = createPlayer(view.scene, world, titans, fx);
-  const allies = createAllies(view.scene, world, titans, fx);
-  const shifter = createShifter(view.scene, world, titans, fx);
+  let squad: Squad | null = null;
+  const tv = wrapTitans(titans, () => (!squad ? "solo" : squad.guest ? "guest" : "host"), (id, part, dmg) => squad?.hit(id, part, dmg));
+  const player = createPlayer(view.scene, world, tv, fx);
+  const allies = createAllies(view.scene, world, tv, fx);
+  const shifter = createShifter(view.scene, world, tv, fx);
   let baseBoost: Boost | null = null;
   let opening = false;
   const setBoost = player.setBoost;
@@ -48,7 +52,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     setBoost(opening ? { ...b, damage: b.damage * 2 } : b);
   };
   const rig = createCameraRig(view.camera, world);
-  const run = createRun({ world, titans, player, allies, fx, tier: gearTier(loadCareer()) });
+  const run = createRun({ world, titans: tv, player, allies, fx, tier: gearTier(loadCareer()) });
 
   let playing = false;
   let everPlayed = false;
@@ -61,6 +65,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   let introT = -1;
   const introToasts: UiEvent[] = [];
   let reticle: HTMLElement | null = null;
+  let depotEl: HTMLElement | null = null;
   let music: MusicState = "title";
 
   const listener = new THREE.Vector3();
@@ -255,7 +260,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       opening = !opening;
       if (baseBoost) player.setBoost(baseBoost);
     }
-    if (playing) route(titans.update(dt, t, shifter.active ? shifter.view : player));
+    if (playing && !squad?.guest) route(titans.update(dt, t, shifter.active ? shifter.view : player));
+    if (playing && squad) route(squad.update(real, dt, player, rig.yaw));
     if (playing) route(allies.update(dt, t, player, rig.yaw));
     if (playing) route(run.update(dt, real, control));
     if (playing) route(shifter.update(dt, inp, player, rig));
@@ -277,6 +283,18 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         reticle.style.transform = `translate(${((p.x + 1) / 2) * window.innerWidth}px, ${((1 - p.y) / 2) * window.innerHeight}px)`;
         reticle.dataset.part = lock!.part;
       } else reticle.style.opacity = "0";
+    }
+    if (depotEl) {
+      let best = Infinity;
+      let b = 0;
+      for (let i = 0; i < world.supplies.length; i++) {
+        const p = world.supplies[i];
+        const d = (p.x - player.pos.x) ** 2 + (p.z - player.pos.z) ** 2;
+        if (world.depotDown[i] || d >= best) continue;
+        best = d;
+        b = Math.atan2(p.x - player.pos.x, p.z - player.pos.z) - rig.yaw;
+      }
+      depotEl.style.setProperty("--depot", `${-b}rad`);
     }
 
     let danger = 0;
@@ -325,7 +343,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   raf = requestAnimationFrame(frame);
 
-  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { noAuto: () => (autoQ = false), view, world, titans, player, allies, shifter, rig, fx, input, endIntro, run };
+  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { noAuto: () => (autoQ = false), view, world, titans, tv, player, allies, shifter, rig, fx, input, endIntro, run };
 
   return {
     play() {
@@ -349,11 +367,24 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     bindReticle(el: HTMLElement | null) {
       reticle = el;
     },
+    bindDepot(el: HTMLElement | null) {
+      depotEl = el;
+    },
     setSettings: (s: Partial<Settings>) => {
       if (s.quality !== undefined) autoQ = false;
       applySettings(s);
     },
+    squad(o: SquadOpts | null, onInfo?: (i: SquadInfo) => void) {
+      squad?.dispose();
+      squad = o
+        ? createSquad(view.scene, titans, o, (i) => {
+            if (i.ended && everPlayed) onEvent({ type: "toast", title: "Room closed", text: i.ended });
+            onInfo?.(i);
+          })
+        : null;
+    },
     dispose() {
+      squad?.dispose();
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("pointerlockchange", onLock);
