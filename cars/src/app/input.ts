@@ -20,6 +20,14 @@ function stick(v: number, dz: number) {
   return Math.sign(v) * (0.45 * t + 0.55 * t * t);
 }
 
+// Key steering ramp: slower and shorter at speed, quick return to center.
+export function keySteerStep(cur: number, want: number, dt: number, v: number): number {
+  const goal = want * (1 - 0.3 * clamp(v / 70, 0, 1));
+  const back = goal === 0 || Math.sign(goal) !== Math.sign(cur);
+  const rate = back ? 7 : 4.2 - 2.6 * clamp(v / 60, 0, 1);
+  return cur + clamp(goal - cur, -rate * dt, rate * dt);
+}
+
 export function createInput(canvas: HTMLCanvasElement): Input {
   const keys = new Set<Act>();
   const pad = new Set<Act>();
@@ -128,12 +136,7 @@ export function createInput(canvas: HTMLCanvasElement): Input {
       for (const a of pending) now.add(a);
       pending.clear();
       const v = Math.abs(speed);
-      const want = (keys.has("right") ? 1 : 0) - (keys.has("left") ? 1 : 0);
-      const amp = 1 - 0.3 * clamp(v / 70, 0, 1);
-      const goal = want * amp;
-      const back = goal === 0 || Math.sign(goal) !== Math.sign(keySteer);
-      const rate = back ? 7 : 4.2 - 2.6 * clamp(v / 60, 0, 1);
-      keySteer += clamp(goal - keySteer, -rate * dt, rate * dt);
+      keySteer = keySteerStep(keySteer, (keys.has("right") ? 1 : 0) - (keys.has("left") ? 1 : 0), dt, v);
       keyGas += clamp((keys.has("gas") ? 1 : 0) - keyGas, -dt * 10, dt * 7);
       keyBrake += clamp((keys.has("brake") ? 1 : 0) - keyBrake, -dt * 10, dt * 8);
       c.throttle = Math.max(keyGas, padGas, touch.throttle);

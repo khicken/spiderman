@@ -192,6 +192,7 @@ export default function RenderLab() {
     let speed = +(p.get("speed") ?? 30);
     const cam = p.get("cam") ?? "chase";
     let stress = p.get("stress") === "1";
+    const surf = (p.get("surf") ?? "asphalt") as import("../../contracts").Surface;
     const timeRate = +(p.get("rate") ?? 0);
     const focus = new THREE.Vector3();
     const camPos = new THREE.Vector3();
@@ -268,7 +269,7 @@ export default function RenderLab() {
         vel.copy(dir).multiplyScalar(speed);
         for (let w = 0; w < 4; w++) {
           wp.set(-1.4 * (w < 2 ? -1 : 1), 0.05 - 0.6, 0.9 * (w % 2 ? 1 : -1)).applyAxisAngle(UPV, s.car.rotation.y - Math.PI / 2).add(focus);
-          fx.tire(0, w, wp, vel, w >= 2 ? 0.9 : 0.3, "asphalt", r.wet);
+          fx.tire(0, w, wp, vel, w >= 2 ? 0.9 : 0.3, surf, r.wet);
         }
         dir.set(Math.sin(s.car.rotation.y), 0, Math.cos(s.car.rotation.y));
         vel.copy(dir).multiplyScalar(speed);

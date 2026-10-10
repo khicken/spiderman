@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import type { GameEvent, HudState } from "./contracts";
-import { Clock, Flag, Laps, Trophy, Turn } from "./ui-icons";
-import { cx, fmtDelta, fmtTime } from "./ui-kit";
+import type { Device, GameEvent, HudState } from "./contracts";
+import { Brake, Clock, Flag, Gas, Handbrake, Laps, Rewind, Trophy, Turn, Wheel } from "./ui-icons";
+import { Key, cx, fmtDelta, fmtTime } from "./ui-kit";
+import { Pad, TouchDiagram } from "./ui-settings";
 
 export { Results } from "./ui-results";
 
@@ -300,6 +301,36 @@ export function Minimap({ outline, ref }: { outline?: ArrayLike<number>; ref?: R
         <path d="M12 2l8 19-8-5-8 5z" fill="var(--color-hot)" stroke="white" strokeWidth="1.5" strokeLinejoin="round" />
       </svg>
       <span className="absolute inset-0 rounded-full shadow-[inset_0_0_1.5rem_rgb(0_0_0/0.7)]" />
+    </div>
+  );
+}
+
+const HINT = [
+  { icon: <Gas />, keys: <Key>W</Key>, pad: <Pad b="RT" /> },
+  { icon: <Brake />, keys: <Key>S</Key>, pad: <Pad b="LT" /> },
+  { icon: <Wheel />, keys: <><Key>A</Key><Key>D</Key></>, pad: <Pad b="LS" /> },
+  { icon: <Handbrake />, keys: <Key wide>Space</Key>, pad: <Pad b="A" c="#3ddc84" /> },
+  { icon: <Rewind />, keys: <Key>R</Key>, pad: <Pad b="Y" c="#ffc53d" /> },
+];
+
+// First race only: the core controls for the current device, then it fades.
+export function ControlHint({ device }: { device: Device }) {
+  return (
+    <div className={cx("pointer-events-none absolute inset-x-0 flex justify-center [animation:pop_4s_var(--ease-out)_both]", device === "touch" ? "top-[14%]" : "bottom-[max(1.5rem,env(safe-area-inset-bottom))]")}>
+      {device === "touch" ? (
+        <div className="w-[min(10rem,30vw)] opacity-90">
+          <TouchDiagram steer="slider" />
+        </div>
+      ) : (
+        <div className="glass flex gap-6 rounded-[4px] px-5 py-3">
+          {HINT.map((h, i) => (
+            <span key={i} className="flex items-center gap-2">
+              <span className="text-2xl text-white/90">{h.icon}</span>
+              <span className="flex gap-1">{device === "pad" ? h.pad : h.keys}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1667,6 +1667,6 @@ export const MAP: MapData = {
     { name: "Oceanographic Museum", x: -7.5, z: 631, kind: "monument" },
     { name: "Sainte-Dévote Church", x: -388.5, z: -79.3, kind: "church" },
   ],
-  env: {hour: 19.2,weather: "clear",season: "summer"},
+  env: {hour: 18.9,weather: "clear",season: "summer"},
   credit: "© OpenStreetMap contributors · Terrain: Mapzen Terrain Tiles (SRTM, EU-DEM, USGS 3DEP and others) via AWS Open Data",
 };

@@ -4,6 +4,7 @@ import * as THREE from "three";
 export const FOG_A = new Float32Array([0, 1, 0, 0.004]); // sun dir, height falloff 1/m
 export const FOG_B = new Float32Array([0, 600, 800, 0.5]); // base y, end fade start, end fade stop, sun inscatter
 export const FOG_SUN = new Float32Array([1, 0.8, 0.6]);
+export const FOG_C = new Float32Array([0, 0, 0, NaN]); // patchiness 0..1, wind x, wind z, world fog base y (NaN: follow the camera)
 export const SHADOW_CFG = new Float32Array([5, 0, 0, 0]); // PCF taps
 
 function addUniforms(lib: "fog" | "lights", key: string, extra: Record<string, THREE.IUniform>) {
@@ -15,11 +16,11 @@ function addUniforms(lib: "fog" | "lights", key: string, extra: Record<string, T
 export function patchFog() {
   const C = THREE.ShaderChunk;
   if (C.fog_fragment.includes("uFogA")) return;
-  addUniforms("fog", "fogColor", { uFogA: { value: FOG_A }, uFogB: { value: FOG_B }, uFogSun: { value: FOG_SUN } });
+  addUniforms("fog", "fogColor", { uFogA: { value: FOG_A }, uFogB: { value: FOG_B }, uFogSun: { value: FOG_SUN }, uFogC: { value: FOG_C } });
   C.fog_pars_vertex = "#ifdef USE_FOG\n varying float vFogDepth;\n varying vec3 vFogPos;\n#endif";
   C.fog_vertex = "#ifdef USE_FOG\n vFogDepth = - mvPosition.z;\n vFogPos = transpose( mat3( viewMatrix ) ) * mvPosition.xyz;\n#endif";
   C.fog_pars_fragment =
-    "#ifdef USE_FOG\n uniform vec3 fogColor;\n uniform vec4 uFogA;\n uniform vec4 uFogB;\n uniform vec3 uFogSun;\n varying float vFogDepth;\n varying vec3 vFogPos;\n #ifdef FOG_EXP2\n  uniform float fogDensity;\n #else\n  uniform float fogNear;\n  uniform float fogFar;\n #endif\n#endif";
+    "#ifdef USE_FOG\n uniform vec3 fogColor;\n uniform vec4 uFogA;\n uniform vec4 uFogB;\n uniform vec3 uFogSun;\n uniform vec4 uFogC;\n varying float vFogDepth;\n varying vec3 vFogPos;\n #ifdef FOG_EXP2\n  uniform float fogDensity;\n #else\n  uniform float fogNear;\n  uniform float fogFar;\n #endif\n#endif";
   C.fog_fragment = /* glsl */ `
 #ifdef USE_FOG
   float fogDist = length( vFogPos );
@@ -28,12 +29,19 @@ export function patchFog() {
     float fogK = uFogA.w * fogRd.y * fogDist;
     float fogH = abs( fogK ) > 1e-4 ? ( 1.0 - exp( - fogK ) ) / fogK : 1.0;
     float fogOd = fogDensity * fogDist * exp( - uFogA.w * clamp( cameraPosition.y - uFogB.x, -30.0, 3000.0 ) ) * fogH;
+    if ( uFogC.x > 0.0 ) {
+      vec2 fq = ( cameraPosition.xz + vFogPos.xz ) * 0.0035 + uFogC.yz;
+      vec2 fi = floor( fq ), ff = fract( fq ); ff = ff * ff * ( 3.0 - 2.0 * ff );
+      vec4 fh = fract( sin( vec4( dot( fi, vec2( 127.1, 311.7 ) ), dot( fi + vec2( 1.0, 0.0 ), vec2( 127.1, 311.7 ) ), dot( fi + vec2( 0.0, 1.0 ), vec2( 127.1, 311.7 ) ), dot( fi + 1.0, vec2( 127.1, 311.7 ) ) ) ) * 43758.5453 );
+      float fn = mix( mix( fh.x, fh.y, ff.x ), mix( fh.z, fh.w, ff.x ), ff.y );
+      fogOd *= mix( 1.0, 0.25 + 1.5 * fn, uFogC.x * smoothstep( 40.0, 160.0, fogDist ) );
+    }
     float fogFactor = 1.0 - exp( - fogOd );
   #else
     float fogFactor = smoothstep( fogNear, fogFar, fogDist );
   #endif
   fogFactor = max( fogFactor, smoothstep( uFogB.y, uFogB.z, fogDist ) );
-  float fogSunK = pow( max( dot( fogRd, uFogA.xyz ), 0.0 ), 8.0 ) * uFogB.w;
+  float fogSunK = pow( max( dot( fogRd, uFogA.xyz ), 0.0 ), mix( 8.0, 3.0, uFogC.x ) ) * uFogB.w;
   gl_FragColor.rgb = mix( gl_FragColor.rgb, mix( fogColor, uFogSun, fogSunK ), fogFactor );
 #endif`;
 }

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Assists, CarSpec, Controls, GameEvent, GroundHit, Surface, Track, TrackFrame, Vehicle, VehicleSnap, VehicleState, WheelState } from "./contracts";
-import { clutchCapacity, createDriveline, gearRatio, selectGear, spoolTurbo, stepDriveline } from "./vehicle-drive";
+import { clutchCapacity, createDriveline, gearRatio, launchRpm, selectGear, spoolTurbo, stepDriveline } from "./vehicle-drive";
 import { createTire, peakForce, stepTire, surfaceMu } from "./vehicle-tire";
 import { bodyCorners, hitBarriers, type Body } from "./vehicle-collide";
 
@@ -10,8 +10,12 @@ export { setWet } from "./vehicle-tire";
 const G = 9.81;
 const RHO = 1.225;
 const SUB = 8;
+const SUB_FAR = 4;
+const FAR2 = 150 * 150;
+const focus = new THREE.Vector3(0, -1e9, 0);
 const RPM = 30 / Math.PI;
 const SNAP = 29 + 4 * 7;
+const HB_SLIP = 0.3;
 const ROLL: Record<Surface, number> = { asphalt: 0.012, curb: 0.014, cobble: 0.018, grass: 0.06, gravel: 0.05, dirt: 0.04, snow: 0.035 };
 
 const _h = new THREE.Vector3();
@@ -30,7 +34,18 @@ function newHit(): GroundHit {
   return { y: 0, normal: new THREE.Vector3(0, 1, 0), surface: "asphalt", grip: 1, s: 0, lateral: 0, onRoad: true, tunnel: false };
 }
 
-export type VehicleBody = Vehicle & Body;
+export type VehicleBody = Vehicle & Body & { pose(alpha: number): VehicleState };
+
+// Render pose between the last two physics steps. alpha = leftover accumulator / step, 0..1.
+// Cars farther than 150 m from this point (the camera) run fewer tire substeps. Call once per frame.
+export function setFocus(p: THREE.Vector3) {
+  focus.copy(p);
+}
+
+export function renderPose(v: Vehicle, alpha: number): VehicleState {
+  const p = (v as Partial<VehicleBody>).pose;
+  return p ? p(alpha) : v.state;
+}
 
 export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBody {
   const b = spec.body;
@@ -59,6 +74,8 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
   const comp = new Float64Array(4);
   const compPrev = new Float64Array(4);
   const fz = new Float64Array(4);
+  const ft = new Float64Array(4);
+  const fzLow = Float64Array.from(fz0);
   const vxs = new Float64Array(4);
   const vys = new Float64Array(4);
   const mus = new Float64Array(4);
@@ -85,6 +102,22 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
   const x = new THREE.Vector3();
   const y = new THREE.Vector3();
   const z = new THREE.Vector3();
+  const prevPos = new THREE.Vector3();
+  const prevQuat = new THREE.Quaternion();
+  // Reads everything else live from state through the prototype.
+  const view = Object.create(state) as VehicleState;
+  view.pos = new THREE.Vector3();
+  view.quat = new THREE.Quaternion();
+  const pose = (alpha: number) => {
+    const t = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
+    view.pos.lerpVectors(prevPos, state.pos, t);
+    view.quat.slerpQuaternions(prevQuat, state.quat, t);
+    return view;
+  };
+  const keep = () => {
+    prevPos.copy(state.pos);
+    prevQuat.copy(state.quat);
+  };
   let steer = 0;
   let tcs = 0;
   let airT = 0;
@@ -141,6 +174,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
 
   function step(dt: number, c: Controls): GameEvent[] {
     events.length = 0;
+    keep();
     basis();
     const fwdSpeed = state.vel.dot(z);
     const latSpeed = state.vel.dot(x);
@@ -151,7 +185,9 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
 
     let wd = 0;
     for (let i = 0; i < 4; i++) wd += d.share[i] * omega[i];
-    const dir = selectGear(d, spec, assists.autoGear, c.throttle, c.brake, c.shiftUp, c.shiftDown, fwdSpeed, wd, dt);
+    // Auto shifting reads ground speed too, so wheelspin does not climb through the gears.
+    const wdGear = Math.sign(wd) * Math.min(Math.abs(wd), v / R * 1.25 + 4);
+    const dir = selectGear(d, spec, assists.autoGear, c.throttle, c.brake, c.shiftUp, c.shiftDown, fwdSpeed, wdGear, dt);
     if (dir) {
       emit({ type: "shift", car: index, up: dir > 0 });
       if (dir > 0 && pops > 0.6 && d.we * RPM > spec.engine.redline * 0.8) emit({ type: "backfire", car: index });
@@ -175,37 +211,43 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
         const pa = spec.tire.peakAngle;
         const slide = br * r < 0 ? Math.min(1, Math.max(0, (Math.abs(br) - pa * 0.7) / pa)) : 0;
         const calm = intent + 0.3 * Math.atan2(latSpeed, fwdSpeed) * (1 - Math.abs(c.steer));
-        target = calm + (bf + 0.5 * intent - calm) * slide;
+        const into = intent * r < 0 ? 0.5 : 0.4 * Math.max(0, 1 - Math.abs(br) / (3.5 * pa));
+        target = calm + (bf + into * intent - calm) * slide;
       }
       target = Math.max(-spec.steerLock, Math.min(spec.steerLock, target));
     }
     const rate = 4.5 * dt;
     steer += Math.max(-rate, Math.min(rate, target - steer));
 
-    // Stability control trims yaw beyond what the driver asks for. Off right after a handbrake pull.
-    if (assists.stability && fwdSpeed > 6 && hbT > 1.2) {
+    // Stability control trims yaw beyond what the driver asks for, and rear slip past the peak. Off right after a handbrake pull.
+    let rearCut = 1;
+    if (assists.stability && fwdSpeed > 6 && hbT > 0.6) {
       const r = state.angVel.dot(y);
       let ref = (fwdSpeed * Math.tan(intent)) / b.wheelbase;
       const cap = (lateralLimit * 1.1) / fwdSpeed;
       ref = Math.max(-cap, Math.min(cap, ref));
-      const ex = (r - ref) * Math.sign(r) - 0.12;
-      if (ex > 0 && Math.abs(Math.atan2(latSpeed, fwdSpeed)) > 0.12) {
-        thr *= 1 - Math.min(0.6, ex * 1.5);
+      const pa = spec.tire.peakAngle;
+      const br = Math.atan2(latSpeed - r * rr, fwdSpeed);
+      const over = br * r < 0 ? (Math.abs(br) - pa * 1.1) / pa : 0;
+      const ex = Math.max((r - ref) * Math.sign(r) - 0.12, over * 0.5);
+      if (ex > 0 && (over > 0 || Math.abs(Math.atan2(latSpeed, fwdSpeed)) > 0.12)) {
+        thr *= 1 - Math.min(over > 0.5 ? 1 : 0.7, ex * 1.5);
         escBrake = Math.sign(r) * Math.min(0.6, ex) * spec.brake;
+        rearCut = 1 - Math.min(0.8, ex);
       }
     }
 
     // Traction control from the last step's slip
     if (assists.tcs) {
       let k = 0;
-      for (let i = 0; i < 4; i++) if (d.share[i] > 0) k = Math.max(k, rev ? -tires[i].kappa : tires[i].kappa);
+      // Slip ratio means nothing at a crawl: only count it once the patch really slides.
+      for (let i = 0; i < 4; i++) if (d.share[i] > 0 && Math.abs(omega[i] * R - vxs[i]) > 0.6) k = Math.max(k, rev ? -tires[i].kappa : tires[i].kappa);
       const p = spec.tire.peakSlip;
       tcs = thr < 0.05 ? 0 : Math.min(0.85, Math.max(0, tcs + ((k - 1.6 * p) / p) * 4 * dt));
       thr *= 1 - tcs;
     } else tcs = 0;
 
-    const blow = spoolTurbo(d, spec, thr, dt);
-    if (blow) emit({ type: "sfx", name: "blowoff", at: state.pos.clone() });
+    spoolTurbo(d, spec, thr, dt); // blow-off sound comes from the engine voice
     if (pops > 0.4 && lastThr > 0.6 && c.throttle < 0.15 && !rev && d.we * RPM > spec.engine.redline * 0.6) emit({ type: "backfire", car: index });
     lastThr = c.throttle;
     let engThr = thr;
@@ -238,7 +280,8 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       const rateC = (xc - compPrev[i]) / dt;
       compPrev[i] = xc;
       if (!w.contact) {
-        fz[i] = 0;
+        fz[i] = ft[i] = 0;
+        fzLow[i] = fz0[i];
         continue;
       }
       const o = i ^ 1;
@@ -247,6 +290,9 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       const bs = xc - travel * 0.92;
       if (bs > 0) f += k * 12 * bs + spec.susp.c * 2 * Math.max(0, rateC);
       fz[i] = Math.max(0, f);
+      // The contact patch cannot follow a load spike: a landing slams the springs, not the grip.
+      ft[i] = Math.min(fz[i], fzLow[i] * 1.5 + fz0[i]);
+      fzLow[i] += (fz[i] - fzLow[i]) * Math.min(1, dt * 12);
       _f.copy(y).multiplyScalar(fz[i]);
       _h.copy(mount[i]).applyQuaternion(state.quat).add(state.pos);
       addForce(_f, _h);
@@ -271,16 +317,25 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     let total = 0;
     for (let i = 0; i < 4; i++) {
       const t = tires[i];
-      const px = peakForce(spec, fz[i], fz0[i], mus[i]);
+      const px = peakForce(spec, ft[i], fz0[i], mus[i]);
       const ly = Math.abs(t.fy) / Math.max(1, px * (spec.tire.muLat / spec.tire.mu));
       const pk = px * Math.sqrt(Math.max(0.15, 1 - ly * ly)) * R;
       absCap[i] = pk * 0.97;
-      if (d.share[i] > 0) {
+      if (d.share[i] > 0 && ft[i] > 0) {
         tract = Math.min(tract, pk / d.share[i]);
         total += pk;
       }
     }
-    tract = Math.min(tract * 1.25, total);
+    // The limited slip diff moves torque off a light wheel, so the axle carries more than twice the weaker side.
+    tract = Math.min(Math.max(tract * 1.25, total * 0.75), total);
+    // Split grip under braking: the rear axle brakes to the weaker side, the fronts may differ by half.
+    if (assists.abs) {
+      const r = Math.min(absCap[2], absCap[3]);
+      absCap[2] = absCap[3] = r;
+      const f0 = absCap[0], f1 = absCap[1];
+      absCap[0] = Math.min(f0, f1 * 1.5);
+      absCap[1] = Math.min(f1, f0 * 1.5);
+    }
     const ratio = Math.abs(gearRatio(spec, d.gear));
     let cap = clutchCapacity(d, spec, rev ? c.brake : c.throttle, c.handbrake, Math.abs(wd * ratio) * RPM);
     if (assists.tcs && ratio > 0) {
@@ -289,28 +344,36 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
         cap = lim;
         let wd2 = 0;
         for (let i = 0; i < 4; i++) wd2 += d.share[i] * omega[i];
-        const slip = (d.we - Math.abs(ratio * wd2)) * RPM;
+        // Cut the engine only when it flares past both the wheels and the launch speed.
+        const slip = d.we * RPM - Math.max(Math.abs(ratio * wd2) * RPM, launchRpm(spec, rev ? c.brake : c.throttle) - 250);
         if (slip > 250) engThr *= Math.max(0.05, 1 - (slip - 250) / 600);
       }
     }
 
-    const h = dt / SUB;
-    const rearHb = spec.brake * 1.6 * c.handbrake;
-    const rearScale = (1 - spec.brakeBias) / spec.brakeBias;
+    const sub = focus.y > -1e8 && state.pos.distanceToSquared(focus) > FAR2 ? SUB_FAR : SUB;
+    const h = dt / sub;
+    // Assisted handbrake holds the rear at a deep slip instead of a full lock, so a tap rotates without a spin.
+    const rearHb = c.handbrake * spec.brake * 1.6;
+    let rearScale = (1 - spec.brakeBias) / spec.brakeBias;
+    // ABS includes brake force distribution: the rear never brakes beyond its share of the load.
+    if (assists.abs && fz[0] + fz[1] > 0) rearScale = Math.min(rearScale, (0.95 * (fz[2] + fz[3])) / (fz[0] + fz[1]));
+    rearScale *= rearCut;
     const mEff = d.iw / (R * R);
     fxSum.fill(0);
     fySum.fill(0);
-    for (let sStep = 0; sStep < SUB; sStep++) {
+    for (let sStep = 0; sStep < sub; sStep++) {
       for (let i = 0; i < 4; i++) {
         const t = tires[i];
-        stepTire(t, spec, vxs[i], vys[i], omega[i] * R, fz[i], fz0[i], mus[i], mEff, h);
+        stepTire(t, spec, vxs[i], vys[i], omega[i] * R, ft[i], fz0[i], mus[i], mEff, h);
         omega[i] -= (t.fx * R * h) / d.iw;
         fxSum[i] += t.fx;
         fySum[i] += t.fy;
         let bt = brk * spec.brake * (i < 2 ? 1 : rearScale);
-        if (assists.abs && Math.abs(vxs[i]) > 1.5 && bt > absCap[i]) bt = absCap[i];
-        if (i >= 2) bt += rearHb;
-        if ((escBrake > 0 && i === 1) || (escBrake < 0 && i === 0)) bt += Math.abs(escBrake);
+        const outer = (escBrake > 0 && i === 1) || (escBrake < 0 && i === 0);
+        if (outer) bt += Math.abs(escBrake);
+        if (assists.abs && Math.abs(vxs[i]) > 1.5) bt = Math.min(bt, t.kappa < -1.2 * spec.tire.peakSlip ? absCap[i] * 0.3 : absCap[i]);
+        if (escBrake !== 0 && i < 2 && !outer) bt *= 1 - Math.abs(escBrake) / spec.brake;
+        if (i >= 2 && (!assists.steer || t.kappa > -HB_SLIP)) bt += rearHb;
         brakeT[i] = bt + ROLL[wheels[i].surface] * fz[i] * R;
       }
       stepDriveline(d, spec, omega, brakeT, engThr, cap, h);
@@ -318,7 +381,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
 
     for (let i = 0; i < 4; i++) {
       if (!wheels[i].contact) continue;
-      _f.copy(tf[i]).multiplyScalar(fxSum[i] / SUB).addScaledVector(tl[i], fySum[i] / SUB);
+      _f.copy(tf[i]).multiplyScalar(fxSum[i] / sub).addScaledVector(tl[i], fySum[i] / sub);
       addForce(_f, wheels[i].pos);
     }
     const q = 0.5 * RHO;
@@ -340,6 +403,12 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     _t.crossVectors(state.angVel, _l);
     torque.sub(_t);
     state.angVel.addScaledVector(invI(torque), dt);
+    // Air control like Forza: in a jump the body levels to the road below and stops tumbling.
+    if (contacts === 0 && airT > 0.04) {
+      _t.crossVectors(y, center.normal).multiplyScalar(assists.stability ? 2.5 : 1.2);
+      _t.addScaledVector(y, state.angVel.dot(y) * (assists.stability ? 0.6 : 0.9));
+      state.angVel.lerp(_t, Math.min(1, (assists.stability ? 4 : 2) * dt));
+    }
     force.set(0, 0, 0);
     torque.set(0, 0, 0);
     state.pos.addScaledVector(state.vel, dt);
@@ -429,6 +498,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     d.cut = false;
     steer = tcs = airT = upsideT = stuckT = 0;
     basis();
+    keep();
   }
 
   function reset() {
@@ -474,6 +544,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     state.gear = d.gear;
     state.boost = d.boost;
     basis();
+    keep();
   }
 
   return {
@@ -487,6 +558,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       assists = v;
     },
     step,
+    pose,
     place,
     resetToTrack: reset,
     snap,

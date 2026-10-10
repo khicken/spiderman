@@ -26,6 +26,11 @@ export type EngineProfile = {
   redline: number;
   gain: number;
   stereo: number;
+  harm: number[]; // amplitude of each multiple of half the firing rate; odd entries are the half orders
+  hBase: number; // half-firing cycles per 720 degrees of crank
+  hGain: number;
+  form: number[]; // exhaust resonances Hz, excited by the firing pulses
+  formG: number[];
 };
 
 export const ENGINE_PARAMS = ["rpm", "throttle", "load", "gear", "boost", "speed", "skid", "surface", "limiter", "pitch", "interior", "wet", "active"] as const;
@@ -156,6 +161,9 @@ export const engineProc: ProcFn = (Base, register, sr) => {
     edgeLp = 0;
     edgeSm = 0;
     raspSm = 0;
+    hEnv = 0;
+    whoosh: Svf;
+    fm: Svf[];
     constructor(o: { processorOptions: unknown }) {
       super(o);
       const p = o.processorOptions as EngineProfile;
@@ -186,6 +194,8 @@ export const engineProc: ProcFn = (Base, register, sr) => {
       this.slide = new Svf(fs);
       this.wind = new Svf(fs);
       this.windBp = new Svf(fs);
+      this.whoosh = new Svf(fs);
+      this.fm = p.form.map(() => new Svf(fs));
       this.evPh = new Float64Array(4);
       this.dc = [0, 0, 0, 0];
       this.gear = 0;
@@ -300,7 +310,7 @@ export const engineProc: ProcFn = (Base, register, sr) => {
       const sk = this.skid;
       const grip = surf <= 1 || surf === 6;
       const loose = surf === 3 || surf === 4 || surf === 5;
-      const sqLvl = grip ? 0.16 * Math.pow(sk, 1.4) * Math.min(1, sp / 5) * (1 - 0.7 * wet) : 0;
+      const sqLvl = grip ? 0.38 * Math.pow(sk, 1.3) * Math.min(1, sp / 5) * (1 - 0.7 * wet) : 0;
       const sqF = (650 + 450 * sk + sp * 3) * pitch;
       this.sq1.set(sqF, 9);
       this.sq2.set(sqF * 1.58, 7);
@@ -315,7 +325,20 @@ export const engineProc: ProcFn = (Base, register, sr) => {
       }
       const bumpF = surf === 1 ? sp / 0.5 : surf === 6 ? sp / 0.16 : 0;
       const bumpLvl = surf === 1 ? 0.14 * Math.min(1, sp / 8) : surf === 6 ? 0.04 * Math.min(1, sp / 8) : 0;
-      const windLvl = cheap ? 0 : Math.min(0.11, 0.018 * Math.pow(sp / 30, 2));
+      const windLvl = cheap ? 0 : Math.min(0.3, 0.05 * Math.pow(sp / 30, 2));
+      const whooshLvl = p.turbo > 0 && !cheap ? 0.05 * this.boost * (0.4 + 0.6 * thr) : 0;
+      if (whooshLvl > 0) this.whoosh.set((1600 + 3200 * this.boost) * pitch, 0.7);
+      // Firing-locked harmonics give the scream, howl and roar that the pulse train alone rolls off above 1 kHz.
+      const hf = ((rpm1 / 60) * pitch * p.hBase) / 2;
+      const fLvl = (0.3 + 0.7 * onLoad) * (0.45 + 0.75 * rpmN) * (1 - 0.5 * over);
+      for (let k = 0; k < this.fm.length; k++) this.fm[k].set(p.form[k] * (0.9 + 0.2 * rpmN) * pitch, 2.2);
+      const fm = this.fm;
+      const fg = p.formG;
+      const nf = fm.length;
+      const hLvl = p.hGain * level * (0.35 + 0.65 * onLoad) * (0.5 + 0.7 * rpmN) * (1 - 0.6 * over);
+      const harm = p.harm;
+      let hTop = 0;
+      while (hTop < harm.length && (hTop + 1) * hf < Math.min(9000, sr * 0.4)) hTop++;
       if (windLvl > 0) {
         this.wind.set(350 + sp * 22, 0.6);
         this.windBp.set(1300 + sp * 12, 3);
@@ -406,6 +429,21 @@ export const engineProc: ProcFn = (Base, register, sr) => {
           this.pop *= this.popDecay;
         }
         const env = Math.abs(pulseSum);
+        let hs = 0;
+        if (hLvl > 0 && hTop > 0) {
+          const b = TAU * ((this.theta * p.hBase) % 1);
+          const c2 = 2 * Math.cos(b);
+          let s0 = 0;
+          let s1 = Math.sin(b);
+          for (let m = 0; m < hTop; m++) {
+            hs += harm[m] * s1;
+            const sn = c2 * s1 - s0;
+            s0 = s1;
+            s1 = sn;
+          }
+          this.hEnv += (env - this.hEnv) * 0.02;
+          hs *= hLvl * (0.65 + 0.35 * Math.min(1.5, this.hEnv * 4)) * this.cutS;
+        }
         this.raspHp += (noise * env - this.raspHp) * 0.25;
         this.raspSm += ((noise * env - this.raspHp) * raspK - this.raspSm) * 0.5;
         const rasp = this.raspSm;
@@ -419,8 +457,13 @@ export const engineProc: ProcFn = (Base, register, sr) => {
         ex += refl * this.pipeLp;
         pb[pi] = ex;
         bodyF.run(ex);
-        let y = muff.run(ex) + 0.9 * bodyF.bp * (1.2 - p.tone) + rasp * 0.6 + edge;
-        y = sat(y * (1.2 + 1.6 * p.rasp * onLoad)) * 0.75;
+        let form = 0;
+        for (let k = 0; k < nf; k++) {
+          fm[k].run(ex);
+          form += fg[k] * fm[k].bp;
+        }
+        let y = muff.run(ex) + 0.65 * bodyF.bp * (1.2 - p.tone) + rasp * 0.9 + edge + form * fLvl * 0.5;
+        y = sat(y * (1.2 + 1.6 * p.rasp * onLoad)) * 0.75 + hs + sat(form * fLvl) * 0.3;
         let mono = y;
         if (!cheap) {
           const ink = this.intake.run(pulseSum * 0.6) + this.roar.run(noise) * 0.05 * thr * (0.3 + rpmN);
@@ -439,6 +482,10 @@ export const engineProc: ProcFn = (Base, register, sr) => {
           }
           this.tNoise.run(noise);
           mono += turboLvl * (t + this.tNoise.bp * 2.5);
+        }
+        if (whooshLvl > 0) {
+          this.whoosh.run(noise);
+          mono += whooshLvl * this.whoosh.bp * 2.2;
         }
         if (bovLvl > 0) {
           this.bovSvf.run(noise);

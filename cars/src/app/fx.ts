@@ -5,7 +5,7 @@ import { patchFog } from "./render-chunks";
 import { QUALITY } from "./render";
 import { LAYER, LIGHT, noiseTexture, releaseNoise } from "./render-shared";
 
-const KIND = { smoke: 0, dust: 1, mist: 2, snow: 3, chunk: 4, grass: 5, spark: 6, flame: 7, glow: 8, gravel: 9, drop: 10 } as const;
+const KIND = { smoke: 0, dust: 1, mist: 2, snow: 3, chunk: 4, grass: 5, spark: 6, flame: 7, glow: 8, gravel: 9, drop: 10, stone: 11 } as const;
 
 const VERT = /* glsl */ `
 attribute vec4 iPos;
@@ -39,7 +39,7 @@ void main() {
 
 const FRAG = /* glsl */ `
 uniform sampler2D tNoise; uniform sampler2D tDepth; uniform vec4 uDepth; uniform float uSoft;
-uniform vec3 uSunView; uniform vec3 uSunCol; uniform vec3 uAmb;
+uniform vec3 uSunView; uniform vec3 uSunCol; uniform vec3 uAmb; uniform vec3 uFill; uniform float uNightK;
 varying vec2 vUv;
 varying vec4 vData;
 varying float vZ;
@@ -68,14 +68,15 @@ void main() {
 #else
   vec3 alb;
   if (kind < 0.5) alb = vec3(0.88, 0.88, 0.9);
-  else if (kind < 1.5) alb = vec3(0.5, 0.4, 0.29);
+  else if (kind < 1.5) alb = vec3(0.64, 0.53, 0.4);
   else if (kind < 2.5) alb = vec3(0.82, 0.86, 0.9);
   else if (kind < 3.5) alb = vec3(0.96, 0.97, 1.0);
   else if (kind < 4.5) alb = vec3(0.16, 0.13, 0.1);
   else if (kind < 5.5) alb = vec3(0.17, 0.27, 0.08);
   else if (kind < 9.5) alb = vec3(0.62, 0.58, 0.52);
-  else alb = vec3(0.75, 0.8, 0.85);
-  if (kind > 3.5 && kind < 5.5) {
+  else if (kind < 10.5) alb = vec3(0.75, 0.8, 0.85);
+  else alb = vec3(0.58, 0.55, 0.5);
+  if ((kind > 3.5 && kind < 5.5) || kind > 10.5) {
     vec2 q = abs(vUv);
     a = step(max(q.x * (0.7 + seed * 0.6), q.y * (1.3 - seed * 0.6)) + texture2D(tNoise, vUv * 0.15 + seed * 3.0).a * 0.35, 0.85);
     col = alb * (uSunCol * 0.3 + uAmb);
@@ -91,7 +92,8 @@ void main() {
     float wrap = clamp(dot(nrm, uSunView) * 0.5 + 0.5, 0.0, 1.0);
     float self = mix(1.0, 0.55 + 0.45 * n, a);
     float back = pow(max(-uSunView.z, 0.0), 4.0) * (1.0 - a) * 0.6;
-    col = alb * (uSunCol * (wrap * 0.75 + back) * 0.32 * self + uAmb * (0.8 + 0.4 * vUv.y));
+    col = alb * (uSunCol * (wrap * 0.75 + back) * 0.32 * self + uAmb * (1.0 + 0.4 * vUv.y) + uFill);
+    if (kind > 0.5) a *= 1.0 - 0.5 * uNightK;
   }
   a *= alpha;
 #endif
@@ -127,7 +129,7 @@ function createPool(max: number, additive: boolean, noise: THREE.Texture, base: 
     fragmentShader: FRAG,
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
-      { tNoise: { value: noise }, uSunView: { value: new THREE.Vector3() }, uSunCol: { value: new THREE.Color() }, uAmb: { value: new THREE.Color() }, uSoft: { value: 0 } },
+      { tNoise: { value: noise }, uSunView: { value: new THREE.Vector3() }, uSunCol: { value: new THREE.Color() }, uAmb: { value: new THREE.Color() }, uFill: { value: new THREE.Color() }, uNightK: LIGHT.night, uSoft: { value: 0 } },
     ]),
     defines: additive ? { ADDITIVE: 1 } : {},
     transparent: true,
@@ -280,7 +282,7 @@ export function createFx(scene: THREE.Scene): Fx {
         for (let i = 0; i < n; i++) dust(pos.x, pos.y, pos.z, vel.x, vel.z, surface, 0.35 + skid * 0.3, surface === "snow" ? 0.8 : 1);
         const m = emit(k, 2, skid * sp * 1.2);
         for (let i = 0; i < m; i++) {
-          const kk = surface === "grass" ? KIND.grass : surface === "snow" ? KIND.snow : KIND.chunk;
+          const kk = surface === "grass" ? KIND.grass : surface === "snow" ? KIND.snow : surface === "gravel" ? KIND.stone : KIND.chunk;
           soft.spawn(pos.x, pos.y + 0.1, pos.z, -vel.x * 0.15 + rnd(2), 1.5 + Math.random() * 3, -vel.z * 0.15 + rnd(2), 0.012 + Math.random() * 0.025, 0, 0.8 + Math.random(), kk, 0.3, 9.8, 1, pos.y + 0.02, 0);
         }
         skids.add(car, wheel, pos, skid > 0.25 || sp > 3 ? -Math.min(1, 0.25 + skid) * 0.6 : 0, 0.3);
@@ -323,6 +325,7 @@ export function createFx(scene: THREE.Scene): Fx {
         u.uSunView.value.copy(sunView);
         u.uSunCol.value.copy(LIGHT.sunColor.value);
         u.uAmb.value.copy(LIGHT.ambient.value);
+        u.uFill.value.copy(LIGHT.fogColor.value).multiplyScalar(0.5);
       }
       flash = Math.max(0, flash - dt * 14);
       flashLight.intensity = flash * flash * 60;

@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { FOG_C } from "./render-chunks";
+import { cancelJob, runNow, runSoon } from "./render-shared";
 import type { Quality, Track, TrackMesh } from "./contracts";
 import { CURB_W, F_CURBL, F_CURBR, F_ELEV, F_TUNNEL, F_GRAVL, F_GRAVR, VERGE, curbLift, trackTables, type TrackTables } from "./track";
 import { TEX, groundMaterial, gravelMaterial, roadMaterial, type GroundUniforms, type RoadUniforms } from "./track-mat";
@@ -150,33 +152,43 @@ export function createTrackMesh(track: Track, quality: Quality): TrackMesh {
     uClosed: { value: track.closed ? 1 : 0 },
     uMarks: { value: style.marks === "circuit" ? 0 : style.marks === "tokyo" ? 2 : track.map.id === "sanfrancisco" ? 3 : 1 },
     uWear: { value: style.circuit ? 1 : 0.5 },
+    uSheen: { value: track.map.id === "tokyo" ? 0.85 : style.urban ? 0.5 : 0 },
   };
   const env = track.map.env;
   const gu: GroundUniforms = {
     uWet: wet,
-    uSnowLine: { value: track.map.id === "stelvio" ? 2850 : 1e5 },
+    uSnowLine: { value: track.map.id === "stelvio" ? 2820 : 1e5 },
+    uAlpine: { value: track.map.id === "stelvio" ? 2150 : 1e5 },
     uAutumn: { value: env.season === "autumn" ? 1 : 0 },
     uWinter: { value: env.season === "winter" ? 1 : 0 },
   };
   let disposables: { dispose(): void }[] = [];
+  let lo = Infinity;
+  for (const h of track.map.terrain.h) lo = Math.min(lo, h);
+  FOG_C[3] = track.map.water.length ? Math.max(track.map.waterY, lo) : lo;
 
-  const build = (q: Quality) => {
+  // Builds into a staging group, then swaps, so a quality switch can run across frames.
+  function* build(q: Quality): Generator<void, void> {
     const det = DETAIL[q];
     const rows = rowList(tb, track.closed, det.row);
+    const out = new THREE.Group();
+    const own: { dispose(): void }[] = [];
     const add = (g: THREE.BufferGeometry | null, m: THREE.Material, name: string, cast = false) => {
       if (!g) return;
       const mesh = new THREE.Mesh(g, m);
       mesh.name = name;
       mesh.receiveShadow = true;
       mesh.castShadow = cast;
-      group.add(mesh);
-      disposables.push(g);
+      out.add(mesh);
+      own.push(g);
     };
     const road = roadMaterial(q, ru);
+    yield;
     const ground = groundMaterial(q, gu, -1);
+    yield;
     const gravel = gravelMaterial(q);
     const curb = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-    disposables.push(road.mat, ...road.tex, ground.mat, ground.strip, ...ground.tex, gravel.mat, gravel.tex, curb);
+    own.push(road.mat, ...road.tex, ground.mat, ground.strip, ...ground.tex, gravel.mat, gravel.tex, curb);
     add(roadGeo(tb, rows, track.line, det.cols), road.mat, "road");
     for (const g of shoulderGeo(tb, rows, det.blend)) add(g, ground.strip, "shoulder");
     if (style.circuit) add(curbGeo(tb, track.closed), curb, "curbs");
@@ -185,28 +197,37 @@ export function createTrackMesh(track: Track, quality: Quality): TrackMesh {
       const t = concreteTex(TEX[q].ground, TEX[q].aniso, false);
       t.repeat.set(1 / 3, 1 / 3);
       const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, color: 0xc8c4bc });
-      disposables.push(t, m);
+      own.push(t, m);
       add(sidewalkGeo(tb, rows), m, "sidewalk");
     }
+    yield;
     for (const g of buildTerrain(track, q)) add(g, ground.mat, "terrain");
+    yield;
     const props = buildProps(track, q, wet);
-    group.add(props.group);
-    disposables.push(props);
-  };
+    out.add(props.group);
+    own.push(props);
+    clear();
+    group.add(...out.children);
+    disposables = own;
+  }
 
   const clear = () => {
     for (const d of disposables) d.dispose();
     disposables = [];
     group.clear();
   };
-  build(quality);
+  let job: Generator<void, void> | null = null;
+  runNow(build(quality));
   return {
     group,
     setWet: (w) => void (wet.value = w),
     setQuality: (q) => {
-      clear();
-      build(q);
+      cancelJob(job);
+      job = runSoon(build(q));
     },
-    dispose: clear,
+    dispose: () => {
+      cancelJob(job);
+      clear();
+    },
   };
 }

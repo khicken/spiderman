@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { MapData, Track } from "./contracts";
 import type { Blocker } from "./scenery-buildings";
 import { centerAt, eachRecord, fbm, noise2, pointIn, rng, U, writeInst, type RoadIndex, type Style, type Tier, type TreeKind } from "./scenery-kit";
+import { FOREST } from "./render-shared";
 import { HEIGHT, impostorAtlas, KINDS, LEAF_COL, treeAtlas, treeGeometry, WIDTH } from "./scenery-treegeo";
 
 const F = 6; // floats per tree: x, y, z, scale, yaw, kind
@@ -137,6 +138,22 @@ export function scatterTrees(map: MapData, track: Track, roads: RoadIndex, style
         for (const s of [-1, 1]) if (r() < 0.25) add(pos.x + left.x * off * s, pos.z + left.z * off * s, sk, 0.8 + r() * 0.35);
       }
   }
+  if (roadside && style.wild > 0.6) {
+    // Tree walls: rows just past the runoff, the dense edge of the forest seen from the car.
+    for (let i = 0; i < N; i++) {
+      centerAt(map, i, pos, left);
+      const edge = map.width[i] / 2 + map.runoff[i];
+      for (const s of [-1, 1])
+        for (let row = 0; row < 3; row++) {
+          if (count > budget * 0.6) break;
+          const d = edge + 9 + row * 6.5 + r() * 4, along = (r() - 0.5) * 4;
+          const x = pos.x + left.x * d * s - left.z * along, z = pos.z + left.z * d * s + left.x * along;
+          const forest = THREE.MathUtils.smoothstep(fbm(x / 420, z / 420) + style.wild * 0.55, 0.78, 0.86);
+          if (r() > Math.max(forest, greenAt(x, z)) * 0.85) continue;
+          add(x, z, kindAt(x, z, track.heightAt(x, z)), 0.75 + r() * 0.5);
+        }
+    }
+  }
   if (roadside) {
     const tries = budget * 8;
     for (let t = 0; t < tries && count < budget; t++) {
@@ -161,13 +178,27 @@ export function scatterTrees(map: MapData, track: Track, roads: RoadIndex, style
       add(x, z, kindAt(x, z, track.heightAt(x, z)), 0.6 + r() * 0.6);
     }
   }
-  return { data: out, count };
+  // Forest cover per 20 m cell from the same density the scatter uses, so far hills read as canopy beyond the tree budget.
+  const C = 20, W = Math.max(1, Math.min(1024, Math.ceil((tx1 - tx0) / C))), H = Math.max(1, Math.min(1024, Math.ceil((tz1 - tz0) / C)));
+  const px = new Uint8Array(W * H);
+  for (let j = 0; j < H; j++)
+    for (let i = 0; i < W; i++) {
+      const x = tx0 + ((i + 0.5) * (tx1 - tx0)) / W, z = tz0 + ((j + 0.5) * (tz1 - tz0)) / H;
+      const forest = style.wild > 0 ? THREE.MathUtils.smoothstep(fbm(x / 420, z / 420) + style.wild * 0.55, 0.78, 0.86) * style.wild : 0;
+      let d = Math.max(forest, greenAt(x, z));
+      if (d < 0.05) continue;
+      if (roads.edge(x, z) < 8 || blocker.blocked(x, z)) d *= 0.3;
+      if (track.heightAt(x, z) > style.treeline) d = 0;
+      px[j * W + i] = Math.round(255 * Math.min(1, d * 1.2));
+    }
+  return { data: out, count, cover: { px, W, H } };
 }
 
 export function createTrees(map: MapData, track: Track, roads: RoadIndex, style: Style, blocker: Blocker, tier: Tier) {
   const group = new THREE.Group();
   group.name = "trees";
-  const { data, count } = scatterTrees(map, track, roads, style, blocker, tier.trees);
+  const { data, count, cover } = scatterTrees(map, track, roads, style, blocker, Math.round(tier.trees * (style.wild > 0.6 ? 2 : 1)));
+  const forestTex = forestTexture(map, cover.px, cover.W, cover.H);
   const kinds = [...new Set(Array.from({ length: count }, (_, i) => data[i * F + 5]))];
   const atlas = treeAtlas();
   const near = new THREE.MeshStandardMaterial({ map: atlas, vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0 });
@@ -292,6 +323,20 @@ export function createTrees(map: MapData, track: Track, roads: RoadIndex, style:
       depth.dispose();
       atlas.dispose();
       imp.dispose();
+      forestTex.dispose();
+      if (FOREST.tForest.value === forestTex) (FOREST.tForest.value = null), (FOREST.uForestOn.value = 0);
     },
   };
+}
+
+function forestTexture(map: MapData, px: Uint8Array, W: number, H: number) {
+  const T = map.terrain;
+  const tex = new THREE.DataTexture(px, W, H, THREE.RedFormat, THREE.UnsignedByteType);
+  tex.magFilter = tex.minFilter = THREE.LinearFilter;
+  tex.unpackAlignment = 1;
+  tex.needsUpdate = true;
+  FOREST.tForest.value = tex;
+  FOREST.uForestBox.value.set(T.x0, T.z0, (T.nx - 1) * T.step, (T.nz - 1) * T.step);
+  FOREST.uForestOn.value = 1;
+  return tex;
 }

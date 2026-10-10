@@ -7,7 +7,7 @@ import { startGame, type Game } from "./game";
 import { MAPS } from "./maps";
 import { cleanRoomCode, createNet, newRoomCode, type NetPlus } from "./net";
 import { detectQuality } from "./render";
-import { Hud, Results, type HudHandle } from "./ui-hud";
+import { ControlHint, Hud, Results, type HudHandle } from "./ui-hud";
 import { mapCard, type MapCard } from "./ui-kit";
 import { Loading } from "./ui-loading";
 import { Lobby, type LobbyPlayer } from "./ui-lobby";
@@ -22,6 +22,7 @@ type Screen = "menu" | "loading" | "lobby" | "lobbyCar" | "race" | "pause" | "re
 const SETTINGS_KEY = "cars-settings";
 const PICK_KEY = "cars-pick";
 const NAME_KEY = "cars-name";
+const HINT_KEY = "cars-hint";
 const AI_FIELD = 7;
 
 function load<T>(key: string, fallback: T): T {
@@ -59,6 +60,9 @@ export default function Page() {
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [lobby, setLobby] = useState<LobbyState>({ map: "monaco", mode: "race", laps: 3, weather: "map", hour: "map", startAt: null, ai: 0 });
   const [host, setHost] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState(false);
+  const busyId = useRef(0);
   const touch = useIsTouch();
   const screenRef = useRef(screen);
   screenRef.current = screen;
@@ -88,7 +92,7 @@ export default function Page() {
           }
         },
         finished: () => {
-          setResults({ standings: g.standings(), entrants: g.entrants() });
+          setResults({ standings: g.standings().map((s) => ({ ...s })), entrants: g.entrants() });
           setScreen("results");
         },
       },
@@ -116,6 +120,28 @@ export default function Page() {
 
   useGamepadNav(screen !== "race");
 
+  useEffect(() => {
+    if (!touch || screen !== "race") return;
+    const check = () => {
+      if (innerHeight > innerWidth) {
+        game.current?.pause(true);
+        setScreen("pause");
+      }
+    };
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [touch, screen]);
+
+  // Cars still racing finish after the results open, so keep the table live.
+  useEffect(() => {
+    if (screen !== "results") return;
+    const t = setInterval(() => {
+      const g = game.current;
+      if (g) setResults({ standings: g.standings().map((s) => ({ ...s })), entrants: g.entrants() });
+    }, 500);
+    return () => clearInterval(t);
+  }, [screen]);
+
   const changeSettings = (s: Settings) => {
     setSettings(s);
     save(SETTINGS_KEY, s);
@@ -128,7 +154,11 @@ export default function Page() {
     save(PICK_KEY, p);
     const g = game.current;
     if (!g) return;
-    if (p.map !== prev.map) void g.showroom(p.map, p.car, p.paint);
+    if (p.map !== prev.map) {
+      const id = ++busyId.current;
+      setBusy(true);
+      void g.showroom(p.map, p.car, p.paint).finally(() => id === busyId.current && setBusy(false));
+    }
     else if (p.car !== prev.car || p.paint !== prev.paint) g.setCar(p.car, p.paint);
   };
 
@@ -142,6 +172,11 @@ export default function Page() {
     await g.play({ map: p.map, mode: p.mode, laps: p.laps, car: p.car, paint: p.paint, ai: AI_FIELD, net, startAt });
     setOutline(g.outline);
     setScreen("race");
+    if (!load(HINT_KEY, { seen: false }).seen) {
+      save(HINT_KEY, { seen: true });
+      setHint(true);
+      setTimeout(() => setHint(false), 4000);
+    }
   }, []);
 
   const toMenu = useCallback(() => {
@@ -165,10 +200,16 @@ export default function Page() {
     const net = createNet(code, me);
     netRef.current = net;
     setRoom(code);
-    history.replaceState(null, "", `${location.pathname}?room=${code}`);
+    const q = new URLSearchParams(location.search);
+    q.set("room", code);
+    history.replaceState(null, "", `${location.pathname}?${q}`);
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __net: NetPlus }).__net = net;
     setScreen("lobby");
     const sync = () => {
-      setPlayers(net.peers.map((e) => ({ ...e, host: e.id === net.hostId, ping: e.me ? null : net.ping })));
+      setPlayers(net.peers.map((e) => {
+        const l = net.link(e.id);
+        return { ...e, host: e.id === net.hostId, ping: l?.ping ?? null, relay: l?.relay ?? false };
+      }));
       setHost(net.host);
       if (net.lobby) setLobby(net.lobby);
     };
@@ -179,11 +220,12 @@ export default function Page() {
       sync();
       if (e.type === "join") game.current?.sfx("join");
       if (e.type === "leave") game.current?.sfx("leave");
-      if (e.type === "lobby" && e.lobby.startAt != null && e.lobby.startAt !== started && !net.spectating) {
+      if (e.type === "lobby" && e.lobby.startAt != null && e.lobby.startAt !== started && net.onGrid()) {
         started = e.lobby.startAt;
         const l = e.lobby;
-        const cur = pickRef.current;
-        void begin({ ...cur, map: l.map, mode: l.mode, laps: l.laps }, net, l.startAt!);
+        const next = { ...pickRef.current, map: l.map, mode: l.mode, laps: l.laps };
+        setPick(next);
+        void begin(next, net, l.startAt!);
       }
     });
     const leave = net.leave.bind(net);
@@ -200,7 +242,7 @@ export default function Page() {
   const startOnline = () => {
     const net = netRef.current;
     if (!net?.host) return;
-    net.setLobby({ ...lobby, startAt: net.hostNow() + 5000 });
+    net.start(lobby, pickRef.current.car);
   };
 
   const setLobbyHost = (l: LobbyState) => {
@@ -274,6 +316,14 @@ export default function Page() {
         <Hud ref={hudRef} h={hud} units={settings.units} outline={outline} touch={touch} />
       )}
 
+      {screen === "race" && hint && hud && <ControlHint device={touch ? "touch" : hud.device} />}
+
+      {screen === "menu" && busy && (
+        <span className="pointer-events-none absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 [animation:fade_0.2s_0.3s_both]" aria-hidden>
+          <span className="block h-6 w-6 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+        </span>
+      )}
+
       {screen === "race" && touch && (
         <TouchControls
           steer={settings.steer}
@@ -334,7 +384,8 @@ function useGamepadNav(on: boolean) {
   useEffect(() => {
     if (!on) return;
     let raf = 0;
-    const prev: Record<string, boolean> = {};
+    // Buttons held when the menu opens (Start that paused, A at the finish) do not fire.
+    let prev: Record<string, boolean> | null = null;
     let repeatAt = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
@@ -349,8 +400,9 @@ function useGamepadNav(on: boolean) {
         left: !!p.buttons[14]?.pressed || ax < -0.6,
         right: !!p.buttons[15]?.pressed || ax > 0.6,
         ok: !!p.buttons[0]?.pressed,
-        back: !!p.buttons[1]?.pressed,
+        back: !!p.buttons[1]?.pressed || !!p.buttons[9]?.pressed,
       };
+      if (!prev) return void (prev = { ...want });
       const now = performance.now();
       for (const d of Object.keys(want) as NavDir[]) {
         const held = want[d];

@@ -19,6 +19,18 @@ const _t = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _left = new THREE.Vector3();
 
+const HEIGHTS = new WeakMap<Track, Float32Array>();
+function heights(track: Track): Float32Array {
+  let h = HEIGHTS.get(track);
+  if (h) return h;
+  const M = track.line.length;
+  const step = track.closed ? track.length / M : track.length / Math.max(1, M - 1);
+  h = new Float32Array(M);
+  for (let i = 0; i < M; i++) h[i] = track.frame(i * step, _f).pos.y;
+  HEIGHTS.set(track, h);
+  return h;
+}
+
 export function createDriver(track: Track, car: Vehicle, skill: number): DriverPlus {
   const spec = car.spec;
   const st = car.state;
@@ -27,6 +39,8 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
   const step = track.closed ? L / M : L / Math.max(1, M - 1);
   const halfW = spec.body.width / 2;
   const muLat = spec.tire.muLat;
+  const fa = spec.body.wheelbase * (1 - spec.frontW);
+  const rr = spec.body.wheelbase * spec.frontW;
   const seed = Math.random();
   let sk = Math.max(0, Math.min(1, skill));
   let bandK = 0;
@@ -36,6 +50,9 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
   let revT = 0;
   let stuck = 0;
   let hbT = 0;
+  let tries = 0;
+  let lastSteer = 0;
+  let lastTryS = -1e9;
   const out: Controls = { throttle: 0, brake: 0, steer: 0, handbrake: 0, shiftUp: false, shiftDown: false };
   car.assists = { abs: true, tcs: true, stability: true, autoGear: true, steer: false };
 
@@ -67,23 +84,29 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
     return 0.62 + 0.38 * Math.min(1.05, k);
   };
 
+  const height = heights(track);
   function targetSpeed(v: number) {
     const u = use();
     const gripK = Math.sqrt((Math.min(1.6, muLat) / 1.2) * u * TUNE.GRIP);
     const decel = G * spec.tire.mu * (0.55 + 0.4 * u) * TUNE.DECEL;
     const horizon = Math.min(400, (v * v) / (2 * decel) + 25);
+    const h0 = height[idx(st.s)];
     let vt = Infinity;
     for (let d = 0; d <= horizon; d += 4) {
-      const lim = track.speed[idx(st.s + d)] * gripK * learn[bucket(st.s + d)];
-      const reach = Math.sqrt(lim * lim + 2 * decel * Math.max(0, d - v * 0.12));
+      const i = idx(st.s + d);
+      const lim = track.speed[i] * gripK * learn[bucket(st.s + d)];
+      // Downhill braking zones are longer: gravity adds back the height lost on the way.
+      const reach = Math.sqrt(Math.max(0, lim * lim + 2 * decel * Math.max(0, d - v * 0.12) - 2 * G * (h0 - height[i])));
       if (reach < vt) vt = reach;
     }
     return vt;
   }
 
-  const tr = { want: NaN, cap: 0, lo: 0, hi: 0 };
+  const tr = { want: NaN, cap: 0, lo: 0, hi: 0, behind: false };
+  let followT = 0;
   function traffic(others: readonly VehicleState[], v: number, vt: number, myLat: number, lim: number) {
     tr.want = NaN;
+    tr.behind = false;
     tr.cap = vt;
     tr.lo = -lim;
     tr.hi = lim;
@@ -93,10 +116,14 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
       const ds = track.delta(st.s, o.s);
       if (ds < -7 || ds > LOOK) continue;
       const dl = o.lateral - myLat;
+      // Same lane and closing: keep a short time gap, so a braking car ahead is not rear-ended.
+      if (ds > 0 && ds < 35 && Math.abs(dl) < span && o.speed < v) tr.cap = Math.min(tr.cap, o.speed + (ds - 5.5 - Math.max(0, v) * 0.2) * 0.8);
       if (ds > 5) {
         const closing = v - o.speed;
         const t = closing > 0.3 ? (ds - 5) / closing : Infinity;
-        if (Math.abs(dl) >= span || t > 2.5) continue;
+        if (Math.abs(dl) < span && ds < 25) tr.behind = true;
+        // Stuck behind for a while: pull out and try a pass even without a speed edge.
+        if (Math.abs(dl) >= span || (t > 2.5 && !(followT > 1.5 && ds < 25))) continue;
         const goL = o.lateral + span, goR = o.lateral - span;
         const canL = goL <= lim, canR = goR >= -lim;
         if (canL || canR) tr.want = canL && canR ? (Math.abs(goL - myLat) < Math.abs(goR - myLat) ? goL : goR) : canL ? goL : goR;
@@ -137,6 +164,8 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
       mode = "reverse";
       revT = 0;
       stuck++;
+      tries = st.s === lastTryS || Math.abs(track.delta(lastTryS, st.s)) < 15 ? tries + 1 : 1;
+      lastTryS = st.s;
       slowT = 0;
     }
     if (mode === "reverse") {
@@ -146,9 +175,11 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
       out.brake = v > -4 ? 0.7 : 0;
       out.steer = Math.sign(toward) || 1;
       if ((revT > 1.0 && heading > 0.6) || revT > 2.5) mode = "race";
-      if (revT > 2.5 && heading < -0.3) {
+      // Still pointing the wrong way, or the third try in a row: put the car back on the road.
+      if (revT > 2.5 && (heading < 0.3 || tries >= 3)) {
         car.resetToTrack();
         mode = "race";
+        tries = 0;
       }
       return out;
     }
@@ -160,6 +191,7 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
     let vt = targetSpeed(Math.max(0, v));
     const line = track.line[idx(st.s + 8)];
     traffic(others, v, vt, st.lateral, lim);
+    followT = tr.behind ? followT + dt : 0;
     const off = Math.abs(Math.max(tr.lo, Math.min(tr.hi, line)) - line);
     vt = Math.min(tr.cap, vt * (1 - Math.min(0.2, off * 0.035)));
     const busy = !Number.isNaN(tr.want);
@@ -183,12 +215,24 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
     const yawRate = st.angVel.y;
     const want = v > 2 ? (v * Math.tan(delta)) / spec.body.wheelbase : 0;
     delta += (want - yawRate) * TUNE.YAW_K * Math.min(1, v / 30);
+    // Catch a slide like a driver: point the front wheels along the front axle's travel and ease off.
+    const vx = st.vel.dot(_fwd), vy = st.vel.dot(_left);
+    let slide = 0;
+    if (vx > 5) {
+      const br = Math.atan2(vy - yawRate * rr, vx);
+      const pa = spec.tire.peakAngle;
+      slide = br * yawRate < 0 ? Math.min(1, Math.max(0, (Math.abs(br) - pa) / pa)) : 0;
+      if (slide > 0) delta += (Math.atan2(vy + yawRate * fa, vx) - delta) * slide;
+    }
     out.steer = Math.max(-1, Math.min(1, -delta / spec.steerLock));
+    // Over a crest the wheels hold still: steering in the air lands the car sideways.
+    if (st.airborne) out.steer = lastSteer * 0.9;
+    lastSteer = out.steer;
 
     learnFrom(dt, v, Math.max(-lim, Math.min(lim, line + offset)));
     const err = vt - v;
     if (err > 0) {
-      out.throttle = Math.min(1, 0.35 + err * 0.35);
+      out.throttle = Math.min(1, 0.45 + err * 0.5);
       out.brake = 0;
       if (Math.abs(out.steer) > 0.6 && v > 15) out.throttle *= 0.7;
     } else {
@@ -196,6 +240,7 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
       out.brake = err < -0.3 ? Math.min(1, 0.2 - err * 0.5) : 0;
     }
 
+    if (slide > 0) out.throttle *= 1 - 0.8 * slide;
     hbT = Math.max(0, hbT - dt);
     const tight = track.speed[idx(st.s + 6)] < 13;
     if (tight && v > 6 && v < 20 && Math.abs(yawErr) > 0.5 && hbT === 0) hbT = 0.35;

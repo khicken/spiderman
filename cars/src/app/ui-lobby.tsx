@@ -1,17 +1,52 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CarSpec, Entrant, Lobby as LobbyState } from "./contracts";
-import { Back, Bars, Bot, Car, Check, Copy, Crown, Fwd, Laps, Link, Pencil, Play, Pin, pingLevel } from "./ui-icons";
+import { Back, Bars, Bot, Car, Check, Cloud, Copy, Crown, Fwd, Laps, Link, Pencil, Play, Pin, pingLevel } from "./ui-icons";
 import { CLASS_COLOR, IconBtn, Spinner, Stepper, TrackLine, cx, type MapCard } from "./ui-kit";
 import { useNavRoot } from "./ui-nav";
 
-export type LobbyPlayer = Entrant & { ping?: number | null; host?: boolean };
+export type LobbyPlayer = Entrant & { ping?: number | null; host?: boolean; relay?: boolean };
 
 const MAX = 12;
 
 export function inviteUrl(room: string) {
-  return `${location.origin}/cars?room=${encodeURIComponent(room)}`;
+  return `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
+}
+
+function copyText(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  return new Promise((ok, fail) => {
+    const t = document.createElement("textarea");
+    t.value = text;
+    t.style.cssText = "position:fixed;opacity:0;left:0;top:0";
+    document.body.appendChild(t);
+    t.select();
+    const done = document.execCommand("copy");
+    t.remove();
+    if (done) ok();
+    else fail(new Error("copy"));
+  });
+}
+
+// Phones get the system share sheet, desktops the clipboard.
+async function invite(room: string): Promise<boolean> {
+  const url = inviteUrl(room);
+  const coarse = typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches;
+  if (coarse && navigator.share) {
+    try {
+      await navigator.share({ url, title: "Race me" });
+      return true;
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return false;
+    }
+  }
+  try {
+    await copyText(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function Lobby({
@@ -50,10 +85,18 @@ export function Lobby({
   const cycle = (d: number) => set({ map: maps[(mi + d + maps.length) % maps.length].id });
 
   const copy = () => {
-    navigator.clipboard?.writeText(inviteUrl(room)).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    void invite(room).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    });
   };
+
+  // back from a race: the host reopens the lobby so late joiners can race the next one
+  useEffect(() => {
+    if (host && lobby.startAt != null) onLobby({ ...lobby, startAt: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host]);
 
   return (
     <div ref={ref} className="safe fade absolute inset-0 mx-auto flex max-w-[80rem] flex-col gap-3 bg-black/45 backdrop-blur-[2px] [box-shadow:0_0_0_100vmax_rgb(0_0_0/0.45)]">
@@ -63,7 +106,7 @@ export function Lobby({
         </IconBtn>
         <div className="glass flex h-11 items-center gap-2 rounded-[3px] pl-3 pr-1">
           <Link className="text-lg text-mute" />
-          <span className="num text-[2rem] leading-none tracking-[0.12em]">{room}</span>
+          <button type="button" onClick={copy} aria-label="Copy invite link" className="num text-[2rem] leading-none tracking-[0.12em] select-text">{room}</button>
           <button type="button" aria-label="Copy invite link" title="Copy invite link" onClick={copy} className={cx("nav ml-1 grid h-9 w-9 place-items-center rounded-[2px] border border-transparent text-lg", copied && "text-good")}>
             {copied ? <Check /> : <Copy />}
           </button>
@@ -169,6 +212,7 @@ function Row({ p, car, onName, onCar }: { p: LobbyPlayer; car?: CarSpec; onName:
         <span className="min-w-0 flex-1 truncate text-lg font-semibold">{p.name}</span>
       )}
       {p.host && <Crown className="shrink-0 text-lg text-gold" />}
+      {p.relay && <Cloud aria-label="Relayed" className="shrink-0 text-lg text-mute" />}
       {p.me ? (
         <button type="button" aria-label="Car" onClick={onCar} className="nav flex h-10 shrink-0 items-center gap-2 rounded-[2px] border border-line px-2">
           <Car className="text-lg" style={{ color: car ? CLASS_COLOR[car.klass] : undefined }} />
@@ -180,6 +224,7 @@ function Row({ p, car, onName, onCar }: { p: LobbyPlayer; car?: CarSpec; onName:
           <span className="ttl hidden text-base sm:inline">{car?.name}</span>
         </span>
       )}
+      {!p.me && <span className="num w-10 shrink-0 text-right text-base text-mute">{p.ping != null ? Math.round(p.ping) : ""}</span>}
       <Bars level={p.me ? 4 : pingLevel(p.ping)} className={cx("shrink-0 text-lg", (p.ping ?? 0) > 180 ? "text-bad" : "text-good")} />
     </div>
   );

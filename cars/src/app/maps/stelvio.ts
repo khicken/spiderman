@@ -2239,6 +2239,6 @@ export const MAP: MapData = {
     { name: "Trafoi Church", x: 2194.9, z: -1122.3, kind: "church" },
     { name: "Ortler", x: 4749.4, z: 3648, kind: "monument" },
   ],
-  env: {hour: 11,weather: "clear",season: "winter"},
+  env: {hour: 11,weather: "clear",season: "summer"},
   credit: "© OpenStreetMap contributors · Terrain: Mapzen Terrain Tiles (SRTM, EU-DEM, USGS 3DEP and others) via AWS Open Data",
 };

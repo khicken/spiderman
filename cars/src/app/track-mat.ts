@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Quality } from "./contracts";
+import { FOREST, LIGHT } from "./render-shared";
 import { asphaltTex, dirtTex, grassTex, gravelTex, rockTex, snowTex } from "./track-tex";
 
 export const TEX: Record<Quality, { n: number; aniso: number; ground: number }> = {
@@ -27,6 +28,7 @@ export type RoadUniforms = {
   uClosed: { value: number };
   uMarks: { value: number }; // 0 circuit, 1 public dashed, 2 tokyo, 3 double yellow
   uWear: { value: number };
+  uSheen: { value: number }; // night wet look with a dry grip, the city night trick
 };
 
 // Asphalt with procedural markings, grid boxes, tire wear, oil and wet puddles. uv = (lateral, s) in m, aInfo = (half width, racing line, tunnel shade).
@@ -37,7 +39,7 @@ export function roadMaterial(q: Quality, u: RoadUniforms) {
   m.normalScale.set(1.2, 1.2);
   m.customProgramCacheKey = () => "tk-road";
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, u);
+    Object.assign(sh.uniforms, u, { uNightK: LIGHT.night });
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nattribute vec3 aInfo;\nvarying vec2 vRoad;\nvarying vec3 vInfo;\nvarying vec3 vWP;")
       .replace("#include <uv_vertex>", "#include <uv_vertex>\nvRoad = uv; vInfo = aInfo;")
@@ -47,12 +49,13 @@ export function roadMaterial(q: Quality, u: RoadUniforms) {
         "#include <common>",
         `#include <common>
 varying vec2 vRoad; varying vec3 vInfo; varying vec3 vWP;
-uniform float uWet, uStart, uLen, uClosed, uMarks, uWear;
+uniform float uWet, uStart, uLen, uClosed, uMarks, uWear, uSheen, uNightK;
 ${NOISE}`,
       )
       .replace(
         "#include <roughnessmap_fragment>",
         `#include <roughnessmap_fragment>
+float wetV = max(uWet, uSheen * smoothstep(0.3, 0.9, uNightK));
 float u = vRoad.x, s = vRoad.y, au = abs(u), hw = vInfo.x, ln = vInfo.y;
 vec2 wxz = mod(vWP.xz, 2048.0);
 float macro = tkFbm(wxz * 0.035);
@@ -105,18 +108,18 @@ paint *= 0.75 + 0.25 * tkNoise(wxz * 6.0);
 paint *= 1.0 - 0.6 * wear;
 diffuseColor.rgb = mix(diffuseColor.rgb, pc, paint);
 roughnessFactor = mix(roughnessFactor, 0.55, paint);
-float pud = smoothstep(0.56, 0.66, tkFbm(wxz * 0.085) + 0.16 * smoothstep(hw - 2.5, hw, au) + 0.08 * wear - 0.12 * (1.0 - uWet)) * smoothstep(0.15, 0.7, uWet);
-diffuseColor.rgb *= mix(1.0, 0.52, uWet) * (1.0 - 0.15 * pud);
-roughnessFactor = mix(roughnessFactor, 0.3, uWet * 0.85);
+float pud = smoothstep(0.56, 0.66, tkFbm(wxz * 0.085) + 0.16 * smoothstep(hw - 2.5, hw, au) + 0.08 * wear - 0.12 * (1.0 - wetV)) * smoothstep(0.15, 0.7, wetV);
+diffuseColor.rgb *= mix(1.0, 0.52, wetV) * (1.0 - 0.15 * pud);
+roughnessFactor = mix(roughnessFactor, 0.3, wetV * 0.85);
 roughnessFactor = clamp(mix(roughnessFactor, 0.03, pud), 0.02, 1.0);`,
       )
-      .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, pud * 0.95 + uWet * 0.3));")
+      .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, pud * 0.95 + wetV * 0.3));")
       .replace("#include <lights_fragment_end>", "#include <lights_fragment_end>\nreflectedLight.indirectSpecular *= 1.0 - 0.85 * vInfo.z;\nreflectedLight.indirectDiffuse *= 1.0 - 0.6 * vInfo.z;");
   };
   return { mat: m, tex: [t.map, t.normal, t.rough] };
 }
 
-export type GroundUniforms = { uWet: { value: number }; uSnowLine: { value: number }; uAutumn: { value: number }; uWinter: { value: number } };
+export type GroundUniforms = { uWet: { value: number }; uSnowLine: { value: number }; uAlpine: { value: number }; uAutumn: { value: number }; uWinter: { value: number } };
 
 // Terrain shading from world position: grass, dirt, rock by slope, snow by height and season.
 export function groundMaterial(q: Quality, u: GroundUniforms, offset: number) {
@@ -126,7 +129,7 @@ export function groundMaterial(q: Quality, u: GroundUniforms, offset: number) {
     const m = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0, polygonOffset: off !== 0, polygonOffsetFactor: off, polygonOffsetUnits: off });
     m.customProgramCacheKey = () => "tk-ground";
     m.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, u, tex);
+      Object.assign(sh.uniforms, u, tex, FOREST);
       sh.vertexShader = sh.vertexShader
         .replace("#include <common>", "#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;")
         .replace("#include <project_vertex>", "#include <project_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWN = normalize(mat3(modelMatrix) * objectNormal);");
@@ -135,8 +138,8 @@ export function groundMaterial(q: Quality, u: GroundUniforms, offset: number) {
           "#include <common>",
           `#include <common>
 varying vec3 vWP; varying vec3 vWN;
-uniform float uWet, uSnowLine, uAutumn, uWinter;
-uniform sampler2D tGrass, tDirt, tRock, tSnow;
+uniform float uWet, uSnowLine, uAlpine, uAutumn, uWinter;
+uniform sampler2D tGrass, tDirt, tRock, tSnow, tForest; uniform vec4 uForestBox; uniform float uForestOn;
 ${NOISE}`,
         )
         .replace(
@@ -149,18 +152,36 @@ vec2 wr = mat2(0.8, -0.6, 0.6, 0.8) * w;
 float mixN = smoothstep(0.35, 0.65, tkNoise(mod(w, 4096.0) * 0.03));
 vec3 g = mix(texture2D(tGrass, w / 7.0).rgb, texture2D(tGrass, wr / 11.3).rgb, mixN) * (0.8 + 0.4 * texture2D(tGrass, w / 61.0).a);
 g *= mix(vec3(0.9, 0.95, 0.82), vec3(1.08, 1.04, 1.0), n1);
-g = mix(g, g * vec3(1.45, 1.1, 0.55), uAutumn * (0.6 + 0.4 * n1));
+g = mix(g, g * vec3(1.25, 1.05, 0.7), uAutumn * (0.4 + 0.4 * n1));
 vec3 d = mix(texture2D(tDirt, w / 5.0).rgb, texture2D(tDirt, wr / 8.1).rgb, mixN);
 vec3 bw = pow(abs(wn), vec3(4.0)); bw /= bw.x + bw.y + bw.z;
 vec3 rk = texture2D(tRock, vWP.zy / 9.0).rgb * bw.x + texture2D(tRock, w / 9.0).rgb * bw.y + texture2D(tRock, vWP.xy / 9.0).rgb * bw.z;
 vec3 sn = texture2D(tSnow, w / 9.0).rgb;
-float dirtW = smoothstep(0.62, 0.8, n1 + slope * 0.9);
-float rockW = smoothstep(0.3, 0.48, slope + (n1 - 0.5) * 0.25);
-float snowW = max(uWinter * (0.85 + 0.15 * n1), smoothstep(uSnowLine - 40.0, uSnowLine + 40.0, vWP.y + n1 * 80.0)) * (1.0 - smoothstep(0.5, 0.75, slope));
+float alp = smoothstep(uAlpine - 150.0, uAlpine + 250.0, vWP.y + (n1 - 0.5) * 200.0);
+float n2 = tkNoise(mod(w, 4096.0) * 0.11);
+g = mix(g, dot(g, vec3(0.33)) * vec3(1.05, 1.0, 0.7) * mix(0.9, 1.2, n2), alp * 0.75);
+float dirtW = smoothstep(0.62, 0.8, n1 + slope * 0.9 + alp * 0.25 * n2);
+float rockW = smoothstep(0.3, 0.48, slope + (n1 - 0.5) * 0.25 + alp * (0.12 + 0.3 * smoothstep(0.55, 0.8, n2)));
+float snowP = smoothstep(uSnowLine - 160.0, uSnowLine + 120.0, vWP.y + (n1 - 0.5) * 260.0 + (n2 - 0.5) * 90.0 + wn.z * 60.0);
+float snowW = max(uWinter * (0.85 + 0.15 * n1), smoothstep(0.35, 0.6, snowP)) * (1.0 - smoothstep(0.5, 0.75, slope));
 vec3 col = mix(g, d, dirtW);
 col = mix(col, rk, rockW);
 col = mix(col, sn, snowW);
 col *= 0.88 + 0.24 * texture2D(tDirt, w * 0.9).a;
+if (uForestOn > 0.5) {
+  float fd = texture2D(tForest, (w - uForestBox.xy) / uForestBox.zw).r * (1.0 - snowW);
+  float fn = tkNoise(mod(w, 4096.0) * 0.21) * 0.6 + tkNoise(mod(w, 4096.0) * 0.05) * 0.4;
+  vec3 floorC = mix(vec3(0.1, 0.085, 0.05), vec3(0.12, 0.14, 0.06), fn);
+  vec2 cw = mod(w, 4096.0);
+  float crown = tkNoise(cw * 0.32) * 0.65 + tkNoise(cw * 0.95) * 0.35;
+  float cid = tkHash(floor(cw / 4.5));
+  vec3 canopy = mix(vec3(0.028, 0.055, 0.026), vec3(0.075, 0.11, 0.045), crown) * (0.8 + 0.4 * cid);
+  vec3 fall = mix(vec3(0.2, 0.09, 0.025), vec3(0.25, 0.18, 0.045), cid) * (0.6 + 0.5 * crown);
+  canopy = mix(canopy, fall, uAutumn * step(0.62, cid) * (0.4 + 0.6 * tkNoise(cw * 0.012)));
+  float camD = length(vWP - cameraPosition);
+  col = mix(col, floorC, fd * 0.75 * (1.0 - rockW));
+  col = mix(col, canopy, smoothstep(0.25, 0.6, fd) * smoothstep(110.0, 380.0, camD) * (1.0 - rockW * 0.6));
+}
 diffuseColor.rgb *= col;
 float gr = mix(mix(0.95, 0.88, dirtW), 0.8, rockW);
 gr = mix(gr, 0.55, snowW);`,

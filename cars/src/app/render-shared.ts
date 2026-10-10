@@ -13,7 +13,41 @@ export const LIGHT = {
   tDepth: { value: null as THREE.Texture | null },
   depthInfo: { value: new THREE.Vector4(0.1, 1000, 1, 1) }, // near, far, width, height
   soft: { value: 0 }, // 1 when tDepth holds this frame's opaque depth
+  night: { value: 0 },
 };
+
+// Tree density over the terrain, written by scenery, read by the ground shader for forest floor and far canopy.
+export const FOREST = { tForest: { value: null as THREE.Texture | null }, uForestBox: { value: new THREE.Vector4(0, 0, 1, 1) }, uForestOn: { value: 0 } };
+
+// Static merged meshes never read their arrays again, so free the CPU copy once the GPU has it.
+function freeArray(this: THREE.BufferAttribute) {
+  (this as unknown as { array: null }).array = null;
+}
+export function dropAfterUpload(g: THREE.BufferGeometry) {
+  for (const a of Object.values(g.attributes)) (a as THREE.BufferAttribute).onUpload(freeArray);
+  g.index?.onUpload(freeArray);
+  return g;
+}
+
+// Work spread over frames: render.frame pumps jobs for a few ms per frame.
+const jobs: Iterator<unknown>[] = [];
+export function runSoon<T extends Iterator<unknown>>(it: T) {
+  jobs.push(it);
+  return it;
+}
+export function runNow(it: Iterator<unknown>) {
+  while (!it.next().done);
+}
+export function cancelJob(it: Iterator<unknown> | null) {
+  const i = it ? jobs.indexOf(it) : -1;
+  if (i >= 0) jobs.splice(i, 1);
+  return i >= 0;
+}
+export const jobsPending = () => jobs.length > 0;
+export function pumpJobs(ms: number) {
+  const t0 = performance.now();
+  while (jobs.length && performance.now() - t0 < ms) if (jobs[0].next().done) jobs.shift();
+}
 
 const VERT = /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
@@ -125,3 +159,5 @@ export function releaseNoise() {
   noise.dispose();
   noise = null;
 }
+
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") (window as unknown as { __forest: unknown }).__forest = FOREST;

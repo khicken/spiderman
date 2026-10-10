@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { dropAfterUpload } from "./render-shared";
 import type { MapData, Track } from "./contracts";
 import { canvasTex, eachRecord, rng, type RoadIndex } from "./scenery-kit";
 
@@ -106,6 +107,7 @@ export function buildGround(map: MapData, track: Track, roads: RoadIndex) {
   g.setIndex(idx);
   g.computeVertexNormals();
   g.computeBoundingSphere();
+  dropAfterUpload(g);
   const tex = groundTexture(map.id === "monaco" ? "#b9b0a0" : map.id === "tokyo" ? "#85878a" : "#9a9894");
   const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   m.onBeforeCompile = (s) => {

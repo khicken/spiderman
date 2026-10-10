@@ -54,8 +54,10 @@ export function bodyCorners(b: Body, s: VehicleState, g: GroundHit, spec: CarSpe
     const vt = _t.length();
     if (vt > 0.01) {
       _t.multiplyScalar(-1 / vt);
-      const jt = Math.min(0.6 * jn, vt / b.invMass(_p, _t));
-      b.impulse(_p, _j.copy(_t).multiplyScalar(jt));
+      // Scrape friction acts on the centerline: a floor corner grounding at speed must not yaw the car round.
+      _v0.copy(_p).addScaledVector(x, -cx);
+      const jt = Math.min((cy > 0 ? 0.6 : 0.3) * jn, vt / b.invMass(_v0, _t));
+      b.impulse(_v0, _j.copy(_t).multiplyScalar(jt));
       if (vt > corner.slide) {
         corner.slide = vt;
         corner.at.copy(_p);
@@ -87,9 +89,11 @@ export function hitBarriers(b: Body, s: VehicleState, track: Track, hint: number
     _j.subVectors(_v, _v0);
     const dv = _j.length();
     if (dv > 1e-4) {
+      // Applied halfway to the center: a point impulse at the bumper spins the car like a pinball.
+      _az.lerpVectors(s.pos, _p0, 1);
       _n.copy(_j).multiplyScalar(1 / dv);
-      _j.copy(_n).multiplyScalar(dv / b.invMass(_p0, _n));
-      b.impulse(_p0, _j);
+      _j.copy(_n).multiplyScalar(dv / b.invMass(_az, _n));
+      b.impulse(_az, _j);
     }
     if (hit > wall.speed) {
       wall.speed = hit;

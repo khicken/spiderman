@@ -1,5 +1,5 @@
 import type { MapId, MusicState } from "./contracts";
-import type { ProcFn } from "./audio-worklet";
+import { type ProcFn, procNode } from "./audio-worklet";
 import type { musicSynth } from "./audio-music-synth";
 import type { musicStyles } from "./audio-music-styles";
 
@@ -122,7 +122,7 @@ export const musicProc: ProcFn = (Base, register, sr) => {
 
 
 export function musicNode(ctx: BaseAudioContext, dest: AudioNode, verb: AudioNode, opts: { script?: MusicCmd[]; seed?: number } = {}) {
-  const node = new AudioWorkletNode(ctx, "car-music", { numberOfInputs: 0, numberOfOutputs: 2, outputChannelCount: [2, 2], processorOptions: opts });
+  const node = procNode(ctx, "car-music", { numberOfOutputs: 2, outputChannelCount: [2, 2], processorOptions: opts });
   node.connect(dest, 0);
   node.connect(verb, 1);
   return node;

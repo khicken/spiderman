@@ -151,51 +151,6 @@ export const treadTex = (k: TreadKind) =>
     return tex(c, false);
   });
 
-// Brake disc: radial brushed steel with drill holes or slots. The top-left texel is plain white for the caliper.
-export const discTex = () =>
-  once("disc", () => {
-    const N = 256;
-    const [c, x] = canvas(N, N);
-    x.fillStyle = "#ffffff";
-    x.fillRect(0, 0, N, N);
-    const cx = N / 2, r0 = N * 0.48;
-    const g = x.createRadialGradient(cx, cx, 0, cx, cx, r0);
-    g.addColorStop(0, "#3a3b3e");
-    g.addColorStop(0.5, "#3a3b3e");
-    g.addColorStop(0.52, "#8d9095");
-    g.addColorStop(0.8, "#a8abaf");
-    g.addColorStop(1, "#7a7d82");
-    x.fillStyle = g;
-    x.beginPath(), x.arc(cx, cx, r0, 0, Math.PI * 2), x.fill();
-    x.fillStyle = "#16171a";
-    for (let i = 0; i < 36; i++) {
-      const a = (i / 36) * Math.PI * 2;
-      for (const rr of [0.62, 0.74, 0.86]) {
-        const aa = a + rr * 0.6;
-        x.beginPath(), x.arc(cx + Math.cos(aa) * r0 * rr, cx + Math.sin(aa) * r0 * rr, 2.2, 0, Math.PI * 2), x.fill();
-      }
-    }
-    x.fillStyle = "#ffffff";
-    x.fillRect(0, 0, 4, 4);
-    x.fillStyle = "#000000";
-    x.fillRect(N - 4, 0, 4, 4);
-    return tex(c, true, false);
-  });
-
-// Fake light cone: soft radial falloff.
-export const glowTex = () =>
-  once("glow", () => {
-    const N = 64;
-    const [c, x] = canvas(N, N);
-    const g = x.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.3, "rgba(255,255,255,0.35)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    x.fillStyle = g;
-    x.fillRect(0, 0, N, N);
-    return tex(c, true, false);
-  });
-
 export type Pen = {
   ctx: CanvasRenderingContext2D;
   line(f0: number, v0: number, f1: number, v1: number, w?: number): void;

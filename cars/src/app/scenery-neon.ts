@@ -78,6 +78,8 @@ export function buildNeon(map: MapData, track: Track, roads: RoadIndex, detail: 
   const hues = [0.0, 0.08, 0.13, 0.33, 0.5, 0.58, 0.83, 0.92, 0.95];
   let i = 0;
   const limit = detail >= 2 ? 1 : 0.6;
+  const near = trackNear(track);
+  let boards = 0;
   while (i < B.length) {
     const n = B[i], h = B[i + 1], o = i + 2;
     i = o + n * 2;
@@ -130,6 +132,21 @@ export function buildNeon(map: MapData, track: Track, roads: RoadIndex, detail: 
         const A = [ax + ox * 0.35, lo + 3.3, az + oz * 0.35], Bp = [bx + ox * 0.35, lo + 3.3, bz + oz * 0.35];
         face(g, A, Bp, 0.9, 2, hv + 0.4, len);
       }
+      const tk = near(mx + ox * 2, mz + oz * 2);
+      if (tk.d < 75 && len > 9 && (tk.x - mx) * ox + (tk.z - mz) * oz > tk.d * 0.4 && r() < 0.55 && boards < (detail >= 2 ? 500 : 200)) {
+        boards++;
+        const w = Math.min(len * 0.8, 8 + r() * 10), hh = 4 + r() * 5, t = 0.5 + (r() - 0.5) * (1 - w / len);
+        const y0 = Math.max(lo + 6, tk.y + 4.5 + r() * 8), roofTop = lo + h;
+        const cx = ax + dx * len * t + ox * 0.3, cz = az + dz * len * t + oz * 0.3;
+        const A = [cx - (dx * w) / 2, y0, cz - (dz * w) / 2], Bp = [cx + (dx * w) / 2, y0, cz + (dz * w) / 2];
+        face(g, A, Bp, hh, r() < 0.5 ? 1 : 4, hv, w);
+        if (y0 + hh > roofTop) {
+          face(g, Bp, A, hh, 3, 0, w);
+          g.fac = [0, 0, 0, 3];
+          for (const q of [0.12, 0.88]) g.box(cx + dx * w * (q - 0.5) - ox * 0.3, roofTop, cz + dz * w * (q - 0.5) - oz * 0.3, 0.25, y0 - roofTop + 0.2, 0.25);
+        }
+        continue;
+      }
       if (roofSign && len > 8 && e0 < 90) {
         roofSign = false;
         const w = Math.min(len * 0.85, 9 + r() * 7), t = 0.5, y0 = hi + h + 1.2, hh = 4 + r() * 2.5;
@@ -150,4 +167,30 @@ export function buildNeon(map: MapData, track: Track, roads: RoadIndex, detail: 
   const mesh = new THREE.Mesh(g.build(), neonMaterial());
   mesh.name = "neon";
   return mesh;
+}
+
+// Nearest centerline sample within 120 m: distance, deck height and the point, from a 40 m hash grid.
+function trackNear(track: Track) {
+  const C = 40, P = track.map.center, cells = new Map<number, number[]>();
+  const key = (i: number, j: number) => i * 65536 + j;
+  for (let k = 0; k < P.length; k += 6) {
+    const kk = key(Math.floor(P[k] / C), Math.floor(P[k + 2] / C));
+    let a = cells.get(kk);
+    if (!a) cells.set(kk, (a = []));
+    a.push(P[k], P[k + 1], P[k + 2]);
+  }
+  const out = { d: 1e9, y: 0, x: 0, z: 0 };
+  return (x: number, z: number) => {
+    out.d = 1e9;
+    const ci = Math.floor(x / C), cj = Math.floor(z / C);
+    for (let i = ci - 3; i <= ci + 3; i++)
+      for (let j = cj - 3; j <= cj + 3; j++) {
+        const a = cells.get(key(i, j));
+        if (a) for (let k = 0; k < a.length; k += 3) {
+          const d = Math.hypot(a[k] - x, a[k + 2] - z);
+          if (d < out.d) { out.d = d; out.x = a[k]; out.y = a[k + 1]; out.z = a[k + 2]; }
+        }
+      }
+    return out;
+  };
 }

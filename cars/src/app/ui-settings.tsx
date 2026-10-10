@@ -158,7 +158,7 @@ function CamGlyph({ mode }: { mode: CamMode }) {
 }
 
 type Bind = { icon: ReactNode; keys: ReactNode; pad: ReactNode };
-const Pad = ({ b, c }: { b: string; c?: string }) => (
+export const Pad = ({ b, c }: { b: string; c?: string }) => (
   <span className="num inline-grid h-8 min-w-8 place-items-center rounded-full border border-line-hi bg-white/5 px-1.5 text-base not-italic" style={{ color: c }}>
     {b}
   </span>
@@ -215,7 +215,7 @@ function ControlsMap({ device, steer, onSteer }: { device: Device; steer: SteerM
   );
 }
 
-function TouchDiagram({ steer }: { steer: SteerMode }) {
+export function TouchDiagram({ steer }: { steer: SteerMode }) {
   return (
     <div className="relative aspect-[2.2/1] w-full max-w-[30rem] self-center rounded-[10px] border-2 border-line-hi bg-black/30">
       <div className="absolute left-[8%] top-[60%] flex w-[30%] items-center text-mute">

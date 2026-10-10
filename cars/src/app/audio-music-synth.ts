@@ -79,15 +79,19 @@ export const musicSynth = (sr: number) => {
 
   const SPREAD = [0, -1, 1, -0.62, 0.62, -0.3, 0.3];
   const TRIM = new Float32Array(40).fill(1);
-  TRIM[20] = 0.42;
+  TRIM[20] = 0.36;
   TRIM[27] = 0.6;
-  TRIM[4] = TRIM[5] = TRIM[11] = 0.45;
-  TRIM[23] = TRIM[24] = TRIM[29] = 2;
-  TRIM[25] = TRIM[26] = 1.6;
+  TRIM[4] = TRIM[5] = TRIM[11] = 0.36;
+  TRIM[23] = TRIM[24] = TRIM[29] = 1.25;
+  TRIM[25] = TRIM[26] = 1.2;
   TRIM[21] = TRIM[22] = 1.2;
   TRIM[0] = 1.5;
-  TRIM[1] = TRIM[2] = TRIM[3] = TRIM[7] = TRIM[8] = TRIM[9] = TRIM[10] = 1.4;
+  TRIM[1] = TRIM[2] = TRIM[3] = TRIM[8] = TRIM[9] = TRIM[10] = 1.6;
+  TRIM[7] = 2.2;
   const MAXV = 56;
+  const HPK = 1 - Math.exp((-TAU * 230) / sr);
+  const LOK = 1 - Math.exp((-TAU * 110) / sr);
+  const HIK = 1 - Math.exp((-TAU * 13000) / sr);
 
   class Voice {
     on = false;
@@ -141,6 +145,10 @@ export const musicSynth = (sr: number) => {
     busCut = 18000;
     level = 1;
     counter = 0;
+    loL = 0;
+    loR = 0;
+    hiL = 0;
+    hiR = 0;
     constructor() {
       for (let i = 0; i < MAXV; i++) this.voices.push(new Voice());
       this.busL = new Svf();
@@ -215,7 +223,7 @@ export const musicSynth = (sr: number) => {
         v.fl.set(cut, p.q);
         if (v.inst === 0) v.fr.set(cut, p.q);
       } else if (v.inst === 21 || v.inst === 22) v.fl.set(v.inst === 21 ? 1900 : 1250, v.inst === 21 ? 0.7 : 1.6);
-      else if (v.inst === 23 || v.inst === 24 || v.inst === 29) v.fl.set(v.inst === 29 ? 6500 : 9000, 0.8);
+      else if (v.inst === 23 || v.inst === 24 || v.inst === 29) v.fl.set(v.inst === 29 ? 5500 : 7200, 0.8);
       else if (v.inst === 25) v.fl.set(5200, 1.5);
       else if (v.inst === 26) v.fl.set(6000, 0.5);
       else if (v.inst === 28) v.fl.set(3200, 3);
@@ -264,6 +272,10 @@ export const musicSynth = (sr: number) => {
             }
             l = v.fl.lp(l * 0.3) * e;
             r = v.fr.lp(r * 0.3) * e;
+            v.x1 += (l - v.x1) * HPK;
+            v.x2 += (r - v.x2) * HPK;
+            l -= v.x1;
+            r -= v.x2;
             break;
           }
           case 1:
@@ -350,10 +362,14 @@ export const musicSynth = (sr: number) => {
             ph[1] += d1;
             if (ph[0] >= 1) ph[0] -= 1;
             if (ph[1] >= 1) ph[1] -= 1;
+            const d2 = d0 * 2.003;
+            ph[2] += d2;
+            if (ph[2] >= 1) ph[2] -= 1;
             let s = 2 * ph[0] - 1 - blep(ph[0], d0);
             let q = ph[1] < 0.5 ? 1 : -1;
             q += blep(ph[1], d1) - blep((ph[1] + 0.5) % 1, d1);
-            s = v.fl.lp((s + 0.6 * q) * 0.5) * e;
+            s += 0.45 * (2 * ph[2] - 1 - blep(ph[2], d2));
+            s = v.fl.lp((s + 0.6 * q) * 0.45) * e;
             l = r = s;
             break;
           }
@@ -412,7 +428,7 @@ export const musicSynth = (sr: number) => {
             v.x1 += (nz - v.x1) * 0.35;
             v.fl.lp(hp);
             const a = v.inst === 29 ? Math.min(1, ts / 0.012) * Math.exp(-ts / p.d) : Math.exp(-ts / p.d) * Math.min(1, t / 6);
-            l = r = (hp * 0.5 + v.fl.bp * 0.9) * a;
+            l = r = (hp * 0.28 + v.fl.bp * 1.0) * a;
             if (ts > p.d * 7) v.on = false;
             break;
           }
@@ -525,8 +541,16 @@ export const musicSynth = (sr: number) => {
         this.dlyL[w] = this.yL[i] * g + this.dlyLp[0];
         this.dlyR[w] = this.dlyLp[1];
         this.dlyW = (w + 1) % dlyLen;
-        const L = ml + this.dL[i] + dl * 0.8;
-        const R = mr + this.dR[i] + dr * 0.8;
+        let L = ml + this.dL[i] + dl * 0.8;
+        let R = mr + this.dR[i] + dr * 0.8;
+        this.loL += (L - this.loL) * LOK;
+        this.loR += (R - this.loR) * LOK;
+        L -= 0.45 * this.loL;
+        R -= 0.45 * this.loR;
+        this.hiL += (L - this.hiL) * HIK;
+        this.hiR += (R - this.hiR) * HIK;
+        L = this.hiL;
+        R = this.hiR;
         outL[off + i] = sat(L * 0.45 * lev);
         outR[off + i] = sat(R * 0.45 * lev);
         revL[off + i] = (this.rL[i] * g + dl * 0.25) * lev * 0.6;

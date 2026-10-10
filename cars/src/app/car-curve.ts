@@ -10,7 +10,7 @@ export function curve(k: Keys): (x: number) => number {
   const d: number[] = [];
   for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i] || 1e-6));
   const m: number[] = [d[0] ?? 0];
-  for (let i = 1; i < n - 1; i++) m.push(d[i - 1] * d[i] <= 0 ? 0 : (3 * (xs[i + 1] - xs[i - 1])) / ((2 * xs[i + 1] - xs[i] - xs[i - 1]) / d[i - 1] + (xs[i + 1] - 2 * xs[i] + xs[i - 1]) / d[i]));
+  for (let i = 1; i < n - 1; i++) m.push(d[i - 1] * d[i] <= 0 ? 0 : (3 * (xs[i + 1] - xs[i - 1])) / ((2 * xs[i + 1] - xs[i] - xs[i - 1]) / d[i - 1] + (xs[i + 1] + xs[i] - 2 * xs[i - 1]) / d[i]));
   m.push(d[n - 2] ?? 0);
   return (x: number) => {
     if (n === 1 || x <= xs[0]) return ys[0];
@@ -57,7 +57,7 @@ export function prep(g: THREE.BufferGeometry, uv1 = true): THREE.BufferGeometry 
   const n = g.attributes.position.count;
   if (!g.attributes.uv) g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2));
   if (uv1 && !g.attributes.uv1) g.setAttribute("uv1", new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2));
-  for (const k of Object.keys(g.attributes)) if (k !== "position" && k !== "normal" && k !== "uv" && !(uv1 && k === "uv1") && k !== "color" && k !== "lamp") g.deleteAttribute(k);
+  for (const k of Object.keys(g.attributes)) if (k !== "position" && k !== "normal" && k !== "uv" && !(uv1 && k === "uv1") && k !== "color" && k !== "lamp" && k !== "pbr") g.deleteAttribute(k);
   return g;
 }
 
@@ -67,6 +67,22 @@ export function paint(g: THREE.BufferGeometry, hex: number): THREE.BufferGeometr
   const a = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) (a[i * 3] = c.r), (a[i * 3 + 1] = c.g), (a[i * 3 + 2] = c.b);
   g.setAttribute("color", new THREE.Float32BufferAttribute(a, 3));
+  return g;
+}
+
+// Kinds in pbr.w for the shared car body material.
+export const KIND = { plain: 0, paint: 1, grille: 2, carbon: 3 } as const;
+
+// Fills the attributes every merged body part shares: color, pbr (roughness, metalness, clearcoat, kind) and lamp id.
+export function finish(g: THREE.BufferGeometry, hex: number, rough: number, metal: number, cc = 0, kind = 0, lamp = 0): THREE.BufferGeometry {
+  if (!g.attributes.color) paint(g, hex);
+  const n = g.attributes.position.count;
+  if (!g.attributes.pbr) {
+    const a = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) a.set([rough, metal, cc, kind], i * 4);
+    g.setAttribute("pbr", new THREE.Float32BufferAttribute(a, 4));
+  }
+  if (!g.attributes.lamp) g.setAttribute("lamp", new THREE.Float32BufferAttribute(new Float32Array(n).fill(lamp), 1));
   return g;
 }
 

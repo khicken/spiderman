@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import type { CarSpec } from "./contracts";
-import { curve, type Keys, steps, clamp, mirrorX } from "./car-curve";
+import { curve, type Keys, steps, clamp, mirrorX, finish } from "./car-curve";
 
 // Body shape per car. f runs 0 (front tip) .. 1 (rear tip). Heights in keys are fractions of body height.
 export type Shape = {
   ovF: number; // front overhang share of (length - wheelbase)
+  cut?: readonly [number, number]; // m shaved off the drawn front and rear overhangs
   w: Keys; // half width / (width / 2)
   yB: Keys; // floor height above rideH, m
   yS: Keys; // shoulder (widest line) / height
@@ -13,8 +14,10 @@ export type Shape = {
   vw?: number; // valley half width / half width
   n: number; // lower section exponent, higher is boxier
   m: number; // upper section exponent
-  tuck: number;
+  tuck: number | Keys; // lower section pull-in, per f when keyed
   crease?: readonly [number, number]; // lower section height 0..1, outward bulge / half width
+  blade?: { y: Keys; d: Keys; w: number }; // sharp character line: height 0..1 and outward m per f, tent half width
+  dents?: readonly { f: readonly [number, number]; y: readonly [number, number]; d: number }[]; // side scoops, open toward the front
   capF: readonly [number, number]; // nose fillet radius m, exponent
   capR: readonly [number, number];
   arch: number; // arch radius / wheel radius
@@ -29,6 +32,8 @@ export type Shape = {
     fG?: number; // rear glass end
     glassRoof?: boolean;
     blackPillars?: boolean;
+    aw?: number; // A pillar width in the greenhouse section param, 0.1 max
+
   };
 };
 
@@ -42,15 +47,17 @@ export function makeDims(spec: CarSpec, sh: Shape, rearWide: number): Dims {
   const axF = b.wheelbase * (1 - spec.frontW);
   const axR = -b.wheelbase * spec.frontW;
   const ov = b.length - b.wheelbase;
+  const [c0, c1] = sh.cut ?? [0, 0];
   const tw = spec.tire.width > 0.1 && spec.tire.width < 0.5 ? spec.tire.width : 0.25;
   return {
-    L: b.length, W: b.width, H: b.height, wb: b.wheelbase, tf: b.trackF, tr: b.trackR, R: b.wheelR, ride: b.rideH,
-    axF, axR, zF: axF + ov * sh.ovF, zR: axR - ov * (1 - sh.ovF), tireF: tw * (rearWide > 1.05 ? 0.88 : 1), tireR: tw * (rearWide > 1.05 ? 0.88 * rearWide : 1), cgH: spec.cgH,
+    L: b.length - c0 - c1, W: b.width, H: b.height, wb: b.wheelbase, tf: b.trackF, tr: b.trackR, R: b.wheelR, ride: b.rideH,
+    axF, axR, zF: axF + ov * sh.ovF - c0, zR: axR - ov * (1 - sh.ovF) + c1, tireF: tw * (rearWide > 1.05 ? 0.88 : 1), tireR: tw * (rearWide > 1.05 ? 0.88 * rearWide : 1), cgH: spec.cgH,
   };
 }
 
-const A0 = 0.07;
-const A1 = 0.93;
+const smoothT = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+export const A0 = 0.07;
+export const A1 = 0.93;
 const P2 = Math.PI / 2;
 
 export type Surface = ReturnType<typeof createSurface>;
@@ -61,7 +68,9 @@ export function createSurface(d: Dims, sh: Shape) {
   const vw = sh.vw ?? 0.6;
   const fF = sh.capF[0] / d.L;
   const fR = sh.capR[0] / d.L;
-  const sec = { w: 0, yB: 0, yS: 0, yT: 0, v: 0 };
+  const sec = { w: 0, yB: 0, yS: 0, yT: 0, v: 0, tk: 0, f: 0 };
+  const bY = sh.blade ? curve(sh.blade.y) : null, bD = sh.blade ? curve(sh.blade.d) : null;
+  const cK = typeof sh.tuck === "number" ? null : curve(sh.tuck);
   const ar = d.R * sh.arch + 0.05;
   // Fenders always clear the arch: lift the shoulder over each wheel with a smooth max.
   const archTop = (z: number) => {
@@ -82,6 +91,8 @@ export function createSurface(d: Dims, sh: Shape) {
     sec.yS = smax(cS(f) * d.H, archTop(d.zF - f * d.L), 0.08);
     sec.yT = smax(cT(f) * d.H, sec.yS + 0.015, 0.04);
     sec.v = cV(f);
+    sec.tk = cK ? cK(f) : (sh.tuck as number);
+    sec.f = f;
   };
   const valley = (x: number) => sec.v * Math.exp(-Math.pow(x / (vw * sec.w), 4));
   const cr = sh.crease;
@@ -95,11 +106,23 @@ export function createSurface(d: Dims, sh: Shape) {
     if (v <= 0.5) {
       const p = even(v / 0.5, sh.n);
       const yn = 1 - Math.pow(Math.cos(p), 2 / sh.n);
-      let x = sec.w * Math.pow(Math.sin(p), 2 / sh.n) * (1 - sh.tuck * (1 - yn) * (1 - yn));
+      let x = sec.w * Math.pow(Math.sin(p), 2 / sh.n) * (1 - sec.tk * (1 - yn) * (1 - yn));
       if (cr) {
         const k = Math.max(0, 1 - Math.abs(yn - cr[0]) / 0.22);
         x += sec.w * cr[1] * k * k;
       }
+      if (bY && bD) {
+        const k = Math.max(0, 1 - ((yn - bY(sec.f)) / sh.blade!.w) ** 2);
+        x += bD(sec.f) * k * k;
+      }
+      if (sh.dents)
+        for (const dn of sh.dents) {
+          const [f0, f1] = dn.f, [y0, y1] = dn.y;
+          if (sec.f <= f0 || sec.f >= f1 || yn <= y0 || yn >= y1) continue;
+          const tf = smoothT((sec.f - f0) / (f1 - f0 - 0.025)) * smoothT((f1 - sec.f) / 0.025);
+          const tyv = smoothT((yn - y0) / 0.2) * smoothT((y1 - yn) / 0.2);
+          x -= dn.d * tf * tyv;
+        }
       out.set(x, sec.yB + (sec.yS - sec.yB) * yn, 0);
     } else {
       const p = P2 - even(1 - (v - 0.5) / 0.5, sh.m);
@@ -159,10 +182,21 @@ export function createSurface(d: Dims, sh: Shape) {
     }
     return (lo + hi) / 2;
   };
+  // Lower half ring param v at relative height yn (0 floor, 1 shoulder).
+  const vLow = (yn: number) => {
+    const target = Math.acos(Math.pow(clamp(1 - yn, 0, 1), sh.n / 2));
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      if (even(mid, sh.n) < target) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 4;
+  };
   const width = (f: number) => (cw(f) * d.W) / 2;
   const shoulder = (f: number) => cS(f) * d.H;
   const floor = (f: number) => d.ride + cB(f);
-  return { at, topY, vTop, width, shoulder, floor, fOf, aOf, zOf, fAt, d, sh };
+  return { at, topY, vTop, vLow, width, shoulder, floor, fOf, aOf, zOf, fAt, d, sh };
 }
 
 const ta = new THREE.Vector3(), tb = new THREE.Vector3(), tc = new THREE.Vector3(), td = new THREE.Vector3(), tn = new THREE.Vector3();
@@ -239,7 +273,7 @@ export function buildBody(S: Surface, res: { na: number; nv: number; ng: number 
   const glass: THREE.BufferGeometry[] = [];
   const trim: THREE.BufferGeometry[] = [];
   if (sh.gh) greenhouse(S, res.ng, paint, glass, trim);
-  for (const ar of arches) for (const s of [1, -1]) trim.push(liner(ar.z, d.R, ar.r * 0.985, ar.xi - 0.02, S.width(S.fAt(ar.z)) - 0.004, s));
+  for (const ar of arches) for (const s of [1, -1]) trim.push(finish(liner(ar.z, d.R, ar.r * 0.985, ar.xi - 0.02, S.width(S.fAt(ar.z)) - 0.004, s), 0x0b0b0c, 0.92, 0));
   const merge = (gs: THREE.BufferGeometry[]) => mergeAll(gs);
   const proxy = mergeAll([left, mirrorX(left)]);
   return { paint: merge(paint), glass: glass.length ? merge(glass) : null, trim: merge(trim), proxy };
@@ -265,7 +299,7 @@ function fixWinding(g: THREE.BufferGeometry) {
 }
 
 export function mergeAll(gs: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const keys = ["position", "normal", "uv", "uv1", "color", "lamp"].filter((k) => gs.every((g) => g.attributes[k]));
+  const keys = ["position", "normal", "uv", "uv1", "color", "lamp", "pbr"].filter((k) => gs.every((g) => g.attributes[k]));
   const out = new THREE.BufferGeometry();
   let nv = 0, ni = 0;
   for (const g of gs) (nv += g.attributes.position.count), (ni += g.index ? g.index.count : g.attributes.position.count);
@@ -317,7 +351,7 @@ function liner(cz: number, cy: number, r: number, x0: number, x1: number, side: 
   return g;
 }
 
-const T_BELT = 0.035, T_SIDE = 0.4, T_TOP = 0.5, T_REAR = 0.68;
+const T_BELT = 0.035, T_SIDE = 0.48, T_TOP = 0.56, T_REAR = 0.7;
 
 function greenhouse(S: Surface, ng: number, paint: THREE.BufferGeometry[], glass: THREE.BufferGeometry[], trim: THREE.BufferGeometry[]) {
   const { d } = S;
@@ -328,7 +362,8 @@ function greenhouse(S: Surface, ng: number, paint: THREE.BufferGeometry[], glass
   const dB = 0.012;
   const roof = curve(g.roof), cwb = curve(g.wb), cwr = curve(g.wr);
   const ss = steps(Math.round(ng * 1.4), [s1, s2, sC, sG, sB - dB, sB + dB]);
-  const ts = steps(Math.round(ng * 0.6), [T_BELT, T_SIDE, T_TOP, T_REAR]);
+  const tA = T_TOP - (g.aw ?? 0.1);
+  const ts = steps(Math.round(ng * 0.6), [T_BELT, T_SIDE, tA, T_TOP, T_REAR]);
   const nS = ss.length, nT = ts.length;
   const pos = new Float32Array(nS * nT * 3);
   const uv = new Float32Array(nS * nT * 2);
@@ -365,7 +400,7 @@ function greenhouse(S: Surface, ng: number, paint: THREE.BufferGeometry[], glass
       const sm = (ss[i] + ss[i + 1]) / 2, tm = (ts[j] + ts[j + 1]) / 2;
       let c = 0;
       if (tm > T_TOP) c = sm < s1 ? 1 : sm < s2 ? (g.glassRoof ? 1 : 0) : sm < sG && tm > T_REAR ? 1 : 0;
-      else if (tm > T_SIDE) c = g.blackPillars && sm < s2 ? 2 : 0;
+      else if (tm > T_SIDE && !(sm < s1 && tm < tA)) c = g.blackPillars && sm < s2 ? 2 : 0;
       else if (tm < T_BELT) c = sm < sC ? 2 : 0;
       else if (sm < sC) c = sB > 0 && Math.abs(sm - sB) < dB ? 2 : 1;
       cls.push(c, c);
@@ -388,6 +423,7 @@ function greenhouse(S: Surface, ng: number, paint: THREE.BufferGeometry[], glass
     if (!ix.length) return;
     const gg = geo.clone();
     gg.setIndex(ix);
+    if (c === 2) finish(gg, 0x050506, 0.14, 0, 0.6);
     outs[c].push(gg, mirrorX(gg));
   });
 }

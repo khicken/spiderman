@@ -5,6 +5,8 @@ import * as THREE from "three";
 import type { Audio, CarId, EngineVoice, MapId, MusicState, Sfx, Surface, Weather } from "../../contracts";
 import { CARS } from "../../cars";
 import { createAudio } from "../../audio";
+import { workletCode } from "../../audio-code";
+import { engineProfile } from "../../audio-engine";
 import { SFX } from "../../audio-sfx";
 import { input, passBy, renderAmbience, renderEngine, renderMusic, renderSfx, skidRun, steady, sweep } from "./render";
 
@@ -20,6 +22,17 @@ const SURF: Surface[] = ["asphalt", "curb", "grass", "gravel", "dirt", "snow", "
 const WEATHER: Weather[] = ["clear", "overcast", "rain", "fog", "snow"];
 const STATES: MusicState[] = ["menu", "race", "final", "results", "off"];
 
+// Loads a tiny worklet and the game worklet without any automation attached, for browsers launched by hand.
+async function probeWorklet() {
+  const t0 = performance.now();
+  const wait = (p: Promise<unknown>) => Promise.race([p.then(() => `ok ${Math.round(performance.now() - t0)}ms`, (e) => `err ${e}`), new Promise((r) => setTimeout(() => r("timeout"), 5000))]);
+  const blob = (s: string) => URL.createObjectURL(new Blob([s], { type: "application/javascript" }));
+  const c = new AudioContext();
+  const tiny = await wait(c.audioWorklet.addModule(blob('registerProcessor("x", class extends AudioWorkletProcessor { process() { return true } })')));
+  const game = await wait(new AudioContext().audioWorklet.addModule(blob(workletCode())));
+  return JSON.stringify({ tiny, game, state: c.state });
+}
+
 type Ctl = { car: CarId; rpm: number; thr: number; auto: boolean; skid: number; surface: Surface; tunnel: boolean; cockpit: boolean };
 
 export default function AudioLab() {
@@ -31,10 +44,13 @@ export default function AudioLab() {
 
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;
+    if (location.search.includes("probe")) void probeWorklet().then((r) => (document.title = "probe " + r));
     w.__audioLab = {
+      code: () => workletCode(),
+      profile: (id: string) => engineProfile(CARS.find((c) => c.id === id)!, 48000, false),
       async engine(id: string, kind: string, arg: number[] = []) {
         const spec = CARS.find((c) => c.id === id)!;
-        const [fr, dur] = kind === "sweep" ? [sweep(spec), 14] : kind === "steady" ? [steady(arg[0], arg[1]), 2] : kind === "passby" ? [passBy(), 6] : [skidRun(kind.slice(5) as Surface), 4];
+        const [fr, dur] = kind === "sweep" ? [sweep(spec), 14] : kind === "steady" ? [steady(arg[0], arg[1], 2, 60, { speed: arg[5] ?? 20, skid: arg[6] ?? 0, load: arg[1] > 0.05 ? arg[1] : -0.6 }), 2] : kind === "passby" ? [passBy(), 6] : [skidRun(kind.slice(5) as Surface), 4];
         const r = await renderEngine(spec, fr, dur, { count: arg[2] ?? 1, player: arg[3] !== 0, ear: arg[4] === 1 ? [0, 0.6, 0.2] : undefined });
         return { L: b64(r.L), R: b64(r.R), ms: r.ms };
       },

@@ -5,21 +5,28 @@ import type { Surface } from "./car-body";
 import { createProjector, decal, strip, type Axis, type DecalOpts, type Projector } from "./car-decal";
 import type { Style } from "./car-styles";
 import type { Pen } from "./car-tex";
-import { lerp, mirrorX, paint, prep } from "./car-curve";
+import { finish, lerp, mirrorX, paint, prep } from "./car-curve";
 import { LOOKS } from "./car-looks";
 
 export type Parts = {
   paint: THREE.BufferGeometry[];
   trim: THREE.BufferGeometry[];
-  chrome: THREE.BufferGeometry[];
+  carbon: THREE.BufferGeometry[];
   lamp: THREE.BufferGeometry[];
   grille: THREE.BufferGeometry[];
-  interior: THREE.BufferGeometry[];
   glass: THREE.BufferGeometry[];
   heads: THREE.Vector3[];
   panel: (p: Pen) => void;
 };
-type Target = "paint" | "trim" | "chrome" | "grille" | "interior" | "glass";
+// trim, chrome, gloss, rubber and interior all land in the trim mesh with their own vertex roughness and metalness.
+export type Target = "paint" | "trim" | "gloss" | "rubber" | "chrome" | "carbon" | "grille" | "interior" | "glass";
+const FINISH: Partial<Record<Target, readonly [number, number, number, number]>> = {
+  trim: [0x0c0d0e, 0.62, 0, 0],
+  gloss: [0x060607, 0.12, 0, 0.6],
+  rubber: [0x0a0a0a, 0.9, 0, 0],
+  chrome: [0xd8dadc, 0.06, 1, 0],
+  interior: [0x161618, 0.8, 0, 0],
+};
 
 export type Ctx = ReturnType<typeof makeCtx>;
 
@@ -48,14 +55,19 @@ function makeCtx(S: Surface, P: Projector, st: Style, lod: number, out: Parts, p
     g.setAttribute("lamp", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(id), 1));
     return prep(g);
   };
+  const bin = (t: Target | "lamp") => (t === "carbon" ? (st.carbon ? out.carbon : out.trim) : t !== "lamp" && FINISH[t] ? out.trim : out[t as "paint" | "grille" | "glass" | "lamp"]);
   const push = (t: Target | "lamp", g: THREE.BufferGeometry | null, sym: boolean) => {
     if (!g) return;
-    const list = out[t];
+    const list = bin(t);
     list.push(g);
     if (sym) list.push(mirrorX(g));
   };
   const colored = (t: Target, g: THREE.BufferGeometry, color?: number) => {
-    if (t === "chrome" || t === "interior") paint(g, color ?? 0xd8dadc);
+    const f = FINISH[t] ?? (t === "carbon" && !st.carbon ? FINISH.gloss : null);
+    if (f) {
+      if (color !== undefined) paint(g, color);
+      finish(g, f[0], f[1], f[2], f[3]);
+    }
     return prep(g);
   };
   const hp = { p: new THREE.Vector3(), n: new THREE.Vector3(), ok: false };
@@ -72,8 +84,10 @@ function makeCtx(S: Surface, P: Projector, st: Style, lod: number, out: Parts, p
       if (g) push("lamp", tag(g, id, color), sym);
       return g;
     },
-    lampStrip(axis: Axis, sign: number, path: readonly (readonly [number, number])[], w: number, id: number, color: number, off = 0.006, sym = true) {
-      const g = strip(P, axis, sign, path, w, off);
+    lampStrip(axis: Axis, sign: number, path: readonly (readonly [number, number])[], w: number, id: number, color: number, off = 0.006, sym = true, tilt = 0) {
+      const f = tilt ? frame(tilt) : null;
+      const g = strip(f ? f.P : P, axis, sign, path, w, off);
+      if (g && f) g.applyMatrix4(f.back);
       if (g) push("lamp", tag(g, id, color), sym);
     },
     dec(t: Target, o: Lamp, sym = true, color?: number) {
@@ -102,11 +116,11 @@ function makeCtx(S: Surface, P: Projector, st: Style, lod: number, out: Parts, p
 }
 
 export function buildParts(id: CarId, S: Surface, P: Projector, st: Style, lod: number, proxy: THREE.BufferGeometry): Parts {
-  const out: Parts = { paint: [], trim: [], chrome: [], lamp: [], grille: [], interior: [], glass: [], heads: [], panel: () => {} };
+  const out: Parts = { paint: [], trim: [], carbon: [], lamp: [], grille: [], glass: [], heads: [], panel: () => {} };
   const pens: ((p: Pen) => void)[] = [];
   const c = makeCtx(S, P, st, lod, out, pens, proxy);
   cabinFloor(c);
-  if (lod > 0) interior(c);
+  if (lod > 1) interior(c);
   LOOKS[id](c);
   out.panel = (p) => pens.forEach((fn) => fn(p));
   return out;
@@ -189,7 +203,7 @@ export function mirrors(c: Ctx, f: number, color: "paint" | "trim" = "paint") {
   c.geo(color, arm, true);
 }
 
-export function wing(c: Ctx, o: { f: number; y: number; span: number; chord: number; angle?: number; plate?: number; mount?: "swan" | "post" | "none"; t?: "trim" | "paint" }) {
+export function wing(c: Ctx, o: { f: number; y: number; span: number; chord: number; angle?: number; plate?: number; mount?: "swan" | "post" | "none"; t?: Target }) {
   const { S } = c;
   const z = S.zOf(o.f);
   const sh = new THREE.Shape();
@@ -235,7 +249,7 @@ export function wing(c: Ctx, o: { f: number; y: number; span: number; chord: num
 }
 
 // Plate under the nose that follows the front outline.
-export function splitter(c: Ctx, y: number, reach: number, depth = 0.45, t: "trim" = "trim") {
+export function splitter(c: Ctx, y: number, reach: number, depth = 0.45, t: Target = "trim") {
   const pts: THREE.Vector2[] = [];
   const W = c.S.width(0.04) * 0.92;
   const n = 16;
@@ -252,7 +266,7 @@ export function splitter(c: Ctx, y: number, reach: number, depth = 0.45, t: "tri
   c.geo(t, g);
 }
 
-export function diffuser(c: Ctx, fins: number, rise: number, len = 0.55) {
+export function diffuser(c: Ctx, fins: number, rise: number, len = 0.55, t: Target = "trim") {
   const { d } = c;
   const W = c.S.width(0.95) * 0.8;
   const z1 = d.zR + 0.06, z0 = z1 + len;
@@ -261,7 +275,7 @@ export function diffuser(c: Ctx, fins: number, rise: number, len = 0.55) {
   plate.setAttribute("position", new THREE.Float32BufferAttribute([-W, y0, z0, W, y0, z0, -W, y1, z1, W, y1, z1], 3));
   plate.setIndex([0, 2, 1, 1, 2, 3]);
   plate.computeVertexNormals();
-  c.geo("trim", plate);
+  c.geo(t, plate);
   for (let i = 0; i <= fins; i++) {
     const x = -W + (2 * W * i) / fins;
     const s = new THREE.Shape();
@@ -269,7 +283,7 @@ export function diffuser(c: Ctx, fins: number, rise: number, len = 0.55) {
     const g = new THREE.ExtrudeGeometry(s, { depth: 0.012, bevelEnabled: false });
     g.rotateY(Math.PI / 2);
     g.translate(x - 0.006, y0, z0);
-    c.geo("trim", g);
+    c.geo(t, g);
   }
 }
 

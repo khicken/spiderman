@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { dropAfterUpload } from "./render-shared";
 import type { TrackTables } from "./track";
 
 // Rows of vertices along the track joined into quads. Columns run from the track's left to its right.
@@ -39,7 +40,7 @@ export class Rib {
     if (this.nor.length) g.setAttribute("normal", new THREE.Float32BufferAttribute(this.nor, 3));
     else if (normals) g.computeVertexNormals();
     g.computeBoundingSphere();
-    return g;
+    return dropAfterUpload(g);
   }
 }
 

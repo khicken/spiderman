@@ -182,11 +182,12 @@ function conifer(t: TB, kind: TreeKind, r: () => number, detail: number) {
       const a0 = (s / 7) * Math.PI * 2, a1 = ((s + 1) / 7) * Math.PI * 2;
       const P = (a: number, y: number) => [Math.cos(a) * core(y), y, Math.sin(a) * core(y)];
       const A = P(a0, y0), B = P(a1, y0), C = P(a1, y1), D = P(a0, y1);
+      t.col.copy(leaf).multiplyScalar(0.36 + r() * 0.16 + (k / 7) * 0.12);
       for (const Q of [A, C, B, A, D, C]) t.v(Q[0], Q[1], Q[2], Q[0], 0.15, Q[2], BARK[0] + 0.01, BARK[1] + 0.01);
     }
   }
-  const step = detail >= 3 ? 0.62 : detail >= 2 ? 0.8 : 1.1;
-  const per = larch ? 5 : 7;
+  const step = detail >= 3 ? 0.55 : detail >= 2 ? 0.7 : 1.1;
+  const per = larch ? 6 : detail >= 2 ? 9 : 7;
   const b = V(), len = V(), side = V(), cen = V();
   for (let y = 1.6, lvl = 0; y < H - 0.4; y += step * (0.85 + r() * 0.3), lvl++) {
     const tt = (y - 1.6) / (H - 2);

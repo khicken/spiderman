@@ -104,10 +104,10 @@ body {
     0 0 1.5rem -0.25rem var(--color-hot);
 }
 .nav:focus-visible {
-  transform: translateY(-2px);
+  translate: 0 -2px;
 }
 .nav:active {
-  transform: scale(0.97);
+  scale: 0.97;
 }
 .nav:disabled {
   opacity: 0.35;

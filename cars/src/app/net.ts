@@ -1,10 +1,15 @@
-import type { Controls, Entrant, Lobby, Net, NetEvent, VehicleSnap } from "./contracts";
-import { CAR_BYTES, median, newCarFrame, packCar, unpackCar } from "./net-wire";
+import { CARS } from "./cars";
+import type { CarId, Controls, Entrant, Lobby, Net, NetEvent, Track, VehicleSnap, VehicleState } from "./contracts";
 import { INTERP_DELAY, createInterp, type InterpBuffer } from "./net-interp";
+import { createRelay, type Relay } from "./net-relay";
+import { applyRemote, hideRemote, type NetRacer } from "./net-remote";
+import { AI_MAX, CAR_BYTES, aiBytes, median, newCarFrame, packAi, packCar, unpackAi, unpackCar, type AiCar, type CarFrame, type Engine } from "./net-wire";
 
 export { newRoomCode, cleanRoomCode, SNAP } from "./net-wire";
+export type { NetRacer } from "./net-remote";
 
 export const MAX_HUMANS = 8;
+export const MAX_CARS = 12;
 const APP_ID = "kalebkim-cars";
 // Probed live (publish + echo of an ephemeral event). Large, long-lived relays first.
 const RELAYS = [
@@ -19,14 +24,36 @@ const RELAYS = [
 ];
 const STUN = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.cloudflare.com:3478"];
 const SEND_MS = 1000 / 30;
+const RELAY_CAR_MS = 1000 / 12;
+const AI_MS = 1000 / 15;
+const RELAY_AI_MS = 1000 / 10;
 const HELLO_MS = 2000;
 const TIE_MS = 1500;
 const SILENT_MS = 5000; // trystero takes about 12 s to notice a closed tab
+const FALLBACK_MS = 6000; // no data channel by then: the peer is relay only
+const START_MS = 6000;
+const AI_NAMES = ["Rossi", "Kato", "Moreau", "Lindqvist", "Okafor", "Silva", "Brandt", "Nakamura", "Vidal", "Petrov", "Hale"];
+const AI_COLORS = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#bf5af2", "#ff9f0a", "#64d2ff", "#ff375f", "#30d158", "#5e5ce6", "#ffd60a"];
+
+const K = { car: 1, hi: 2, lobby: 3, clk: 4, fin: 5, ai: 6, bye: 7 } as const;
+type Kind = (typeof K)[keyof typeof K];
+const NAMES: Record<Kind, string> = { 1: "car", 2: "hi", 3: "lobby", 4: "clk", 5: "fin", 6: "ai", 7: "bye" };
+const BINARY = new Set<Kind>([K.car, K.ai]);
+
+// ids: humans on the grid in slot order, cars: AI cars after them. Set by the host at the start.
+export type LobbyPlus = Lobby & { ids?: string[]; cars?: CarId[] };
 
 type Hello = { name: string; color: string; car: string; ago: number; spec: boolean };
-type PeerInfo = { e: Entrant; joined: number; spec: boolean; seen: number; buf: InterpBuffer; rtt: number };
+type PeerInfo = {
+  e: Entrant; joined: number; spec: boolean; seen: number; first: number; buf: InterpBuffer;
+  rtts: number[]; rtt: number; delay: number; at: number;
+};
 
-export type NetStats = { connectMs: number | null; rtt: number; jitter: number; bytes: number; sent: number; recv: number };
+export type NetStats = {
+  connectMs: number | null; rtcMs: number | null; relayMs: number | null; rtt: number; jitter: number;
+  bytes: number; aiBytes: number; sent: number; recv: number; relaySent: number; relayRecv: number; transit: number;
+};
+export type Link = { ping: number | null; relay: boolean };
 
 export interface NetPlus extends Net {
   readonly id: string; // my peer id, also my Entrant id
@@ -34,6 +61,16 @@ export interface NetPlus extends Net {
   readonly hostId: string;
   readonly ping: number; // ms round trip to the host
   readonly stats: NetStats;
+  readonly forced: boolean; // ?relay=1
+  readonly relayUp: number;
+  sendCar(snap: VehicleSnap, c: Controls, st?: VehicleState): void;
+  link(id: string): Link | null;
+  start(l: Lobby, car: CarId): void; // host only: fixes the grid and sets the start time
+  grid(car: CarId, paint: string): { e: Entrant; slot: number }[];
+  onGrid(): boolean;
+  tick(racers: readonly NetRacer[], track: Track, now: number, dt: number): void;
+  sendAi(racers: readonly NetRacer[]): void;
+  dnf(left: number): number; // seconds left before DNF on the frames that should show it, else -1
   finish(time: number): void;
   hostNow(): number;
 }
@@ -48,14 +85,19 @@ function iceServers() {
 const safe = <A extends unknown[]>(f: (...a: A) => void) => (...a: A) => {
   try { f(...a); } catch (e) { console.warn("net:", e); }
 };
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const view = (d: ArrayBuffer | Uint8Array) => (d instanceof ArrayBuffer ? new DataView(d) : new DataView(d.buffer, d.byteOffset, d.byteLength));
 
 export function createNet(room: string, me: Entrant): NetPlus {
   const t0 = performance.now();
+  const forced = typeof location !== "undefined" && new URLSearchParams(location.search).get("relay") === "1";
   let id = "";
   let mine: Entrant = { ...me, me: true };
   const peers = new Map<string, PeerInfo>();
+  const rtc = new Set<string>();
   const subs = new Set<(e: NetEvent) => void>();
-  let lobby: Lobby | null = null;
+  let lobby: LobbyPlus | null = null;
   let hostId = "";
   let offset = 0;
   const offsets: { o: number; rtt: number }[] = [];
@@ -64,24 +106,47 @@ export function createNet(room: string, me: Entrant): NetPlus {
   let decidedSpec = false;
   let left = false;
   let lastSend = -1e9;
+  let lastRelayCar = -1e9;
+  let lastAi = -1e9;
+  let lastRelayAi = -1e9;
   let seq = 0;
-  const stats: NetStats = { connectMs: null, rtt: 0, jitter: 0, bytes: CAR_BYTES, sent: 0, recv: 0 };
-  const sendBuf = new ArrayBuffer(CAR_BYTES);
-  const sendView = new DataView(sendBuf);
+  let aiSeq = 0;
+  const stats: NetStats = {
+    connectMs: null, rtcMs: null, relayMs: null, rtt: 0, jitter: 0, bytes: CAR_BYTES, aiBytes: 0,
+    sent: 0, recv: 0, relaySent: 0, relayRecv: 0, transit: 0,
+  };
+  const sendBuf = new Uint8Array(CAR_BYTES);
+  const sendView = new DataView(sendBuf.buffer);
+  const aiBuf = new Uint8Array(aiBytes(AI_MAX));
+  const aiView = new DataView(aiBuf.buffer);
+  const aiCars: AiCar[] = Array.from({ length: AI_MAX }, () => ({ slot: 0, snap: new Float32Array(64), c: null as unknown as Controls, e: { rpm: 0, gear: 0, limiter: false, shifting: false } }));
+  const aiBufs: InterpBuffer[] = Array.from({ length: AI_MAX }, createInterp);
+  const engine: Engine = { rpm: 0, gear: 0, limiter: false, shifting: false };
   const frame = newCarFrame();
   const entrants: Entrant[] = [];
+  const finished = new Map<string, number>();
+  let dnfShown = -1;
   let timer: ReturnType<typeof setInterval> | null = null;
+  let relay: Relay | null = null;
+  const own = new Float32Array(64);
 
-  type Act<T> = { send: (d: T, o?: { target?: string | string[] }) => Promise<void> };
-  let carA: Act<ArrayBuffer | Uint8Array> | null = null;
-  let helloA: Act<Hello> | null = null;
-  let lobbyA: Act<Lobby> | null = null;
-  let clockA: Act<number[]> | null = null;
-  let finA: Act<number> | null = null;
+  type Act = { send: (d: never, o?: { target?: string | string[] }) => Promise<void> };
+  const acts = new Map<Kind, Act>();
   let leaveRoom: (() => void) | null = null;
 
   const emit = (e: NetEvent) => subs.forEach((cb) => { try { cb(e); } catch (err) { console.warn("net cb:", err); } });
   const fire = (p: Promise<void> | undefined) => p?.catch(() => {});
+  const relayPeer = () => { for (const pid of peers.keys()) if (!rtc.has(pid)) return true; return false; };
+
+  function out(k: Kind, data: unknown, to?: string, lossy = false) {
+    const a = acts.get(k);
+    if (a && (to ? rtc.has(to) : rtc.size > 0)) fire(a.send(data as never, to ? { target: to } : undefined));
+    if (!relay || !relay.up) return;
+    if (to ? rtc.has(to) : !relayPeer() && k !== K.hi && k !== K.bye) return;
+    const body = BINARY.has(k) ? (data as Uint8Array) : enc.encode(JSON.stringify(data));
+    stats.relaySent++;
+    relay.publish(k, body, lossy, to);
+  }
 
   function rebuild() {
     entrants.length = 0;
@@ -103,7 +168,7 @@ export function createNet(room: string, me: Entrant): NetPlus {
     hostId = best.id;
     offsets.length = 0;
     // a new host keeps its offset, so the room clock and lobby.startAt stay valid
-    if (hostId === id && lobby) fire(lobbyA?.send(lobby));
+    if (hostId === id && lobby) out(K.lobby, lobby);
     if (lobby) emit({ type: "lobby", lobby });
   }
 
@@ -111,6 +176,7 @@ export function createNet(room: string, me: Entrant): NetPlus {
     const p = peers.get(pid);
     if (!p) return;
     peers.delete(pid);
+    rtc.delete(pid);
     rebuild();
     emit({ type: "leave", who: p.e });
     elect();
@@ -127,11 +193,89 @@ export function createNet(room: string, me: Entrant): NetPlus {
     const was = spectating;
     spectating = raceOn || humans >= MAX_HUMANS;
     decidedSpec = true;
-    if (was !== spectating) fire(helloA?.send(hello()));
+    if (was !== spectating) out(K.hi, hello());
   }
 
   function hostNow() {
     return performance.now() + offset;
+  }
+
+  function onHello(h: Hello, pid: string) {
+    const now = performance.now();
+    let p = peers.get(pid);
+    const joined = now - h.ago;
+    if (!p) {
+      p = { e: { id: pid, name: "", color: "", car: "gt3", me: false, ai: false }, joined, spec: !!h.spec, seen: now, first: now, buf: createInterp(), rtts: [], rtt: 0, delay: INTERP_DELAY, at: 0 };
+      peers.set(pid, p);
+      Object.assign(p.e, { name: String(h.name).slice(0, 24), color: String(h.color), car: h.car });
+      if (stats.connectMs === null) stats.connectMs = now - t0;
+      rebuild();
+      emit({ type: "join", who: p.e });
+      out(K.hi, hello(), pid);
+      if (hostId === id && lobby) out(K.lobby, lobby, pid);
+    } else {
+      p.joined = Math.min(p.joined, joined);
+      Object.assign(p.e, { name: String(h.name).slice(0, 24), color: String(h.color), car: h.car });
+    }
+    p.spec = !!h.spec;
+    elect();
+  }
+
+  function onClock(m: number[], pid: string) {
+    if (m[0] === 0) { out(K.clk, [1, m[1], hostNow()], pid); return; }
+    const p = peers.get(pid);
+    const now = performance.now();
+    const rtt = now - m[1];
+    if (!p || !(rtt >= 0 && rtt < 5000)) return;
+    p.rtts.push(rtt);
+    if (p.rtts.length > 5) p.rtts.shift();
+    p.rtt = median(p.rtts);
+    if (pid !== hostId) return;
+    offsets.push({ o: m[2] + rtt / 2 - now, rtt });
+    if (offsets.length > 21) offsets.shift();
+    // the slowest samples carry the most queueing error
+    const good = [...offsets].sort((a, b) => a.rtt - b.rtt).slice(0, Math.max(1, Math.ceil(offsets.length * 0.67)));
+    offset = median(good.map((s) => s.o));
+    ping = p.rtt;
+  }
+
+  function recv(k: Kind, data: unknown, pid: string, viaRelay: boolean) {
+    if (pid === id || left) return;
+    const p = peers.get(pid);
+    if (p) p.seen = performance.now();
+    if (viaRelay) stats.relayRecv++;
+    if (k === K.hi) return onHello(data as Hello, pid);
+    if (!p) return;
+    if (k === K.lobby) {
+      if (pid !== hostId) return;
+      const l = data as LobbyPlus;
+      lobby = l;
+      if (!decidedSpec || (spectating && (l.startAt === null || l.startAt > hostNow()))) decideSpectate();
+      emit({ type: "lobby", lobby: l });
+    } else if (k === K.car) {
+      if (p.spec || (viaRelay && rtc.has(pid))) return;
+      if (!unpackCar(view(data as Uint8Array), frame)) return;
+      p.buf.push(frame, hostNow());
+      stats.recv++;
+    } else if (k === K.ai) {
+      if (pid !== hostId || (viaRelay && rtc.has(pid))) return;
+      const now = hostNow();
+      unpackAi(view(data as Uint8Array), frame, (slot, f) => { if (slot < AI_MAX) aiBufs[slot].push(f, now); });
+    } else if (k === K.clk) onClock(data as number[], pid);
+    else if (k === K.fin) {
+      const t = Number(data);
+      if (finished.get(pid) === t) return;
+      finished.set(pid, t);
+      emit({ type: "finish", id: pid, time: t });
+    } else if (k === K.bye) drop(pid);
+  }
+
+  function onRelay(from: string, kind: number, body: Uint8Array) {
+    if (!(kind in NAMES)) return;
+    const k = kind as Kind;
+    try {
+      recv(k, BINARY.has(k) ? body : JSON.parse(dec.decode(body)), from, true);
+    } catch (e) { console.warn("net relay:", e); }
   }
 
   async function connect() {
@@ -142,86 +286,52 @@ export function createNet(room: string, me: Entrant): NetPlus {
       mine = { ...mine, id, me: true };
       hostId = id;
       rebuild();
-      const r = joinRoom(
-        { appId: APP_ID, relayConfig: { urls: RELAYS, warnOnRelayFailure: false }, rtcConfig: { iceServers: iceServers() } },
-        "r-" + room,
-        { onJoinError: (d) => console.warn("net join:", d.error) },
-      );
-      leaveRoom = () => r.leave();
-      const car = r.makeAction<ArrayBuffer | Uint8Array>("car");
-      const hi = r.makeAction<Hello>("hi");
-      const lb = r.makeAction<Lobby>("lobby");
-      const ck = r.makeAction<number[]>("clk");
-      const fin = r.makeAction<number>("fin");
-      carA = car; helloA = hi; lobbyA = lb; clockA = ck; finA = fin;
-
-      r.onPeerJoin = safe((pid: string) => {
-        if (stats.connectMs === null) stats.connectMs = performance.now() - t0;
-        fire(hi.send(hello(), { target: pid }));
-        if (hostId === id && lobby) fire(lb.send(lobby, { target: pid }));
-      });
-      r.onPeerLeave = safe(drop);
-      hi.onMessage = safe((h: Hello, { peerId }: { peerId: string }) => {
-        const now = performance.now();
-        let p = peers.get(peerId);
-        const joined = now - h.ago;
-        if (!p) {
-          p = { e: { id: peerId, name: "", color: "", car: "gt3", me: false, ai: false }, joined, spec: h.spec, seen: now, buf: createInterp(), rtt: 0 };
-          peers.set(peerId, p);
-          Object.assign(p.e, { name: String(h.name).slice(0, 24), color: String(h.color), car: h.car });
-          rebuild();
-          emit({ type: "join", who: p.e });
-        } else {
-          p.joined = Math.min(p.joined, joined);
-          Object.assign(p.e, { name: String(h.name).slice(0, 24), color: String(h.color), car: h.car });
+      relay = createRelay(room, id, onRelay);
+      if (!forced) {
+        const r = joinRoom(
+          { appId: APP_ID, relayConfig: { urls: RELAYS, warnOnRelayFailure: false }, rtcConfig: { iceServers: iceServers() } },
+          "r-" + room,
+          { onJoinError: (d) => console.warn("net join:", d.error) },
+        );
+        leaveRoom = () => r.leave();
+        for (const k of Object.keys(NAMES).map(Number) as Kind[]) {
+          const a = r.makeAction<never>(NAMES[k]);
+          acts.set(k, a as unknown as Act);
+          a.onMessage = safe((d: unknown, { peerId }: { peerId: string }) => recv(k, d, peerId, false));
         }
-        p.spec = !!h.spec;
-        p.seen = now;
-        elect();
-      });
-      lb.onMessage = safe((l: Lobby, { peerId }: { peerId: string }) => {
-        if (peerId !== hostId) return;
-        lobby = l;
-        if (!decidedSpec || (spectating && (l.startAt === null || l.startAt > hostNow()))) decideSpectate();
-        emit({ type: "lobby", lobby: l });
-      });
-      car.onMessage = safe((data: ArrayBuffer | Uint8Array, { peerId }: { peerId: string }) => {
-        const p = peers.get(peerId);
-        if (!p || p.spec) return;
-        const v = data instanceof ArrayBuffer ? new DataView(data) : new DataView(data.buffer, data.byteOffset, data.byteLength);
-        if (!unpackCar(v, frame)) return;
-        p.buf.push(frame, hostNow());
-        p.seen = performance.now();
-        stats.recv++;
-      });
-      ck.onMessage = safe((m: number[], { peerId }: { peerId: string }) => {
-        const hp = peers.get(peerId);
-        if (hp) hp.seen = performance.now();
-        if (m[0] === 0) { fire(ck.send([1, m[1], hostNow()], { target: peerId })); return; }
-        if (peerId !== hostId) return;
-        const now = performance.now();
-        const rtt = now - m[1];
-        if (!(rtt >= 0 && rtt < 5000)) return;
-        offsets.push({ o: m[2] + rtt / 2 - now, rtt });
-        if (offsets.length > 21) offsets.shift();
-        // the slowest samples carry the most queueing error
-        const good = [...offsets].sort((a, b) => a.rtt - b.rtt).slice(0, Math.max(1, Math.ceil(offsets.length * 0.67)));
-        offset = median(good.map((s) => s.o));
-        ping = median(offsets.slice(-5).map((s) => s.rtt));
-      });
-      fin.onMessage = safe((time: number, { peerId }: { peerId: string }) => emit({ type: "finish", id: peerId, time }));
+        r.onPeerJoin = safe((pid: string) => {
+          if (stats.rtcMs === null) stats.rtcMs = performance.now() - t0;
+          rtc.add(pid);
+          out(K.hi, hello(), pid);
+          if (hostId === id && lobby) out(K.lobby, lobby, pid);
+        });
+        r.onPeerLeave = safe((pid: string) => {
+          rtc.delete(pid);
+          const p = peers.get(pid);
+          if (!p) return;
+          // the relay may still reach it: give it a moment to say hello there
+          if (relay?.up) p.seen = Math.min(p.seen, performance.now() - SILENT_MS + 2500);
+          else drop(pid);
+        });
+      }
 
       let tick = 0;
       timer = setInterval(safe(() => {
         tick++;
-        if (hostId !== id && clockA && (tick % 2 === 0 || offsets.length < 8)) fire(clockA.send([0, performance.now()], { target: hostId }));
-        if (tick % 4 === 0) fire(helloA?.send(hello()));
-        if (tick % 4 === 0 && hostId === id && lobby) fire(lobbyA?.send(lobby));
-        if (!decidedSpec && (lobby || performance.now() - t0 > 5000)) decideSpectate();
-        let j = 0;
-        for (const p of peers.values()) j = Math.max(j, p.buf.jitter);
-        stats.jitter = j;
         const now = performance.now();
+        if (stats.relayMs === null && relay?.up) stats.relayMs = now - t0;
+        if (hostId !== id && (tick % 2 === 0 || offsets.length < 8)) out(K.clk, [0, now], hostId);
+        if (tick % 2 === 0) for (const pid of peers.keys()) if (pid !== hostId) out(K.clk, [0, now], pid);
+        if (tick % 4 === 0) out(K.hi, hello());
+        if (tick % 4 === 0 && hostId === id && lobby) out(K.lobby, lobby);
+        if (!decidedSpec && (lobby || now - t0 > 5000)) decideSpectate();
+        let j = 0, tr = 0;
+        for (const p of peers.values()) {
+          j = Math.max(j, p.buf.jitter);
+          if (!rtc.has(p.e.id)) tr = Math.max(tr, p.buf.transit);
+        }
+        stats.jitter = j;
+        stats.transit = tr;
         for (const [pid, p] of peers) if (now - p.seen > SILENT_MS) drop(pid);
         stats.rtt = ping;
       }), HELLO_MS / 4);
@@ -231,12 +341,52 @@ export function createNet(room: string, me: Entrant): NetPlus {
   }
   void connect();
 
-  function defaultLobby(): Lobby {
-    return { map: "monaco", mode: "race", laps: 3, weather: "map", hour: "map", startAt: null, ai: 0 };
+  const bye = () => { try { out(K.bye, 1); } catch {} };
+  if (typeof window !== "undefined") window.addEventListener("pagehide", bye);
+
+  function setLobby(l: Lobby) {
+    if (hostId !== id) return;
+    lobby = l;
+    if (l.startAt === null || l.startAt > hostNow()) { spectating = false; decidedSpec = true; out(K.hi, hello()); }
+    out(K.lobby, l);
+    emit({ type: "lobby", lobby: l });
+  }
+
+  type Lag = { delay: number; at: number };
+  const aiLag: Lag = { delay: INTERP_DELAY, at: 0 };
+  let lastLag = INTERP_DELAY;
+
+  // Render this far behind the newest frame. It drifts at most 5% of real time, so cars never visibly speed up or slow down.
+  function delayOf(lag: Lag, buf: InterpBuffer, direct: boolean, now: number) {
+    const want = direct
+      ? Math.max(INTERP_DELAY, buf.transit + buf.gap * 1.2 + buf.jitter * 2.5)
+      : Math.min(600, Math.max(200, buf.transit + buf.gap * 1.5 + buf.jitter * 3));
+    if (!lag.at || buf.count < 2) lag.delay = want;
+    else {
+      const max = Math.min(100, now - lag.at) * 0.05;
+      lag.delay += Math.max(-max, Math.min(max, want - lag.delay));
+    }
+    lag.at = now;
+    lastLag = lag.delay;
+    return lag.delay;
+  }
+
+  function sample(pid: string, now: number, out: VehicleSnap): CarFrame | null {
+    if (pid.startsWith("ai")) {
+      const b = aiBufs[Number(pid.slice(2))];
+      if (!b) return null;
+      const t = now + offset - delayOf(aiLag, b, rtc.has(hostId), now);
+      return b.sample(t, out) ? b.at(t) : null;
+    }
+    const p = peers.get(pid);
+    if (!p) return null;
+    const t = now + offset - delayOf(p, p.buf, rtc.has(pid), now);
+    return p.buf.sample(t, out) ? p.buf.at(t) : null;
   }
 
   return {
     room,
+    forced,
     get id() { return id; },
     get host() { return hostId === id; },
     get hostId() { return hostId; },
@@ -245,50 +395,134 @@ export function createNet(room: string, me: Entrant): NetPlus {
     get lobby() { return lobby; },
     get spectating() { return spectating; },
     get ping() { return ping; },
+    get relayUp() { return relay?.up ?? 0; },
     stats,
     hostNow,
     setMe(e: Entrant) {
       mine = { ...e, id: id || e.id, me: true };
       rebuild();
-      fire(helloA?.send(hello()));
+      out(K.hi, hello());
     },
-    sendCar(snap: VehicleSnap, c: Controls) {
+    sendCar(snap: VehicleSnap, c: Controls, st?: VehicleState) {
       try {
-        if (!carA || spectating || peers.size === 0) return;
+        if (spectating || peers.size === 0) return;
         const now = performance.now();
         if (now - lastSend < SEND_MS * 0.8) return;
         lastSend = now;
-        packCar(sendView, seq++, hostNow(), snap, c);
+        if (st) { engine.rpm = st.rpm; engine.gear = st.gear; engine.limiter = st.limiter; engine.shifting = st.shifting; }
+        packCar(sendView, seq++, hostNow(), snap, c, engine);
         stats.sent++;
-        fire(carA.send(sendBuf));
+        const a = acts.get(K.car);
+        if (a && rtc.size) fire(a.send(sendBuf as never));
+        if (relay?.up && relayPeer() && now - lastRelayCar >= RELAY_CAR_MS * 0.9) {
+          lastRelayCar = now;
+          stats.relaySent++;
+          relay.publish(K.car, sendBuf, true);
+        }
       } catch (e) { console.warn("net send:", e); }
     },
-    remote(pid: string, now: number, out: VehicleSnap) {
+    sendAi(racers) {
       try {
-        const p = peers.get(pid);
-        if (!p) return false;
-        return p.buf.sample(now + offset - INTERP_DELAY, out);
-      } catch { return false; }
+        if (hostId !== id || peers.size === 0) return;
+        const now = performance.now();
+        if (now - lastAi < AI_MS * 0.9) return;
+        lastAi = now;
+        let n = 0;
+        for (const r of racers) {
+          if (!r.e.ai || r.remote || n >= AI_MAX) continue;
+          const a = aiCars[n++];
+          a.slot = Number(r.e.id.slice(2)) & 255;
+          r.v.snap(a.snap);
+          a.c = r.c;
+          const st = r.v.state;
+          a.e.rpm = st.rpm; a.e.gear = st.gear; a.e.limiter = st.limiter; a.e.shifting = st.shifting;
+        }
+        if (!n) return;
+        const len = packAi(aiView, aiSeq++, hostNow(), aiCars, n);
+        stats.aiBytes = len;
+        const msg = aiBuf.subarray(0, len);
+        const a = acts.get(K.ai);
+        if (a && rtc.size) fire(a.send(msg.slice() as never));
+        if (relay?.up && relayPeer() && now - lastRelayAi >= RELAY_AI_MS * 0.9) {
+          lastRelayAi = now;
+          stats.relaySent++;
+          relay.publish(K.ai, msg, true);
+        }
+      } catch (e) { console.warn("net ai:", e); }
     },
-    setLobby(l: Lobby) {
+    remote(pid: string, now: number, o: VehicleSnap) {
+      try { return sample(pid, now, o) !== null; } catch { return false; }
+    },
+    tick(racers, track, now, dt) {
+      for (const r of racers) {
+        if (!r.remote) continue;
+        if (!r.e.ai && !peers.has(r.e.id)) { hideRemote(r); continue; }
+        r.v.snap(own);
+        const f = sample(r.e.id, now, own);
+        if (f) applyRemote(r, own, f, track, dt, lastLag);
+      }
+    },
+    link(pid: string) {
+      if (pid === id) return { ping: null, relay: forced };
+      const p = peers.get(pid);
+      if (!p) return null;
+      return { ping: p.rtts.length ? p.rtt : null, relay: !rtc.has(pid) && performance.now() - p.first > (forced ? 0 : FALLBACK_MS) };
+    },
+    setLobby,
+    start(l: Lobby, car: CarId) {
       if (hostId !== id) return;
-      lobby = l;
-      if (l.startAt === null || l.startAt > hostNow()) { spectating = false; decidedSpec = true; fire(helloA?.send(hello())); }
-      fire(lobbyA?.send(l));
-      emit({ type: "lobby", lobby: l });
+      const ids = [id, ...[...peers.values()].filter((p) => !p.spec).map((p) => p.e.id)].sort().slice(0, MAX_HUMANS);
+      const klass = (CARS.find((c) => c.id === car) ?? CARS[0]).klass;
+      const same = CARS.filter((c) => c.klass === klass);
+      const pool = same.length > 1 ? same : CARS;
+      const n = l.mode === "race" ? Math.max(0, Math.min(l.ai, MAX_CARS - ids.length, AI_MAX)) : 0;
+      const cars = Array.from({ length: n }, (_, i) => pool[(i + 1) % pool.length].id);
+      setLobby({ ...l, ids, cars, startAt: hostNow() + START_MS } as LobbyPlus);
+    },
+    onGrid() {
+      const ids = lobby?.ids;
+      return !spectating && (!ids || ids.includes(id));
+    },
+    grid(car: CarId, paint: string) {
+      const ids = lobby?.ids ?? [id, ...[...peers.values()].filter((p) => !p.spec).map((p) => p.e.id)].sort();
+      const out: { e: Entrant; slot: number }[] = [];
+      ids.forEach((pid, slot) => {
+        const e = pid === id ? { ...mine, car, color: paint } : peers.get(pid)?.e;
+        if (e) out.push({ e, slot });
+      });
+      (lobby?.cars ?? []).forEach((c, i) => {
+        if (ids.length + i >= MAX_CARS) return;
+        out.push({ e: { id: `ai${i}`, name: AI_NAMES[i % AI_NAMES.length], color: AI_COLORS[i % AI_COLORS.length], car: c, me: false, ai: true }, slot: ids.length + i });
+      });
+      for (const b of aiBufs) b.clear();
+      aiLag.at = 0;
+      finished.clear();
+      dnfShown = -1;
+      return out;
+    },
+    dnf(left: number) {
+      const k = Math.ceil(left);
+      if (k <= 0 || k === dnfShown || !(k === 30 || k === 10 || k <= 5)) return -1;
+      dnfShown = k;
+      return k;
     },
     on(cb) {
       subs.add(cb);
       return () => subs.delete(cb);
     },
     finish(time: number) {
-      fire(finA?.send(time));
+      out(K.fin, time);
     },
     leave() {
+      if (left) return;
+      bye();
       left = true;
       if (timer) clearInterval(timer);
+      if (typeof window !== "undefined") window.removeEventListener("pagehide", bye);
       try { leaveRoom?.(); } catch {}
+      relay?.close();
       peers.clear();
+      rtc.clear();
       subs.clear();
     },
   };

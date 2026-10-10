@@ -1,7 +1,7 @@
 import type { GameEvent, Mode, Race, Standing, Track, TrackFrame, VehicleState } from "./contracts";
 import * as THREE from "three";
 
-export const DNF_AFTER = 30; // s after the winner
+export const DNF_AFTER = 30; // s after the winner, or 15% of the winning time on long races
 const MAX_JUMP = 30; // m of s per update, more is a reset, a rewind or a cut
 const WRONG_SPEED = 3;
 const WRONG_TIME = 2;
@@ -37,7 +37,8 @@ export function createRace(track: Track, mode: Mode, laps: number, ids: readonly
   const L = track.length;
   const closed = track.closed;
   const totalLaps = !closed ? 1 : mode === "free" ? Infinity : Math.max(1, laps);
-  const gates = closed ? [...track.checkpoints] : [...track.checkpoints, Math.max(0, L - 2)];
+  // Point to point finish sits short of the road end, so finished cars do not block the line.
+  const gates = closed ? [...track.checkpoints] : [...track.checkpoints, Math.max(0, L - 40)];
   const start = track.checkpoints[0] ?? 0;
   const ng = gates.length;
   const fr: TrackFrame = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), left: new THREE.Vector3(), up: new THREE.Vector3(), width: 0, runoff: 0 };
@@ -102,7 +103,7 @@ export function createRace(track: Track, mode: Mode, laps: number, ids: readonly
     c.st.time = clock;
     finishers++;
     c.st.place = finishers;
-    if (dnfAt === null && mode === "race") dnfAt = clock + DNF_AFTER;
+    if (dnfAt === null && mode === "race") dnfAt = clock + Math.max(DNF_AFTER, clock * 0.15);
     events.push({ type: "finish", id, place: finishers, time: clock });
     sfx(id, "finish");
   }

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { dropAfterUpload } from "./render-shared";
 import type { MapData, Track } from "./contracts";
 import { canvasTex, eachRecord, Geo, rng, type RoadIndex, type Style } from "./scenery-kit";
 
@@ -191,6 +192,7 @@ export function buildStreets(map: MapData, track: Track, roads: RoadIndex, style
     g.setAttribute("color", new THREE.Float32BufferAttribute(c, 3));
     g.computeVertexNormals();
     g.computeBoundingSphere();
+    dropAfterUpload(g);
     const tex = asphaltTexture();
     const mat = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const m = new THREE.Mesh(g, mat);
@@ -206,6 +208,7 @@ export function buildStreets(map: MapData, track: Track, roads: RoadIndex, style
     g.setAttribute("uv", new THREE.Float32BufferAttribute(uv2, 2));
     g.computeVertexNormals();
     g.computeBoundingSphere();
+    dropAfterUpload(g);
     const tex = paverTexture(map.id === "tokyo" ? "#8f8f8c" : map.id === "monaco" ? "#c9bfae" : "#a9a59e");
     const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const m = new THREE.Mesh(g, mat);

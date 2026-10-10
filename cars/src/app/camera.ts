@@ -33,6 +33,8 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, track: Track): 
   let t = 0;
   let hint = -1;
   let back = 0;
+  let lag = 0;
+  let lastSpeed = 0;
 
   const setFov = (f: number) => {
     if (Math.abs(camera.fov - f) > 0.02) {
@@ -82,6 +84,10 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, track: Track): 
         prevComp[i] = car.wheels[i].compress;
       }
       bump = Math.max(bump * Math.exp(-dt * 10), Math.min(1, bumps * 2));
+      // Hard acceleration pulls the camera back and widens the view a little; braking pulls it in.
+      const accel = dt > 0 && !snap ? (car.speed - lastSpeed) / dt : 0;
+      lastSpeed = car.speed;
+      lag += (clamp(accel / 12, -0.6, 1) - lag) * damp(3, dt);
       kick *= Math.exp(-dt * 5);
       orbitX += (look.x * Math.PI - orbitX) * damp(look.x === 0 ? 4 : 12, dt);
       orbitY += (look.y * 0.5 - orbitY) * damp(look.y === 0 ? 4 : 12, dt);
@@ -98,28 +104,29 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, track: Track): 
         if (hs > 4 && car.speed > 0) goal = heading + clamp(wrap(Math.atan2(car.vel.x, car.vel.z) - heading), -0.9, 0.9) * 0.55;
         yaw += wrap(goal - yaw) * (snap ? 1 : damp(3.2 + Math.min(4, hs * 0.05), dt));
         height += (car.pos.y - height) * (snap ? 1 : damp(6, dt));
-        const far = mode === "far" ? 1.55 : 1;
+        // Close and low like a Forza chase cam: the car fills the lower middle, the road ahead stays in view.
+        const far = mode === "far" ? 1.45 : 1;
         const sp = clamp(kmh / 250, 0, 1);
-        const dist = (b.length * 1.1 + 1.9) * far * (1 + sp * 0.1);
-        const h = (b.height + 0.8) * (mode === "far" ? 1.3 : 1) * (1 - sp * 0.15);
+        const dist = (b.length * 0.98 + 1.5) * far * (1 + sp * 0.08 + lag * 0.06);
+        const h = (b.height * 0.9 + 0.62) * (mode === "far" ? 1.3 : 1) * (1 - sp * 0.1);
         const ay = yaw + orbitX + Math.PI * back;
         const pitch = 0.08 + orbitY;
         want.set(-Math.sin(ay) * dist * Math.cos(pitch), h + Math.sin(pitch) * dist, -Math.cos(ay) * dist * Math.cos(pitch));
         pos.set(car.pos.x + want.x, height + want.y, car.pos.z + want.z);
         clip(pos, car.s);
-        const ahead = (Math.min(hs, 60) * 0.12 + 1.5) * (1 - back * 2);
-        aim.set(car.pos.x + Math.sin(yaw) * ahead, height + b.height * 0.55, car.pos.z + Math.cos(yaw) * ahead);
+        const ahead = (Math.min(hs, 60) * 0.1 + 2) * (1 - back * 2);
+        aim.set(car.pos.x + Math.sin(yaw) * ahead, height + b.height * 0.5, car.pos.z + Math.cos(yaw) * ahead);
         aim.addScaledVector(car.vel, 0.04 * (1 - back));
         pos.x += noise(1) * amp;
         pos.y += noise(2) * amp;
         camera.position.copy(pos);
         camera.up.set(0, 1, 0);
         camera.lookAt(aim);
-        fov += (60 + 15 * sp - fov) * (snap ? 1 : damp(2.5, dt));
+        fov += (58 + 16 * sp + lag * 4 - fov) * (snap ? 1 : damp(2.5, dt));
       } else {
         const cg = spec.cgH;
         if (mode === "hood") off.set(0, b.height * 0.86 - cg, b.length * 0.06);
-        else if (mode === "bumper") off.set(0, 0.55 - cg, b.length * 0.5 - 0.15);
+        else if (mode === "bumper") off.set(0, 0.45 - cg, b.length * 0.5 + 0.12);
         else off.set(b.width * 0.19, b.height * 0.74 - cg, -b.length * 0.04);
         if (back > 0.5 && mode === "bumper") off.z = -off.z;
         pos.copy(off).applyQuaternion(car.quat).add(car.pos);

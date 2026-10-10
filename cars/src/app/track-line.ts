@@ -1,6 +1,6 @@
 import type { TrackTables } from "./track";
 
-// Minimum curvature line: relax the biharmonic stencil coarse to fine, clamped to the road minus 1.5 m.
+// Minimum curvature line: relax the biharmonic stencil coarse to fine, clamped to the road minus 2 m.
 export function buildLine(t: TrackTables, closed: boolean): Float32Array {
   const { M, px, pz, lx, lz, hw } = t;
   const lat = new Float32Array(M);
@@ -21,7 +21,7 @@ export function buildLine(t: TrackTables, closed: boolean): Float32Array {
         const tx = (-X(a) + 4 * X(b) + 4 * X(c) - X(d)) / 6;
         const tz = (-Z(a) + 4 * Z(b) + 4 * Z(c) - Z(d)) / 6;
         const want = (tx - px[i]) * nx[i] + (tz - pz[i]) * nz[i];
-        const lim = Math.max(0, hw[i] - 1.5);
+        const lim = Math.max(0, hw[i] - 2);
         const v = lat[i] + (want - lat[i]) * 0.5;
         lat[i] = v > lim ? lim : v < -lim ? -lim : v;
       }

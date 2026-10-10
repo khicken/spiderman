@@ -476,7 +476,7 @@ export class Post {
     u.uExpo.value.set(f.key, f.minE, f.maxE);
     u.uAspect.value = camera.aspect;
     u.uTime.value = f.time % 1000;
-    u.uCA.value = t.lens ? 0.004 + 0.02 * THREE.MathUtils.smoothstep(f.speed, 40, 90) : 0;
+    u.uCA.value = t.lens ? 0.0015 + 0.02 * THREE.MathUtils.smoothstep(f.speed, 40, 90) : 0;
     u.uDrops.value = t.lens ? f.drops : 0;
     camera.getWorldDirection(_f);
     const facing = THREE.MathUtils.smoothstep(_f.dot(f.sunDir), 0.2, 0.8) * f.sunUp;

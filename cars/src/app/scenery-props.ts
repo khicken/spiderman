@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { MapData, Track } from "./contracts";
 import type { Blocker } from "./scenery-buildings";
+import { dropLamps, setLamps } from "./render-lamps";
 import { canvasTex, centerAt, eachRecord, Geo, noise2, pick, rng, U, writeInst, type RoadIndex, type Style, type Tier } from "./scenery-kit";
 
 // Instanced meshes whose `aTint` vertices take the instance color; the rest keep the vertex color.
@@ -103,7 +104,7 @@ export function createProps(map: MapData, track: Track, roads: RoadIndex, style:
   // Street lights: one mesh for the poles, one for the glowing heads, one for the pools of light on the road.
   const lamps: number[] = []; // x, y, z, yaw, poolX, poolY, poolZ
   if (style.lights) {
-    const every = map.id === "tokyo" ? 8 : 6;
+    const every = map.id === "tokyo" ? 6 : 6;
     for (let i = 0; i < N; i += every) {
       if (tunnel[i]) continue;
       centerAt(map, i, pos, left);
@@ -133,32 +134,24 @@ export function createProps(map: MapData, track: Track, roads: RoadIndex, style:
   }
   const nL = lamps.length / 7;
   const poleH = map.id === "tokyo" ? 10 : 8.5, arm = 2.2;
-  let headMat: THREE.MeshStandardMaterial | null = null, poolMat: THREE.MeshBasicMaterial | null = null;
+  let headMat: THREE.MeshStandardMaterial | null = null;
   if (nL) {
     const propMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.6 });
     const poles = add(new THREE.InstancedMesh(poleGeo(arm, poleH), propMat, nL));
     headMat = new THREE.MeshStandardMaterial({ color: "#d9d6cc", emissive: "#ffc98a", emissiveIntensity: 0, roughness: 0.3 });
     const heads = add(new THREE.InstancedMesh(new THREE.BoxGeometry(0.6, 0.05, 0.26).translate(arm - 0.15, poleH - 0.32, 0), headMat, nL));
-    const pool = canvasTex(128, 128, (g) => {
-      const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-      gr.addColorStop(0, "rgba(255,200,140,0.9)");
-      gr.addColorStop(0.5, "rgba(255,180,110,0.35)");
-      gr.addColorStop(1, "rgba(255,170,100,0)");
-      g.fillStyle = gr;
-      g.fillRect(0, 0, 128, 128);
-    });
-    poolMat = new THREE.MeshBasicMaterial({ map: pool, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, fog: true });
-    const pools = add(new THREE.InstancedMesh(new THREE.PlaneGeometry(14, 14).rotateX(-Math.PI / 2), poolMat, nL));
-    pools.renderOrder = 2;
+    const lampPts = new Float32Array(nL * 8);
+    const warm = map.id === "tokyo" ? [1, 0.56, 0.24] : [1, 0.66, 0.36];
     for (let k = 0; k < nL; k++) {
-      const o = k * 7;
+      const o = k * 7, c = Math.cos(lamps[o + 3]), sn = Math.sin(lamps[o + 3]);
       writeInst(poles.instanceMatrix.array as Float32Array, k, lamps[o], lamps[o + 1], lamps[o + 2], lamps[o + 3], 1);
       writeInst(heads.instanceMatrix.array as Float32Array, k, lamps[o], lamps[o + 1], lamps[o + 2], lamps[o + 3], 1);
-      writeInst(pools.instanceMatrix.array as Float32Array, k, lamps[o + 4], lamps[o + 5], lamps[o + 6], 0, 1);
+      lampPts.set([lamps[o] + c * (arm - 0.15), lamps[o + 1] + poleH - 0.5, lamps[o + 2] - sn * (arm - 0.15), 22, warm[0], warm[1], warm[2], 300], k * 8);
     }
+    setLamps("street", lampPts, true);
     poles.castShadow = true;
-    for (const m of [poles, heads, pools]) m.computeBoundingSphere();
-    disposables.push(propMat, headMat, poolMat, pool, poles.geometry, heads.geometry, pools.geometry);
+    for (const m of [poles, heads]) m.computeBoundingSphere();
+    disposables.push(propMat, headMat, poles.geometry, heads.geometry, { dispose: () => dropLamps("street", lampPts) });
   }
 
   // Merged static clutter: brake boards, marshal posts, stone guard posts.
@@ -295,7 +288,6 @@ export function createProps(map: MapData, track: Track, roads: RoadIndex, style:
     group,
     setNight(n: number) {
       if (headMat) headMat.emissiveIntensity = n * 6;
-      if (poolMat) poolMat.opacity = n * 0.55;
     },
     dispose() {
       for (const d of disposables) d.dispose();

@@ -3,6 +3,7 @@ import type { Quality, Track } from "./contracts";
 import { F_ELEV, F_TUNNEL, trackTables, type TrackTables } from "./track";
 import { TEX } from "./track-mat";
 import { Rib, instanced, lat, rowList, shoulderY } from "./track-rib";
+import { dropLamps, setLamps } from "./render-lamps";
 import { concreteTex, fenceTex, tileTex } from "./track-tex";
 
 const JERSEY: readonly (readonly [number, number])[] = [[0, -0.3], [0, 0.08], [0, 0.08], [0.15, 0.32], [0.15, 0.32], [0.2, 1.0], [0.2, 1.0], [0.42, 1.0], [0.42, 1.0], [0.6, -0.3]];
@@ -146,7 +147,13 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
   const prof = (W: number, H: number) => [[W, -0.4 - H], [W, 4.0], [W * 0.75, 5.0 + H], [W * 0.35, 5.7 + H], [0, 5.9 + H], [-W * 0.35, 5.7 + H], [-W * 0.75, 5.0 + H], [-W, 4.0], [-W, -0.4 - H]] as const;
   const tubeIn = new Rib(9), tubeOut = new Rib(9), portal = new Rib(2), lights = new Rib(2);
   const pt = (i: number, l: number, y: number) => [tb.px[i] + tb.lx[i] * l, tb.py[i] + y, tb.pz[i] + tb.lz[i] * l] as const;
+  const tl: number[] = [];
+  const tcol = track.map.id === "tokyo" ? [1, 0.6, 0.28] : [1, 0.88, 0.72];
   for (const [a, b] of tunnelRuns) {
+    for (let r = a; r <= b; r += 3) {
+      const p = pt(rows[r] % tb.M, 0, 5.2);
+      tl.push(p[0], p[1], p[2], 16, tcol[0], tcol[1], tcol[2], 45);
+    }
     tubeIn.brk();
     tubeOut.brk();
     for (let r = Math.max(0, a - 1); r <= Math.min(rows.length - 1, b + 1); r++) {
@@ -183,6 +190,9 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
       }
     }
   }
+  const tunnelLamps = new Float32Array(tl);
+  setLamps("tunnel", tunnelLamps, false);
+  disp.push({ dispose: () => dropLamps("tunnel", tunnelLamps) });
   add(tubeIn.geo(), mTile);
   add(tubeOut.geo(), mConc);
   add(portal.geo(), mConc);

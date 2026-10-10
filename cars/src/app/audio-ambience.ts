@@ -229,7 +229,7 @@ export function createAmbience(c: C, out: AudioNode) {
     set("wind", (p.wind ?? 0.12) * 0.08 * (weather === "snow" ? 1.4 : 1) * (1 + 0.5 * wet));
     set("crowd", (p.crowd ?? 0) * 0.05 * (0.4 + 0.6 * day));
     set("city", (p.city ?? 0) * 0.07);
-    set("rain", wet * 0.06);
+    set("rain", wet * 0.035);
     set("water", (p.water ?? 0) * 0.05);
     set("crickets", !p.city && night > 0.5 && weather !== "rain" && weather !== "snow" ? 0.004 : 0);
   }

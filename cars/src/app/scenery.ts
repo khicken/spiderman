@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import type { Quality, Scenery, Track } from "./contracts";
+import { updateLamps } from "./render-lamps";
+import { cancelJob, runNow, runSoon } from "./render-shared";
 import { buildBuildings } from "./scenery-buildings";
 import { createFacadeMaterial } from "./scenery-facade";
 import { createRoadIndex, disposeTree, farPatch, Geo, RING_D, STYLES, TIERS, U } from "./scenery-kit";
@@ -31,20 +33,24 @@ export function createScenery(track: Track, quality: Quality): Scenery {
   let props: ReturnType<typeof createProps> | null = null;
   let night = 0;
 
-  function build() {
-    tier = TIERS[quality];
-    const { chunks: geos, blocker } = buildBuildings(map, track, roads, style, tier.detail, CHUNK);
+  // A generator, so a quality switch can build the new set across frames while the old one stays on screen.
+  function* build(q: Quality): Generator<void, void> {
+    const t = TIERS[q];
+    const out = new THREE.Group();
+    const { chunks: geos, blocker } = buildBuildings(map, track, roads, style, t.detail, CHUNK);
+    yield;
     const extra = new Geo(), plain = new Geo(), glow = new Geo();
-    const stands = createStands(map, track, roads, style, blocker, tier, extra);
+    const stands = createStands(map, track, roads, style, blocker, t, extra);
     buildLandmarks(map, track, roads, style, extra, plain, glow);
     if (extra.count) geos.set("extra", extra);
-    chunks = [];
+    const nextChunks: THREE.Mesh[] = [];
     for (const g of geos.values()) {
       const m = new THREE.Mesh(g.build(), facadeMat);
       m.castShadow = m.receiveShadow = true;
-      chunks.push(m);
-      group.add(m);
+      nextChunks.push(m);
+      out.add(m);
     }
+    yield;
     const local = new THREE.Group();
     for (const [geo, mat] of [[plain, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1 })], [glow, glowMaterial("lm", 0.9)]] as const) {
       if (!geo.count) {
@@ -66,22 +72,33 @@ export function createScenery(track: Track, quality: Quality): Scenery {
     ringMesh.frustumCulled = false;
     local.add(ringMesh);
     if (style.neon) {
-      const neon = buildNeon(map, track, roads, tier.detail);
+      const neon = buildNeon(map, track, roads, t.detail);
       if (neon) local.add(neon);
     }
-    group.add(local);
+    out.add(local);
+    yield;
     const ground = map.id === "monaco" || map.id === "tokyo" || map.id === "sanfrancisco" ? buildGround(map, track, roads) : null;
-    if (ground) group.add(ground.mesh);
-    trees = createTrees(map, track, roads, style, blocker, tier);
-    const water = createWater(map, track, roads, style, tier);
-    props = createProps(map, track, roads, style, blocker, tier);
+    if (ground) out.add(ground.mesh);
+    yield;
+    const nextTrees = createTrees(map, track, roads, style, blocker, t);
+    yield;
+    const water = createWater(map, track, roads, style, t);
+    const nextProps = createProps(map, track, roads, style, blocker, t);
+    yield;
     const streets = buildStreets(map, track, roads, style);
-    for (const p of [trees, water, props, stands, streets]) group.add(p.group);
-    props.setNight(night);
+    for (const p of [nextTrees, water, nextProps, stands, streets]) out.add(p.group);
+    nextProps.setNight(night);
+    clear();
+    group.add(out);
+    quality = q;
+    tier = t;
+    chunks = nextChunks;
+    trees = nextTrees;
+    props = nextProps;
     parts = [
-      trees, water, props, stands, streets,
+      nextTrees, water, nextProps, stands, streets,
       { dispose: () => (disposeTree(local), ground?.dispose()) },
-      { dispose: () => chunks.forEach((c) => c.geometry.dispose()) },
+      { dispose: () => nextChunks.forEach((c) => c.geometry.dispose()) },
     ];
   }
 
@@ -92,7 +109,8 @@ export function createScenery(track: Track, quality: Quality): Scenery {
     trees = props = null;
   }
 
-  build();
+  let job: Generator<void, void> | null = null;
+  runNow(build(quality));
 
   return {
     group,
@@ -102,22 +120,22 @@ export function createScenery(track: Track, quality: Quality): Scenery {
       props?.setNight(n);
     },
     setQuality(q) {
-      if (q === quality) return;
-      quality = q;
-      clear();
-      build();
+      const busy = cancelJob(job);
+      job = q === quality && !busy ? null : runSoon(build(q));
     },
     update(dt, camera) {
       U.time.value += Math.min(dt, 0.1);
       camera.getWorldPosition(camPos);
       if (camera instanceof THREE.PerspectiveCamera) RING_D.value = camera.far * 0.6;
       trees?.update(dt, camPos);
+      updateLamps(camera, night);
       for (const c of chunks) {
         const s = c.geometry.boundingSphere!;
         c.visible = s.center.distanceTo(camPos) - s.radius < tier.far;
       }
     },
     dispose() {
+      cancelJob(job);
       clear();
       facadeMat.dispose();
     },

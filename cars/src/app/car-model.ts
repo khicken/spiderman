@@ -6,13 +6,16 @@ import { buildParts } from "./car-parts";
 import { STYLES } from "./car-styles";
 import { panelTex } from "./car-tex";
 import { buildWheel } from "./car-wheel";
-import { prep } from "./car-curve";
-import { brakeMat, chromeMat, coneMat, glassMat, grilleMat, interiorMat, lampMat, paintMat, rimMat, setEnvAll, tireMat, trimMat, type LampMat } from "./car-mat";
+import { finish, KIND, prep } from "./car-curve";
+import { LAMP, bodyMat, flareMat, glassMat, setEnvAll, wheelMat, type BodyMat, type WheelMat } from "./car-mat";
 
+// Per car: one body mesh (also the only shadow caster), one instanced wheel mesh, transparent glass on ultra, headlight glints at night above low.
 type Kit = {
   d: Dims;
-  geo: { paint: THREE.BufferGeometry; glass: THREE.BufferGeometry | null; trim: THREE.BufferGeometry; chrome: THREE.BufferGeometry | null; lamp: THREE.BufferGeometry | null; grille: THREE.BufferGeometry | null; interior: THREE.BufferGeometry | null; cone: THREE.BufferGeometry | null };
-  wheel: { tire: THREE.BufferGeometry; rim: THREE.BufferGeometry; brake: THREE.BufferGeometry };
+  body: THREE.BufferGeometry;
+  glass: THREE.BufferGeometry | null;
+  flare: THREE.BufferGeometry | null;
+  wheel: THREE.BufferGeometry;
   panel: THREE.Texture;
   heads: THREE.Vector3[];
 };
@@ -20,8 +23,8 @@ type Kit = {
 const TIER: Record<Quality, number> = { low: 0, medium: 1, high: 1, ultra: 2 };
 const RES = [
   { na: 56, nv: 14, ng: 18 },
-  { na: 120, nv: 30, ng: 34 },
-  { na: 220, nv: 52, ng: 56 },
+  { na: 130, nv: 40, ng: 34 },
+  { na: 240, nv: 64, ng: 56 },
 ];
 const kits = new Map<string, Kit>();
 
@@ -35,20 +38,21 @@ function kitFor(spec: CarSpec, tier: number): Kit {
   const body = buildBody(S, RES[tier]);
   const P = createProjector(body.proxy);
   const parts = buildParts(spec.id, S, P, st, tier, body.proxy);
-  const m = (gs: THREE.BufferGeometry[]) => (gs.length ? mergeAll(gs.map((g) => prep(g))) : null);
+  const all = (gs: THREE.BufferGeometry[], hex: number, r: number, m: number, cc: number, kind: number) => gs.map((g) => finish(prep(g), hex, r, m, cc, kind));
   const glass = [...(body.glass ? [body.glass] : []), ...parts.glass];
+  const clear = tier === 2;
   k = {
     d,
-    geo: {
-      paint: mergeAll([body.paint, ...parts.paint.map((g) => prep(g))]),
-      glass: m(glass),
-      trim: mergeAll([body.trim, ...parts.trim.map((g) => prep(g))]),
-      chrome: m(parts.chrome),
-      lamp: m(parts.lamp),
-      grille: m(parts.grille),
-      interior: tier > 0 ? m(parts.interior) : null,
-      cone: parts.heads.length ? cones(parts.heads) : null,
-    },
+    body: mergeAll([
+      ...all([body.paint, ...parts.paint], 0xffffff, 0.34, 0.45, 1, KIND.paint),
+      ...all([body.trim, ...parts.trim], 0x0c0d0e, 0.62, 0, 0, KIND.plain),
+      ...all(parts.carbon, 0xffffff, 0.4, 0.25, 1, KIND.carbon),
+      ...all(parts.grille, 0xffffff, 0.5, 0.4, 0, KIND.grille),
+      ...all(parts.lamp, 0xffffff, 0.06, 0.3, 1, KIND.plain),
+      ...(clear ? [] : all(glass, 0x020304, 0.02, 0.1, 1, KIND.plain)),
+    ]),
+    glass: clear && glass.length ? mergeAll(glass.map((g) => prep(g))) : null,
+    flare: tier > 0 && parts.heads.length ? flares(parts.heads, d) : null,
     wheel: buildWheel(d.R, d.tireF, st.wheel, tier),
     panel: panelTex(parts.panel, S.aOf),
     heads: parts.heads,
@@ -58,23 +62,33 @@ function kitFor(spec: CarSpec, tier: number): Kit {
   return k;
 }
 
-function cones(heads: THREE.Vector3[]) {
-  const gs = heads.map((h) => {
-    const g = new THREE.ConeGeometry(2.6, 11, 24, 1, true);
-    g.translate(0, -5.5, 0);
-    g.rotateX(-Math.PI / 2 + 0.06);
-    g.translate(h.x, h.y, h.z);
-    const uv = g.attributes.uv;
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) uv.setXY(i, 0, Math.min(1, (p.getZ(i) - h.z) / 11));
-    return g;
-  });
-  return mergeAll(gs.map((g) => prep(g, false)));
+// One glint quad per headlight plus one road pool quad, see flareMat.
+function flares(heads: THREE.Vector3[], d: Dims) {
+  const pos: number[] = [], uv: number[] = [], kind: number[] = [], idx: number[] = [];
+  const quad = (k: number) => {
+    const b = pos.length / 3 - 4;
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    kind.push(k, k, k, k);
+  };
+  for (const h of heads) {
+    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) pos.push(h.x, h.y, h.z), uv.push(u, v);
+    quad(0);
+  }
+  const z0 = d.zF + 0.3, z1 = d.zF + 16, w0 = d.W * 0.55, w1 = d.W * 1.6;
+  pos.push(-w0, 0.03, z0, w0, 0.03, z0, w1, 0.03, z1, -w1, 0.03, z1);
+  uv.push(-1, 0, 1, 0, 1, 1, -1, 1);
+  quad(1);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute("kind", new THREE.Float32BufferAttribute(kind, 1));
+  g.setIndex(idx);
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, d.zF + 8), 12);
+  return g;
 }
 
-const q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion(), v0 = new THREE.Vector3(), s0 = new THREE.Vector3(), m0 = new THREE.Matrix4();
+const q0 = new THREE.Quaternion(), v0 = new THREE.Vector3(), s0 = new THREE.Vector3(), m0 = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0), RIGHT = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
-const AX = new THREE.Vector3(1, 0, 0);
 const LEAN = 0.6;
 
 export function createCarModel(spec: CarSpec, paint: string, quality: Quality, player = false): CarModel {
@@ -90,12 +104,13 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
   const d = kit.d;
   pivot.position.y = d.cgH;
   shell.position.y = -d.cgH;
-  const paintM = paintMat(paint, kit.panel, q);
-  const lampM: LampMat = lampMat();
-  const brakeM = brakeMat();
+  let hex = paint;
+  let bodyM!: BodyMat, wheelM!: WheelMat;
+  const flareM = flareMat();
   const mats: THREE.Material[] = [];
-  let tire!: THREE.InstancedMesh, rim!: THREE.InstancedMesh, brake!: THREE.InstancedMesh;
-  let cone: THREE.Mesh | null = null;
+  let wheel!: THREE.InstancedMesh;
+  const spin = new THREE.InstancedBufferAttribute(new Float32Array(4), 1);
+  let flare: THREE.Mesh | null = null;
   let spots: THREE.SpotLight[] = [];
   let lights = false, env: THREE.Texture | null = null;
   const travel = spec.susp.travel;
@@ -106,10 +121,14 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
 
   const build = () => {
     for (const c of [...shell.children, ...group.children]) if (c !== pivot) c.removeFromParent();
+    bodyM?.dispose();
+    wheelM?.dispose();
+    const old = bodyM?.lamp;
+    bodyM = bodyMat(hex, kit.panel, st.grille, q);
+    if (old) bodyM.lamp.set(old);
+    wheelM = wheelMat(st.wheel.tread);
     mats.length = 0;
-    const g = kit.geo;
-    const add = (geo: THREE.BufferGeometry | null, m: THREE.Material, shadow = true) => {
-      if (!geo) return null;
+    const add = (geo: THREE.BufferGeometry, m: THREE.Material, shadow: boolean) => {
       const mesh = new THREE.Mesh(geo, m);
       mesh.castShadow = shadow;
       mesh.receiveShadow = shadow && q !== "low";
@@ -117,29 +136,21 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
       mats.push(m);
       return mesh;
     };
-    add(g.paint, paintM);
-    const gl = add(g.glass, glassMat(q), false);
-    if (gl) gl.renderOrder = 2;
-    add(g.trim, trimMat(st.carbon));
-    add(g.chrome, chromeMat());
-    add(g.lamp, lampM, false);
-    add(g.grille, grilleMat(st.grille), false);
-    if (q !== "low") add(g.interior, interiorMat(), false);
-    cone = g.cone ? add(g.cone, coneMat(), false) : null;
-    if (cone) (cone.visible = false), (cone.renderOrder = 3);
-    const inst = (geo: THREE.BufferGeometry, m: THREE.Material) => {
-      const im = new THREE.InstancedMesh(geo, m, 4);
-      im.castShadow = true;
-      im.receiveShadow = q !== "low";
-      group.add(im);
-      mats.push(m);
-      return im;
-    };
-    tire = inst(kit.wheel.tire, tireMat(st.wheel.tread));
-    rim = inst(kit.wheel.rim, rimMat());
-    brake = inst(kit.wheel.brake, brakeM);
+    add(kit.body, bodyM, true);
+    if (kit.glass) add(kit.glass, glassMat(), false).renderOrder = 2;
+    flare = kit.flare ? add(kit.flare, flareM, false) : null;
+    if (flare) (flare.visible = false), (flare.renderOrder = 3);
+    const wg = new THREE.BufferGeometry();
+    for (const [n, a] of Object.entries(kit.wheel.attributes)) wg.setAttribute(n, a);
+    wg.setIndex(kit.wheel.index);
+    wg.setAttribute("spin", spin);
+    wheel = new THREE.InstancedMesh(wg, wheelM, 4);
+    wheel.castShadow = false;
+    wheel.receiveShadow = q !== "low";
+    group.add(wheel);
+    mats.push(wheelM);
     wheels(null);
-    for (const im of [tire, rim, brake]) im.computeBoundingSphere();
+    wheel.computeBoundingSphere();
     setEnvAll(mats, env);
     spotsSet();
   };
@@ -156,18 +167,14 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
       if (right) q0.multiply(RIGHT);
       s0.set(i < 2 ? 1 : sx, 1, 1);
       m0.compose(v0, q0, s0);
-      brake.setMatrixAt(i, m0);
-      q1.setFromAxisAngle(AX, w ? (right ? -w.spin : w.spin) : 0);
-      q0.multiply(q1);
-      m0.compose(v0, q0, s0);
-      tire.setMatrixAt(i, m0);
-      rim.setMatrixAt(i, m0);
+      wheel.setMatrixAt(i, m0);
+      spin.setX(i, w ? (right ? -w.spin : w.spin) : 0);
       if (w) {
         roll += (right ? -dy : dy) / 2;
         pitch += (i < 2 ? dy : -dy) / 2;
       }
     }
-    tire.instanceMatrix.needsUpdate = rim.instanceMatrix.needsUpdate = brake.instanceMatrix.needsUpdate = true;
+    wheel.instanceMatrix.needsUpdate = spin.needsUpdate = true;
     pivot.rotation.set((pitch / d.wb) * LEAN, 0, (-roll / ((d.tf + d.tr) / 2)) * LEAN);
   };
 
@@ -177,7 +184,7 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
     const real = player && (q === "high" || q === "ultra");
     if (lights && real)
       for (const h of kit.heads) {
-        const sp = new THREE.SpotLight(0xfff1dc, 260, 140, 0.42, 0.55, 1.4);
+        const sp = new THREE.SpotLight(0xfff1dc, 18, 120, 0.44, 0.6, 1.6);
         sp.position.copy(h);
         sp.target.position.set(h.x * 1.6, 0, h.z + 25);
         sp.castShadow = q === "ultra";
@@ -186,18 +193,24 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
         shell.add(sp, sp.target);
         spots.push(sp);
       }
-    if (cone) cone.visible = lights && !real;
+    if (flare) flare.visible = lights;
+    flareM.uniforms.uPool.value = real ? 0 : 1;
   };
 
+  let braking = false, reversing = false;
   const lamp = (brakeOn: boolean, rev: boolean) => {
-    const L = lampM.lamp;
-    L[1] = lights ? 9 : 0;
-    L[2] = 3;
-    L[3] = lights ? 0.6 : 0;
-    L[4] = brakeOn ? 1.4 : lights ? 0.6 : 0;
-    L[5] = rev ? 5 : 0;
-    L[6] = 0;
-    L[7] = lights ? 7 : 0;
+    braking = brakeOn;
+    reversing = rev;
+    const L = bodyM.lamp;
+    L[LAMP.head] = lights ? 4 : 0;
+    L[LAMP.drl] = lights ? 4 : 2.5;
+    L[LAMP.tail] = lights ? 0.22 : 0;
+    L[LAMP.brake] = brakeOn ? (lights ? 0.55 : 1.6) : lights ? 0.22 : 0;
+    L[LAMP.core] = brakeOn ? (lights ? 1.6 : 4) : lights ? 0.7 : 0;
+    L[LAMP.reverse] = rev ? 4 : 0;
+    L[LAMP.amber] = 0;
+    L[LAMP.aux] = lights ? 6 : 0;
+    L[LAMP.bowl] = lights ? 0.5 : 0;
   };
 
   build();
@@ -205,8 +218,9 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
 
   return {
     group,
-    setPaint(hex) {
-      paintM.color.set(hex);
+    setPaint(h) {
+      hex = h;
+      bodyM.paint.set(h);
     },
     sync(s, dt) {
       group.quaternion.copy(s.quat);
@@ -216,40 +230,29 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
       lamp(s.brake > 0.1, s.gear === -1);
       const sp = Math.abs(s.speed);
       heat = Math.max(0, Math.min(1.5, heat + (s.brake * sp * 0.012 - 0.12 - heat * 0.1) * dt));
-      brakeM.emissiveIntensity = Math.max(0, heat - 0.25) * 3;
+      wheelM.emissiveIntensity = Math.max(0, heat - 0.25) * 3;
     },
     setLights(on) {
       if (on === lights) return;
       lights = on;
       spotsSet();
-      lamp(lampM.lamp[4] > 5, lampM.lamp[5] > 0);
+      lamp(braking, reversing);
     },
     setEnv(e) {
       env = e;
       setEnvAll(mats, e);
     },
     setQuality(nq) {
-      const t = TIER[nq] !== TIER[q];
-      const low = (nq === "low") !== (q === "low");
       q = nq;
-      if (low) {
-        paintM.clearcoat = q === "low" ? 0 : 1;
-        paintM.needsUpdate = true;
-      }
-      if (t) {
-        kit = kitFor(spec, TIER[q]);
-        paintM.map = kit.panel;
-        paintM.needsUpdate = true;
-      }
+      kit = kitFor(spec, TIER[q]);
       build();
     },
     dispose() {
       for (const sp of spots) sp.dispose();
-      paintM.dispose();
-      lampM.dispose();
-      brakeM.emissiveMap?.dispose();
-      brakeM.dispose();
-      for (const im of [tire, rim, brake]) im.dispose();
+      bodyM.dispose();
+      wheelM.dispose();
+      flareM.dispose();
+      wheel.dispose();
       group.removeFromParent();
     },
   };

@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { GroundHit, MapData, Surface, Track, TrackFrame } from "./contracts";
 import { buildLine, buildSpeed } from "./track-line";
 
-export const GRIP: Record<Surface, number> = { asphalt: 1, curb: 0.9, grass: 0.55, gravel: 0.5, dirt: 0.65, snow: 0.35, cobble: 0.85 };
+export const GRIP: Record<Surface, number> = { asphalt: 1, curb: 0.9, grass: 0.7, gravel: 0.55, dirt: 0.65, snow: 0.35, cobble: 0.85 };
 export const CURB_W = 1.1; // curb band past the road edge
 export const VERGE = 2.5; // flat strip past the edge before the shoulder blends into the terrain
 export const SINK = 0.6; // terrain mesh drops this far under the road and shoulders
@@ -596,7 +596,7 @@ export function createTrack(map: MapData): Track {
     let hit = 0;
     const lm = Math.hypot(qlx, qlz);
     const nx = qlx / lm, nz = qlz / lm;
-    for (const side of [1, -1]) {
+    for (let side = 1; side >= -1; side -= 2) {
       const pen = (side * pl + radius - wall) * lm;
       if (pen <= 0) continue;
       pos.x -= nx * side * pen;

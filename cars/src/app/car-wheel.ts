@@ -5,11 +5,24 @@ import { mergeAll } from "./car-body";
 export type RimKind = "y5" | "ten" | "mesh" | "five" | "six" | "multi" | "aero" | "wire";
 export type WheelLook = { rim: RimKind; inch: number; face: number; lip: number; caliper: number; lock?: boolean; tread: "street" | "slick" | "rally" | "classic"; dish?: number };
 
-// Wheel parts, axle along +x, outer face toward +x, centered on the wheel.
+// One wheel in one geometry, axle along +x, outer face toward +x, centered on the wheel.
+// pbr: roughness, metalness, kind (0 plain, 1 tire tread, 2 brake disc), fixed (1 = does not spin: caliper).
 export function buildWheel(R: number, width: number, look: WheelLook, lod: number) {
   const rimR = Math.min(R - 0.06, (look.inch * 0.0254) / 2);
-  const seg = lod > 1 ? 72 : lod > 0 ? 48 : 28;
-  return { tire: tire(R, rimR, width, seg, lod > 0 ? 36 : 16), rim: rim(rimR, width, look, seg, lod), brake: brake(rimR, look.caliper, seg) };
+  const seg = lod > 1 ? 72 : lod > 0 ? 48 : 20;
+  const t = tire(R, rimR, width, seg, lod > 1 ? 36 : lod > 0 ? 28 : 12, look.tread === "slick" ? 0.4 : 1);
+  paint(t, 0x121213);
+  const b = brake(rimR, look.caliper, seg);
+  const tag = (g: THREE.BufferGeometry, rough: number, metal: number, kind: number, fixed: number) => {
+    const n = g.attributes.position.count;
+    const a = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) a.set([rough, metal, kind, fixed], i * 4);
+    g.setAttribute("pbr", new THREE.Float32BufferAttribute(a, 4));
+    if (g.attributes.uv1) g.deleteAttribute("uv1");
+    return g;
+  };
+  const parts = [tag(t, look.tread === "slick" ? 0.58 : 0.88, 0, 1, 0), tag(rim(rimR, width, look, seg, lod), 0.2, 0.9, 0, 0), tag(b.disc, 0.32, 0.75, 2, 0), tag(b.cal, 0.38, 0.2, 0, 1)];
+  return mergeAll(parts);
 }
 
 function lathe(prof: readonly (readonly [number, number])[], seg: number, uScale = 1, colors?: readonly number[]) {
@@ -47,18 +60,19 @@ function smoothProfile(pts: readonly (readonly [number, number])[], n: number) {
   return c.getSpacedPoints(n).map((p) => [p.x, p.y] as const);
 }
 
-function tire(R: number, rimR: number, w: number, seg: number, np: number) {
-  const h = w / 2, sd = R - rimR;
+// sq < 1 squares the shoulder, as on a slick.
+function tire(R: number, rimR: number, w: number, seg: number, np: number, sq = 1) {
+  const h = w / 2, sd = R - rimR, sh = 0.03 * sq, sv = 0.02 * sq;
   const prof = smoothProfile(
     [
       [-h + 0.012, rimR - 0.004],
       [-h - 0.004, rimR + sd * 0.25],
       [-h - 0.006, rimR + sd * 0.55],
-      [-h + 0.004, R - 0.02],
-      [-h + 0.03, R - 0.002],
+      [-h + 0.004, R - sv],
+      [-h + sh, R - 0.002],
       [0, R],
-      [h - 0.03, R - 0.002],
-      [h - 0.004, R - 0.02],
+      [h - sh, R - 0.002],
+      [h - 0.004, R - sv],
       [h + 0.006, rimR + sd * 0.55],
       [h + 0.004, rimR + sd * 0.25],
       [h - 0.012, rimR - 0.004],
@@ -187,30 +201,16 @@ function rim(rimR: number, w: number, look: WheelLook, seg: number, lod: number)
 
 function brake(rimR: number, caliper: number, seg: number) {
   const rd = rimR * 0.84, t = 0.028;
-  const disc = lathe([[0, rd * 0.42], [0, rd], [-t, rd], [-t, rd * 0.42]], seg);
-  const uv = disc.attributes.uv, p = disc.attributes.position;
-  const uv1: number[] = [];
-  for (let i = 0; i < p.count; i++) {
-    const u = 0.5 + (p.getZ(i) / rd) * 0.48, v = 0.5 + (p.getY(i) / rd) * 0.48;
-    uv.setXY(i, u, v);
-    uv1.push(u, v);
-  }
-  disc.setAttribute("uv1", new THREE.Float32BufferAttribute(uv1, 2));
-  paint(disc, 0xffffff);
-  const hat = lathe([[0.015, 0], [0.015, rd * 0.42], [-t, rd * 0.42]], 32);
-  paint(hat, 0x2c2d30);
+  const disc = lathe([[0, rd * 0.42], [0, rd], [-t, rd], [-t, rd * 0.42]], seg, 1, [0x8d9095, 0x9a9da2, 0x9a9da2, 0x8d9095]);
+  const hat = lathe([[0.015, 0], [0.015, rd * 0.42], [-t, rd * 0.42]], 24, 1, [0x2c2d30, 0x2c2d30, 0x2c2d30]);
   const sh = new THREE.Shape();
   const a0 = Math.PI / 2 - 0.5, a1 = Math.PI / 2 + 0.5;
   sh.absarc(0, 0, rd * 1.08, a0, a1, false);
   sh.absarc(0, 0, rd * 0.7, a1, a0, true);
-  const cal = new THREE.ExtrudeGeometry(sh, { depth: 0.075, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 2, curveSegments: 16 });
+  const cal = new THREE.ExtrudeGeometry(sh, { depth: 0.075, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 2, curveSegments: 12 });
   cal.rotateY(Math.PI / 2);
   cal.translate(-0.06, 0, 0);
   prep(cal, false);
-  const cu = cal.attributes.uv;
-  for (let i = 0; i < cu.count; i++) cu.setXY(i, 0.004, 0.996);
-  cal.setAttribute("uv1", new THREE.Float32BufferAttribute(new Float32Array(cu.count * 2).fill(0.996), 2));
   paint(cal, caliper);
-  for (const g of [disc, hat]) if (!g.attributes.uv1) g.setAttribute("uv1", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2).fill(0.5), 2));
-  return mergeAll([disc, hat, cal]);
+  return { disc: mergeAll([disc, hat]), cal };
 }

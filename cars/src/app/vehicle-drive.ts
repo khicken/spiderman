@@ -91,16 +91,21 @@ export function engineTorque(d: Driveline, spec: CarSpec, thr: number): number {
   return drive - Math.sign(rpm) * fric;
 }
 
+// Engine speed the clutch holds while it slips at a standing start.
+export function launchRpm(spec: CarSpec, thr: number): number {
+  const bite = spec.engine.idle + 220;
+  return bite + 300 + thr * (0.6 * spec.engine.redline - bite);
+}
+
 // Clutch torque capacity: slips at launch so the engine holds launch revs, locks once rolling.
 export function clutchCapacity(d: Driveline, spec: CarSpec, thr: number, handbrake: number, wheelRpm: number): number {
   if (d.shiftT > 0 || d.gear === 0 || handbrake > 0.5) return 0;
   const full = d.tPeak * 2.5;
   if (d.electric) return full;
-  const e = spec.engine;
-  const bite = e.idle + 220;
-  const launch = bite + 300 + thr * (0.6 * e.redline - bite);
+  const bite = spec.engine.idle + 220;
+  const launch = launchRpm(spec, thr);
   const lo = Math.max(bite, launch - 1500);
-  const t = Math.min(1, Math.max(0, (d.we * RPM - lo) / (launch - lo), (wheelRpm - bite) / 400));
+  const t = Math.min(1, Math.max(0, (d.we * RPM - lo) / (launch - lo), (wheelRpm - bite) / Math.max(400, lo - bite)));
   return full * t * t;
 }
 

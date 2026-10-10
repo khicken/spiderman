@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { dropAfterUpload } from "./render-shared";
 import type { MapData, MapId, Quality, Track } from "./contracts";
 
 export type Tier = { far: number; detail: number; trees: number; treeNear: number; treeFar: number; treeShadow: boolean; crowd: number; props: number };
@@ -259,9 +260,12 @@ export class Geo {
     }
     g.computeBoundingSphere();
     g.computeBoundingBox();
-    return g;
+    this.p = this.n = this.c = this.f = this.t = [];
+    return dropAfterUpload(g);
   }
 }
+
+
 
 export function disposeTree(o: THREE.Object3D) {
   o.traverse((c) => {

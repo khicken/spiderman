@@ -69,7 +69,7 @@ export function Results({
                   {s.best === fast && <Trophy />}
                   {fmtTime(s.best)}
                 </span>
-                <span className="num w-[5.5em] text-right">{!s.finished ? "DNF" : s.place === 1 ? fmtTime(s.time) : `+${(s.time - leader).toFixed(3)}`}</span>
+                <span className="num w-[5.5em] text-right">{"dnf" in s && s.dnf ? "DNF" : !s.finished ? <span className="text-mute">{fmtTime(0)}</span> : s.place === 1 ? fmtTime(s.time) : `+${(s.time - leader).toFixed(3)}`}</span>
               </div>
             );
           })}

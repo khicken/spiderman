@@ -1,14 +1,17 @@
-import { SNAP, newCarFrame, type CarFrame } from "./net-wire";
+import { SNAP, copyFrame, newCarFrame, type CarFrame } from "./net-wire";
 
 export const INTERP_DELAY = 100; // ms behind the newest host time
 export const EXTRAP_MAX = 250; // ms past the last sample before a car is stale
-const N = 16;
+const N = 24;
 
 export type InterpBuffer = {
   push(f: CarFrame, arrival: number): void;
   sample(t: number, out: Float32Array): boolean;
   latest(): CarFrame | null;
+  at(t: number): CarFrame | null; // newest frame at or before t, for controls and engine
   readonly jitter: number; // ms, mean deviation of transit time
+  readonly transit: number; // ms, smoothed arrival minus send time
+  readonly gap: number; // ms, smoothed send interval
   readonly count: number;
   clear(): void;
 };
@@ -19,15 +22,13 @@ export function createInterp(): InterpBuffer {
   let count = 0;
   let transit = NaN;
   let jitter = 0;
+  let gap = 33;
   const at = (k: number) => ring[(head - 1 - k + N * 2) % N]; // 0 = newest
 
   function push(f: CarFrame, arrival: number) {
     if (count && f.t <= at(0).t) return; // out of order or duplicate
-    const d = ring[head];
-    d.seq = f.seq;
-    d.t = f.t;
-    d.pose.set(f.pose);
-    Object.assign(d.controls, f.controls);
+    if (count) gap += (Math.min(500, f.t - at(0).t) - gap) * 0.1;
+    copyFrame(f, ring[head]);
     head = (head + 1) % N;
     count = Math.min(N, count + 1);
     const tr = arrival - f.t;
@@ -61,9 +62,16 @@ export function createInterp(): InterpBuffer {
     push,
     sample,
     latest: () => (count ? at(0) : null),
+    at(t: number) {
+      if (!count) return null;
+      for (let k = 0; k < count; k++) if (at(k).t <= t) return at(k);
+      return at(count - 1);
+    },
     get jitter() { return jitter; },
+    get transit() { return Number.isNaN(transit) ? 0 : transit; },
+    get gap() { return gap; },
     get count() { return count; },
-    clear() { count = 0; transit = NaN; jitter = 0; },
+    clear() { count = 0; transit = NaN; jitter = 0; gap = 33; },
   };
 }
 

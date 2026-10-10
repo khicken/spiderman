@@ -1,5 +1,6 @@
 import type { CarSpec, EngineInput, EngineVoice } from "./contracts";
 import { ENGINE_PARAMS, type EngineProfile, SURFACES } from "./audio-engine-dsp";
+import { type ProcNode, type ProcParam, procNode } from "./audio-worklet";
 
 type Layout = { order: number[]; banks: number[] };
 const alt = (n: number) => Array.from({ length: n }, (_, i) => i % 2);
@@ -22,6 +23,29 @@ const hash = (s: string) => {
     return ((h >>> 0) % 10000) / 10000;
   };
 };
+
+// Per multiple of half the firing rate. V12 screams in the upper firing harmonics, the flat-six howls on the 1.5 order,
+// the cross-plane V8 burbles on the half orders and roars in the low firing harmonics.
+const HARM: Record<string, number[]> = {
+  i4: [0.05, 0.35, 0.1, 0.6, 0.05, 0.4, 0, 0.25, 0, 0.12],
+  i6: [0.02, 0.3, 0.05, 0.6, 0.04, 0.55, 0, 0.35, 0, 0.2, 0, 0.12],
+  f6: [0.05, 0.3, 0.55, 0.7, 0.3, 0.6, 0.12, 0.4, 0.05, 0.25, 0, 0.15],
+  v8: [0.55, 0.45, 0.4, 0.6, 0.25, 0.45, 0.1, 0.3, 0, 0.15],
+  v8flat: [0.03, 0.35, 0.05, 0.7, 0.05, 0.55, 0, 0.4, 0, 0.25, 0, 0.12],
+  v10: [0.03, 0.25, 0.05, 0.6, 0.05, 0.75, 0, 0.6, 0, 0.4, 0, 0.25],
+  v12: [0.02, 0.2, 0.04, 0.55, 0.04, 0.8, 0, 0.7, 0, 0.5, 0, 0.3],
+};
+const FORM: Record<string, [number[], number[]]> = {
+  i4: [[1500, 3100, 5200], [0.7, 0.8, 0.3]],
+  i6: [[1300, 2600, 4400], [0.7, 0.7, 0.35]],
+  f6: [[1100, 2300, 3900], [1, 0.9, 0.45]],
+  v8: [[800, 1600, 3100], [2.2, 1.8, 0.8]],
+  v8flat: [[1200, 2500, 4300], [0.8, 0.8, 0.4]],
+  v10: [[1600, 3200, 5200], [0.6, 1, 0.6]],
+  v12: [[1700, 3300, 5400], [0.6, 1, 0.65]],
+};
+const HGAIN: Record<string, number> = { i4: 0.2, i6: 0.18, f6: 0.22, v8: 0.2, v8flat: 0.2, v10: 0.25, v12: 0.25 };
+const FGAIN = 2.2;
 
 // Loudness trims measured with the offline renders, so every car sits at a similar level at full load.
 const TRIM: Record<string, number> = { i4: 1.05, i6: 0.95, f6: 1, v8: 0.95, v8flat: 0.95, v10: 1.1, v12: 1.2, electric: 16 };
@@ -62,11 +86,16 @@ export function engineProfile(spec: CarSpec, sr: number, cheap: boolean): Engine
     redline: e.redline,
     gain: 0.25 * (cheap ? 0.75 : 1) * (TRIM[e.layout] ?? 1),
     stereo: cheap || n < 6 ? 0 : 0.5,
+    harm: (HARM[e.layout] ?? HARM.i6).slice(0, cheap ? 6 : 12),
+    hBase: n % 2 ? n : n / 2,
+    form: n ? (FORM[e.layout] ?? FORM.i6)[0].slice(0, cheap ? 1 : 3) : [],
+    formG: n ? (FORM[e.layout] ?? FORM.i6)[1].map((g) => g * FGAIN * (0.6 + 0.4 * s.tone + 0.4 * s.rasp)) : [],
+    hGain: n ? (HGAIN[e.layout] ?? 0.1) * (0.7 + 0.3 * s.tone + 0.3 * s.rasp) : 0,
   };
 }
 
 export type Ears = { pos: { x: number; y: number; z: number }; vel: { x: number; y: number; z: number }; wet: number };
-export type VoiceCtl = EngineVoice & { apply(i: EngineInput, at?: number): void; readonly level: number; readonly tunnel: boolean };
+export type VoiceCtl = EngineVoice & { apply(i: EngineInput, at?: number): void; dist(p: { x: number; y: number; z: number }): number; readonly level: number; readonly tunnel: boolean };
 
 const C = 343;
 
@@ -84,8 +113,8 @@ export function createVoice(ctx: BaseAudioContext, dest: AudioNode, spec: CarSpe
     pan.connect(out);
   }
   out.connect(dest);
-  let node: AudioWorkletNode | null = null;
-  let params: Record<string, AudioParam> = {};
+  let node: ProcNode | null = null;
+  const params: Record<string, ProcParam> = {};
   let dead = false;
   let last: EngineInput | null = null;
   const prev = { x: 0, y: 0, z: 0, t: -1 };
@@ -96,8 +125,7 @@ export function createVoice(ctx: BaseAudioContext, dest: AudioNode, spec: CarSpe
   void ready.then((ok) => {
     if (!ok || dead) return;
     try {
-      node = new AudioWorkletNode(ctx, "car-engine", {
-        numberOfInputs: 0,
+      node = procNode(ctx, "car-engine", {
         numberOfOutputs: 1,
         outputChannelCount: [player ? 2 : 1],
         processorOptions: engineProfile(spec, player ? ctx.sampleRate : ctx.sampleRate / 2, !player),
@@ -188,6 +216,7 @@ export function createVoice(ctx: BaseAudioContext, dest: AudioNode, spec: CarSpe
         console.warn("engine update", e);
       }
     },
+    dist: (q) => Math.hypot(q.x - prev.x, q.y - prev.y, q.z - prev.z),
     get level() {
       return level;
     },

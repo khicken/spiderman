@@ -20,7 +20,7 @@ import { createTrack } from "./track";
 import { createTrackMesh } from "./track-mesh";
 import type { MiniCar } from "./ui-hud";
 import type { Settings } from "./ui-settings";
-import { collideCars, createVehicle, setWet, type VehicleBody } from "./vehicle";
+import { collideCars, createVehicle, renderPose, setFocus, setWet, type VehicleBody } from "./vehicle";
 
 const DT = 1 / 120;
 const REWIND_HZ = 30;
@@ -48,6 +48,7 @@ type Racer = {
   c: Controls;
 };
 
+const GHOST_MAT = new THREE.MeshStandardMaterial({ color: "#9fd8ff", transparent: true, opacity: 0.35, depthWrite: false, roughness: 0.4 });
 const spec = (id: CarId) => CARS.find((c) => c.id === id) ?? CARS[0];
 const v3 = new THREE.Vector3();
 const fwd = new THREE.Vector3();
@@ -66,7 +67,6 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   let mesh: TrackMesh | null = null;
   let scenery: Scenery | null = null;
   let rig: CameraRig | null = null;
-  let loading: Promise<void> | null = null;
   let loadedId: MapId | null = null;
 
   let racers: Racer[] = [];
@@ -85,6 +85,8 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   let rewinding = false;
   let raf = 0;
   let last = performance.now();
+  // Offline race time stops while paused or rewinding. Online races keep wall time, shared by all clients.
+  let rclock = last;
   let acc = 0;
   let hudAcc = 0;
   let netAcc = 0;
@@ -94,7 +96,16 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   const snapScratch = new Float32Array(64);
   const mini: MiniCar[] = [];
 
-  async function loadMap(id: MapId) {
+  // Loads run one at a time. A newer showroom or play request skips the older queued ones.
+  let req = 0;
+  let queue: Promise<void> = Promise.resolve();
+  function loadMap(id: MapId, my = req) {
+    const run = queue.then(() => (my === req ? buildMap(id) : undefined));
+    queue = run.catch((e) => console.error("map load:", e));
+    return run;
+  }
+
+  async function buildMap(id: MapId) {
     if (loadedId === id && track) return;
     cb.progress(0);
     const info = MAPS.find((m) => m.id === id) ?? MAPS[0];
@@ -123,7 +134,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     applyEnv();
     loadedId = id;
     wasNight = -1;
-    await tick();
+    await warm();
     cb.progress(1);
   }
 
@@ -141,6 +152,19 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   }
 
   const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+  // Compiles new shaders off the main thread. Frames skip the draw meanwhile, so the canvas keeps its last image.
+  let compiling = 0;
+  async function warm() {
+    compiling++;
+    try {
+      await view.renderer.compileAsync(view.scene, view.camera);
+    } catch (e) {
+      console.warn("shader warm:", e);
+    } finally {
+      compiling--;
+    }
+  }
 
   function clearRacers() {
     for (const r of racers) {
@@ -181,7 +205,9 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     session = null;
     net = null;
     envOverride = {};
-    await loadMap(mapId);
+    const my = ++req;
+    await loadMap(mapId, my);
+    if (my !== req) return;
     clearRacers();
     addRacer({ id: "me", name: "You", color: paint, car, me: true, ai: false }, 0, false);
     rig?.cut();
@@ -200,17 +226,26 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   }
 
   async function play(s: Session) {
+    const my = ++req;
     session = s;
     net = s.net ?? null;
     if (net?.lobby) envOverride = { weather: net.lobby.weather === "map" ? undefined : net.lobby.weather, hour: net.lobby.hour === "map" ? undefined : net.lobby.hour };
     else envOverride = {};
-    await loadMap(s.map);
+    await loadMap(s.map, my);
+    if (my !== req) return;
     applyEnv();
     clearRacers();
     const entrants: Entrant[] = [];
     if (net) {
-      const peers = [...net.peers].sort((a, b) => (a.id < b.id ? -1 : 1));
-      for (const p of peers) entrants.push(p.me ? { ...p, car: s.car, color: s.paint } : p);
+      // Online: the host fixed the grid at the start. The host drives the AI, the others only show it.
+      const host = net.host;
+      const grid = net.grid(s.car, s.paint);
+      grid.forEach(({ e, slot }, i) => {
+        const r = addRacer(e, slot, !e.me && !(e.ai && host), 0.86 + 0.12 * (i / Math.max(1, grid.length - 1)));
+        if (r.remote) r.ai = null;
+      });
+      // dev only: ?bot=1 lets the AI drive my car, for two-browser tests
+      if (me && process.env.NODE_ENV !== "production" && new URLSearchParams(location.search).has("bot")) me.ai = createDriver(track!, me.v, 0.9);
     } else {
       entrants.push({ id: "me", name: "You", color: s.paint, car: s.car, me: true, ai: false });
       const n = s.mode === "race" ? s.ai : 0;
@@ -219,27 +254,27 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
         const c = (pool.length > 1 ? pool : CARS)[(i + 1) % (pool.length > 1 ? pool.length : CARS.length)];
         entrants.push({ id: `ai${i}`, name: AI_NAMES[i % AI_NAMES.length], color: AI_COLORS[i % AI_COLORS.length], car: c.id, me: false, ai: true });
       }
+      // Solo: the player starts at the back like Forza.
+      const order = [...entrants.slice(1), entrants[0]];
+      order.forEach((e, i) => addRacer(e, i, false, 0.86 + 0.12 * (i / Math.max(1, order.length - 1))));
     }
-    // Solo: the player starts at the back like Forza. Online: grid order by id, same on every client.
-    const order = net ? entrants : [...entrants.slice(1), entrants[0]];
-    order.forEach((e, i) => addRacer(e, i, !!net && !e.me, 0.86 + 0.12 * (i / Math.max(1, order.length - 1))));
     const myId = me?.e.id ?? "me";
     race = createRace(track!, s.mode, s.laps, racers.map((r) => r.e.id), myId);
     if (s.mode === "time" || s.mode === "free") {
       ghost = createGhost(s.map, s.car);
       ghostModel = createCarModel(spec(s.car), "#9fd8ff", "low");
       ghostModel.group.visible = false;
+      // Car materials are shared between cars, so the ghost gets its own instead of changing them.
       ghostModel.group.traverse((o) => {
-        const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-        for (const x of m ? (Array.isArray(m) ? m : [m]) : []) {
-          x.transparent = true;
-          x.opacity = 0.35;
-          x.depthWrite = false;
-        }
+        const m = o as THREE.Mesh;
+        if (m.isMesh) m.material = GHOST_MAT;
       });
       view.scene.add(ghostModel.group);
     }
-    const startAt = s.startAt != null && net ? s.startAt - net.clockOffset : performance.now() + (s.mode === "free" ? 0 : 3500);
+    rig?.cut();
+    await warm();
+    if (my !== req) return;
+    const startAt = s.startAt != null && net ? s.startAt - net.clockOffset : rclock + (s.mode === "free" ? 0 : 3500);
     race.start(startAt);
     finishedSent = false;
     rig?.cut();
@@ -291,7 +326,6 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
         fwd.set(0, 0, 1).applyQuaternion(st.quat);
         v3.copy(st.pos).addScaledVector(fwd, -b.v.spec.body.length / 2).setY(st.pos.y - b.v.spec.cgH + 0.35);
         fx.backfire(v3, dir.copy(fwd).negate());
-        audio?.sfx("backfire", { volume: 0.7, at: b === me ? undefined : v3 });
       } else if (e.type === "toast") cb.hudRef()?.event(e);
       else if (e.type === "checkpoint" || e.type === "lap" || e.type === "finish") {
         if (e.id !== me?.e.id) continue;
@@ -302,7 +336,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
           finishedSent = true;
           audio?.music("results", map?.id);
           setTimeout(() => {
-            if (state === "race") {
+            if (state === "race" || state === "paused") {
               state = "results";
               cb.finished();
             }
@@ -333,10 +367,11 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       const mine = all.find((x) => x.id === me!.e.id);
       hud.place = mine?.place ?? 1;
       hud.total = all.length;
-      hud.lap = Math.min((mine?.lap ?? 0) + 1, session && track!.closed ? (session.mode === "free" ? 999 : session.laps) : 1);
+      hud.lap = Math.min(mine?.lap ?? 1, session && track!.closed ? (session.mode === "free" ? 999 : session.laps) : 1);
       hud.laps = !track!.closed ? 1 : session?.mode === "free" ? 0 : session?.laps ?? 1;
       hud.time = race.phase === "racing" || race.phase === "done" ? race.clock - race.lapStart(me.e.id) : 0;
       hud.last = race.lastLap(me.e.id);
+      if (mine?.finished) hud.time = hud.last;
       hud.best = mine?.best ?? 0;
       hud.countdown = race.countdown;
       hud.wrongWay = race.wrongWay(me.e.id);
@@ -366,7 +401,10 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       return;
     }
 
-    if (input.pressed("pause") && (state === "race" || state === "paused")) cb.pause();
+    // Read first, so presses belong to this frame. Paused frames read too, or the last press repeats.
+    const c = me ? input.read(dt, me.v.state.speed) : null;
+    // Opens the menu only. The menu closes through its own Back (Esc, B or Start), so one press never toggles twice.
+    if (input.pressed("pause") && state === "race") cb.pause();
     if (state === "race" && me) {
       if (input.pressed("camera")) rig.cycle();
       if (input.pressed("reset")) {
@@ -380,16 +418,17 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       rewinding = hold;
     }
 
-    const live = state === "race" || state === "results" || state === "menu";
+    // Online races do not stop for one player's pause menu.
+    const live = state !== "paused" || !!net;
     const racing = race?.phase === "racing" || race?.phase === "done";
-    if (me && state !== "paused") {
-      const c = input.read(dt, me.v.state.speed);
+    if (me && c && state === "paused") me.c = { ...IDLE, handbrake: 0, brake: 1 };
+    else if (me && c) {
       if (state === "race" && racing && race?.phase !== "done") me.c = c;
       else if (state === "race") me.c = { ...c, handbrake: 1, brake: 0, shiftUp: false, shiftDown: false };
       else me.c = state === "results" ? { ...IDLE, handbrake: 0, brake: 0.6 } : IDLE;
     }
 
-    if (live && state !== "paused") {
+    if (live) {
       if (rewinding) {
         rewindAcc += dt;
         while (rewindAcc >= 1 / (REWIND_HZ * 2)) {
@@ -412,7 +451,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
             r.c.shiftUp = false;
             r.c.shiftDown = false;
           }
-          if (racers.length > 1) route(collideCars(racers.map((r) => r.v)));
+          if (racers.length > 1) route(collideCars(bodies()));
           acc -= DT;
           steps++;
         }
@@ -428,25 +467,39 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     }
 
     if (net) {
+      // a new host takes over the AI where the old host left it
       for (const r of racers) {
-        if (!r.remote) continue;
-        const own = r.v.snap(snapScratch);
-        if (net.remote(r.e.id, now, own)) {
-          r.v.load(own);
-          r.m.group.visible = true;
+        if (r.remote && r.e.ai && net.host) {
+          r.remote = false;
+          r.ai = createDriver(track, r.v, 0.9);
         }
       }
+      net.tick(racers, track, now, dt);
       netAcc += dt;
       if (me && netAcc >= 1 / 30) {
         netAcc = 0;
-        net.sendCar(me.v.snap(snapScratch), me.c);
+        net.sendCar(me.v.snap(snapScratch), me.c, me.v.state);
+      }
+      net.sendAi(racers);
+      // someone finished: show the DNF countdown, and end my race when race.ts calls time
+      if (state === "race" && race && me && !finishedSent) {
+        if (race.phase === "done") {
+          finishedSent = true;
+          state = "results";
+          audio?.music("results", map?.id);
+          cb.finished();
+        } else if (race.dnfAt !== null) {
+          const k = net.dnf(race.dnfAt - race.clock);
+          if (k > 0) cb.hudRef()?.event({ type: "toast", text: `0:${String(k).padStart(2, "0")}` });
+        }
       }
     }
 
     if (race && state !== "menu") {
       states.clear();
       for (const r of racers) states.set(r.e.id, r.v.state);
-      const ev = race.update(now, states);
+      rclock = net ? now : rclock + (live && !rewinding ? dt * 1000 : 0);
+      const ev = race.update(rclock, states);
       route(ev);
       if (racing && me) {
         const all = race.standings();
@@ -464,6 +517,13 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       }
     }
 
+    if (!net && state === "race" && race?.phase === "done" && !finishedSent) {
+      finishedSent = true;
+      state = "results";
+      audio?.music("results", map?.id);
+      cb.finished();
+    }
+
     const wet = view.wet;
     const night = view.night;
     if (Math.abs(night - wasNight) > 0.02) {
@@ -473,7 +533,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     for (let i = 0; i < racers.length; i++) {
       const r = racers[i];
       const st = r.v.state;
-      r.m.sync(st, dt);
+      r.m.sync(r.remote || rewinding ? st : renderPose(r.v, acc / DT), dt);
       r.m.setLights(night > 0.4 || st.tunnel || (envOverride.weather ?? map?.env.weather) === "fog");
       for (let w = 0; w < 4; w++) {
         const wh = st.wheels[w];
@@ -492,9 +552,10 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     if (me) {
       const st = me.v.state;
       if (state === "menu") rig.showroom(dt, st.pos, t);
-      else rig.update(dt, st, me.v.spec, input.look(), input.held("lookBack"));
+      else rig.update(dt, rewinding ? st : renderPose(me.v, acc / DT), me.v.spec, input.look(), input.held("lookBack"));
       view.frame(dt, st.pos, state === "menu" ? 0 : Math.abs(st.speed));
     }
+    setFocus(view.camera.position);
     if (audio) {
       fwd.set(0, 0, -1).applyQuaternion(view.camera.quaternion);
       up.set(0, 1, 0).applyQuaternion(view.camera.quaternion);
@@ -502,7 +563,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     }
     scenery?.update(dt, view.camera);
     fx.update(dt, view.camera);
-    view.render();
+    if (!compiling) view.render();
 
     if (state === "race" && me) {
       const h = cb.hudRef();
@@ -530,6 +591,13 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   }
 
   const otherStates: import("./contracts").VehicleState[] = [];
+  const bodyList: VehicleBody[] = [];
+  function bodies() {
+    bodyList.length = racers.length;
+    for (let i = 0; i < racers.length; i++) bodyList[i] = racers[i].v;
+    return bodyList;
+  }
+
   function others() {
     otherStates.length = racers.length;
     for (let i = 0; i < racers.length; i++) otherStates[i] = racers[i].v.state;
@@ -537,7 +605,19 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   }
 
   const onResize = () => view.resize();
+  const onHide = () => {
+    if (document.hidden) {
+      audio?.setMuted(true);
+      if (state === "race" && !net) cb.pause();
+      return;
+    }
+    last = performance.now();
+    if (state === "paused") return;
+    audio?.setMuted(false);
+    audio?.setVolume(cur.master, cur.music);
+  };
   window.addEventListener("resize", onResize);
+  document.addEventListener("visibilitychange", onHide);
   view.resize();
   frame();
 
@@ -566,6 +646,8 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       return racers.map((r) => r.e);
     },
     pause(on: boolean) {
+      // Drop the press that opened or closed the menu, so it does not toggle again.
+      if (me) input.read(0, 0);
       if (state === "race" && on) state = "paused";
       else if (state === "paused" && !on) {
         state = "race";
@@ -614,6 +696,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     dispose() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
+      document.removeEventListener("visibilitychange", onHide);
       clearRacers();
       mesh?.dispose();
       scenery?.dispose();
@@ -633,9 +716,10 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       r.m.setQuality(q);
       r.m.setEnv(view.envMap);
     }
+    void warm();
   }
 
-  if (process.env.NODE_ENV !== "production") (window as unknown as { __cars: unknown }).__cars = { api, view, get racers() { return racers; }, get race() { return race; }, input };
+  if (process.env.NODE_ENV !== "production") (window as unknown as { __cars: unknown }).__cars = { api, view, get racers() { return racers; }, get race() { return race; }, input, get ghost() { return !!ghostModel?.group.visible; }, autopilot() { if (me && track) me.ai = createDriver(track, me.v, 1); } };
   return api;
 }
 

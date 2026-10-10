@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CarId, CarSpec, MapId, Mode } from "./contracts";
-import { Back, Bolt, Cog, Disc, Flag, Fwd, Globe, Laps, Pin, Play, Road, Ruler, Speed, Wheel, WeatherIcon } from "./ui-icons";
+import { Back, Bolt, Clock, Cog, Disc, Flag, Fwd, Globe, Laps, Pin, Play, Road, Ruler, Speed, Wheel, WeatherIcon } from "./ui-icons";
 import { ClassBadge, CLASS_COLOR, IconBtn, Stepper, TrackLine, carStats, cx, fmtLength, type MapCard } from "./ui-kit";
 import { focusByKey, useNavRoot } from "./ui-nav";
 
@@ -80,10 +80,11 @@ function Home({ onMode, onOnline, onSettings }: { onMode: (m: Mode) => void; onO
       <div className="flex items-end justify-between gap-4">
         <div className="flex gap-3">
           <Tile icon={<Flag />} label="Race" onClick={() => onMode("race")} hot autofocus />
+          <Tile icon={<Clock />} label="Time" onClick={() => onMode("time")} />
           <Tile icon={<Road />} label="Free" onClick={() => onMode("free")} />
           <Tile icon={<Globe />} label="Online" onClick={onOnline} />
         </div>
-        <a href="https://kalebkim.com" className="nav mb-1 rounded-[2px] border border-transparent px-1 text-xs text-dim hover:text-white">
+        <a href="https://kalebkim.com" className="nav mb-1 shrink-0 rounded-[2px] [@media(max-height:500px)]:hidden border border-transparent px-1 text-xs text-dim hover:text-white">
           kalebkim.com
         </a>
       </div>
@@ -95,6 +96,7 @@ function Tile({ icon, label, onClick, hot, autofocus }: { icon: ReactNode; label
   return (
     <button
       type="button"
+      aria-label={label}
       onClick={onClick}
       data-autofocus={autofocus || undefined}
       className={cx(
@@ -114,7 +116,7 @@ function TopBar({ onBack, step, mode }: { onBack: () => void; step: 1 | 2; mode:
       <IconBtn label="Back" onClick={onBack}>
         <Back />
       </IconBtn>
-      <span className="glass grid h-11 w-11 place-items-center rounded-[3px] text-xl text-hot">{mode === "race" ? <Flag /> : <Road />}</span>
+      <span className="glass grid h-11 w-11 place-items-center rounded-[3px] text-xl text-hot">{mode === "race" ? <Flag /> : mode === "time" ? <Clock /> : <Road />}</span>
       <div className="flex gap-1.5" aria-hidden>
         {[1, 2].map((i) => (
           <span key={i} className={cx("h-1 w-8 skew rounded-[1px] transition-colors duration-200", i <= step ? "bg-hot" : "bg-line-hi")} />
@@ -136,7 +138,7 @@ export function MapPicker({ maps, pick, onPick, onBack, onNext, mph }: { maps: r
   useNavRoot(ref, onBack);
   useCenter(strip, pick.map);
   const cur = maps.find((m) => m.id === pick.map) ?? maps[0];
-  const laps = pick.mode === "race" && cur?.closed !== false;
+  const laps = pick.mode !== "free" && cur?.closed !== false;
   return (
     <div ref={ref} className="safe fade absolute inset-0 flex flex-col gap-3 bg-gradient-to-t from-black/70 via-transparent to-black/40">
       <TopBar onBack={onBack} step={1} mode={pick.mode} />
@@ -261,7 +263,7 @@ export function CarPicker({ cars, pick, onPick, onBack, onGo, goIcon }: { cars: 
         </div>
       </div>
       <div className="flex items-end gap-3">
-        <div ref={strip} className="noscroll -my-2 flex min-w-0 flex-1 gap-2 overflow-x-auto py-2">
+        <div ref={strip} className="noscroll -my-2 -ml-6 flex min-w-0 flex-1 gap-2 overflow-x-auto py-2 pl-6 pr-6 [mask-image:linear-gradient(90deg,transparent,#000_1.5rem,#000_calc(100%-1.5rem),transparent)]">
           {cars.map((c) => {
             const on = c.id === car.id;
             return (
@@ -273,10 +275,10 @@ export function CarPicker({ cars, pick, onPick, onBack, onGo, goIcon }: { cars: 
                 data-on={on ? "1" : undefined}
                 onFocus={() => focusByKey() && !on && setCar(c)}
                 onClick={() => (on ? onGo() : setCar(c))}
-                className={cx("nav glass flex h-16 w-[clamp(9rem,14vw,12rem)] shrink-0 flex-col justify-center gap-1.5 rounded-[3px] border-l-4 px-3 text-left", !on && "opacity-75 hover:opacity-100")}
+                className={cx("nav glass flex h-16 min-w-[clamp(9rem,14vw,12rem)] shrink-0 flex-col justify-center gap-1.5 rounded-[3px] border-l-4 px-3 text-left", !on && "opacity-75 hover:opacity-100")}
                 style={{ borderLeftColor: CLASS_COLOR[c.klass] }}
               >
-                <span className="ttl truncate text-lg leading-none">{c.name}</span>
+                <span className="ttl whitespace-nowrap text-lg leading-none">{c.name}</span>
                 <ClassBadge klass={c.klass} pi={c.pi} className="self-start text-[0.7rem]" />
               </button>
             );

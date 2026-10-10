@@ -6,7 +6,8 @@ import { type Space, clamp, gain, impulse, masterChain } from "./audio-dsp";
 import { type Ears, type VoiceCtl, createVoice } from "./audio-engine";
 import { musicNode } from "./audio-music";
 import { HORN_CARS, SFX, bakeSfx } from "./audio-sfx";
-import { loadWorklet } from "./audio-worklet";
+import { createTap } from "./audio-tap";
+import { type ProcNode, audioPath, loadWorklet } from "./audio-worklet";
 
 let warned = 0;
 function safe<T>(fn: () => T, fallback: T): T {
@@ -19,6 +20,10 @@ function safe<T>(fn: () => T, fallback: T): T {
 }
 
 const CITY: MapId[] = ["tokyo", "sanfrancisco", "monaco"];
+// Bus levels measured from the live mix: engine about 7 dB over music while racing, AI and ambience under both.
+const ENGINE = 0.75;
+const AI = 0.85;
+const MUSIC = 2.6;
 const SFX_ORDER: Sfx[] = ["click", "hover", "beep", "go", "shift", "impact", "scrape", "curb", "backfire", "blowoff", "land", "checkpoint", "lap", "best", "finish", "horn", "rewind", "splash", "join", "leave"];
 
 export function createAudio(): Audio {
@@ -26,17 +31,20 @@ export function createAudio(): Audio {
   void ctx.resume().catch(() => {});
   const m = masterChain(ctx, ctx.destination);
   const mix = gain(ctx, m.input, 1);
-  const engineBus = gain(ctx, mix, 0.9);
+  const playerBus = gain(ctx, mix, ENGINE);
+  const aiBus = gain(ctx, mix, ENGINE * AI);
   const sfxBus = gain(ctx, mix, 0.8);
-  const ambBus = gain(ctx, mix, 0.9);
-  const musicVol = gain(ctx, mix, 0.7);
+  const ambBus = gain(ctx, mix, 1.5);
+  const musicVol = gain(ctx, mix, MUSIC);
   const musicDuck = gain(ctx, musicVol, 1);
   const musicVerb = ctx.createConvolver();
   musicVerb.buffer = impulse(ctx, "hall");
   musicVerb.connect(musicDuck);
 
   const envSend = gain(ctx, null, 1);
-  engineBus.connect(gain(ctx, envSend, 0.5));
+  const engineSend = gain(ctx, envSend, 0.5);
+  playerBus.connect(engineSend);
+  aiBus.connect(engineSend);
   sfxBus.connect(gain(ctx, envSend, 0.35));
   const spaces = {} as Record<Space, AudioBuffer>;
   const spaceOf = (s: Space) => (spaces[s] ||= impulse(ctx, s));
@@ -55,14 +63,17 @@ export function createAudio(): Audio {
       envSend.connect(tunnelVerb);
     }
     const t = ctx.currentTime;
-    tunnelGain.gain.setTargetAtTime(on ? 0.7 : 0, t, on ? 0.25 : 0.4);
+    tunnelGain.gain.setTargetAtTime(on ? 1.6 : 0, t, on ? 0.25 : 0.4);
     envAGain.gain.setTargetAtTime(on ? 0.05 : 0.25, t, 0.3);
-    engineBus.gain.setTargetAtTime(on ? 1.15 : 0.9, t, 0.3);
+    playerBus.gain.setTargetAtTime(ENGINE * (on ? 1.25 : 1), t, 0.3);
+    aiBus.gain.setTargetAtTime(ENGINE * AI * (on ? 1.25 : 1), t, 0.3);
     amb.setTunnel(on ? 1 : 0);
   };
 
+  const t0 = performance.now();
+  const sfxLog: [number, Sfx, number][] = [];
   const ready = loadWorklet(ctx, workletCode());
-  let music: AudioWorkletNode | null = null;
+  let music: ProcNode | null = null;
   let musicWant: { state: MusicState; map?: MapId } | null = null;
   void ready.then((ok) => {
     if (!ok || closed) return;
@@ -71,6 +82,25 @@ export function createAudio(): Audio {
       if (musicWant) music.port.postMessage(musicWant);
     }, undefined);
   });
+  if (process.env.NODE_ENV !== "production") {
+    const probe = ctx.createAnalyser();
+    probe.fftSize = 4096;
+    m.vol.connect(probe);
+    const buf = new Float32Array(4096);
+    const rms = () => {
+      probe.getFloatTimeDomainData(buf);
+      let e = 0;
+      for (const v of buf) e += v * v;
+      return Math.round(10 * Math.log10(e / buf.length + 1e-12));
+    };
+    const dev = { ctx, path: "pending", ms: 0, record: null as unknown, sfxLog, rms };
+    (window as unknown as { __audio: unknown }).__audio = dev;
+    void ready.then(() => {
+      dev.path = audioPath(ctx);
+      dev.ms = Math.round(performance.now() - t0);
+      if (dev.path === "worklet") dev.record = createTap(ctx, [["L", m.vol, 0], ["R", m.vol, 1], ["player", playerBus], ["ai", aiBus], ["music", musicVol], ["sfx", sfxBus], ["amb", ambBus], ["env", envAGain], ["tunnel", tunnelGain]]);
+    });
+  }
 
   const sr = Math.min(ctx.sampleRate, 48000);
   const bank = new Map<string, AudioBuffer>();
@@ -99,19 +129,24 @@ export function createAudio(): Audio {
   let sfxDuck = 0;
 
   const live = new Map<Sfx, { end: number; g: GainNode }[]>();
-  const last = new Map<Sfx, number>();
+  const last = new Map<string, number>();
   let scrape: { g: GainNode; src: AudioBufferSourceNode; until: number } | null = null;
 
   function play(name: Sfx, volume: number, at?: THREE.Vector3) {
     const t = ctx.currentTime;
+    if (process.env.NODE_ENV !== "production" && sfxLog.length < 2000) sfxLog.push([+t.toFixed(2), name, +volume.toFixed(2)]);
     if (volume <= 0.01) return;
     if (name === "scrape") return scrapeOn(volume);
-    if (t - (last.get(name) ?? -1) < 0.035) return;
+    const ai = !!at && !!player && player.dist(at) > 4;
+    const key = ai ? `${name}:ai` : name;
+    const gap = name === "backfire" ? (ai ? 0.35 : 0.12) : name === "blowoff" ? 0.5 : 0.035;
+    if (t - (last.get(key) ?? -1) < gap) return;
+    if (ai && (name === "backfire" || name === "blowoff")) volume *= 0.45;
     const d = SFX[name];
     const k = name === "horn" ? Math.max(0, HORN_CARS.indexOf(playerCar)) : name === "impact" ? (volume > 0.5 ? 2 : 0) + Math.floor(Math.random() * 2) : Math.floor(Math.random() * d.n);
     const buf = bank.get(`${name}:${k}`) ?? bank.get(`${name}:0`);
     if (!buf) return;
-    last.set(name, t);
+    last.set(key, t);
     const list = (live.get(name) ?? []).filter((v) => v.end > t);
     if (list.length >= 4) list.shift()!.g.gain.setTargetAtTime(0, t, 0.02);
     const src = ctx.createBufferSource();
@@ -180,7 +215,7 @@ export function createAudio(): Audio {
       };
     }
     const lvl = player ? player.level : 0;
-    musicDuck.gain.setTargetAtTime((1 - 0.22 * lvl) * (1 - sfxDuck), t, sfxDuck > 0 ? 0.03 : 0.25);
+    musicDuck.gain.setTargetAtTime((1 - 0.08 * lvl) * (1 - sfxDuck), t, sfxDuck > 0 ? 0.03 : 0.25);
     sfxDuck = Math.max(0, sfxDuck - 0.06);
     const tun = !!player?.tunnel;
     if (tun !== inTunnel) {
@@ -199,7 +234,7 @@ export function createAudio(): Audio {
     engine(spec: CarSpec, isPlayer: boolean): EngineVoice {
       return safe(
         () => {
-          const v = createVoice(ctx, engineBus, spec, isPlayer, ears, ready);
+          const v = createVoice(ctx, isPlayer ? playerBus : aiBus, spec, isPlayer, ears, ready);
           voices.add(v);
           if (isPlayer) {
             player = v;
@@ -265,7 +300,7 @@ export function createAudio(): Audio {
     setVolume(master, mus) {
       safe(() => {
         volume = clamp(master);
-        musicVol.gain.setTargetAtTime(0.7 * clamp(mus), ctx.currentTime, 0.05);
+        musicVol.gain.setTargetAtTime(MUSIC * clamp(mus), ctx.currentTime, 0.05);
         applyVol();
       }, undefined);
     },

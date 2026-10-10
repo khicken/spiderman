@@ -77,7 +77,8 @@ if (st > 5.5 && st < 6.5) {
   float on = step(1.0 - uLit * (shop > 0.5 ? 1.2 : 1.0), h21(cell * 1.31 + seed * 5.1 + floor(rnd2 * 3.0)));
   vec3 warm = mix(vec3(1.0, 0.68, 0.36), vec3(1.0, 0.85, 0.62), rnd2);
   vec3 cool = vec3(0.75, 0.88, 1.0);
-  litCol = mix(warm, cool, step(0.85, rnd)) * (0.35 + 0.65 * rnd2) * mix(1.0, 0.75 + 0.25 * f.y, curtain);
+  float mull = st > 1.5 && st < 2.5 ? mix(1.0, 0.3, step(fract(f.x * 3.0), 0.07)) : 1.0;
+  litCol = mix(warm, cool, step(0.6, rnd)) * (0.15 + 0.85 * rnd2 * rnd2) * mix(1.0, 0.75 + 0.25 * f.y, curtain) * (0.5 + 0.5 * smoothstep(0.3, 0.95, f.y)) * mull;
   lit = mix(on * m, uLit * 0.12, far);
   wall *= 1.0 - 0.25 * smoothstep(3.0, 0.0, vFac.y);
   wall *= 1.0 - 0.12 * (1.0 - smoothstep(0.0, 0.25, fract(cuv.y + 0.02))) * step(gH, vFac.y) * (1.0 - win);
@@ -103,7 +104,7 @@ export function createFacadeMaterial(far = false) {
       .replace("#include <color_fragment>", "#include <color_fragment>\n" + MAIN)
       .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 1.0 - gloss, win);")
       .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor = max(metalnessFactor, metal * win);")
-      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += litCol * lit * uNight * 1.3;");
+      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += litCol * lit * uNight * 0.9;");
     if (far) farPatch(s);
   };
   m.customProgramCacheKey = () => (far ? "facadeFar1" : "facade1");

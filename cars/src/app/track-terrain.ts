@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { dropAfterUpload } from "./render-shared";
 import type { Quality, Track } from "./contracts";
 import { VERGE, trackTables } from "./track";
 
@@ -130,7 +131,7 @@ export function buildTerrain(track: Track, q: Quality): THREE.BufferGeometry[] {
     g.setAttribute("normal", new THREE.Float32BufferAttribute(c.nor, 3));
     g.setIndex(c.idx);
     g.computeBoundingSphere();
-    out.push(g);
+    out.push(dropAfterUpload(g));
   }
   return out;
 }
