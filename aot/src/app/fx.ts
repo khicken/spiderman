@@ -14,13 +14,14 @@ varying vec4 vData;
 void main() {
   float a = iData.y * 6.2831;
   vec2 q = mat2(cos(a), sin(a), -sin(a), cos(a)) * position.xy;
-  vec3 r = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-  vec3 u = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-  vec3 wp = iPos.xyz + (r * q.x + u * q.y) * iPos.w;
+  vec4 mvPosition = viewMatrix * vec4(iPos.xyz, 1.0);
+  float dist = -mvPosition.z;
+  // Near the camera a puff would fill the screen and cost fill rate: cap its size and fade it out.
+  mvPosition.xy += q * min(iPos.w, max(dist, 0.0) * 0.6);
   vP = q * 2.0;
   vData = iData;
-  vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
-  gl_Position = projectionMatrix * mvPosition;
+  vData.w *= smoothstep(1.0, 4.0, dist);
+  gl_Position = vData.w > 0.0 ? projectionMatrix * mvPosition : vec4(0.0, 0.0, 2.0, 1.0);
   #include <fog_vertex>
 }`;
 

@@ -12,6 +12,8 @@ export type { World };
 
 const NONE: GameEvent[] = [];
 const VANISH_AFTER = 40;
+const RUBBLE = 0.16;
+const HOME_KEYS = ["timber", "plain", "stone", "roof", "prop"] as const;
 
 export function createWorld(scene: THREE.Scene, fx: Fx): World {
   const r = rng(1845);
@@ -30,6 +32,16 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
     far: new Mesher(),
   };
   const shapes: Shape[] = [];
+
+  const homes: { sh: Shape; at: Int32Array; down: boolean }[] = [];
+  const home: typeof house = (...a) => {
+    const at = new Int32Array(HOME_KEYS.length * 2);
+    HOME_KEYS.forEach((k, i) => (at[i * 2] = m[k].p.length / 3));
+    const top = house(...a);
+    HOME_KEYS.forEach((k, i) => (at[i * 2 + 1] = m[k].p.length / 3));
+    homes.push({ sh: shapes[shapes.length - 1], at, down: false });
+    return top;
+  };
 
   const wallInfo = wall(m, shapes, r);
   maria(m, shapes, r);
@@ -69,7 +81,7 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
         if (blocked(x, z, Math.max(w, d) / 2)) continue;
         const near = rr < 140 ? 1 : 0;
         const floors = Math.min(6, 3 + Math.floor(r() * 3) + near);
-        house(m, shapes, r, x, z, tc + Math.PI / 2, w - 0.05, d, floors, r() < 0.6, styles[Math.floor(r() * styles.length)]);
+        home(m, shapes, r, x, z, tc + Math.PI / 2, w - 0.05, d, floors, r() < 0.6, styles[Math.floor(r() * styles.length)]);
       }
     }
   };
@@ -92,7 +104,7 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
         const x = rr * Math.cos(t), z = rr * Math.sin(t);
         if (z > -6 || blocked(x, z, 4) || radials.some((q) => Math.abs(q.a - t) * rr < q.w / 2 + 4)) continue;
         if (r() < 0.65) tree(m, r, x, z, 0.9 + r() * 0.4);
-        else house(m, shapes, r, x, z, t + Math.PI / 2, 4 + r() * 2, 4 + r() * 2, 1, r() < 0.5, "timber");
+        else home(m, shapes, r, x, z, t + Math.PI / 2, 4 + r() * 2, 4 + r() * 2, 1, r() < 0.5, "timber");
       }
     }
   }
@@ -163,12 +175,14 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
   const roofMat = toon({ color: "#ffffff", map: roofTiles(), vertexColors: true, side: THREE.DoubleSide });
   const wallMat = toon({ color: "#ffffff", map: wallStone(), vertexColors: true });
   const propMat = toon({ color: "#ffffff", vertexColors: true });
-  mk(m.timber.geometry(), toon({ color: "#ffffff", map: facade("timber"), vertexColors: true }));
-  mk(m.plain.geometry(), toon({ color: "#ffffff", map: facade("plain"), vertexColors: true }));
-  mk(m.stone.geometry(), toon({ color: "#ffffff", map: facade("stone"), vertexColors: true }));
-  mk(m.roof.geometry(), roofMat);
+  const homeGeo = [
+    mk(m.timber.geometry(), toon({ color: "#ffffff", map: facade("timber"), vertexColors: true })),
+    mk(m.plain.geometry(), toon({ color: "#ffffff", map: facade("plain"), vertexColors: true })),
+    mk(m.stone.geometry(), toon({ color: "#ffffff", map: facade("stone"), vertexColors: true })),
+    mk(m.roof.geometry(), roofMat),
+  ].map((x) => x.geometry);
   mk(m.wall.geometry(), wallMat);
-  mk(m.prop.geometry(), propMat);
+  homeGeo.push(mk(m.prop.geometry(), propMat).geometry);
   mk(m.leaf.geometry(), toon({ color: "#ffffff", vertexColors: true }));
   const farMat = toon({ color: "#ffffff", vertexColors: true }) as THREE.MeshToonMaterial;
   farMat.fog = false;
@@ -411,6 +425,31 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
     return out;
   };
 
+  const smash = (p: THREE.Vector3, radius: number) => {
+    for (const h of homes) {
+      const sh = h.sh;
+      if (h.down) continue;
+      const rx = p.x - sh.cx, rz = p.z - sh.cz;
+      const ex = Math.max(0, Math.abs(rx * sh.c + rz * sh.s) - sh.hx);
+      const ez = Math.max(0, Math.abs(-rx * sh.s + rz * sh.c) - sh.hz);
+      if (ex * ex + ez * ez > radius * radius) continue;
+      h.down = true;
+      sh.y1 *= RUBBLE;
+      sh.rh *= RUBBLE;
+      for (let i = 0; i < homeGeo.length; i++) {
+        const a = h.at[i * 2], b = h.at[i * 2 + 1];
+        if (b <= a) continue;
+        const attr = homeGeo[i].getAttribute("position") as THREE.BufferAttribute;
+        const arr = attr.array;
+        for (let v = a; v < b; v++) arr[v * 3 + 1] *= RUBBLE + ((v * 7919) % 13) * 0.012;
+        attr.addUpdateRange(a * 3, (b - a) * 3);
+        attr.needsUpdate = true;
+      }
+      steamTmp.set(sh.cx, 2, sh.cz);
+      fx.dust(steamTmp, Math.max(sh.hx, sh.hz) * 1.6 + 4);
+    }
+  };
+
   const inside = (x: number, z: number) => {
     if (z < 0) return x * x + z * z < (WALL_R - WALL_T / 2) ** 2;
     return z > mariaZ(x) + WALL_T / 2;
@@ -438,6 +477,7 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
     pushTitan: collider.pushTitan,
     inside,
     kickGate,
+    smash,
     update: (dt: number) => update(dt),
     setQuality: quality,
   };

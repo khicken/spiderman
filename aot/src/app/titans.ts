@@ -72,6 +72,7 @@ type T = {
   smashT: number;
   climb: number;
   mark: number;
+  allyHold: boolean;
 };
 
 type Drop = { mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; t: number; base: number; pos: THREE.Vector3; r: number; rest: THREE.Quaternion | null };
@@ -170,6 +171,12 @@ function segClosest(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, out: T
   return out.multiplyScalar(t).add(a);
 }
 
+const NET_POSE = ["phase", "walk", "run", "crawl", "kneel", "lean", "twist", "lookYaw", "lookPitch", "tilt", "jaw", "roar", "flail", "reach", "crouch", "air", "kick", "stomp", "limp", "blind", "climb"] as const;
+const NET_PARTS: TitanPart[] = ["nape", "eyes", "armL", "armR", "legL", "legR"];
+const NET_KINDS = Object.keys(POOL) as TitanKind[];
+export const NET_REC = 23 + NET_POSE.length + 10; // id, kind, variant, height, x, y, z, yaw, then state, hp, sev, pose
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
 export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const variants = SPECS.map(buildVariant);
   const rnd = rand(Date.now() & 0xffff);
@@ -191,6 +198,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const hits: TitanHit[] = [];
   let hitI = 0;
   let player: PlayerView | null = null;
+  const netOwn = new Map<number, number>();
 
   const sfx = (name: Sfx, at?: THREE.Vector3, volume?: number) => out.push({ type: "sfx", name, at: at?.clone(), volume });
 
@@ -219,7 +227,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       prev: at.clone(), dead: 0, fall: rnd() < 0.7 ? 1 : -1, landed: false, hard: 0, hardened: false, aim: new THREE.Vector3(), aim2: new THREE.Vector3(), hit: false,
       flash: 0, tint, caps, nape: new THREE.Vector3(), eyes: new THREE.Vector3(), center: new THREE.Vector3(), steamT: R(1, 5), stepS: 0, roarT: 25, removed: false,
       crystalScale: rig.crystals.map((c) => c.scale.clone()), tilt: (rnd() - 0.5) * (kind === "abnormal" ? 0.7 : 0.35), reachK: kind === "smiler" ? 0.9 : kind === "normal" && rnd() < 0.5 ? 0.5 + rnd() * 0.5 : 0, jawIdle: v.spec.face === "gape" ? 0.35 : v.spec.face === "bulge" ? 0.12 : v.spec.face === "smile" ? 0 : 0.03,
-      home: new THREE.Vector3(), downT: 0, downArm: true, special: R(3, 5), smashT: 0, climb: 0, mark: 0,
+      home: new THREE.Vector3(), downT: 0, downArm: true, special: R(3, 5), smashT: 0, climb: 0, mark: 0, allyHold: false,
     };
     if (kind === "beast") ti.home.copy(homePoint());
     if (kind === "climber") {
@@ -482,10 +490,11 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     const part = zone as HitZone | null;
     if (!t || !part) return { events, zone: null, titan: null, killed: false };
     const H = t.height;
-    const crit = blade.charge >= 0.92;
-    const P = blade.speed * (0.55 + 0.45 * clamp01(blade.charge)) * (crit ? 1.5 : 1);
+    const w = blade.weapon ?? "blades";
+    const crit = w === "blades" && blade.charge >= 0.92;
+    const P = (w === "spears" ? 52 : w === "pistols" ? 3 : blade.speed * (0.55 + 0.45 * clamp01(blade.charge)) * (crit ? 1.5 : 1)) * (blade.damage ?? 1);
     const hitSfx: Sfx = crit ? "slashCrit" : "slashHit";
-    if (t.kind === "armored" && part !== "eyes" && !(part === "nape" && !t.hardened) && !armorGap(t, part, blade)) {
+    if (w !== "spears" && t.kind === "armored" && part !== "eyes" && !(part === "nape" && !t.hardened) && !armorGap(t, part, blade)) {
       events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
       fx.steam(pt, 1.2, 0.4);
       if (toastT <= 0) {
@@ -498,7 +507,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     let killed = false;
     if (crit && part !== "body") events.push({ type: "feat", name: "perfect", kind: t.kind });
     if (part === "nape") {
-      if (t.hardened) {
+      if (t.hardened && w !== "spears") {
         events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 }, { type: "toast", title: "Hardened", text: t.kind === "female" ? "Cut two limbs" : "Cut a limb" });
         fx.steam(pt, 1.5, 0.6);
         return { events, zone: "nape", titan: t, killed: false };
@@ -515,7 +524,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           { type: "sfx", name: hitSfx, at: pt }, { type: "sfx", name: "titanHurt", at: pt, volume: 0.7 }, { type: "hitstop", duration: crit ? 0.09 : 0.07 },
           { type: "impact", kind: crit ? "crit" : "hit" }, { type: "shake", strength: 0.22 }, { type: "score", amount: 10, reason: "Nape hit" },
         );
-        if (shallowT <= 0) {
+        if (shallowT <= 0 && w === "blades") {
           shallowT = 4;
           events.push({ type: "callout", text: isBoss(t.kind) && blade.charge < 0.7 ? "Too shallow. Charge the cut" : "Too slow. Swing in faster" });
         }
@@ -542,6 +551,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       } else {
         fx.blood(pt, blade.dir, H * 0.06);
         events.push({ type: "sfx", name: hitSfx, at: pt }, { type: "hitstop", duration: 0.05 }, { type: "impact", kind: "hit" }, { type: "shake", strength: 0.12 }, { type: "score", amount: 5, reason: "Cut" });
+        if (w === "pistols" && t.act !== "hold" && t.act !== "flinch") startAct(t, "flinch");
       }
     } else {
       fx.blood(pt, blade.dir, H * 0.04);
@@ -720,9 +730,10 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         _c.y -= H * 0.02;
         tg.ik[i] = 1;
         tg.ikRate = 3;
-        tg.ikP[i].copy(a < 1.2 ? heldPos : _c);
+        const hp = ti.allyHold ? ti.aim2 : heldPos;
+        tg.ikP[i].copy(a < 1.2 ? hp : _c);
         tg.curl[i] = 1;
-        tg.lookAt = heldPos;
+        tg.lookAt = hp;
         tg.jaw = a < 1.2 ? 0.2 : a < 3.4 ? 0.2 + 0.75 * clamp01((a - 1.2) / 1.6) : 0;
         if (a > 3.6 && heldBy === ti) {
           heldBy = null;
@@ -732,7 +743,11 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           out.push({ type: "hurt", amount: 1, from: _c.clone() });
           startAct(ti, "chew");
         }
-        if (heldBy !== ti && ti.act === "hold") {
+        if (a > 3.6 && ti.allyHold) {
+          ti.allyHold = false;
+          startAct(ti, "chew");
+        }
+        if (heldBy !== ti && !ti.allyHold && ti.act === "hold") {
           ti.cool = 3;
           startAct(ti, "flinch");
         }
@@ -961,6 +976,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
             const d = world.raycast(_c, _a, H * 0.3);
             if (d < 0) continue;
             _c.addScaledVector(_a, d);
+            world.smash(_c, H * 0.3);
             fx.dust(_c, H * 0.5);
             out.push({ type: "sfx", name: "gateBreak", at: _c.clone(), volume: 0.7 });
             if (pl.pos.distanceTo(_c) < 90) out.push({ type: "shake", strength: 0.45 });
@@ -1499,6 +1515,24 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     get escape() {
       return heldBy ? esc : null;
     },
+    hold(view, side, on) {
+      const t = view as T;
+      if (!t.alive || heldBy === t) return;
+      t.allyHold = on;
+      if (!on) return;
+      t.side = side === "armL" ? 0 : 1;
+      palm(t, t.side, t.aim2);
+      startAct(t, "hold");
+    },
+    drill(n) {
+      if (wave !== 0) return;
+      for (let i = 0; i < n; i++) {
+        const t = spawn("normal", R(5, 7), nearBreach(_d, true));
+        t.yaw = Math.atan2(inward.x, inward.z);
+        t.cool = R(2, 3);
+        place(t);
+      }
+    },
     start() {
       if (wave !== 0) return;
       beginWave(1);
@@ -1666,6 +1700,108 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         v.geo.dispose();
         for (const l of LIMBS) v.limbs[l].dispose();
       }
+    },
+    net: {
+      snap() {
+        const s = [wave, Math.max(0, quota - killedWave), Math.round(Math.max(0, breakT) * 10) / 10];
+        for (const t of list) {
+          if (!t.alive) continue;
+          const p = t.p;
+          s.push(t.id, NET_KINDS.indexOf(t.kind), variants.indexOf(t.v), r2(t.height), r2(t.pos.x), r2(t.pos.y), r2(t.pos.z), r2(t.yaw), t.fall, t.hardened ? 1 : 0, r2(t.hard), r2(t.flash), r2(t.blind));
+          for (const k of NET_PARTS) s.push(r2(t.hp[k]));
+          for (const v of t.sev) s.push(r2(v));
+          for (const k of NET_POSE) s.push(r2(p[k]));
+          s.push(r2(p.curl[0]), r2(p.curl[1]), r2(p.ikW[0]), r2(p.ikW[1]), r2(p.ik[0].x), r2(p.ik[0].y), r2(p.ik[0].z), r2(p.ik[1].x), r2(p.ik[1].y), r2(p.ik[1].z));
+        }
+        return s;
+      },
+      show(s, dt) {
+        out.length = 0;
+        if (s[0] !== wave && s[0] > 0) out.push({ type: "stinger", name: "wave" }, { type: "banner", jp: `第${s[0]}波`, en: `Wave ${s[0]}`, text: "Hold the line together" });
+        else if (s[2] > 0 && breakT <= 0 && wave > 0) out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared`, text: "Resupply at the green smoke" });
+        wave = s[0];
+        quota = s[1];
+        killedWave = 0;
+        breakT = s[2];
+        const seen = new Set<number>();
+        const junk: GameEvent[] = [];
+        for (let i = 3; i + NET_REC <= s.length; i += NET_REC) {
+          const id = s[i];
+          seen.add(id);
+          let t = list.find((x) => x.id === id);
+          if (!t) {
+            t = spawn(NET_KINDS[s[i + 1]], s[i + 3], _d.set(s[i + 4], 0, s[i + 6]), s[i + 2]);
+            t.id = id;
+          }
+          if (!t.alive) continue;
+          const p = t.p;
+          t.pos.set(s[i + 4], s[i + 5], s[i + 6]);
+          t.yaw = s[i + 7];
+          t.fall = s[i + 8];
+          t.hardened = s[i + 9] > 0;
+          t.hard = s[i + 10];
+          t.flash = s[i + 11];
+          t.blind = s[i + 12];
+          if (!netOwn.has(id)) {
+            for (let k = 0; k < 4; k++) if (s[i + 19 + k] > 0 && t.sev[k] <= 0) sever(t, k, _a.set(Math.sin(t.yaw), 0, Math.cos(t.yaw)), junk);
+            NET_PARTS.forEach((k, j) => (t.hp[k] = s[i + 13 + j]));
+            for (let k = 0; k < 4; k++) t.sev[k] = s[i + 19 + k];
+          }
+          for (let k = 0; k < 4; k++) p.sev[k] = t.sev[k] > 0 ? clamp01(1 - t.sev[k] / 3) : 1;
+          NET_POSE.forEach((k, j) => (p[k] = s[i + 23 + j]));
+          const o = i + 23 + NET_POSE.length;
+          p.curl[0] = s[o];
+          p.curl[1] = s[o + 1];
+          p.ikW[0] = s[o + 2];
+          p.ikW[1] = s[o + 3];
+          p.ik[0].set(s[o + 4], s[o + 5], s[o + 6]);
+          p.ik[1].set(s[o + 7], s[o + 8], s[o + 9]);
+          p.t += dt;
+          const cr = t.rig.crystals[0];
+          if (cr) {
+            cr.visible = t.hard > 0.05;
+            cr.scale.copy(t.crystalScale[0]).multiplyScalar(Math.max(0.05, t.hard));
+          }
+          t.rig.mat.emissive.setRGB(t.flash * 0.5, t.flash * 0.18, t.flash * 0.12);
+          place(t);
+        }
+        for (const t of list) {
+          if (t.removed) continue;
+          if (t.alive && !seen.has(t.id)) {
+            t.alive = false;
+            t.dead = 0;
+            fx.blood(t.nape, UP, t.height * 0.3);
+            fx.steamFollow(() => (t.removed ? null : t.center), t.height * 0.32, 14);
+          }
+          if (!t.alive) tickDead(t, dt);
+        }
+        for (let i = list.length - 1; i >= 0; i--) if (list[i].removed) list.splice(i, 1);
+        for (const [id, left] of netOwn) if (left - dt <= 0) netOwn.delete(id); else netOwn.set(id, left - dt);
+        for (const e of junk) if (e.type === "sfx") out.push(e);
+        tickDrops(dt);
+        return out;
+      },
+      hit(id, part, dmg) {
+        const t = list.find((x) => x.id === id && x.alive);
+        const ev: GameEvent[] = [];
+        if (!t || !(dmg > 0)) return ev;
+        t.flash = 1;
+        _b.set(Math.sin(t.yaw), 0, Math.cos(t.yaw));
+        if (part === "eyes") {
+          t.hp.eyes = 0;
+          t.blind = 6;
+        } else {
+          t.hp[part] -= dmg;
+          if (part === "nape" && t.hp.nape <= 0.001) {
+            kill(t, { pos: t.nape, dir: _b, speed: 20, charge: 0, radius: 1 }, false, ev);
+            kills--;
+          } else if (part !== "nape" && t.hp[part] <= 0 && t.sev[LIMB_IDX[part]] <= 0) sever(t, LIMB_IDX[part], _b, ev);
+        }
+        return ev.filter((e) => e.type === "sfx");
+      },
+      own(id) {
+        netOwn.set(id, 0.6);
+      },
     },
   };
   if (process.env.NODE_ENV !== "production")

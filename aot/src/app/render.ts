@@ -224,12 +224,13 @@ export function createRender(canvas: HTMLCanvasElement): Render {
   let rtB: THREE.WebGLRenderTarget | null = null;
   let w = 1;
   let h = 1;
+  let maxRatio = Infinity;
 
   const build = () => {
     rtA?.dispose();
     rtA?.depthTexture?.dispose();
     rtB?.dispose();
-    const pr = Math.min(window.devicePixelRatio || 1, preset.ratio);
+    const pr = Math.min(window.devicePixelRatio || 1, preset.ratio, maxRatio);
     const pw = Math.max(1, Math.floor(w * pr));
     const ph = Math.max(1, Math.floor(h * pr));
     rtA = preset.ink ? new THREE.WebGLRenderTarget(pw, ph, { type: THREE.HalfFloatType, samples: preset.samples, depthTexture: new THREE.DepthTexture(pw, ph, THREE.UnsignedIntType) }) : null;
@@ -243,7 +244,7 @@ export function createRender(canvas: HTMLCanvasElement): Render {
   const resize = () => {
     w = canvas.clientWidth || window.innerWidth;
     h = canvas.clientHeight || window.innerHeight;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.ratio));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preset.ratio, maxRatio));
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -365,6 +366,10 @@ export function createRender(canvas: HTMLCanvasElement): Render {
     scene,
     camera,
     setQuality,
+    setMaxRatio(r: number) {
+      maxRatio = r;
+      resize();
+    },
     resize,
     frame,
     impact,
