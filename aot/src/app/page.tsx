@@ -28,6 +28,7 @@ import {
 } from "./ui-char";
 import { ControlsCard, ControlsOverlay } from "./ui-controls";
 import { DepotArrow, Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
+import { Leaderboard } from "./ui-leaderboard";
 import { Drill, LevelUp } from "./ui-run";
 import {
   ControlsPanel,
@@ -400,8 +401,9 @@ export default function TitanPage() {
           <div className="pointer-events-none fixed inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent" />
           <div className="pointer-events-none fixed inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 to-transparent" />
           {screen === "results" && results ? (
-            <div className={`relative flex min-h-full items-center justify-center ${touch ? "touch-menu py-3" : "px-4 py-10"}`}>
+            <div className={`relative flex min-h-full flex-wrap items-center justify-center gap-4 ${touch ? "touch-menu py-3" : "px-4 py-10"}`}>
               <ResultsCard r={results} onClose={closeResults} />
+              <Leaderboard run={{ score: results.run.score, wave: hud?.wave ?? 0, level: results.run.level }} />
             </div>
           ) : panel === "characters" && settings && career ? (
             <div className={`relative flex min-h-full items-center justify-center ${touch ? "touch-menu py-2" : "px-4 py-10 sm:px-12"}`}>
@@ -445,6 +447,7 @@ export default function TitanPage() {
                 <div className="panel-in hud-z">
                   <ControlsCard touch={touch} />
                 </div>
+                <Leaderboard />
               </div>
             )}
             {panel && settings && (
