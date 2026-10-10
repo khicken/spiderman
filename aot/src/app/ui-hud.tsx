@@ -69,11 +69,11 @@ export function Hud({
       <WavePanel h={h} />
       <KillPanel h={h} />
       {free && <Crosshair h={h} />}
-      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} />}
+      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={b?.type === "kill"} />}
       {free && !h.shift.active && <Prompt h={h} touch={touch} />}
-      <Toasts pops={pops} touch={touch} />
+      <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
       <ScorePops pops={pops} />
-      {h.combo > 1 && <Combo n={h.combo} />}
+      {h.combo > 1 && <Combo n={h.combo} t={h.comboT} bonus={h.comboBonus} />}
       <GearPanel h={h} who={who} />
       <SpeedPanel h={h} />
       {msgs.radio?.type === "radio" && <Radio key={msgs.radio.id} who={msgs.radio.who} text={msgs.radio.text} />}
@@ -325,7 +325,7 @@ function WavePanel({ h }: { h: HudState }) {
             </span>
           </div>
         )}
-        {h.wave > 0 && <Tracker run={h.run} />}
+        {h.wave > 0 && !h.run.drill && <Tracker run={h.run} />}
       </div>
     </div>
   );
@@ -448,10 +448,10 @@ function Prompt({ h, touch }: { h: HudState; touch: boolean }) {
   );
 }
 
-function Callout({ text }: { text: string }) {
+function Callout({ text, low }: { text: string; low: boolean }) {
   return (
     <div
-      className="toast-in hud-z absolute left-1/2 top-[calc(50%-96px)] -translate-x-1/2 whitespace-nowrap font-display text-2xl uppercase tracking-wide text-[#ffd27a] ink-shadow"
+      className={`toast-in hud-z absolute left-1/2 ${low ? "top-[calc(50%+48px)]" : "top-[calc(50%-96px)]"} -translate-x-1/2 whitespace-nowrap font-display text-2xl uppercase tracking-wide text-[#ffd27a] ink-shadow`}
       style={{ animationDuration: "1.6s" }}
     >
       {text}
@@ -547,9 +547,9 @@ export function LockReticle({ lock }: { lock: Lock | null }) {
   );
 }
 
-function Toasts({ pops, touch }: { pops: Pop[]; touch: boolean }) {
+function Toasts({ pops, touch, low }: { pops: Pop[]; touch: boolean; low: boolean }) {
   return (
-    <div className="hud-z absolute left-4 top-[34%] flex w-[300px] origin-left flex-col gap-2">
+    <div className={`hud-z absolute left-4 ${low ? "top-[44%]" : "top-[34%]"} flex w-[300px] origin-left flex-col gap-2`}>
       {pops.map((p) =>
         p.type === "toast" ? (
           <div
@@ -591,7 +591,7 @@ function ScorePops({ pops }: { pops: Pop[] }) {
   );
 }
 
-function Combo({ n }: { n: number }) {
+function Combo({ n, t, bonus }: { n: number; t: number; bonus: number }) {
   return (
     <div
       key={n}
@@ -605,6 +605,10 @@ function Combo({ n }: { n: number }) {
       </div>
       <div className="text-xs font-semibold uppercase tracking-[0.35em] text-ember">
         <span className="mr-2 font-jp">連撃</span>Combo
+        {bonus > 1 && <span className="ml-2 text-brass">+{Math.round((bonus - 1) * 100)}%</span>}
+      </div>
+      <div className="ml-auto mt-1 h-1 w-28 bg-bone/15">
+        <div className="ml-auto h-full bg-ember" style={{ width: `${t * 100}%` }} />
       </div>
     </div>
   );
@@ -737,6 +741,10 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
               Spares
             </span>
             <span className="font-display text-sm">{h.blades}</span>
+          </div>
+          <div className="mb-1 flex items-baseline justify-between text-[9px] font-semibold uppercase tracking-[0.25em] text-bone/70">
+            {h.weapon}
+            {h.weapon !== "blades" && <span className="font-display text-sm tracking-normal text-brass">{h.ammo}</span>}
           </div>
           <div className="grid grid-cols-4 gap-x-1.5 gap-y-1">
             {Array.from({ length: 8 }, (_, i) => (
