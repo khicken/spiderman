@@ -337,10 +337,7 @@ body {
 }
 .touch-hud .hud-z.radio {
   zoom: 0.85;
-  bottom: 38%;
-  left: 16px;
-  translate: 0 0;
-  transform: none;
+  bottom: 17%;
 }
 .touch-hud .hud-z.origin-bottom-right {
   right: 50%;

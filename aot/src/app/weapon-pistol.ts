@@ -33,7 +33,7 @@ export function createPistols(scene: THREE.Scene, world: World, titans: Titans, 
         blade.dir.copy(dir);
         blade.speed = speed;
         blade.damage = damage;
-        const r = titans.strike(blade, lock?.titan === h.titan ? lock : h.zone !== "body" ? { titan: h.titan, part: h.zone } : null);
+        const r = titans.strike(blade, lock?.titan === h.titan && lock.part === h.zone ? lock : h.zone !== "body" ? { titan: h.titan, part: h.zone } : null);
         for (const e of r.events) out.push(e);
         if (r.zone) onHit(r);
       } else if (tw >= 0) {
