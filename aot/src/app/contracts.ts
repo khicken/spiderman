@@ -17,8 +17,11 @@ export type Action =
   | "attack" // hold E to charge, release to strike
   | "lock" // Q: lock on or off
   | "cycle" // Tab or mouse wheel: next part on the locked titan
-  | "autoHook" // F: fire both anchors at the locked titan
-  | "swap"; // R: swap blades
+  | "autoHook" // X or middle mouse: fire both anchors at the locked titan
+  | "swap" // R: swap blades
+  | "weapon" // Z: next weapon slot
+  | "teamAttack" // F: squad attacks the locked titan
+  | "shift"; // T: titan shifting
 
 export type Input = {
   wish: THREE.Vector3; // camera-relative flat move direction, unit length or zero
@@ -129,7 +132,10 @@ export interface TitanView {
   readonly alive: boolean;
 }
 export type TitanHit = { t: number; point: THREE.Vector3; titan: TitanView; zone: HitZone; obj: THREE.Object3D }; // anchors attach to obj
-export type Blade = { pos: THREE.Vector3; dir: THREE.Vector3; speed: number; charge: number; radius: number }; // charge 0..1, 1 is a perfect release
+// charge 0..1, 1 is a perfect release. speed is the real speed, damage multiplies the hit (bonuses), weapon defaults to blades.
+export type Blade = { pos: THREE.Vector3; dir: THREE.Vector3; speed: number; charge: number; radius: number; damage?: number; weapon?: Weapon };
+// Weapon slots. Spears stick and blow up, pierce armor and hardening. Pistols are hitscan: stun eyes and limbs, scratch the nape.
+export type Weapon = "blades" | "spears" | "pistols";
 export type StrikeResult = { events: GameEvent[]; zone: HitZone | null; titan: TitanView | null; killed: boolean };
 export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; grounded: boolean };
 export interface Titans {
@@ -207,7 +213,11 @@ export type PlayerHud = {
   aimDist: number;
   supply: boolean;
   dead: boolean;
-  combo: number;
+  combo: number; // chain count, 0 when no chain
+  comboT: number; // 0..1, time left in the chain window
+  comboBonus: number; // damage multiplier from the chain, 1 is none
+  weapon: Weapon;
+  ammo: number; // spears or pistol shots left, blades show as spare sets
 };
 export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; health: number; spare: number }; // multipliers, spare adds
 export interface Player {

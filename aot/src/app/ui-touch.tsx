@@ -37,6 +37,9 @@ const ACTIONS: Record<Kind, Action[]> = {
   cycle: ["cycle"],
   autoHook: ["autoHook"],
   swap: ["swap"],
+  weapon: ["weapon"],
+  teamAttack: ["teamAttack"],
+  shift: ["shift"],
 };
 
 const at = (right: number, bottom: number, size: number) => ({

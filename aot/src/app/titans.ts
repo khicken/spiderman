@@ -482,10 +482,11 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     const part = zone as HitZone | null;
     if (!t || !part) return { events, zone: null, titan: null, killed: false };
     const H = t.height;
-    const crit = blade.charge >= 0.92;
-    const P = blade.speed * (0.55 + 0.45 * clamp01(blade.charge)) * (crit ? 1.5 : 1);
+    const w = blade.weapon ?? "blades";
+    const crit = w === "blades" && blade.charge >= 0.92;
+    const P = (w === "spears" ? 52 : w === "pistols" ? 3 : blade.speed * (0.55 + 0.45 * clamp01(blade.charge)) * (crit ? 1.5 : 1)) * (blade.damage ?? 1);
     const hitSfx: Sfx = crit ? "slashCrit" : "slashHit";
-    if (t.kind === "armored" && part !== "eyes" && !(part === "nape" && !t.hardened) && !armorGap(t, part, blade)) {
+    if (w !== "spears" && t.kind === "armored" && part !== "eyes" && !(part === "nape" && !t.hardened) && !armorGap(t, part, blade)) {
       events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
       fx.steam(pt, 1.2, 0.4);
       if (toastT <= 0) {
@@ -498,7 +499,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     let killed = false;
     if (crit && part !== "body") events.push({ type: "feat", name: "perfect", kind: t.kind });
     if (part === "nape") {
-      if (t.hardened) {
+      if (t.hardened && w !== "spears") {
         events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 }, { type: "toast", title: "Hardened", text: t.kind === "female" ? "Cut two limbs" : "Cut a limb" });
         fx.steam(pt, 1.5, 0.6);
         return { events, zone: "nape", titan: t, killed: false };
@@ -515,7 +516,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           { type: "sfx", name: hitSfx, at: pt }, { type: "sfx", name: "titanHurt", at: pt, volume: 0.7 }, { type: "hitstop", duration: crit ? 0.09 : 0.07 },
           { type: "impact", kind: crit ? "crit" : "hit" }, { type: "shake", strength: 0.22 }, { type: "score", amount: 10, reason: "Nape hit" },
         );
-        if (shallowT <= 0) {
+        if (shallowT <= 0 && w === "blades") {
           shallowT = 4;
           events.push({ type: "callout", text: isBoss(t.kind) && blade.charge < 0.7 ? "Too shallow. Charge the cut" : "Too slow. Swing in faster" });
         }
@@ -542,6 +543,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       } else {
         fx.blood(pt, blade.dir, H * 0.06);
         events.push({ type: "sfx", name: hitSfx, at: pt }, { type: "hitstop", duration: 0.05 }, { type: "impact", kind: "hit" }, { type: "shake", strength: 0.12 }, { type: "score", amount: 5, reason: "Cut" });
+        if (w === "pistols" && t.act !== "hold" && t.act !== "flinch") startAct(t, "flinch");
       }
     } else {
       fx.blood(pt, blade.dir, H * 0.04);
