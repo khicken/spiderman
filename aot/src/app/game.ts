@@ -3,13 +3,14 @@ import { createAllies } from "./allies";
 import { createAudio } from "./audio";
 import { createBorder } from "./border";
 import { createCameraRig } from "./camera";
-import type { Audio, GameEvent, HudState, MusicState, Quality, TitanBlip, TitanKind } from "./contracts";
+import type { Audio, Boost, GameEvent, HudState, MusicState, Quality, TitanBlip, TitanKind } from "./contracts";
 import { createFx } from "./fx";
 import { createInput } from "./input";
 import { createPlayer } from "./player";
 import { gearTier, loadCareer } from "./progression";
 import { createRender } from "./render";
 import { createRun } from "./run";
+import { createShifter } from "./shifter";
 import { setTitanDetail } from "./titan-model";
 import { createTitans } from "./titans";
 import { createWorld } from "./world";
@@ -38,6 +39,14 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const titans = createTitans(view.scene, world, fx);
   const player = createPlayer(view.scene, world, titans, fx);
   const allies = createAllies(view.scene, world, titans, fx);
+  const shifter = createShifter(view.scene, world, titans, fx);
+  let baseBoost: Boost | null = null;
+  let opening = false;
+  const setBoost = player.setBoost;
+  player.setBoost = (b) => {
+    baseBoost = b;
+    setBoost(opening ? { ...b, damage: b.damage * 2 } : b);
+  };
   const rig = createCameraRig(view.camera, world);
   const run = createRun({ world, titans, player, allies, fx, tier: gearTier(loadCareer()) });
 
@@ -77,7 +86,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         slowT = e.duration;
       } else if (e.type === "impact") view.impact(e.kind);
       else if (e.type === "hurt") {
-        route(player.damage(e.amount, e.from));
+        route(shifter.active ? shifter.damage(e.amount) : player.damage(e.amount, e.from));
         onEvent({ type: "hurt", amount: e.amount });
       } else if (e.type === "score") {
         score += e.amount;
@@ -100,7 +109,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const endIntro = () => {
     if (introT < 0) return;
     if (!world.gateOpen) kickGate();
-    if (titans.wave === 0) titans.start();
+    run.begin();
     introT = -1;
     for (const e of introToasts.splice(0)) onEvent(e);
     rig.cinematic(null);
@@ -109,7 +118,10 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (code === "Escape") {
       if (introT >= 0) endIntro();
       else pause();
-    } else if (code === "Enter" && introT >= 0) endIntro();
+    } else if (code === "Enter") {
+      if (introT >= 0) endIntro();
+      else route(run.skip());
+    }
     else if (code === "KeyG") route(allies.toggle());
     else if (code.startsWith("Digit")) route(run.pick(Number(code.slice(5)) - 1));
     else if (code === "KeyM") {
@@ -191,7 +203,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     camLook.copy(head).lerp(world.breach, Math.max(0, (introT - INTRO.kick) / (INTRO.end - INTRO.kick)));
     rig.cinematic(camPos, camLook, 50 + 12 * e);
     if (introT >= INTRO.kick && !world.gateOpen) kickGate();
-    if (introT >= INTRO.titans && titans.wave === 0) titans.start();
+    if (introT >= INTRO.titans) run.begin();
     if (introT >= INTRO.end) endIntro();
   };
 
@@ -226,7 +238,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     slowT -= real;
     if (slowT <= 0) timeScale = 1;
     stopT -= real;
-    const dt = stopT > 0 || run.choosing ? 0 : real * timeScale;
+    const dt = stopT > 0 ? 0 : real * timeScale;
     t += dt;
 
     input.takeMouse(mouse);
@@ -237,13 +249,20 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (introT >= 0) intro(real);
     const control = playing && introT < 0;
     route(world.update(dt, t));
-    if (playing) route(titans.update(dt, t, player));
+    if (control && inp.pressed.has("shift")) route(shifter.start(player, rig.yaw));
+    if (control && inp.pressed.has("teamAttack") && !shifter.active) route(allies.team(player.lock));
+    if (opening !== allies.opening > 0) {
+      opening = !opening;
+      if (baseBoost) player.setBoost(baseBoost);
+    }
+    if (playing) route(titans.update(dt, t, shifter.active ? shifter.view : player));
     if (playing) route(allies.update(dt, t, player, rig.yaw));
     if (playing) route(run.update(dt, real, control));
-    if (control || !everPlayed) route(player.update(dt, inp, control));
+    if (playing) route(shifter.update(dt, inp, player, rig));
+    if (!shifter.active && (control || !everPlayed)) route(player.update(dt, inp, control));
     if (control) route(border.update(dt, player.pos, player.vel));
     rig.update(real, player.cameraView(), playing, input.mouseIdle);
-    player.setVisible(view.camera.position.distanceTo(player.pos) > 1.3);
+    player.setVisible(!shifter.active && view.camera.position.distanceTo(player.pos) > 1.3);
     const speed = player.vel.length();
     view.frame(dt, player.pos, control ? THREE.MathUtils.clamp((speed - 25) / 35, 0, 1) : 0);
     fx.update(dt, view.camera);
@@ -298,6 +317,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         blips,
         depots,
         squad: allies.hud(),
+        shift: shifter.hud(),
         run: run.hud(),
         ...player.hud(),
       });
@@ -305,7 +325,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   raf = requestAnimationFrame(frame);
 
-  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { noAuto: () => (autoQ = false), view, world, titans, player, allies, rig, fx, input, endIntro, run };
+  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { noAuto: () => (autoQ = false), view, world, titans, player, allies, shifter, rig, fx, input, endIntro, run };
 
   return {
     play() {
@@ -322,6 +342,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     },
     pause,
     skipIntro: endIntro,
+    skipDrill: () => route(run.skip()),
     order: () => route(allies.toggle()),
     pick: (i: number) => route(run.pick(i)),
     virtual: input.virtual,
@@ -341,6 +362,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       audio?.dispose();
       titans.dispose();
       allies.dispose();
+      shifter.dispose();
       player.dispose();
       fx.dispose();
       view.scene.traverse((o) => {

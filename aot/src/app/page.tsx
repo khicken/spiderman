@@ -27,7 +27,7 @@ import {
   type Results,
 } from "./ui-char";
 import { Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
-import { LevelUp } from "./ui-run";
+import { Drill, LevelUp } from "./ui-run";
 import {
   ControlsPanel,
   Disclaimer,
@@ -377,8 +377,9 @@ export default function TitanPage() {
           onPause={() => gameRef.current?.pause()}
         />
       )}
-      {screen === "playing" && hud?.run.choice && !hud.intro && (
+      {screen === "playing" && hud && (hud.run.choice || hud.run.drill) && !hud.intro && (
         <div className={touch ? "touch-hud" : undefined}>
+          <Drill run={hud.run} onSkip={() => gameRef.current?.skipDrill()} />
           <LevelUp run={hud.run} onPick={(i) => gameRef.current?.pick(i)} />
         </div>
       )}

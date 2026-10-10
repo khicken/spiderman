@@ -3,7 +3,7 @@ import type { Allies, Boost, Fx, GameEvent, Objective, Player, RunHud, TitanKind
 import { gearBoost } from "./progression";
 import { bossFor, isBoss, quotaFor, type BossKind } from "./titan-waves";
 
-type Count = "kill" | "waveKill" | "abnormal" | "tendon" | "sever" | "limb" | "perfect" | "save" | "boss" | "fastKill";
+type Count = "hook" | "gas" | "kill" | "waveKill" | "abnormal" | "tendon" | "sever" | "limb" | "perfect" | "save" | "boss" | "fastKill";
 type Spec = { text: string; hint?: string; need: number; count?: Count; kind?: TitanKind; until?: "noDeath" | "depot" };
 type Obj = Objective & { spec: Spec };
 
@@ -19,6 +19,12 @@ const UPGRADES: Omit<Upgrade, "level">[] = [
 ];
 
 const PICK_S = 10;
+const DRILL_KEY = "aot-bootcamp";
+const DRILL: Spec[] = [
+  { text: "Hook onto a building", hint: "Fire an anchor at a wall or roof", need: 1, count: "hook" },
+  { text: "Boost with gas", hint: "Hold gas in the air", need: 1, count: "gas" },
+  { text: "Cut a nape", hint: "Lock on, then slash the neck", need: 1, count: "kill" },
+];
 const FAST = 40;
 const ABNORMAL: TitanKind[] = ["abnormal", "runner", "climber"];
 const BOSS_OBJ: Record<BossKind, [Spec, Spec]> = {
@@ -83,6 +89,11 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
   let depot = -1;
   let depotHp = 1;
   let depotWarn = false;
+  let drill = false;
+  let drillT = 0;
+  let finT = 0;
+  let gasWas = 0;
+  let begun = false;
 
   const boost = (): Boost => {
     const g = gearBoost(o.tier);
@@ -105,15 +116,16 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
       xp -= needFor(level);
       level++;
       pending++;
-      out.push({ type: "stinger", name: "levelUp" }, { type: "banner", jp: "昇級", en: `Level ${level}` });
+      out.push({ type: "stinger", name: "levelUp" });
     }
   };
 
   const complete = (ob: Obj) => {
     ob.state = "done";
-    done++;
+    if (!drill) done++;
     const x = ob.bonus ? 50 + 10 * wave : 80 + 15 * wave;
-    out.push({ type: "stinger", name: "objective" }, { type: "toast", title: ob.bonus ? "Bonus complete" : "Objective complete", text: `${ob.text}. +${x} XP` });
+    out.push({ type: "stinger", name: "objective" });
+    if (!drill) out.push({ type: "toast", title: ob.bonus ? "Bonus complete" : "Objective complete", text: `${ob.text}. +${x} XP` });
     gain(x);
   };
 
@@ -201,9 +213,35 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     return open.slice(0, 3).map((u) => ({ ...u, level: lv[u.id] }));
   };
 
+  const endDrill = () => {
+    drill = false;
+    objs = [];
+    try {
+      localStorage.setItem(DRILL_KEY, "1");
+    } catch {}
+    titans.start();
+  };
+
   return {
-    get choosing() {
-      return !!choice;
+    begin() {
+      if (begun) return;
+      begun = true;
+      let seen = true;
+      try {
+        seen = !!localStorage.getItem(DRILL_KEY);
+      } catch {}
+      if (seen) return titans.start();
+      drill = true;
+      drillT = 0;
+      finT = 0;
+      objs = DRILL.map((s) => ({ spec: s, text: s.text, hint: s.hint, have: 0, need: s.need, state: "on", bonus: false }));
+      titans.drill(2);
+      out.push({ type: "banner", jp: "訓練", en: "Bootcamp", text: "Learn the gear on easy titans" });
+    },
+    skip(): GameEvent[] {
+      if (!drill || drillT < 1) return [];
+      endDrill();
+      return [{ type: "sfx", name: "ui" }];
     },
     see(e: GameEvent) {
       if (e.type === "kill") {
@@ -229,6 +267,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     },
     update(dt: number, real: number, live: boolean): GameEvent[] {
       if (titans.wave !== wave) {
+        if (drill) endDrill();
         endWave();
         wave = titans.wave;
         if (wave > 0) startWave();
@@ -245,6 +284,16 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         for (const ob of objs) if (ob.state === "on" && ob.spec.until === "noDeath") fail(ob);
       }
       wasDead = dead;
+      if (drill) {
+        drillT += real;
+        const h = player.hud();
+        if (h.hooks[0] || h.hooks[1]) add("hook", undefined);
+        if (h.gas < gasWas && !player.grounded) add("gas", undefined);
+        gasWas = h.gas;
+        if (objs.every((ob) => ob.state === "done")) {
+          if ((finT += real) > 2.5) endDrill();
+        } else if (dt > 0 && objs.some((ob) => ob.spec.count === "kill" && ob.state === "on") && !titans.list().some((t) => t.alive)) titans.drill(1);
+      }
       if (choice) {
         choiceT -= real;
         if (choiceT <= 0) out.push(...this.pick(0));
@@ -254,7 +303,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         if (c.length) {
           choice = c;
           choiceT = PICK_S;
-          out.push({ type: "sfx", name: "bladeDraw" });
+          out.push({ type: "sfx", name: "bladeDraw" }, { type: "slowmo", scale: 0.35, duration: 0.6 });
         }
       }
       return out.splice(0);
@@ -270,7 +319,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
       return ev;
     },
     hud(): RunHud {
-      return { level, xp, need: needFor(level), total, objectives: objs, choice, choiceT, done, count };
+      return { level, xp, need: needFor(level), total, objectives: objs, choice, choiceT, done, count, drill };
     },
     get upgrades() {
       return { ...lv };

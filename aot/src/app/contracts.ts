@@ -141,6 +141,8 @@ export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolea
 export interface Titans {
   update(dt: number, t: number, player: PlayerView): GameEvent[];
   start(): void; // starts wave 1
+  drill(n: number): void; // bootcamp: spawns n small titans near the breach while wave is 0
+  hold(titan: TitanView, side: "armL" | "armR", on: boolean): void; // an ally is held in that hand, off lets go
   readonly wave: number;
   readonly kills: number;
   readonly left: number;
@@ -251,16 +253,21 @@ export interface Audio {
 
 // ---- allies.ts: createAllies(scene: THREE.Scene, world: World, titans: Titans, fx: Fx): Allies
 export type SquadOrder = "attack" | "regroup";
-export type SquadHud = { alive: number; max: number; order: SquadOrder };
+export type SquadHud = { alive: number; max: number; order: SquadOrder; team: number; opening: number }; // team: cooldown seconds, opening: nape window seconds
 export type SquadLead = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; lock: Lock | null };
 export interface Allies {
   update(dt: number, t: number, lead: SquadLead, yaw: number): GameEvent[]; // yaw: camera yaw for clock callouts
   order(o: SquadOrder): GameEvent[];
   toggle(): GameEvent[]; // attack my target <-> regroup
   grow(): GameEvent[]; // one more soldier in the squad
+  team(lock: Lock | null): GameEvent[]; // squad stuns the locked titan, then the nape opens
+  readonly opening: number; // seconds left in the nape window, 0 when closed
   hud(): SquadHud;
   dispose(): void;
 }
+
+// ---- shifter.ts: createShifter(scene: THREE.Scene, world: World, titans: Titans, fx: Fx)
+export type ShiftHud = { meter: number; active: boolean; hp: number }; // 0..1 each, meter fills from kills and drains while shifted
 
 // ---- game.ts to the UI
 export type TitanBlip = { bearing: number; dist: number; height: number; kind: TitanKind };
@@ -281,6 +288,7 @@ export type HudState = {
   blips: TitanBlip[];
   depots: { bearing: number; dist: number }[];
   squad: SquadHud;
+  shift: ShiftHud;
   run: RunHud;
 } & PlayerHud;
 
@@ -293,8 +301,9 @@ export type RunHud = {
   need: number;
   total: number;
   objectives: Objective[];
-  choice: Upgrade[] | null; // level-up picks, the game is frozen while set
+  choice: Upgrade[] | null; // level-up picks while the game runs. Keys 1-3 or a tap pick, the timer takes the first
   choiceT: number; // seconds until the first pick is taken
   done: number;
   count: number;
+  drill: boolean; // bootcamp before wave 1, objectives hold its drills
 };

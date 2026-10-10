@@ -72,6 +72,7 @@ type T = {
   smashT: number;
   climb: number;
   mark: number;
+  allyHold: boolean;
 };
 
 type Drop = { mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; t: number; base: number; pos: THREE.Vector3; r: number; rest: THREE.Quaternion | null };
@@ -219,7 +220,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       prev: at.clone(), dead: 0, fall: rnd() < 0.7 ? 1 : -1, landed: false, hard: 0, hardened: false, aim: new THREE.Vector3(), aim2: new THREE.Vector3(), hit: false,
       flash: 0, tint, caps, nape: new THREE.Vector3(), eyes: new THREE.Vector3(), center: new THREE.Vector3(), steamT: R(1, 5), stepS: 0, roarT: 25, removed: false,
       crystalScale: rig.crystals.map((c) => c.scale.clone()), tilt: (rnd() - 0.5) * (kind === "abnormal" ? 0.7 : 0.35), reachK: kind === "smiler" ? 0.9 : kind === "normal" && rnd() < 0.5 ? 0.5 + rnd() * 0.5 : 0, jawIdle: v.spec.face === "gape" ? 0.35 : v.spec.face === "bulge" ? 0.12 : v.spec.face === "smile" ? 0 : 0.03,
-      home: new THREE.Vector3(), downT: 0, downArm: true, special: R(3, 5), smashT: 0, climb: 0, mark: 0,
+      home: new THREE.Vector3(), downT: 0, downArm: true, special: R(3, 5), smashT: 0, climb: 0, mark: 0, allyHold: false,
     };
     if (kind === "beast") ti.home.copy(homePoint());
     if (kind === "climber") {
@@ -722,9 +723,10 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         _c.y -= H * 0.02;
         tg.ik[i] = 1;
         tg.ikRate = 3;
-        tg.ikP[i].copy(a < 1.2 ? heldPos : _c);
+        const hp = ti.allyHold ? ti.aim2 : heldPos;
+        tg.ikP[i].copy(a < 1.2 ? hp : _c);
         tg.curl[i] = 1;
-        tg.lookAt = heldPos;
+        tg.lookAt = hp;
         tg.jaw = a < 1.2 ? 0.2 : a < 3.4 ? 0.2 + 0.75 * clamp01((a - 1.2) / 1.6) : 0;
         if (a > 3.6 && heldBy === ti) {
           heldBy = null;
@@ -734,7 +736,11 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           out.push({ type: "hurt", amount: 1, from: _c.clone() });
           startAct(ti, "chew");
         }
-        if (heldBy !== ti && ti.act === "hold") {
+        if (a > 3.6 && ti.allyHold) {
+          ti.allyHold = false;
+          startAct(ti, "chew");
+        }
+        if (heldBy !== ti && !ti.allyHold && ti.act === "hold") {
           ti.cool = 3;
           startAct(ti, "flinch");
         }
@@ -1501,6 +1507,24 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     },
     get escape() {
       return heldBy ? esc : null;
+    },
+    hold(view, side, on) {
+      const t = view as T;
+      if (!t.alive || heldBy === t) return;
+      t.allyHold = on;
+      if (!on) return;
+      t.side = side === "armL" ? 0 : 1;
+      palm(t, t.side, t.aim2);
+      startAct(t, "hold");
+    },
+    drill(n) {
+      if (wave !== 0) return;
+      for (let i = 0; i < n; i++) {
+        const t = spawn("normal", R(5, 7), nearBreach(_d, true));
+        t.yaw = Math.atan2(inward.x, inward.z);
+        t.cool = R(2, 3);
+        place(t);
+      }
     },
     start() {
       if (wave !== 0) return;
