@@ -62,6 +62,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   let teamCd = 0;
   let open = 0;
   let teamTi: TitanView | null = null;
+  let killsWas = 0;
   const blade: Blade = { pos: new THREE.Vector3(), dir: new THREE.Vector3(), speed: 0, charge: 0, radius: 2 };
   const pose: Pose = { anim: "stand", t: 0, k: 0, vel: new THREE.Vector3(), yaw: 0 };
   const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), goal = new THREE.Vector3(), acc = new THREE.Vector3();
@@ -279,6 +280,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         if (a.cd <= 0 && a.pos.distanceTo(goal) < 14) a.run = 2;
       }
     } else {
+      a.team = false;
       const fast = L.vel.lengthSq() > 16;
       const hy = fast ? Math.atan2(L.vel.x, L.vel.z) : yaw;
       const [sx, sy, sz] = SLOTS[i];
@@ -372,8 +374,10 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         open = Math.max(0, open - dt);
         if (teamTi && !teamTi.alive) {
           open = 0;
-          out.push({ type: "score", amount: 300, reason: "Team attack" });
-          say("That's how it's done!", alive()[0]?.name ?? "Command", true);
+          if (titans.kills > killsWas) {
+            out.push({ type: "score", amount: 300, reason: "Team attack" });
+            say("That's how it's done!", alive()[0]?.name ?? "Command", true);
+          }
         }
       }
       if (titans.wave !== lastWave) {
@@ -406,6 +410,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         else step(a, step_dt, i, yaw, !far && a.pos.distanceTo(l.pos) < 90);
         if (a.s.root.visible) draw(a);
       });
+      killsWas = titans.kills;
       return out;
     },
     order: command,
@@ -416,8 +421,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       if (!t) return [{ type: "callout", text: "Lock a titan first (Q)" }];
       const free = squad.filter((a) => a.mode === "fly");
       if (!free.length) return [{ type: "callout", text: "No squad to call" }];
-      teamCd = TEAM_CD;
-      teamTi = t;
+      let sent = 0;
       free.forEach((a, k) => {
         const leg: TitanPart = k % 2 ? "legR" : "legL";
         const parts: TitanPart[] = k === 0 ? ["eyes", leg, "legR", "legL"] : [leg, leg === "legL" ? "legR" : "legL", "eyes"];
@@ -428,7 +432,11 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         a.team = true;
         a.run = 3;
         a.cd = 0;
+        sent++;
       });
+      if (!sent) return [{ type: "callout", text: "No squad to call" }];
+      teamCd = TEAM_CD;
+      teamTi = t;
       return [
         { type: "radio", who: "You", text: "Team attack! Hit it now!" },
         { type: "sfx", name: "horn", volume: 0.7 },

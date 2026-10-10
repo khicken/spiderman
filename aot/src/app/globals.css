@@ -300,6 +300,18 @@ body {
   background: rgba(11, 8, 7, 0.55);
 }
 
+.touch-help {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 8px);
+  left: 50%;
+  transform: translateX(calc(-50% + 200px));
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 1px solid rgba(201, 162, 90, 0.5);
+  background: rgba(11, 8, 7, 0.55);
+}
+
 .rotate-hint {
   display: none;
 }
@@ -325,10 +337,7 @@ body {
 }
 .touch-hud .hud-z.radio {
   zoom: 0.85;
-  bottom: 38%;
-  left: 16px;
-  translate: 0 0;
-  transform: none;
+  bottom: 17%;
 }
 .touch-hud .hud-z.origin-bottom-right {
   right: 50%;
