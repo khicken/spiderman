@@ -29,6 +29,8 @@ import {
 import { ControlsCard, ControlsOverlay } from "./ui-controls";
 import { DepotArrow, Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
 import { Leaderboard } from "./ui-leaderboard";
+import { SQUAD_ON, type SquadInfo } from "./net";
+import { SquadPanel } from "./ui-net";
 import { Drill, LevelUp } from "./ui-run";
 import {
   ControlsPanel,
@@ -97,7 +99,8 @@ export default function TitanPage() {
   const [hud, setHud] = useState<HudState | null>(null);
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [screen, setScreenState] = useState<Screen>("title");
-  const [panel, setPanel] = useState<Panel>(null);
+  const [panel, setPanel] = useState<Panel | "squad">(null);
+  const [squad, setSquad] = useState<SquadInfo | null>(null);
   const [started, setStarted] = useState(false);
   const [touch, setTouch] = useState(false);
   const [pops, setPops] = useState<Pop[]>([]);
@@ -259,6 +262,12 @@ export default function TitanPage() {
     };
   }, [run, endRun]);
 
+  useEffect(() => {
+    if (!squad?.ended || !started) return;
+    const h = setTimeout(() => endRun("retreat"), 2500);
+    return () => clearTimeout(h);
+  }, [squad?.ended, started, endRun]);
+
   const update = useCallback((p: Partial<Settings>) => {
     setSettingsState((s) => save({ ...s!, ...p }));
     gameRef.current?.setSettings(p);
@@ -279,7 +288,7 @@ export default function TitanPage() {
     if (touch) enterFullscreen();
     gameRef.current?.play();
   };
-  const toggle = (p: Panel) => setPanel((cur) => (cur === p ? null : p));
+  const toggle = (p: Panel | "squad") => setPanel((cur) => (cur === p ? null : p));
 
   const items: MenuItem[] =
     screen === "pause"
@@ -312,6 +321,7 @@ export default function TitanPage() {
             onSelect: play,
             disabled: !hud,
           },
+          ...(started || !SQUAD_ON ? [] : [{ id: "squad", label: "Squad", jp: "分隊", onSelect: () => toggle("squad") }]),
           {
             id: "characters",
             label: "Soldiers",
@@ -333,6 +343,7 @@ export default function TitanPage() {
         ];
   const closeResults = () => {
     setResults(null);
+    setSquad(null);
     setStarted(false);
     setHud(null);
     setScreen("title");
@@ -455,6 +466,21 @@ export default function TitanPage() {
                 key={panel}
                 className={touch ? "min-w-0 flex-1" : "w-full lg:max-w-[720px]"}
               >
+                {panel === "squad" && (
+                  <SquadPanel
+                    info={squad}
+                    onOpen={(name, code, create) => {
+                      setSquad({ code, host: create, ready: false, names: [], ended: null });
+                      gameRef.current?.squad({ code, create, name, char: settings.character }, setSquad);
+                    }}
+                    onLeave={() => {
+                      gameRef.current?.squad(null);
+                      setSquad(null);
+                    }}
+                    onPlay={play}
+                    onClose={() => setPanel(null)}
+                  />
+                )}
                 {panel === "settings" && (
                   <SettingsPanel
                     qualities={QUALITIES}
