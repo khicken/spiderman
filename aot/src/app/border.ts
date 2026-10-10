@@ -56,6 +56,7 @@ export function createBorder(scene: THREE.Scene) {
   const base = { near: 0, far: 0, color: new THREE.Color() };
   const haze = new THREE.Color("#e3e2d8");
   let have = false;
+  const wrote = { near: 0, far: 0 };
   let warnT = 0;
   let eggSeen = false;
 
@@ -64,14 +65,14 @@ export function createBorder(scene: THREE.Scene) {
     const fog = scene.fog as THREE.Fog | null;
     const k = smooth(BORDER_R - 60, BORDER_R + 140, r);
     if (fog) {
-      if (k === 0 || !have) {
+      if (k === 0 || !have || fog.near !== wrote.near || fog.far !== wrote.far) {
         base.near = fog.near;
         base.far = fog.far;
         base.color.copy(fog.color);
         have = true;
       }
-      fog.near = base.near * (1 - 0.9 * k);
-      fog.far = base.far * (1 - 0.72 * k);
+      fog.near = wrote.near = base.near * (1 - 0.9 * k);
+      fog.far = wrote.far = base.far * (1 - 0.72 * k);
       fog.color.copy(base.color).lerp(haze, k);
     }
     sea.visible = k > 0;

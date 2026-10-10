@@ -104,6 +104,7 @@ export function createShifter(scene: THREE.Scene, world: World, titans: Titans, 
       if (active || fadeT > 0) return [];
       if (meter < 1) return [{ type: "callout", text: `Titan power ${Math.round(meter * 100)}%. Kill titans to fill it` }];
       if (!player.alive || player.mode === "held") return [];
+      player.unhook();
       body().group.visible = true;
       active = true;
       hp = 1;

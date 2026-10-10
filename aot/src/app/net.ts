@@ -112,6 +112,7 @@ export function createSquad(scene: THREE.Scene, titans: Titans, o: SquadOpts, on
   });
 
   const pos = new THREE.Vector3();
+  const out: GameEvent[] = [];
   return {
     guest: !o.create,
     hit(id: number, part: TitanPart, dmg: number) {
@@ -125,15 +126,21 @@ export function createSquad(scene: THREE.Scene, titans: Titans, o: SquadOpts, on
         const p = player.pos, v = player.vel;
         send(["p", r2(p.x), r2(p.y), r2(p.z), r2(v.x), r2(v.y), r2(v.z), r2(yaw), MODES.indexOf(player.mode)]);
       }
-      let out: GameEvent[] = [];
-      if (!o.create) out = mirror.show(real, dt);
-      else if (titans.net) {
+      out.length = 0;
+      if (!o.create) {
+        const ev = mirror.show(real, dt);
+        for (let i = 0; i < ev.length; i++) out.push(ev[i]);
+      } else if (titans.net) {
         snapT += real;
         if (snapT >= SNAP_S && remotes.size) {
           snapT = 0;
           send(["s", titans.net.snap()]);
         }
-        for (const [id, part, dmg] of hits.splice(0)) out.push(...titans.net.hit(id, NET_PARTS[part], dmg));
+        for (let i = 0; i < hits.length; i++) {
+          const part = NET_PARTS[hits[i][1]];
+          if (part) out.push(...titans.net.hit(hits[i][0], part, hits[i][2]));
+        }
+        hits.length = 0;
       }
       for (const r of remotes.values()) {
         const { a, b, frame } = r;
