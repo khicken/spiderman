@@ -61,6 +61,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   let introT = -1;
   const introToasts: UiEvent[] = [];
   let reticle: HTMLElement | null = null;
+  let depotEl: HTMLElement | null = null;
   let music: MusicState = "title";
 
   const listener = new THREE.Vector3();
@@ -278,6 +279,18 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         reticle.dataset.part = lock!.part;
       } else reticle.style.opacity = "0";
     }
+    if (depotEl) {
+      let best = Infinity;
+      let b = 0;
+      for (let i = 0; i < world.supplies.length; i++) {
+        const p = world.supplies[i];
+        const d = (p.x - player.pos.x) ** 2 + (p.z - player.pos.z) ** 2;
+        if (world.depotDown[i] || d >= best) continue;
+        best = d;
+        b = Math.atan2(p.x - player.pos.x, p.z - player.pos.z) - rig.yaw;
+      }
+      depotEl.style.setProperty("--depot", `${-b}rad`);
+    }
 
     let danger = 0;
     for (const ti of titans.list()) if (ti.alive) danger = Math.max(danger, 1 - ti.pos.distanceTo(player.pos) / 150);
@@ -348,6 +361,9 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     virtual: input.virtual,
     bindReticle(el: HTMLElement | null) {
       reticle = el;
+    },
+    bindDepot(el: HTMLElement | null) {
+      depotEl = el;
     },
     setSettings: (s: Partial<Settings>) => {
       if (s.quality !== undefined) autoQ = false;

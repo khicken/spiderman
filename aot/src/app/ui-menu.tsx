@@ -3,6 +3,7 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import type { QUALITIES, Quality, Settings } from "./game";
 import { Brush, Emblem } from "./ui-art";
+import { ControlsGrid } from "./ui-controls";
 
 export type Panel = "settings" | "controls" | "characters" | null;
 export type MenuItem = {
@@ -12,42 +13,6 @@ export type MenuItem = {
   onSelect: () => void;
   disabled?: boolean;
 };
-
-const CONTROLS: { group: string; jp: string; keys: [string[], string][] }[] = [
-  {
-    group: "ODM gear",
-    jp: "立体機動装置",
-    keys: [
-      [["F"], "Both anchors at the crosshair or lock"],
-      [["LMB", "C"], "Left anchor"],
-      [["RMB", "V"], "Right anchor"],
-      [["Space"], "Gas boost, jump on the ground"],
-      [["Shift"], "Gas dash"],
-      [["W", "A", "S", "D"], "Move and steer"],
-    ],
-  },
-  {
-    group: "Combat",
-    jp: "戦闘",
-    keys: [
-      [["E"], "Hold to charge, release to strike"],
-      [["E", "Space"], "Mash to escape a grab"],
-      [["Q"], "Lock on"],
-      [["Tab", "Wheel"], "Next part"],
-      [["R"], "Swap blades"],
-      [["G"], "Squad: attack my target or regroup"],
-    ],
-  },
-  {
-    group: "System",
-    jp: "システム",
-    keys: [
-      [["M"], "Mute"],
-      [["Esc"], "Pause"],
-      [["Enter"], "Skip the intro"],
-    ],
-  },
-];
 
 export function Key({ children }: { children: ReactNode }) {
   return (
@@ -167,7 +132,7 @@ export function Menu({
   );
 }
 
-function PanelFrame({
+export function PanelFrame({
   title,
   jp,
   onClose,
@@ -206,7 +171,7 @@ function PanelFrame({
   );
 }
 
-function Label({ children }: { children: ReactNode }) {
+export function Label({ children }: { children: ReactNode }) {
   return (
     <div className="mb-2 font-cond text-xs font-semibold uppercase tracking-[0.25em] text-brass">
       {children}
@@ -351,67 +316,7 @@ export function SettingsPanel({
 export function ControlsPanel({ onClose }: { onClose: () => void }) {
   return (
     <PanelFrame title="Controls" jp="操作" onClose={onClose} wide>
-      <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-bone/85">
-        <span className="flex items-center gap-2">
-          <Key>Q</Key> Lock on
-        </span>
-        <span className="text-brass">→</span>
-        <span className="flex items-center gap-2">
-          <Key>F</Key> Hook
-        </span>
-        <span className="text-brass">→</span>
-        <span className="flex items-center gap-2">
-          <Key>E</Key> Strike the nape
-        </span>
-        <span className="basis-full text-bone/60">
-          Tap an anchor to stay hooked, tap again to let go. Hold it
-          to swing.
-        </span>
-      </div>
-      <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-        {CONTROLS.map((g) => (
-          <div
-            key={g.group}
-            className={g.group === "System" ? "sm:col-span-2" : ""}
-          >
-            <Label>
-              {g.group}{" "}
-              <span className="ml-2 font-jp tracking-[0.15em] text-bone/40">
-                {g.jp}
-              </span>
-            </Label>
-            <div
-              className={
-                g.group === "System"
-                  ? "flex flex-wrap gap-x-8 gap-y-2"
-                  : "grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-2"
-              }
-            >
-              {g.keys.map(([keys, action]) => (
-                <div key={keys.join() + action} className="contents">
-                  <span
-                    className={`flex gap-1 ${g.group === "System" ? "mr-3 inline-flex" : ""}`}
-                  >
-                    {keys.map((k) => (
-                      <Key key={k}>{k}</Key>
-                    ))}
-                    {g.group === "System" && (
-                      <span className="ml-2 self-center text-sm text-bone/85">
-                        {action}
-                      </span>
-                    )}
-                  </span>
-                  {g.group !== "System" && (
-                    <span className="text-sm leading-tight text-bone/85">
-                      {action}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <ControlsGrid touch={false} />
     </PanelFrame>
   );
 }
