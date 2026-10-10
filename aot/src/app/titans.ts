@@ -171,6 +171,12 @@ function segClosest(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, out: T
   return out.multiplyScalar(t).add(a);
 }
 
+const NET_POSE = ["phase", "walk", "run", "crawl", "kneel", "lean", "twist", "lookYaw", "lookPitch", "tilt", "jaw", "roar", "flail", "reach", "crouch", "air", "kick", "stomp", "limp", "blind", "climb"] as const;
+const NET_PARTS: TitanPart[] = ["nape", "eyes", "armL", "armR", "legL", "legR"];
+const NET_KINDS = Object.keys(POOL) as TitanKind[];
+export const NET_REC = 23 + NET_POSE.length + 10; // id, kind, variant, height, x, y, z, yaw, then state, hp, sev, pose
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
 export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const variants = SPECS.map(buildVariant);
   const rnd = rand(Date.now() & 0xffff);
@@ -192,6 +198,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const hits: TitanHit[] = [];
   let hitI = 0;
   let player: PlayerView | null = null;
+  const netOwn = new Map<number, number>();
 
   const sfx = (name: Sfx, at?: THREE.Vector3, volume?: number) => out.push({ type: "sfx", name, at: at?.clone(), volume });
 
@@ -1693,6 +1700,108 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         v.geo.dispose();
         for (const l of LIMBS) v.limbs[l].dispose();
       }
+    },
+    net: {
+      snap() {
+        const s = [wave, Math.max(0, quota - killedWave), Math.round(Math.max(0, breakT) * 10) / 10];
+        for (const t of list) {
+          if (!t.alive) continue;
+          const p = t.p;
+          s.push(t.id, NET_KINDS.indexOf(t.kind), variants.indexOf(t.v), r2(t.height), r2(t.pos.x), r2(t.pos.y), r2(t.pos.z), r2(t.yaw), t.fall, t.hardened ? 1 : 0, r2(t.hard), r2(t.flash), r2(t.blind));
+          for (const k of NET_PARTS) s.push(r2(t.hp[k]));
+          for (const v of t.sev) s.push(r2(v));
+          for (const k of NET_POSE) s.push(r2(p[k]));
+          s.push(r2(p.curl[0]), r2(p.curl[1]), r2(p.ikW[0]), r2(p.ikW[1]), r2(p.ik[0].x), r2(p.ik[0].y), r2(p.ik[0].z), r2(p.ik[1].x), r2(p.ik[1].y), r2(p.ik[1].z));
+        }
+        return s;
+      },
+      show(s, dt) {
+        out.length = 0;
+        if (s[0] !== wave && s[0] > 0) out.push({ type: "stinger", name: "wave" }, { type: "banner", jp: `第${s[0]}波`, en: `Wave ${s[0]}`, text: "Hold the line together" });
+        else if (s[2] > 0 && breakT <= 0 && wave > 0) out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared`, text: "Resupply at the green smoke" });
+        wave = s[0];
+        quota = s[1];
+        killedWave = 0;
+        breakT = s[2];
+        const seen = new Set<number>();
+        const junk: GameEvent[] = [];
+        for (let i = 3; i + NET_REC <= s.length; i += NET_REC) {
+          const id = s[i];
+          seen.add(id);
+          let t = list.find((x) => x.id === id);
+          if (!t) {
+            t = spawn(NET_KINDS[s[i + 1]], s[i + 3], _d.set(s[i + 4], 0, s[i + 6]), s[i + 2]);
+            t.id = id;
+          }
+          if (!t.alive) continue;
+          const p = t.p;
+          t.pos.set(s[i + 4], s[i + 5], s[i + 6]);
+          t.yaw = s[i + 7];
+          t.fall = s[i + 8];
+          t.hardened = s[i + 9] > 0;
+          t.hard = s[i + 10];
+          t.flash = s[i + 11];
+          t.blind = s[i + 12];
+          if (!netOwn.has(id)) {
+            for (let k = 0; k < 4; k++) if (s[i + 19 + k] > 0 && t.sev[k] <= 0) sever(t, k, _a.set(Math.sin(t.yaw), 0, Math.cos(t.yaw)), junk);
+            NET_PARTS.forEach((k, j) => (t.hp[k] = s[i + 13 + j]));
+            for (let k = 0; k < 4; k++) t.sev[k] = s[i + 19 + k];
+          }
+          for (let k = 0; k < 4; k++) p.sev[k] = t.sev[k] > 0 ? clamp01(1 - t.sev[k] / 3) : 1;
+          NET_POSE.forEach((k, j) => (p[k] = s[i + 23 + j]));
+          const o = i + 23 + NET_POSE.length;
+          p.curl[0] = s[o];
+          p.curl[1] = s[o + 1];
+          p.ikW[0] = s[o + 2];
+          p.ikW[1] = s[o + 3];
+          p.ik[0].set(s[o + 4], s[o + 5], s[o + 6]);
+          p.ik[1].set(s[o + 7], s[o + 8], s[o + 9]);
+          p.t += dt;
+          const cr = t.rig.crystals[0];
+          if (cr) {
+            cr.visible = t.hard > 0.05;
+            cr.scale.copy(t.crystalScale[0]).multiplyScalar(Math.max(0.05, t.hard));
+          }
+          t.rig.mat.emissive.setRGB(t.flash * 0.5, t.flash * 0.18, t.flash * 0.12);
+          place(t);
+        }
+        for (const t of list) {
+          if (t.removed) continue;
+          if (t.alive && !seen.has(t.id)) {
+            t.alive = false;
+            t.dead = 0;
+            fx.blood(t.nape, UP, t.height * 0.3);
+            fx.steamFollow(() => (t.removed ? null : t.center), t.height * 0.32, 14);
+          }
+          if (!t.alive) tickDead(t, dt);
+        }
+        for (let i = list.length - 1; i >= 0; i--) if (list[i].removed) list.splice(i, 1);
+        for (const [id, left] of netOwn) if (left - dt <= 0) netOwn.delete(id); else netOwn.set(id, left - dt);
+        for (const e of junk) if (e.type === "sfx") out.push(e);
+        tickDrops(dt);
+        return out;
+      },
+      hit(id, part, dmg) {
+        const t = list.find((x) => x.id === id && x.alive);
+        const ev: GameEvent[] = [];
+        if (!t || !(dmg > 0)) return ev;
+        t.flash = 1;
+        _b.set(Math.sin(t.yaw), 0, Math.cos(t.yaw));
+        if (part === "eyes") {
+          t.hp.eyes = 0;
+          t.blind = 6;
+        } else {
+          t.hp[part] -= dmg;
+          if (part === "nape" && t.hp.nape <= 0.001) {
+            kill(t, { pos: t.nape, dir: _b, speed: 20, charge: 0, radius: 1 }, false, ev);
+            kills--;
+          } else if (part !== "nape" && t.hp[part] <= 0 && t.sev[LIMB_IDX[part]] <= 0) sever(t, LIMB_IDX[part], _b, ev);
+        }
+        return ev.filter((e) => e.type === "sfx");
+      },
+      own(id) {
+        netOwn.set(id, 0.6);
+      },
     },
   };
   if (process.env.NODE_ENV !== "production")
