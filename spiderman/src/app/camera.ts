@@ -157,10 +157,10 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, city: City) {
         velLP.copy(p.vel);
         ready = true;
       }
-      offset.lerp(want, 1 - Math.exp(-12 * dt));
+      offset.lerp(want, 1 - Math.exp(-18 * dt));
       velLP.lerp(p.vel, 1 - Math.exp(-3 * dt));
       lag.copy(p.vel).sub(velLP).multiplyScalar(-0.04);
-      if (lag.length() > 0.8) lag.setLength(0.8);
+      if (lag.length() > 0.3) lag.setLength(0.3);
       want.copy(focus).add(offset).add(lag);
 
       if (p.wallNormal) {
