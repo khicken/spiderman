@@ -1153,6 +1153,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     setVisible(on) {
       scout.root.visible = on;
     },
+    unhook() {
+      for (let i = 0; i < 2; i++) release(i, true);
+    },
     setCharacter(id) {
       const ch = getCharacter(id);
       base = ch.stats;

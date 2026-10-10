@@ -138,6 +138,8 @@ export type Blade = { pos: THREE.Vector3; dir: THREE.Vector3; speed: number; cha
 export type Weapon = "blades" | "spears" | "pistols";
 export type StrikeResult = { events: GameEvent[]; zone: HitZone | null; titan: TitanView | null; killed: boolean };
 export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; grounded: boolean };
+// Squad play: the host sends snap() to guests, guests draw it with show(). Guests own hp of a titan they just hit for a moment.
+export type TitanNet = { snap(): number[]; show(snap: number[], dt: number): GameEvent[]; hit(id: number, part: TitanPart, dmg: number): GameEvent[]; own(id: number): void };
 export interface Titans {
   update(dt: number, t: number, player: PlayerView): GameEvent[];
   start(): void; // starts wave 1
@@ -159,6 +161,7 @@ export interface Titans {
   pushOut(pos: THREE.Vector3, radius: number, vel: THREE.Vector3): void;
   boss(): { name: string; kind: TitanKind; health: number; hardened: boolean } | null;
   lure(p: THREE.Vector3 | null): void; // half the titans march on this point
+  net?: TitanNet;
   dispose(): void;
 }
 
@@ -235,6 +238,7 @@ export interface Player {
   hud(): PlayerHud;
   cameraView(): CameraView;
   setVisible(on: boolean): void;
+  unhook(): void; // drops both hooks
   setCharacter(id: string): void; // swaps the model and stats
   setBoost(b: Boost): void; // run upgrades and gear tier
   dispose(): void;

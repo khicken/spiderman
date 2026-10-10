@@ -29,6 +29,8 @@ import {
 import { ControlsCard, ControlsOverlay } from "./ui-controls";
 import { DepotArrow, Hud, LockReticle, type Msgs, type Pop } from "./ui-hud";
 import { Leaderboard } from "./ui-leaderboard";
+import { SQUAD_ON, type SquadInfo } from "./net";
+import { SquadPanel } from "./ui-net";
 import { Drill, LevelUp } from "./ui-run";
 import {
   ControlsPanel,
@@ -51,6 +53,7 @@ import {
 type Screen = "title" | "playing" | "pause" | "results";
 
 const KEY = "aot-settings";
+const STALE_MS = 1500;
 const POP_MS = { toast: 2800, score: 1900, hurt: 700, kill: 2200, banner: 2800, radio: 3200, callout: 1600 } as const;
 const MAX_TOASTS = 2;
 
@@ -97,7 +100,8 @@ export default function TitanPage() {
   const [hud, setHud] = useState<HudState | null>(null);
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [screen, setScreenState] = useState<Screen>("title");
-  const [panel, setPanel] = useState<Panel>(null);
+  const [panel, setPanel] = useState<Panel | "squad">(null);
+  const [squad, setSquad] = useState<SquadInfo | null>(null);
   const [started, setStarted] = useState(false);
   const [touch, setTouch] = useState(false);
   const [pops, setPops] = useState<Pop[]>([]);
@@ -178,8 +182,10 @@ export default function TitanPage() {
       }
     };
     const bannerQ: Pop[] = [];
+    const queuedAt = new WeakMap<Pop, number>();
     let banner: Pop | null = null;
     const showBanner = () => {
+      while (!banner && bannerQ.length && performance.now() - (queuedAt.get(bannerQ[0]) ?? 0) > STALE_MS) bannerQ.shift();
       if (banner || !bannerQ.length) return;
       const b = (banner = bannerQ.shift()!);
       setMsgs((m) => ({ ...m, banner: b }));
@@ -207,23 +213,19 @@ export default function TitanPage() {
         toastQ.push(pop);
         pumpToasts();
       } else if (e.type === "kill") {
-        if (banner?.type === "banner") bannerQ.unshift({ ...banner, id: ++id });
         banner = null;
+        queuedAt.set(pop, performance.now());
         bannerQ.unshift(pop);
         showBanner();
       } else if (e.type === "banner") {
+        queuedAt.set(pop, performance.now());
         bannerQ.push(pop);
         showBanner();
       } else if (e.type === "radio" || e.type === "callout") flash(e.type, pop);
       else addPop(pop, POP_MS[e.type]);
     };
-    let shownQ = initial.quality;
     const onHud = (h: HudState) => {
       setHud(h);
-      if (h.quality !== shownQ) {
-        shownQ = h.quality;
-        setSettingsState((s) => (s ? save({ ...s, quality: h.quality }) : s));
-      }
       const r = runRef.current;
       if (h.playing && !h.intro && !r.over) {
         r.kills = h.kills;
@@ -259,6 +261,13 @@ export default function TitanPage() {
     };
   }, [run, endRun]);
 
+  useEffect(() => {
+    if (!squad?.ended) return;
+    if (!started) return void gameRef.current?.squad(null);
+    const h = setTimeout(() => endRun("retreat"), 2500);
+    return () => clearTimeout(h);
+  }, [squad?.ended, started, endRun]);
+
   const update = useCallback((p: Partial<Settings>) => {
     setSettingsState((s) => save({ ...s!, ...p }));
     gameRef.current?.setSettings(p);
@@ -279,7 +288,7 @@ export default function TitanPage() {
     if (touch) enterFullscreen();
     gameRef.current?.play();
   };
-  const toggle = (p: Panel) => setPanel((cur) => (cur === p ? null : p));
+  const toggle = (p: Panel | "squad") => setPanel((cur) => (cur === p ? null : p));
 
   const items: MenuItem[] =
     screen === "pause"
@@ -312,6 +321,7 @@ export default function TitanPage() {
             onSelect: play,
             disabled: !hud,
           },
+          ...(started || !SQUAD_ON ? [] : [{ id: "squad", label: "Squad", jp: "分隊", onSelect: () => toggle("squad") }]),
           {
             id: "characters",
             label: "Soldiers",
@@ -333,6 +343,7 @@ export default function TitanPage() {
         ];
   const closeResults = () => {
     setResults(null);
+    setSquad(null);
     setStarted(false);
     setHud(null);
     setScreen("title");
@@ -369,7 +380,7 @@ export default function TitanPage() {
             final={runRef.current.deaths >= 3}
             onSkip={() => gameRef.current?.skipIntro()}
           />
-          {!hud.intro && (
+          {!hud.intro && !hud.run.choice && !msgs.banner && (
             <div className="pointer-events-none absolute left-1/2 top-[74px] -translate-x-1/2 font-display text-[11px] uppercase tracking-[0.2em] text-bone/70 [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
               {hud.fps} fps · {QUALITIES[hud.quality].label}
             </div>
@@ -455,6 +466,21 @@ export default function TitanPage() {
                 key={panel}
                 className={touch ? "min-w-0 flex-1" : "w-full lg:max-w-[720px]"}
               >
+                {panel === "squad" && (
+                  <SquadPanel
+                    info={squad}
+                    onOpen={(name, code, create) => {
+                      setSquad({ code, host: create, ready: false, names: [], ended: null });
+                      gameRef.current?.squad({ code, create, name, char: settings.character }, setSquad);
+                    }}
+                    onLeave={() => {
+                      gameRef.current?.squad(null);
+                      setSquad(null);
+                    }}
+                    onPlay={play}
+                    onClose={() => setPanel(null)}
+                  />
+                )}
                 {panel === "settings" && (
                   <SettingsPanel
                     qualities={QUALITIES}

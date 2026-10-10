@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 const TOP = "aot:lb";
 const KEEP = 20;
 const NAME = /^[A-Za-z0-9 -]{1,12}$/;
+const MAX_WAVE = 60;
 
 const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
 const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -52,14 +53,14 @@ export async function POST(req: Request) {
   const name = typeof b?.name === "string" ? b.name.trim() : "";
   const runId = typeof b?.runId === "string" ? b.runId : "";
   const [score, wave, level] = [b?.score, b?.wave, b?.level].map((v) => (Number.isInteger(v) ? (v as number) : -1));
-  if (!NAME.test(name) || !/^[a-z0-9]{8,32}$/.test(runId) || score < 0 || wave < 0 || wave > 999 || level < 1 || level > 999)
+  if (!NAME.test(name) || !/^[a-z0-9]{8,32}$/.test(runId) || score < 0 || wave < 0 || wave > MAX_WAVE || level < 1 || level > 10 + 3 * wave)
     return Response.json({ error: "bad input" }, { status: 400 });
 
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "local";
-    const hits = await redis.incr(`aot:lb:ip:${ip}`);
-    if (hits === 1) await redis.expire(`aot:lb:ip:${ip}`, 600);
-    if (hits > 10) return Response.json({ error: "slow down" }, { status: 429 });
+    const key = `aot:lb:ip:${ip}`;
+    const [hits] = await redis.multi().incr(key).expire(key, 600, "NX").exec<[number, number]>();
+    if (Number(hits) > 10) return Response.json({ error: "slow down" }, { status: 429 });
     if (!(await redis.set(`aot:lb:run:${runId}`, 1, { nx: true, ex: 86400 })))
       return Response.json({ error: "already sent" }, { status: 409 });
 
