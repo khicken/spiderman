@@ -98,6 +98,11 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
 
   // Loads run one at a time. A newer showroom or play request skips the older queued ones.
   let req = 0;
+  let disposed = false;
+  let finishTimer: ReturnType<typeof setTimeout> | undefined;
+  let nanWarned = false;
+  const upL: boolean[] = [];
+  const downL: boolean[] = [];
   let queue: Promise<void> = Promise.resolve();
   function loadMap(id: MapId, my = req) {
     const run = queue.then(() => (my === req ? buildMap(id) : undefined));
@@ -106,11 +111,12 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   }
 
   async function buildMap(id: MapId) {
-    if (loadedId === id && track) return;
+    if (disposed || (loadedId === id && track)) return;
     cb.progress(0);
     const info = MAPS.find((m) => m.id === id) ?? MAPS[0];
     const data = await info.load();
     await tick();
+    if (disposed) return;
     cb.progress(0.2);
     clearRacers();
     mesh?.dispose();
@@ -122,10 +128,12 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     track = createTrack(data);
     cb.progress(0.35);
     await tick();
+    if (disposed) return;
     mesh = createTrackMesh(track, cur.quality);
     view.scene.add(mesh.group);
     cb.progress(0.65);
     await tick();
+    if (disposed) return;
     scenery = createScenery(track, cur.quality);
     view.scene.add(scenery.group);
     cb.progress(0.9);
@@ -156,6 +164,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   // Compiles new shaders off the main thread. Frames skip the draw meanwhile, so the canvas keeps its last image.
   let compiling = 0;
   async function warm() {
+    if (disposed) return;
     compiling++;
     try {
       await view.renderer.compileAsync(view.scene, view.camera);
@@ -173,6 +182,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       r.voice?.dispose();
     }
     racers = [];
+    upL.length = downL.length = 0;
     me = null;
     if (ghostModel) {
       view.scene.remove(ghostModel.group);
@@ -207,7 +217,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     envOverride = {};
     const my = ++req;
     await loadMap(mapId, my);
-    if (my !== req) return;
+    if (my !== req || disposed) return;
     clearRacers();
     addRacer({ id: "me", name: "You", color: paint, car, me: true, ai: false }, 0, false);
     rig?.cut();
@@ -231,8 +241,9 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     net = s.net ?? null;
     if (net?.lobby) envOverride = { weather: net.lobby.weather === "map" ? undefined : net.lobby.weather, hour: net.lobby.hour === "map" ? undefined : net.lobby.hour };
     else envOverride = {};
+    clearTimeout(finishTimer);
     await loadMap(s.map, my);
-    if (my !== req) return;
+    if (my !== req || disposed) return;
     applyEnv();
     clearRacers();
     const entrants: Entrant[] = [];
@@ -335,7 +346,8 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
           if (net && !finishedSent) net.finish(e.time);
           finishedSent = true;
           audio?.music("results", map?.id);
-          setTimeout(() => {
+          clearTimeout(finishTimer);
+          finishTimer = setTimeout(() => {
             if (state === "race" || state === "paused") {
               state = "results";
               cb.finished();
@@ -378,7 +390,9 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       hud.phase = race.phase;
       hud.mode = session?.mode ?? "race";
       if (ghost?.best && race.phase === "racing") {
-        const ratio = Math.max(0, me.v.state.s) / track!.length;
+        const T = track!;
+        const s0 = T.checkpoints[0] ?? 0;
+        const ratio = T.closed ? T.wrap(me.v.state.s - s0) / T.length : Math.max(0, me.v.state.s - s0) / Math.max(1, T.length - s0);
         hud.delta = ratio > 0.02 ? hud.time - ghost.best * ratio : null;
       } else hud.delta = null;
     } else {
@@ -442,14 +456,27 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
             else r.c = IDLE;
           }
         }
+        // Shift presses wait for the next substep, so high refresh frames without one do not lose them.
+        for (let i = 0; i < racers.length; i++) {
+          upL[i] = !!upL[i] || racers[i].c.shiftUp;
+          downL[i] = !!downL[i] || racers[i].c.shiftDown;
+        }
         acc += dt;
         let steps = 0;
         while (acc >= DT && steps < 8) {
-          for (const r of racers) {
+          for (let i = 0; i < racers.length; i++) {
+            const r = racers[i];
             if (r.remote) continue;
+            r.c.shiftUp = upL[i];
+            r.c.shiftDown = downL[i];
             route(r.v.step(DT, r.c));
-            r.c.shiftUp = false;
-            r.c.shiftDown = false;
+            r.c.shiftUp = r.c.shiftDown = upL[i] = downL[i] = false;
+            const st = r.v.state;
+            if (!Number.isFinite(st.pos.x + st.pos.y + st.pos.z + st.vel.x + st.vel.y + st.vel.z)) {
+              if (!nanWarned) console.warn("car state not finite, reset to track:", r.e.id);
+              nanWarned = true;
+              r.v.resetToTrack();
+            }
           }
           if (racers.length > 1) route(collideCars(bodies()));
           acc -= DT;
@@ -481,6 +508,12 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
         net.sendCar(me.v.snap(snapScratch), me.c, me.v.state);
       }
       net.sendAi(racers);
+      if (race && race.phase !== "grid" && race.phase !== "countdown") {
+        // finish times come from the finisher (the host for AI), so every screen shows one order
+        const all = race.standings();
+        if (net.host) for (const st of all) if (st.finished && !st.dnf && st.id.startsWith("#ai")) net.finish(st.time, st.id);
+        net.applyFinishes(all);
+      }
       // someone finished: show the DNF countdown, and end my race when race.ts calls time
       if (state === "race" && race && me && !finishedSent) {
         if (race.phase === "done") {
@@ -687,6 +720,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       audio?.setVolume(cur.master, cur.music);
     },
     quit() {
+      clearTimeout(finishTimer);
       clearRacers();
       net?.leave();
       net = null;
@@ -694,6 +728,8 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       state = "menu";
     },
     dispose() {
+      disposed = true;
+      clearTimeout(finishTimer);
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onHide);

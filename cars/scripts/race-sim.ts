@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { createRace } from "../src/app/race";
 import { createDriver, TUNE } from "../src/app/ai";
 if (process.env.TUNE) Object.assign(TUNE, JSON.parse(process.env.TUNE));
-import { mockMap } from "../src/app/lab/mock-map";
+import { mockMap } from "./mock-map";
 
 const [mapArg = "mock", lapsArg = "3", maxArg = "900", skillArg = "", nArg = "8", traceArg = ""] = process.argv.slice(2);
 const map: MapData = mapArg === "mock" ? mockMap() : (await import(`../src/app/maps/${mapArg}.ts`)).MAP;

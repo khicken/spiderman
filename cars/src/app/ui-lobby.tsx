@@ -5,6 +5,7 @@ import type { CarSpec, Entrant, Lobby as LobbyState } from "./contracts";
 import { Back, Bars, Bot, Car, Check, Cloud, Copy, Crown, Fwd, Laps, Link, Pencil, Play, Pin, pingLevel } from "./ui-icons";
 import { CLASS_COLOR, IconBtn, Spinner, Stepper, TrackLine, cx, type MapCard } from "./ui-kit";
 import { useNavRoot } from "./ui-nav";
+import { MAX_LAPS } from "./net-check";
 
 export type LobbyPlayer = Entrant & { ping?: number | null; host?: boolean; relay?: boolean };
 
@@ -157,7 +158,7 @@ export function Lobby({
           {host ? (
             <>
               <div className="flex gap-2 [&>*]:flex-1">
-                <Stepper label="Laps" icon={<Laps />} value={lobby.laps} min={1} max={20} onChange={(v) => set({ laps: v })} />
+                <Stepper label="Laps" icon={<Laps />} value={lobby.laps} min={1} max={MAX_LAPS} onChange={(v) => set({ laps: v })} />
                 <Stepper label="AI" icon={<Bot />} value={ai} min={0} max={MAX - humans} onChange={(v) => set({ ai: v })} />
               </div>
               <button type="button" aria-label="Start" data-autofocus onClick={onStart} className="nav skew flex h-14 items-center justify-center rounded-[3px] border border-hot bg-hot hover:bg-[#ff4d6d]">

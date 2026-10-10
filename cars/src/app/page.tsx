@@ -33,6 +33,23 @@ function load<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
+// Stored settings may come from an older build or a hand edit: keep each field only when it is valid.
+function cleanSettings(raw: Partial<Settings>, base: Settings): Settings {
+  const pick = <T,>(v: unknown, ok: readonly T[], d: T) => (ok.includes(v as T) ? (v as T) : d);
+  const vol = (v: unknown, d: number) => (typeof v === "number" && v >= 0 && v <= 1 ? v : d);
+  const a = (raw.assists ?? {}) as Partial<Settings["assists"]>;
+  const flag = (k: keyof Settings["assists"]) => (typeof a[k] === "boolean" ? a[k] : base.assists[k]);
+  return {
+    quality: pick(raw.quality, ["low", "medium", "high", "ultra"] as const, base.quality),
+    master: vol(raw.master, base.master),
+    music: vol(raw.music, base.music),
+    units: pick(raw.units, ["kmh", "mph"] as const, base.units),
+    camera: pick(raw.camera, ["chase", "far", "hood", "bumper", "cockpit"] as const, base.camera),
+    steer: pick(raw.steer, ["slider", "tilt"] as const, base.steer),
+    assists: { abs: flag("abs"), tcs: flag("tcs"), stability: flag("stability"), autoGear: flag("autoGear"), steer: flag("steer") },
+  };
+}
+
 function save(key: string, v: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(v));
@@ -72,7 +89,8 @@ export default function Page() {
   settingsRef.current = settings;
 
   useEffect(() => {
-    const s = load<Settings>(SETTINGS_KEY, { ...DEFAULT_SETTINGS, quality: isPhone() ? "low" : detectQuality() });
+    const base: Settings = { ...DEFAULT_SETTINGS, quality: isPhone() ? "low" : detectQuality() };
+    const s = cleanSettings(load<Partial<Settings>>(SETTINGS_KEY, {}), base);
     const p = load<MenuPick>(PICK_KEY, DEFAULT_PICK);
     setSettings(s);
     setPick(p);
@@ -100,15 +118,18 @@ export default function Page() {
     );
     game.current = g;
     const roomParam = cleanRoomCode(new URLSearchParams(location.search).get("room") ?? "");
+    let dead = false;
     void g.showroom(p.map, p.car, p.paint).then(() => {
+      if (dead) return;
       if (roomParam) joinRoom(roomParam);
       for (const m of MAPS)
-        void m.load().then((d) => setMaps((l) => l.map((c) => (c.id === m.id ? mapCard(m, d) : c))));
+        void m.load().then((d) => !dead && setMaps((l) => l.map((c) => (c.id === m.id ? mapCard(m, d) : c))));
     });
     const gesture = () => g.audioOn();
     window.addEventListener("pointerdown", gesture);
     window.addEventListener("keydown", gesture);
     return () => {
+      dead = true;
       window.removeEventListener("pointerdown", gesture);
       window.removeEventListener("keydown", gesture);
       netRef.current?.leave();

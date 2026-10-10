@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { CarModel, Controls, Entrant, GroundHit, Track, TrackFrame, VehicleSnap } from "./contracts";
-import type { CarFrame } from "./net-wire";
+import { finiteSnap } from "./net-check";
+import { SNAP, type CarFrame } from "./net-wire";
 import type { VehicleBody } from "./vehicle";
 
 export type NetRacer = { e: Entrant; v: VehicleBody; m: CarModel; c: Controls; remote: boolean };
@@ -22,6 +23,7 @@ export function hideRemote(r: NetRacer) {
 // Remote cars are not simulated: the pose comes from the wire, the rest is derived so they look and sound driven.
 // own: this car's snap with the sampled pose written over it. lead: ms the pose lags real time.
 export function applyRemote(r: NetRacer, own: VehicleSnap, f: CarFrame, track: Track, dt: number, lead: number) {
+  if (!finiteSnap(own, SNAP.size)) return;
   const g = track.ground(own[0], own[1], own[2], own[19], hit);
   own[19] = g.s;
   r.v.load(own);

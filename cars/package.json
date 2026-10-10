@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "maps": "node scripts/build-maps.mjs"
+    "maps": "node scripts/build-maps.mjs",
+    "test": "node --no-warnings --import ./scripts/ts-resolve.mjs scripts/race-test.ts"
   },
   "dependencies": {
     "next": "16.1.5",

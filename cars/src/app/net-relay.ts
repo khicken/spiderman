@@ -8,6 +8,7 @@ const BROKERS = [
   { url: "wss://broker.emqx.io:8084/mqtt", hz: 8 },
 ];
 const KEEPALIVE = 30;
+const MAX_SENDERS = 32;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -128,8 +129,13 @@ export function createRelay(room: string, me: string, onMsg: RelayMsg): Relay {
     const tl = m[6 + fl];
     const to = tl ? dec.decode(m.subarray(7 + fl, 7 + fl + tl)) : "";
     if (from === me || (to && to !== me)) return;
+    if (!/^[A-Za-z0-9]{1,40}$/.test(from)) return;
     let s = seen.get(from);
-    if (!s) seen.set(from, (s = new Set()));
+    if (!s) {
+      // strangers on a public topic: keep the newest few senders only
+      if (seen.size >= MAX_SENDERS) seen.delete(seen.keys().next().value!);
+      seen.set(from, (s = new Set()));
+    }
     if (s.has(cnt)) return;
     s.add(cnt);
     if (s.size > 256) for (const k of s) { s.delete(k); if (s.size <= 192) break; }

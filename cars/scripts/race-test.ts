@@ -3,7 +3,7 @@ import * as THREE from "three";
 import type { GameEvent, TrackFrame, VehicleState } from "../src/app/contracts";
 import { createTrack } from "../src/app/track";
 import { createRace } from "../src/app/race";
-import { mockMap } from "../src/app/lab/mock-map";
+import { mockMap } from "./mock-map";
 import { createGhost } from "../src/app/race-ghost";
 
 const track = createTrack(mockMap());

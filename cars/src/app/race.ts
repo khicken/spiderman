@@ -183,8 +183,10 @@ export function createRace(track: Track, mode: Mode, laps: number, ids: readonly
   const lapLen = closed ? L : Math.max(1, L - start);
   function lapDist(c: Car) {
     const x = track.delta(start, c.s);
-    if (!c.started || !closed) return x;
-    return x < 0 ? x + L : x;
+    if (!c.started || !closed || x >= 0) return x;
+    // Just behind the line after a lap (reversed or rewound): still this lap, do not count a full lap ahead.
+    const early = x > -L / 4 && (ng < 2 || c.next === 1);
+    return early ? x : x + L;
   }
 
   function rank() {

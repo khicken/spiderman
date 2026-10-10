@@ -1,6 +1,6 @@
-import type { MapData } from "../contracts";
+import type { MapData } from "../src/app/contracts";
 
-// Lab only: a 3 km hilly loop with a tunnel, a bridge, buildings, water and trees. Delete before commit.
+// Test only: a 3 km hilly loop with a tunnel, a bridge, buildings, water and trees.
 export function mockMap(): MapData {
   const center: number[] = [];
   const width: number[] = [];

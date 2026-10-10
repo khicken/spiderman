@@ -1,6 +1,7 @@
 import { CARS } from "./cars";
 import type { CarId, Controls, Entrant, Lobby, Net, NetEvent, Track, VehicleSnap, VehicleState } from "./contracts";
 import { INTERP_DELAY, createInterp, type InterpBuffer } from "./net-interp";
+import { AI_PREFIX, aiSlot, cleanHello, cleanLobby, validId, type Hello, type LobbyPlus } from "./net-check";
 import { createRelay, type Relay } from "./net-relay";
 import { applyRemote, hideRemote, type NetRacer } from "./net-remote";
 import { AI_MAX, CAR_BYTES, aiBytes, median, newCarFrame, packAi, packCar, unpackAi, unpackCar, type AiCar, type CarFrame, type Engine } from "./net-wire";
@@ -28,7 +29,10 @@ const RELAY_CAR_MS = 1000 / 12;
 const AI_MS = 1000 / 15;
 const RELAY_AI_MS = 1000 / 10;
 const HELLO_MS = 2000;
-const TIE_MS = 1500;
+const TIE_MS = 600; // joins closer than this tie, then the id decides; relay latency stays under it
+const MAX_PEERS = 16;
+const MAX_AGO = 12 * 3600e3;
+const ARRIVE_MS = 15000; // a peer first seen this long after me joined after me, whatever it claims
 const SILENT_MS = 5000; // trystero takes about 12 s to notice a closed tab
 const FALLBACK_MS = 6000; // no data channel by then: the peer is relay only
 const START_MS = 6000;
@@ -40,10 +44,7 @@ type Kind = (typeof K)[keyof typeof K];
 const NAMES: Record<Kind, string> = { 1: "car", 2: "hi", 3: "lobby", 4: "clk", 5: "fin", 6: "ai", 7: "bye" };
 const BINARY = new Set<Kind>([K.car, K.ai]);
 
-// ids: humans on the grid in slot order, cars: AI cars after them. Set by the host at the start.
-export type LobbyPlus = Lobby & { ids?: string[]; cars?: CarId[] };
-
-type Hello = { name: string; color: string; car: string; ago: number; spec: boolean };
+export type { LobbyPlus } from "./net-check";
 type PeerInfo = {
   e: Entrant; joined: number; spec: boolean; seen: number; first: number; buf: InterpBuffer;
   rtts: number[]; rtt: number; delay: number; at: number;
@@ -71,7 +72,8 @@ export interface NetPlus extends Net {
   tick(racers: readonly NetRacer[], track: Track, now: number, dt: number): void;
   sendAi(racers: readonly NetRacer[]): void;
   dnf(left: number): number; // seconds left before DNF on the frames that should show it, else -1
-  finish(time: number): void;
+  finish(time: number, id?: string): void; // id: an AI car, host only
+  applyFinishes(all: readonly { id: string; finished: boolean; time: number; dnf?: boolean }[]): void; // call each frame in a race
   hostNow(): number;
 }
 
@@ -200,14 +202,19 @@ export function createNet(room: string, me: Entrant): NetPlus {
     return performance.now() + offset;
   }
 
-  function onHello(h: Hello, pid: string) {
+  function onHello(raw: unknown, pid: string) {
     const now = performance.now();
     let p = peers.get(pid);
-    const joined = now - h.ago;
+    if (!p && peers.size >= MAX_PEERS) return;
+    const h = cleanHello(raw, MAX_AGO);
+    if (!h) return;
+    let joined = now - h.ago;
+    // a late arrival cannot claim it joined first, or a stranger could make itself host
+    const first = p?.first ?? now;
+    if (first - t0 > ARRIVE_MS) joined = Math.max(joined, first - ARRIVE_MS);
     if (!p) {
-      p = { e: { id: pid, name: "", color: "", car: "gt3", me: false, ai: false }, joined, spec: !!h.spec, seen: now, first: now, buf: createInterp(), rtts: [], rtt: 0, delay: INTERP_DELAY, at: 0 };
+      p = { e: { id: pid, name: h.name, color: h.color, car: h.car, me: false, ai: false }, joined, spec: h.spec, seen: now, first: now, buf: createInterp(), rtts: [], rtt: 0, delay: INTERP_DELAY, at: 0 };
       peers.set(pid, p);
-      Object.assign(p.e, { name: String(h.name).slice(0, 24), color: String(h.color), car: h.car });
       if (stats.connectMs === null) stats.connectMs = now - t0;
       rebuild();
       emit({ type: "join", who: p.e });
@@ -215,23 +222,28 @@ export function createNet(room: string, me: Entrant): NetPlus {
       if (hostId === id && lobby) out(K.lobby, lobby, pid);
     } else {
       p.joined = Math.min(p.joined, joined);
-      Object.assign(p.e, { name: String(h.name).slice(0, 24), color: String(h.color), car: h.car });
+      Object.assign(p.e, { name: h.name, color: h.color, car: h.car });
     }
-    p.spec = !!h.spec;
+    p.spec = h.spec;
     elect();
   }
 
-  function onClock(m: number[], pid: string) {
+  function onClock(m: unknown, pid: string) {
+    if (!Array.isArray(m) || !Number.isFinite(m[1])) return;
     if (m[0] === 0) { out(K.clk, [1, m[1], hostNow()], pid); return; }
     const p = peers.get(pid);
     const now = performance.now();
     const rtt = now - m[1];
     if (!p || !(rtt >= 0 && rtt < 5000)) return;
+    if (pid === hostId && !Number.isFinite(m[2])) return;
     p.rtts.push(rtt);
     if (p.rtts.length > 5) p.rtts.shift();
     p.rtt = median(p.rtts);
     if (pid !== hostId) return;
-    offsets.push({ o: m[2] + rtt / 2 - now, rtt });
+    const o = m[2] + rtt / 2 - now;
+    // once settled, a sample far from the estimate is a lie or a stall, not a clock change
+    if (offsets.length >= 5 && Math.abs(o - offset) > 1000 + rtt) return;
+    offsets.push({ o, rtt });
     if (offsets.length > 21) offsets.shift();
     // the slowest samples carry the most queueing error
     const good = [...offsets].sort((a, b) => a.rtt - b.rtt).slice(0, Math.max(1, Math.ceil(offsets.length * 0.67)));
@@ -240,33 +252,42 @@ export function createNet(room: string, me: Entrant): NetPlus {
   }
 
   function recv(k: Kind, data: unknown, pid: string, viaRelay: boolean) {
-    if (pid === id || left) return;
+    if (pid === id || left || !validId(pid)) return;
+    // relay senders name themselves: a claim to be a peer we reach directly is forged
+    if (viaRelay && rtc.has(pid)) return;
     const p = peers.get(pid);
     if (p) p.seen = performance.now();
     if (viaRelay) stats.relayRecv++;
-    if (k === K.hi) return onHello(data as Hello, pid);
+    if (k === K.hi) return onHello(data, pid);
     if (!p) return;
     if (k === K.lobby) {
       if (pid !== hostId) return;
-      const l = data as LobbyPlus;
+      const l = cleanLobby(data, hostId === id || offsets.length ? hostNow() : null);
+      if (!l) return;
       lobby = l;
       if (!decidedSpec || (spectating && (l.startAt === null || l.startAt > hostNow()))) decideSpectate();
       emit({ type: "lobby", lobby: l });
     } else if (k === K.car) {
-      if (p.spec || (viaRelay && rtc.has(pid))) return;
+      if (p.spec) return;
       if (!unpackCar(view(data as Uint8Array), frame)) return;
       p.buf.push(frame, hostNow());
       stats.recv++;
     } else if (k === K.ai) {
-      if (pid !== hostId || (viaRelay && rtc.has(pid))) return;
+      if (pid !== hostId) return;
       const now = hostNow();
       unpackAi(view(data as Uint8Array), frame, (slot, f) => { if (slot < AI_MAX) aiBufs[slot].push(f, now); });
-    } else if (k === K.clk) onClock(data as number[], pid);
+    } else if (k === K.clk) onClock(data, pid);
     else if (k === K.fin) {
-      const t = Number(data);
-      if (finished.get(pid) === t) return;
-      finished.set(pid, t);
-      emit({ type: "finish", id: pid, time: t });
+      // [time] for the sender, [time, slot] for a host AI car
+      if (!Array.isArray(data) || typeof data[0] !== "number" || !(data[0] > 0 && data[0] < 1e5)) return;
+      let who = pid;
+      if (data.length > 1) {
+        if (pid !== hostId || !Number.isInteger(data[1]) || data[1] < 0 || data[1] >= AI_MAX) return;
+        who = AI_PREFIX + data[1];
+      }
+      if (finished.get(who) === data[0]) return;
+      finished.set(who, data[0]);
+      emit({ type: "finish", id: who, time: data[0] });
     } else if (k === K.bye) drop(pid);
   }
 
@@ -372,8 +393,9 @@ export function createNet(room: string, me: Entrant): NetPlus {
   }
 
   function sample(pid: string, now: number, out: VehicleSnap): CarFrame | null {
-    if (pid.startsWith("ai")) {
-      const b = aiBufs[Number(pid.slice(2))];
+    const slot = aiSlot(pid);
+    if (slot >= 0) {
+      const b = aiBufs[slot];
       if (!b) return null;
       const t = now + offset - delayOf(aiLag, b, rtc.has(hostId), now);
       return b.sample(t, out) ? b.at(t) : null;
@@ -431,7 +453,7 @@ export function createNet(room: string, me: Entrant): NetPlus {
         for (const r of racers) {
           if (!r.e.ai || r.remote || n >= AI_MAX) continue;
           const a = aiCars[n++];
-          a.slot = Number(r.e.id.slice(2)) & 255;
+          a.slot = aiSlot(r.e.id) & 255;
           r.v.snap(a.snap);
           a.c = r.c;
           const st = r.v.state;
@@ -481,7 +503,7 @@ export function createNet(room: string, me: Entrant): NetPlus {
     },
     onGrid() {
       const ids = lobby?.ids;
-      return !spectating && (!ids || ids.includes(id));
+      return !spectating && (hostId === id || offsets.length > 0) && (!ids || ids.includes(id));
     },
     grid(car: CarId, paint: string) {
       const ids = lobby?.ids ?? [id, ...[...peers.values()].filter((p) => !p.spec).map((p) => p.e.id)].sort();
@@ -492,7 +514,7 @@ export function createNet(room: string, me: Entrant): NetPlus {
       });
       (lobby?.cars ?? []).forEach((c, i) => {
         if (ids.length + i >= MAX_CARS) return;
-        out.push({ e: { id: `ai${i}`, name: AI_NAMES[i % AI_NAMES.length], color: AI_COLORS[i % AI_COLORS.length], car: c, me: false, ai: true }, slot: ids.length + i });
+        out.push({ e: { id: AI_PREFIX + i, name: AI_NAMES[i % AI_NAMES.length], color: AI_COLORS[i % AI_COLORS.length], car: c, me: false, ai: true }, slot: ids.length + i });
       });
       for (const b of aiBufs) b.clear();
       aiLag.at = 0;
@@ -510,8 +532,22 @@ export function createNet(room: string, me: Entrant): NetPlus {
       subs.add(cb);
       return () => subs.delete(cb);
     },
-    finish(time: number) {
-      out(K.fin, time);
+    finish(time: number, who?: string) {
+      if (who === undefined) { out(K.fin, [time]); return; }
+      const slot = aiSlot(who);
+      if (hostId !== id || slot < 0 || finished.get(who) === time) return;
+      finished.set(who, time);
+      out(K.fin, [time, slot]);
+    },
+    applyFinishes(all) {
+      if (!finished.size) return;
+      for (const s of all) {
+        const t = finished.get(s.id);
+        if (t === undefined || s.id === id || (s.finished && s.time === t && !s.dnf)) continue;
+        s.finished = true;
+        s.time = t;
+        if (s.dnf) s.dnf = false;
+      }
     },
     leave() {
       if (left) return;

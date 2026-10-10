@@ -90,7 +90,8 @@ function unpackBody(v: DataView, o: number, f: CarFrame): boolean {
   f.engine.shifting = (b & 8) !== 0;
   f.engine.gear = v.getInt8(o + 36);
   f.engine.rpm = v.getUint16(o + 37);
-  return Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2]);
+  for (let i = 0; i < 3; i++) if (!(Math.abs(p[i]) < 1e5)) return false;
+  return true;
 }
 
 export function packCar(out: DataView, seq: number, t: number, snap: Float32Array, c: Controls, e: Engine): void {

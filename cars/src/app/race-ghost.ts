@@ -20,6 +20,19 @@ const tq = new THREE.Quaternion();
 const qw = [0, 0, 0, 0];
 const key = (map: MapId, car: CarId) => `cars-ghost2-${map}-${car}`;
 
+// A ghost is up to ~550K chars. When storage is full, drop the other ghosts and retry once.
+function store(k: string, v: string) {
+  try {
+    localStorage.setItem(k, v);
+    return;
+  } catch {}
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const o = localStorage.key(i);
+    if (o && o !== k && o.startsWith("cars-ghost")) localStorage.removeItem(o);
+  }
+  localStorage.setItem(k, v);
+}
+
 export function createGhost(map: MapId, car: CarId): Ghost {
   const cap = MAX_S * GHOST_HZ;
   let cur: DataView = new DataView(new ArrayBuffer(cap * REC));
@@ -28,6 +41,7 @@ export function createGhost(map: MapId, car: CarId): Ghost {
   let bestView: DataView | null = null;
   let bestN = 0;
   let best = 0;
+  let tainted = false; // the lap in progress had a reset or rewind
 
   try {
     const raw = localStorage.getItem(key(map, car));
@@ -47,8 +61,10 @@ export function createGhost(map: MapId, car: CarId): Ghost {
       const u = new Uint8Array(bestView!.buffer, 0, bestN * REC);
       let bin = "";
       for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode(...u.subarray(i, i + 0x8000));
-      localStorage.setItem(key(map, car), JSON.stringify({ t: best, d: btoa(bin) }));
-    } catch {}
+      store(key(map, car), JSON.stringify({ t: best, d: btoa(bin) }));
+    } catch (e) {
+      console.warn("ghost save:", e);
+    }
   }
 
   function write(v: DataView, i: number, t: number, p: THREE.Vector3, q: THREE.Quaternion) {
@@ -88,7 +104,8 @@ export function createGhost(map: MapId, car: CarId): Ghost {
       next = n / GHOST_HZ;
     },
     lap(time, valid) {
-      const took = valid && n > 1 && (best === 0 || time < best);
+      const took = valid && !tainted && n > 1 && (best === 0 || time < best);
+      tainted = false;
       if (took) {
         const spare = bestView && bestView.byteLength >= cap * REC ? bestView : new DataView(new ArrayBuffer(cap * REC));
         bestView = cur;
@@ -101,7 +118,7 @@ export function createGhost(map: MapId, car: CarId): Ghost {
       next = 0;
       return took;
     },
-    restart() { n = 0; next = 0; },
+    restart() { n = 0; next = 0; tainted = true; },
     pose(t, pos, quat) {
       if (!bestView || bestN < 2) return false;
       const v = bestView;
