@@ -52,6 +52,13 @@ const KEY = "aot-settings";
 const POP_MS = { toast: 2800, score: 1900, hurt: 700, kill: 2200, banner: 2800, radio: 3200, callout: 1600 } as const;
 const MAX_TOASTS = 2;
 
+function save(s: Settings) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {}
+  return s;
+}
+
 function loadSettings(): Settings {
   const s: Settings = {
     quality: isPhone() ? "low" : "medium",
@@ -207,8 +214,13 @@ export default function TitanPage() {
       } else if (e.type === "radio" || e.type === "callout") flash(e.type, pop);
       else addPop(pop, POP_MS[e.type]);
     };
+    let shownQ = initial.quality;
     const onHud = (h: HudState) => {
       setHud(h);
+      if (h.quality !== shownQ) {
+        shownQ = h.quality;
+        setSettingsState((s) => (s ? save({ ...s, quality: h.quality }) : s));
+      }
       const r = runRef.current;
       if (h.playing && !h.intro && !r.over) {
         r.kills = h.kills;
@@ -244,13 +256,7 @@ export default function TitanPage() {
   }, [run, endRun]);
 
   const update = useCallback((p: Partial<Settings>) => {
-    setSettingsState((s) => {
-      const next = { ...s!, ...p };
-      try {
-        localStorage.setItem(KEY, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+    setSettingsState((s) => save({ ...s!, ...p }));
     gameRef.current?.setSettings(p);
   }, []);
 
@@ -356,6 +362,11 @@ export default function TitanPage() {
             final={runRef.current.deaths >= 3}
             onSkip={() => gameRef.current?.skipIntro()}
           />
+          {!hud.intro && (
+            <div className="pointer-events-none absolute left-1/2 top-[74px] -translate-x-1/2 font-display text-[11px] uppercase tracking-[0.2em] text-bone/70 [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
+              {hud.fps} fps · {QUALITIES[hud.quality].label}
+            </div>
+          )}
         </div>
       )}
       {touch && screen === "playing" && hud && !hud.intro && !hud.dead && (

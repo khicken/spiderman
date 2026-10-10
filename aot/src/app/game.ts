@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createAllies } from "./allies";
 import { createAudio } from "./audio";
+import { createBorder } from "./border";
 import { createCameraRig } from "./camera";
 import type { Audio, GameEvent, HudState, MusicState, Quality, TitanBlip, TitanKind } from "./contracts";
 import { createFx } from "./fx";
@@ -9,6 +10,7 @@ import { createPlayer } from "./player";
 import { gearTier, loadCareer } from "./progression";
 import { createRender } from "./render";
 import { createRun } from "./run";
+import { setTitanDetail } from "./titan-model";
 import { createTitans } from "./titans";
 import { createWorld } from "./world";
 
@@ -31,6 +33,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const view = createRender(canvas);
   const fx = createFx(view.scene);
   const world = createWorld(view.scene, fx);
+  const border = createBorder(view.scene);
+  setTitanDetail(settings.quality);
   const titans = createTitans(view.scene, world, fx);
   const player = createPlayer(view.scene, world, titans, fx);
   const allies = createAllies(view.scene, world, titans, fx);
@@ -129,6 +133,35 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   applySettings(cur, true);
 
+  // Adaptive quality: drop one step after 3 s under 55 fps. Undo once if the drop did not help, e.g. a 30 Hz cap.
+  let autoQ = true;
+  let lagT = 0;
+  let lagN = 0;
+  let lowRes = false;
+  let undo: { q: Quality; res: boolean; fps: number } | null = null;
+  const adapt = (f: number) => {
+    lagT = lagN = 0;
+    if (undo) {
+      const u = undo;
+      undo = null;
+      if (f < u.fps + 3) {
+        autoQ = false;
+        lowRes = u.res;
+        view.setMaxRatio(lowRes ? 0.75 : Infinity);
+        if (u.q !== cur.quality) applySettings({ quality: u.q });
+        return;
+      }
+    }
+    if (f >= 55) return;
+    if (cur.quality === "low" && lowRes) return void (autoQ = false);
+    undo = { q: cur.quality, res: lowRes, fps: f };
+    if (cur.quality !== "low") applySettings({ quality: cur.quality === "high" ? "medium" : "low" });
+    else {
+      lowRes = true;
+      view.setMaxRatio(0.75);
+    }
+  };
+
   const onResize = () => view.resize();
   const onLock = () => {
     if (document.pointerLockElement !== canvas && playing && introT < 0) pause();
@@ -186,6 +219,10 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       frames = 0;
       fpsT = 0;
     }
+    if (autoQ && playing && introT < 0) {
+      lagN++;
+      if ((lagT += real) >= 3) adapt(lagN / lagT);
+    } else lagT = lagN = 0;
     slowT -= real;
     if (slowT <= 0) timeScale = 1;
     stopT -= real;
@@ -204,6 +241,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (playing) route(allies.update(dt, t, player, rig.yaw));
     if (playing) route(run.update(dt, real, control));
     if (control || !everPlayed) route(player.update(dt, inp, control));
+    if (control) route(border.update(dt, player.pos, player.vel));
     rig.update(real, player.cameraView(), playing, input.mouseIdle);
     player.setVisible(view.camera.position.distanceTo(player.pos) > 1.3);
     const speed = player.vel.length();
@@ -247,6 +285,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         playing,
         intro: introT >= 0,
         fps,
+        quality: cur.quality,
         speed: speed * 3.6,
         wave: titans.wave,
         kills: titans.kills,
@@ -266,7 +305,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   raf = requestAnimationFrame(frame);
 
-  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { view, world, titans, player, allies, rig, fx, input, endIntro, run };
+  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { noAuto: () => (autoQ = false), view, world, titans, player, allies, rig, fx, input, endIntro, run };
 
   return {
     play() {
@@ -289,7 +328,10 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     bindReticle(el: HTMLElement | null) {
       reticle = el;
     },
-    setSettings: (s: Partial<Settings>) => applySettings(s),
+    setSettings: (s: Partial<Settings>) => {
+      if (s.quality !== undefined) autoQ = false;
+      applySettings(s);
+    },
     dispose() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);

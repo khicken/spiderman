@@ -961,6 +961,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
             const d = world.raycast(_c, _a, H * 0.3);
             if (d < 0) continue;
             _c.addScaledVector(_a, d);
+            world.smash(_c, H * 0.3);
             fx.dust(_c, H * 0.5);
             out.push({ type: "sfx", name: "gateBreak", at: _c.clone(), volume: 0.7 });
             if (pl.pos.distanceTo(_c) < 90) out.push({ type: "shake", strength: 0.45 });

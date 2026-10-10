@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { armorPlates, beastFur, furColor, PLATE } from "./titan-gear";
+import type { Quality } from "./contracts";
 import { toon } from "./toon";
 
 export const BN = {
@@ -59,10 +60,14 @@ const BASE: Record<Body, Partial<Dims> & { pw: number; pd: number; hipW: number;
 const v3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const mat = (x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, s?: THREE.Vector3) =>
   new THREE.Matrix4().compose(v3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), s ?? v3(1, 1, 1));
-const sph = (rx: number, ry: number, rz: number, w = 14, h = 10) => new THREE.SphereGeometry(1, w, h).scale(rx, ry, rz);
+let detail = 1;
+export const setTitanDetail = (q: Quality) => void (detail = q === "low" ? 0.6 : 1);
+const lod = (n: number) => Math.max(4, Math.round(n * detail));
+const sph = (rx: number, ry: number, rz: number, w = 14, h = 10) => new THREE.SphereGeometry(1, lod(w), lod(h)).scale(rx, ry, rz);
 
 // Rings top to bottom: [y, rx, rz, z?, x?]. Round caps at both ends.
-function tube(rings: number[][], seg = 12): THREE.BufferGeometry {
+function tube(rings: number[][], s = 12): THREE.BufferGeometry {
+  const seg = lod(s);
   const f = rings[0], l = rings[rings.length - 1];
   const capT = [f[0] + Math.min(f[1], f[2]) * 0.55, f[1] * 0.72, f[2] * 0.72, f[3] ?? 0, f[4] ?? 0];
   const capB = [l[0] - Math.min(l[1], l[2]) * 0.55, l[1] * 0.72, l[2] * 0.72, l[3] ?? 0, l[4] ?? 0];
@@ -309,14 +314,14 @@ export function buildVariant(spec: Spec): Variant {
     add(sph(er * (pupilK + 0.18), er * (pupilK + 0.18), er * 0.2), mat(c.x, c.y, c.z + er * 0.9), iris, one(e));
     add(sph(er * pupilK, er * pupilK, er * 0.2), mat(c.x, c.y, c.z + er * 0.97), 0x0e0a08, one(e));
     const lid = { grin: 0.75, stare: -0.2, bulge: -0.5, gape: 0.25, smirk: 0.6, female: 0.42, armored: 0.65, beast: 0.5, smile: -0.25 }[spec.face];
-    if (lid > -0.4) add(new THREE.SphereGeometry(er * 1.12, 14, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), mat(c.x, c.y, c.z, lid, 0, s * (spec.face === "grin" ? -0.25 : 0.1)), fem ? skinDark : skin, one(BN.head));
+    if (lid > -0.4) add(new THREE.SphereGeometry(er * 1.12, lod(14), lod(6), 0, Math.PI * 2, 0, Math.PI * 0.5), mat(c.x, c.y, c.z, lid, 0, s * (spec.face === "grin" ? -0.25 : 0.1)), fem ? skinDark : skin, one(BN.head));
     if (spec.face === "bulge" || spec.face === "stare" || spec.body === "elderly")
-      add(new THREE.SphereGeometry(er * 1.08, 14, 5, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), mat(c.x, c.y, c.z, 0.35), skinDark, one(BN.head));
+      add(new THREE.SphereGeometry(er * 1.08, lod(14), lod(5), 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), mat(c.x, c.y, c.z, 0.35), skinDark, one(BN.head));
   }
 
   const hc = spec.hairColor;
   const hairCap = (theta: number, tilt: number, k = 1.06) =>
-    add(new THREE.SphereGeometry(1, 18, 10, 0, Math.PI * 2, 0, theta).scale(hw * k, hh * 0.46 * k, hd * k), mat(0, hb + hh * 0.62, -hd * 0.1, tilt), hc, one(BN.head));
+    add(new THREE.SphereGeometry(1, lod(18), lod(10), 0, Math.PI * 2, 0, theta).scale(hw * k, hh * 0.46 * k, hd * k), mat(0, hb + hh * 0.62, -hd * 0.1, tilt), hc, one(BN.head));
   switch (spec.hair) {
     case "short": hairCap(1.25, -0.35); break;
     case "bowl": hairCap(1.5, 0.05, 1.08); break;

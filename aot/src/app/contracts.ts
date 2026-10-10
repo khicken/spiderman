@@ -63,6 +63,7 @@ export interface Render {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   setQuality(q: Quality): void;
+  setMaxRatio(r: number): void; // pixel ratio cap on top of the preset
   resize(): void;
   frame(dt: number, focus: THREE.Vector3, speed01: number): void; // speed01 drives speed lines
   impact(kind: "hit" | "crit" | "kill"): void;
@@ -112,6 +113,7 @@ export interface World {
   inside(x: number, z: number): boolean; // inside the walls
   readonly depotDown: boolean[]; // per supply depot: fallen, no refills
   kickGate(): GameEvent[]; // the Colossal Titan breaks the gate, once
+  smash(at: THREE.Vector3, radius: number): void; // flattens houses within radius of a ground point
   update(dt: number, t: number): GameEvent[];
   setQuality(q: Quality): void;
 }
@@ -256,6 +258,7 @@ export type HudState = {
   playing: boolean;
   intro: boolean; // the opening cinematic plays
   fps: number;
+  quality: Quality; // active preset, can drop below the saved one
   speed: number; // km/h
   wave: number;
   kills: number;
