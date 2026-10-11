@@ -178,7 +178,7 @@ function applySurface(ctx: ChunkCtx) {
       }
       for (let y = top + 1; y <= top + spire; y++) blocks[((y - MIN_Y) << 8) | col] = bandAt(sn, x, y, z);
       let depth = -1;
-      let wet = false;
+      let wet = blocks[((top + 1 - MIN_Y) << 8) | col] === WATER;
       const bottom = Math.max(MIN_Y + 1, bad ? Math.min(top - 24, 57) : top - 24);
       for (let y = top; y >= bottom; y--) {
         const i = ((y - MIN_Y) << 8) | col;

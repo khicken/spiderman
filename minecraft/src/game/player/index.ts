@@ -79,7 +79,6 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   let walkSpeed = 0;
   let walkPos = 0;
   let prevWalkSpeed = 0;
-  let added = false;
   const hf: HandFrame = { camera: new THREE.PerspectiveCamera(), bob, stack: null, equip: 0, swing: 0, use: null, useTicks: 0, light: 1, visible: true };
 
   const p: PlayerState = {
@@ -423,10 +422,9 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     },
     frame(_dt: number, pt: number) {
       const ctx = getCtx();
-      if (!added) {
+      if (model.model.root.parent !== ctx.renderer.scene) {
         ctx.renderer.scene.add(model.model.root);
         ctx.renderer.scene.userData.hand = hand.root;
-        added = true;
       }
       input.consumeMouse(mouse);
       if (input.enabled && !p.dead && !p.sleeping) {

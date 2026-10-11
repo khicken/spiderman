@@ -151,7 +151,6 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
   if (attacker) {
     const dx = attacker.body.pos.x - p.body.pos.x, dz = attacker.body.pos.z - p.body.pos.z;
     p.hurtDir = (Math.atan2(dz, dx) * 180) / Math.PI - (p.yaw * -180) / Math.PI;
-    knockback(p, ctx, dx, dz, 0.4);
     thorns(ctx, attacker);
   } else p.hurtDir = 0;
   if (p.hasEffect("infested") && ctx.random() < 0.1) {

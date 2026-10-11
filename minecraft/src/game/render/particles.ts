@@ -1,7 +1,9 @@
 import * as THREE from "three";
 import { idOf } from "../contracts";
 import type { BlockDef, BlockState, GameEvent, WorldApi } from "../contracts";
-import { blockDef, IS_FLUID, SOLID } from "../blocks/registry";
+import { blockDef, IS_FLUID, OPAQUE, SOLID } from "../blocks/registry";
+
+const NX = [1, -1, 0, 0, 0, 0], NY = [0, 0, 1, -1, 0, 0], NZ = [0, 0, 0, 0, 1, -1];
 import { textureLayer } from "../textures";
 import { paintParticleSheet, SPRITE, SPRITE_LAYERS } from "./particle-art";
 
@@ -123,7 +125,13 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
 
   function brightness(x: number, y: number, z: number) {
     const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
-    const l = Math.max(world.getBlockLight(bx, by, bz), world.getSkyLight(bx, by, bz) * daylight);
+    let l = Math.max(world.getBlockLight(bx, by, bz), world.getSkyLight(bx, by, bz) * daylight);
+    if (l === 0 && OPAQUE[idOf(world.getBlock(bx, by, bz))]) {
+      for (let k = 0; k < 6; k++) {
+        const nx = bx + NX[k], ny = by + NY[k], nz = bz + NZ[k];
+        l = Math.max(l, world.getBlockLight(nx, ny, nz), world.getSkyLight(nx, ny, nz) * daylight);
+      }
+    }
     const f = l / 15;
     const b = f / (4 - 3 * f);
     const lifted = 1 - Math.pow(1 - b, 4);

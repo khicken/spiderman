@@ -1,11 +1,12 @@
 import * as THREE from "three";
-import type { Entity, GameCtx } from "../contracts";
+import type { Effect, Entity, GameCtx } from "../contracts";
 import { AIR, Face, idOf } from "../contracts";
 import { blockByName, OPAQUE } from "../blocks/registry";
 import { segmentBody, bodiesTouch } from "./geom";
 import { explodeAt, mobExplode, windBurst } from "./explosion";
 import { isMob } from "./registry";
 import { applyPotion } from "./hostile";
+import { hitTarget } from "../mechanics/redstone";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -159,8 +160,17 @@ function stick(e: Entity, ctx: GameCtx, h: Hit) {
   e.data.shake = 7;
   e.data.crit = false;
   ctx.emit({ type: "sound", name: "entity.arrow.hit", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 1, pitch: 1.2 / (ctx.random() * 0.2 + 0.9) });
-  const tgt = blockByName("target");
-  if (tgt && idOf(ctx.world.getBlock(h.bx!, h.by!, h.bz!)) === tgt.id) ctx.behaviors.target?.use?.(ctx, h.bx!, h.by!, h.bz!, ctx.world.getBlock(h.bx!, h.by!, h.bz!), null);
+  hitTarget(ctx, h.bx!, h.by!, h.bz!, b.pos.x, b.pos.y, b.pos.z, h.face ?? Face.Up, true);
+}
+
+function applyArrowEffects(e: Entity, list: Effect[]) {
+  const fx = e.data.effects as Effect[] | undefined;
+  if (!Array.isArray(fx)) return;
+  for (const f of fx) {
+    const cur = list.find((o) => o.id === f.id);
+    if (!cur) list.push({ ...f });
+    else if (f.amplifier > cur.amplifier || (f.amplifier === cur.amplifier && f.ticks > cur.ticks)) Object.assign(cur, f);
+  }
 }
 
 function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
@@ -179,6 +189,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
       ctx.player.body.vel.z += b.vel.z * k * 0.5;
       ctx.player.body.vel.y = Math.max(ctx.player.body.vel.y, 0.1);
     }
+    applyArrowEffects(e, ctx.player.effects);
   } else if (h.entity) {
     const t = h.entity;
     if (t.type === "enderman") {
@@ -189,6 +200,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
     ctx.entities.damage(t.id, dmg, "arrow", owner);
     if (punch > 0) ctx.entities.knockback(t.id, b.vel.x, b.vel.z, punch * 0.6);
     if (e.data.type === "spectral_arrow" || e.type === "spectral_arrow") t.effects.push({ id: "glowing", amplifier: 0, ticks: 200 });
+    applyArrowEffects(e, t.effects);
     if (owner === "player") ctx.emit({ type: "sound", name: "entity.arrow.hit_player", volume: 0.18, pitch: 0.45 });
     const pierce = (e.data.pierce as number) ?? 0;
     if (pierce > 0) {

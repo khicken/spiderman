@@ -1,5 +1,7 @@
 import type { Effect, GameCtx, GameMode, ItemStack, Rules } from "../contracts";
 import { hasItem, itemDef, ITEMS } from "../items/registry";
+import { BLOCKS, blockByName } from "../blocks/registry";
+import { SET_NOTIFY, stateOf } from "../contracts";
 import { EFFECTS, ENCHANTS, enchantName, enchantsConflict, titleCase, type EnchantTarget } from "./data";
 
 let playerName = "Player";
@@ -240,6 +242,40 @@ const COMMANDS: Cmd[] = [
       ctx.player.teleport(x, y, z);
       return [`Teleported ${playerName} to ${fmtF(x)}, ${fmtF(y)}, ${fmtF(z)}`];
     },
+  },
+  {
+    name: "setblock",
+    cheat: true,
+    usage: ["/setblock <pos> <block>"],
+    run: (ctx, a) => {
+      if (a.length < 4) return fail("Unknown or incomplete command, see below for error");
+      const { x, y, z } = xyz(ctx, a, 0, false);
+      const def = blockByName(id(a[3]));
+      if (!def) return fail(`Unknown block type 'minecraft:${id(a[3])}'`);
+      if (!ctx.world.setBlock(Math.floor(x), Math.floor(y), Math.floor(z), stateOf(def.id), SET_NOTIFY)) return fail("Could not set the block");
+      return [`Changed the block at ${Math.floor(x)}, ${Math.floor(y)}, ${Math.floor(z)}`];
+    },
+    complete: (_c, a) => (a.length === 4 ? BLOCKS.map((b) => b.name) : ["~"]),
+  },
+  {
+    name: "fill",
+    cheat: true,
+    usage: ["/fill <from> <to> <block>"],
+    run: (ctx, a) => {
+      if (a.length < 7) return fail("Unknown or incomplete command, see below for error");
+      const p = xyz(ctx, a, 0, false), q = xyz(ctx, a, 3, false);
+      const def = blockByName(id(a[6]));
+      if (!def) return fail(`Unknown block type 'minecraft:${id(a[6])}'`);
+      const x0 = Math.floor(Math.min(p.x, q.x)), x1 = Math.floor(Math.max(p.x, q.x));
+      const y0 = Math.floor(Math.min(p.y, q.y)), y1 = Math.floor(Math.max(p.y, q.y));
+      const z0 = Math.floor(Math.min(p.z, q.z)), z1 = Math.floor(Math.max(p.z, q.z));
+      const n = (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+      if (n > 32768) return fail(`Too many blocks in the specified area (maximum 32768, specified ${n})`);
+      let changed = 0;
+      for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (ctx.world.setBlock(x, y, z, stateOf(def.id), SET_NOTIFY)) changed++;
+      return changed ? [`Successfully filled ${changed} block(s)`] : fail("No blocks were filled");
+    },
+    complete: (_c, a) => (a.length === 7 ? BLOCKS.map((b) => b.name) : ["~"]),
   },
   {
     name: "give",

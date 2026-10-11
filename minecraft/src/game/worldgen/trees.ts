@@ -124,7 +124,7 @@ export function placeTrees(ctx: ChunkCtx, w: Writer) {
         if (x < ox - REACH || x > ox + 15 + REACH || z < oz - REACH || z > oz + 15 + REACH) continue;
         const biome = ow.biomeAt(x, z);
         const bspec = n >= count ? null : TREES.get(biome);
-        if (n < count && !bspec) continue;
+        if (n < count && (!bspec || !bspec.kinds.length)) continue;
         const kind: Kind = bspec ? pick(bspec, roll) : "azalea";
         const gy = own ? ctx.surface[(lz << 4) | lx] : ow.surfaceY(x, z);
         const mangrove = kind === "mangrove";

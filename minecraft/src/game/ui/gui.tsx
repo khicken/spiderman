@@ -79,7 +79,7 @@ export function Text({ text, color = 0xffffff, shadow = true, amp = false, x, y,
   const left = x === undefined ? undefined : align === "center" ? x - (textWidth(text, amp) * scale) / 2 : align === "right" ? x - textWidth(text, amp) * scale : x;
   return (
     <img
-      alt=""
+      alt={text}
       draggable={false}
       src={img.url}
       width={w}

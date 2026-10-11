@@ -54,9 +54,9 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     for (let i = 0; i < src.length; i++) {
       const b = (pool[i] ??= { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 });
       const s = src[i];
-      b.minX = s.minX + hit.x; b.maxX = s.maxX + hit.x;
-      b.minY = s.minY + hit.y; b.maxY = s.maxY + hit.y;
-      b.minZ = s.minZ + hit.z; b.maxZ = s.maxZ + hit.z;
+      b.minX = s.minX; b.maxX = s.maxX;
+      b.minY = s.minY; b.maxY = s.maxY;
+      b.minZ = s.minZ; b.maxZ = s.maxZ;
       outline.push(b);
     }
     ctx.renderer.setOutline(hit, outline.length ? outline : null);
@@ -129,6 +129,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
           if (n > 0) ctx.entities.dropXp(n, x + 0.5, y + 0.5, z + 0.5);
         }
       }
+      if (def.name.startsWith("infested_") && !silk) ctx.entities.spawn("silverfish", x + 0.5, y, z + 0.5);
       if (tool && def.hardness !== 0) damageSlot(ctx, ctx.inventory.selected, tool.kind === "sword" ? 2 : 1);
       addExhaustion(p, 0.005);
     }
@@ -218,7 +219,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     ctx.entities.damage(id, total, smash ? "mace" : "player", "player");
     const fire = ench(held, "fire_aspect");
     if (fire > 0) e.data.fireTicks = Math.max(Number(e.data.fireTicks ?? 0), fire * 80);
-    if (knock > 0) ctx.entities.knockback(id, Math.sin(p.yaw), Math.cos(p.yaw), knock * 0.5);
+    if (knock > 0) ctx.entities.knockback(id, -Math.sin(p.yaw), -Math.cos(p.yaw), knock * 0.5);
     if (sprintHit) {
       b.vel.x *= 0.6;
       b.vel.z *= 0.6;
@@ -232,7 +233,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
         if (o.id === id || o.dead || o.type === "item" || o.type === "xp_orb" || o.type === "armor_stand") continue;
         if (Math.abs(o.body.pos.x - e.body.pos.x) > 1 + o.body.width / 2 || Math.abs(o.body.pos.z - e.body.pos.z) > 1 + o.body.width / 2) continue;
         if (o.body.pos.distanceToSquared(b.pos) >= 9) continue;
-        ctx.entities.knockback(o.id, Math.sin(p.yaw), Math.cos(p.yaw), 0.4);
+        ctx.entities.knockback(o.id, -Math.sin(p.yaw), -Math.cos(p.yaw), 0.4);
         ctx.entities.damage(o.id, sd, "player", "player");
       }
       ctx.emit({ type: "sound", name: "entity.player.attack.sweep", x: b.pos.x, y: b.pos.y, z: b.pos.z });
@@ -246,7 +247,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
         kb.subVectors(o.body.pos, e.body.pos);
         const d = kb.length();
         if (d > 3.5 || d < 1e-4) continue;
-        ctx.entities.knockback(o.id, -kb.x, -kb.z, (3.5 - d) * 0.7 * (heavy ? 2 : 1) * 0.25);
+        ctx.entities.knockback(o.id, kb.x, kb.z, (3.5 - d) * 0.7 * (heavy ? 2 : 1) * 0.25);
       }
       b.vel.y = 0.01;
       b.fallDistance = 0;

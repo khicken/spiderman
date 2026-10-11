@@ -39,7 +39,7 @@ interface PoolWorker {
 const LAYERS = ["opaque", "cutout", "translucent"] as const;
 const LOCAL_BOX = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(CHUNK, CHUNK, CHUNK));
 const LOCAL_SPHERE = new THREE.Sphere(new THREE.Vector3(8, 8, 8), Math.sqrt(3 * 64));
-const MAX_IN_FLIGHT = 2;
+const MAX_IN_FLIGHT = 4;
 const now = () => performance.now();
 
 function toGeometry(b: MeshBuffers): THREE.BufferGeometry | null {

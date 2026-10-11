@@ -1,5 +1,5 @@
 import type { BlockBehavior, BlockEntityData, BlockState, ChunkData, ChunkEvent, Dim, EntitySave, GameCtx, WorldApi } from "../contracts";
-import { MAX_Y, MIN_Y, SECTIONS, SET_DEFAULT, SET_NO_LIGHT, SET_NOTIFY } from "../contracts";
+import { MAX_Y, MIN_Y, SECTIONS, SET_DEFAULT, SET_NO_DROP, SET_NO_LIGHT, SET_NOTIFY } from "../contracts";
 import { BLOCKS, LIGHT_EMIT, LIGHT_FILTER } from "../blocks/registry";
 import { BIOMES } from "../worldgen/biomes";
 import { createGenPool, type GenPool } from "./gen-pool";
@@ -262,7 +262,8 @@ export function createWorld(opts: WorldOpts): World {
       while (h >= MIN_Y && LIGHT_FILTER[c.blocks[((h - MIN_Y) << 8) | col] & 0xfff] === 0) h--;
       c.skyTop[col] = h + 1;
     }
-    if (oid !== nid) c.be.delete(i);
+    const lostBe = oid !== nid ? c.be.get(i) : undefined;
+    if (lostBe) c.be.delete(i);
     store.markDirty(c, lx, y, lz);
     if (!(flags & SET_NO_LIGHT) && (LIGHT_FILTER[oid] !== LIGHT_FILTER[nid] || LIGHT_EMIT[oid] !== LIGHT_EMIT[nid])) {
       light.update(x, y, z);
@@ -272,6 +273,9 @@ export function createWorld(opts: WorldOpts): World {
     const ctx = safeCtx();
     if (!ctx) return true;
     ctx.emit({ type: "block_changed", x, y, z, from: old, to: s });
+    if (lostBe?.items && !(flags & SET_NO_DROP)) {
+      for (const st of lostBe.items) if (st && st.count > 0) ctx.entities.dropItem(st, x + 0.25 + ctx.random() * 0.5, y + 0.25 + ctx.random() * 0.5, z + 0.25 + ctx.random() * 0.5);
+    }
     depth++;
     try {
       if (oid !== nid) {

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { BlockEntityData, ClickKind, ContainerKind, ContainerView, GameCtx, InventoryApi, ItemStack } from "../contracts";
-import { idOf, metaOf, stateOf } from "../contracts";
+import { SET_NO_DROP, SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef, blockId, hasBlock } from "../blocks/registry";
 import { brewTick } from "./brewing";
 import { CREATIVE_TABS, creativeItems } from "./creative";
@@ -11,6 +11,7 @@ import { containerMenu, crafterMenu, craftingMenu, enderMenu, inventoryMenu, typ
 import { anvilMenu, brewingMenu, enchantingMenu, furnaceMenu, grindstoneMenu, smithingMenu, stonecutterMenu } from "./menus-station";
 import { itemDef, maxStack } from "./registry";
 import { canStack, copyStack, maxDurability } from "./stack";
+import { containerChanged } from "../mechanics/redstone/inventory";
 
 export { computeDrops } from "./drops";
 export { crafterCraft } from "./crafter";
@@ -104,7 +105,15 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
       ctx.world.setBlockEntity(be, p.x, p.y, p.z);
     }
     const bound = be;
-    return { be: bound, dirty: () => ctxOrNull()?.world.setBlockEntity(bound, p.x, p.y, p.z) };
+    return {
+      be: bound,
+      dirty: () => {
+        const c = ctxOrNull();
+        if (!c) return;
+        c.world.setBlockEntity(bound, p.x, p.y, p.z);
+        containerChanged(c, p.x, p.y, p.z);
+      },
+    };
   }
 
   function chestHalves(p: Pos): [Pos, Pos] | null {
@@ -229,7 +238,7 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
     if (lit !== wasLit) {
       const target = lit ? `lit_${base}` : base;
       if (hasBlock(target)) {
-        ctx.world.setBlock(x, y, z, stateOf(blockId(target), metaOf(s)));
+        ctx.world.setBlock(x, y, z, stateOf(blockId(target), metaOf(s)), SET_NOTIFY | SET_NO_DROP);
         ctx.world.setBlockEntity(be, x, y, z);
       }
     }

@@ -56,14 +56,18 @@ vec3 toLinear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 
+vec3 toSrgb(vec3 c) {
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
 void main() {
   vec4 tex = texture(uAtlas, vec3(vUv, vLayer));
   vec3 col;
   if (vOverlay < 65534.5) {
     vec4 ov = texture(uAtlas, vec3(vUv, vOverlay));
-    col = mix(tex.rgb, ov.rgb * vTint, ov.a);
+    col = mix(toSrgb(tex.rgb), toSrgb(ov.rgb) * vTint, ov.a);
   } else {
-    col = tex.rgb * vTint;
+    col = toSrgb(tex.rgb) * vTint;
   }
   float alpha = tex.a;
 #ifdef CUTOUT

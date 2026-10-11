@@ -235,6 +235,6 @@ export const SPAWN_EGGS: Record<string, [number, number]> = {
   zombie: [0x00afaf, 0x799c65], zombie_horse: [0x315234, 0x97c284], zombie_villager: [0x563c33, 0x799c65], zombified_piglin: [0xea9393, 0x4c7129],
 };
 
-const eggs: ItemSpec[] = Object.keys(SPAWN_EGGS).map((m) => s(`${m}_spawn_egg`, { texture: "spawn_egg" }));
+const eggs: ItemSpec[] = Object.keys(SPAWN_EGGS).map((m) => s(`${m}_spawn_egg`, { texture: `${m}_spawn_egg` }));
 
 export const MISC_ITEMS: ItemSpec[] = [...materials, ...placers, ...vehicles, ...buckets, ...decor, ...collectibles, ...potions, ...eggs];

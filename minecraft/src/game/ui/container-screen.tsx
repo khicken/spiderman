@@ -8,6 +8,7 @@ import { LAYOUTS, placeSlots } from "./container-layouts";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
 import { arrowUrl, flameUrl, panelUrl } from "./sprites";
 import { useKeyDown } from "./widgets";
+import { paintSteveSkin } from "../player/model";
 import { ContainerExtras } from "./container-extras";
 import { CreativeScreen, type CreativeProps } from "./creative-screen";
 
@@ -21,6 +22,23 @@ export interface ContainerScreenProps {
   onRename?: (name: string) => void; // anvil; falls back to onOption("rename:<name>")
   creative?: CreativeProps; // required when view.kind is "creative"
   advanced?: boolean; // F3+H tooltips
+}
+
+const DOLL: [number, number, number, number, number, number][] = [
+  [8, 8, 8, 8, 4, 0], [20, 20, 8, 12, 4, 8], [44, 20, 4, 12, 0, 8], [36, 52, 4, 12, 12, 8], [4, 20, 4, 12, 4, 20], [20, 52, 4, 12, 8, 20],
+];
+let dollUrl: string | null = null;
+
+function playerDoll(): string {
+  if (dollUrl) return dollUrl;
+  const skin = paintSteveSkin() as HTMLCanvasElement;
+  const c = document.createElement("canvas");
+  c.width = 16;
+  c.height = 32;
+  const g = c.getContext("2d")!;
+  for (const [u, v, w, h, x, y] of DOLL) g.drawImage(skin, u, v, w, h, x, y, w, h);
+  dollUrl = c.toDataURL();
+  return dollUrl;
 }
 
 const Img = ({ src, x, y, w, h }: { src: string; x: number; y: number; w: number; h: number }) => (
@@ -95,6 +113,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
       <div style={{ position: "absolute", left, top, width: L.w, height: L.h }}>
         <Img src={panelUrl(L.w, L.h)} x={0} y={0} w={L.w} h={L.h} />
         {view.kind === "inventory" && <div style={{ position: "absolute", left: 26, top: 8, width: 49, height: 70, background: "#000" }} />}
+        {view.kind === "inventory" && <Img src={playerDoll()} x={34} y={11} w={32} h={64} />}
         {view.kind === "inventory" && <Img src={arrowUrl(0, 16, 13)} x={135} y={29} w={16} h={13} />}
         {view.kind === "crafting_table" && <Img src={arrowUrl(0)} x={90} y={35} w={22} h={15} />}
         {(view.kind === "furnace" || view.kind === "blast_furnace" || view.kind === "smoker") && (

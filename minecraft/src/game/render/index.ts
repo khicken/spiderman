@@ -23,11 +23,11 @@ type Submersion = "none" | "water" | "lava" | "powder_snow";
 
 const HORIZON_Y = 63;
 const _dir = new THREE.Vector3();
-const _q = new THREE.Quaternion();
 
 export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): RendererApi {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
   renderer.autoClear = false;
+  renderer.info.autoReset = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -227,9 +227,6 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     }
     if (!handObj) return;
     if (handObj.parent !== handScene) handScene.add(handObj);
-    camera.getWorldPosition(handScene.position);
-    camera.getWorldQuaternion(_q);
-    handScene.quaternion.copy(_q);
     renderer.clearDepth();
     renderer.render(handScene, camera);
   }
@@ -242,6 +239,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     chunks.update(camera);
     particles.update(step);
 
+    renderer.info.reset();
     renderer.clear();
     if (dim !== "nether" && submersion === "none") renderer.render(sky.scene, sky.camera);
     renderer.clearDepth();
