@@ -1,0 +1,73 @@
+import type { FoodStats } from "../contracts";
+import type { ItemSpec } from "./data";
+
+const f = (name: string, hunger: number, saturation: number, extra: Partial<FoodStats> = {}, spec: Partial<ItemSpec> = {}): ItemSpec => ({
+  name,
+  food: { hunger, saturation, ...extra },
+  ...spec,
+});
+const fx = (effect: string, seconds: number, amplifier = 0, chance = 1) => ({ effect, seconds, amplifier, chance });
+
+export const FOOD_ITEMS: ItemSpec[] = [
+  f("apple", 4, 2.4),
+  f("golden_apple", 4, 9.6, { alwaysEat: true, effects: [fx("regeneration", 5, 1), fx("absorption", 120, 0)] }, { rarity: "rare" }),
+  f("enchanted_golden_apple", 4, 9.6, {
+    alwaysEat: true,
+    effects: [fx("regeneration", 20, 1), fx("absorption", 120, 3), fx("resistance", 300, 0), fx("fire_resistance", 300, 0)],
+  }, { rarity: "epic" }),
+  f("melon_slice", 2, 1.2),
+  f("sweet_berries", 2, 0.4, {}, { block: "sweet_berry_bush" }),
+  f("glow_berries", 2, 0.4, {}, { block: "cave_vines" }),
+  f("chorus_fruit", 4, 2.4, { alwaysEat: true }),
+  f("carrot", 3, 3.6, {}, { block: "carrots" }),
+  f("golden_carrot", 6, 14.4),
+  f("potato", 1, 0.6, {}, { block: "potatoes" }),
+  f("baked_potato", 5, 6),
+  f("poisonous_potato", 2, 1.2, { effects: [fx("poison", 5, 0, 0.6)] }),
+  f("beetroot", 1, 1.2),
+  f("dried_kelp", 1, 0.6, { eatTicks: 16 }),
+  f("beef", 3, 1.8),
+  f("cooked_beef", 8, 12.8),
+  f("porkchop", 3, 1.8),
+  f("cooked_porkchop", 8, 12.8),
+  f("mutton", 2, 1.2),
+  f("cooked_mutton", 6, 9.6),
+  f("chicken", 2, 1.2, { effects: [fx("hunger", 30, 0, 0.3)] }),
+  f("cooked_chicken", 6, 7.2),
+  f("rabbit", 3, 1.8),
+  f("cooked_rabbit", 5, 6),
+  f("cod", 2, 0.4),
+  f("cooked_cod", 5, 6),
+  f("salmon", 2, 0.4),
+  f("cooked_salmon", 6, 9.6),
+  f("tropical_fish", 1, 0.2),
+  f("pufferfish", 1, 0.2, { effects: [fx("poison", 60, 1), fx("hunger", 15, 2), fx("nausea", 15, 0)] }),
+  f("bread", 5, 6),
+  f("cookie", 2, 0.4),
+  f("pumpkin_pie", 8, 4.8),
+  f("rotten_flesh", 4, 0.8, { effects: [fx("hunger", 30, 0, 0.8)] }),
+  f("spider_eye", 2, 3.2, { effects: [fx("poison", 5, 0)] }),
+  f("mushroom_stew", 6, 7.2, {}, { maxStack: 1 }),
+  f("beetroot_soup", 6, 7.2, {}, { maxStack: 1 }),
+  f("rabbit_stew", 10, 12, {}, { maxStack: 1 }),
+  f("suspicious_stew", 6, 7.2, { alwaysEat: true }, { maxStack: 1 }),
+  f("honey_bottle", 6, 1.2, { eatTicks: 40 }, { maxStack: 16 }),
+  { name: "milk_bucket", maxStack: 1 },
+];
+
+export const STEW_EFFECTS: Record<string, { effect: string; seconds: number }> = {
+  allium: { effect: "fire_resistance", seconds: 3 },
+  azure_bluet: { effect: "blindness", seconds: 11 },
+  blue_orchid: { effect: "saturation", seconds: 0.35 },
+  dandelion: { effect: "saturation", seconds: 0.35 },
+  cornflower: { effect: "jump_boost", seconds: 5 },
+  lily_of_the_valley: { effect: "poison", seconds: 11 },
+  oxeye_daisy: { effect: "regeneration", seconds: 7 },
+  poppy: { effect: "night_vision", seconds: 5 },
+  red_tulip: { effect: "weakness", seconds: 7 },
+  orange_tulip: { effect: "weakness", seconds: 7 },
+  white_tulip: { effect: "weakness", seconds: 7 },
+  pink_tulip: { effect: "weakness", seconds: 7 },
+  wither_rose: { effect: "wither", seconds: 7 },
+  torchflower: { effect: "night_vision", seconds: 5 },
+};

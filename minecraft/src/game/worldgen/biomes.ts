@@ -52,6 +52,21 @@ const SPECS: Spec[] = [
   ["basalt_deltas", "nether", 2.0, 0.0, 0xbfb755, 0xaea42a, 0x3f76e4, 0x6eb1ff, "none"],
   ["the_end", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
   ["end_highlands", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
+  ["old_growth_birch_forest", "overworld", 0.6, 0.6, 0x88bb67, 0x6ba941, 0x3f76e4, 0x7aa5ff, "rain"],
+  ["old_growth_spruce_taiga", "overworld", 0.25, 0.8, 0x86b783, 0x68a464, 0x3f76e4, 0x7da3ff, "rain"],
+  ["windswept_forest", "overworld", 0.2, 0.3, 0x8ab689, 0x6da36b, 0x3f76e4, 0x7da2ff, "rain"],
+  ["windswept_gravelly_hills", "overworld", 0.2, 0.3, 0x8ab689, 0x6da36b, 0x3f76e4, 0x7da2ff, "rain"],
+  ["windswept_savanna", "overworld", 2.0, 0.0, 0xbfb755, 0xaea42a, 0x3f76e4, 0x6eb1ff, "none"],
+  ["savanna_plateau", "overworld", 2.0, 0.0, 0xbfb755, 0xaea42a, 0x3f76e4, 0x6eb1ff, "none"],
+  ["eroded_badlands", "overworld", 2.0, 0.0, 0x90814d, 0x9e814d, 0x3f76e4, 0x6eb1ff, "none"],
+  ["wooded_badlands", "overworld", 2.0, 0.0, 0x90814d, 0x9e814d, 0x3f76e4, 0x6eb1ff, "none"],
+  ["sparse_jungle", "overworld", 0.95, 0.8, 0x64c73f, 0x3eb80f, 0x3f76e4, 0x77a8ff, "rain"],
+  ["deep_lukewarm_ocean", "overworld", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x45adf2, 0x7ba4ff, "rain"],
+  ["deep_cold_ocean", "overworld", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3d57d6, 0x7ba4ff, "rain"],
+  ["deep_frozen_ocean", "overworld", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3938c9, 0x7ba4ff, "rain"],
+  ["small_end_islands", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
+  ["end_midlands", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
+  ["end_barrens", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
 ];
 
 const NETHER_FOG: Record<string, number> = {
