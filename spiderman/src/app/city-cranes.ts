@@ -102,17 +102,25 @@ export function luffingCrane(c: Ctx, x: number, z: number, y0: number, mastH: nu
 function concreteFloors(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number, n: number, net: boolean) {
   const fh = 4;
   const nx = Math.max(2, Math.round((x1 - x0) / 7)), nz = Math.max(2, Math.round((z1 - z0) / 7));
+  // The open frame gets a collider per slab and per column, so the hero can walk and swing through it.
+  for (let a = 0; a <= nx; a++) for (let b = 0; b <= nz; b++) {
+    const px = x0 + 0.3 + ((x1 - x0 - 0.6) * a) / nx, pz = z0 + 0.3 + ((z1 - z0 - 0.6) * b) / nz;
+    c.boxes.push({ minX: px - 0.28, maxX: px + 0.28, minZ: pz - 0.28, maxZ: pz + 0.28, maxY: y + n * fh, minY: y });
+  }
   for (let k = 0; k < n; k++) {
     const yy = y + k * fh;
     for (let a = 0; a <= nx; a++) for (let b = 0; b <= nz; b++) {
       box(c.solid, x0 + 0.3 + ((x1 - x0 - 0.6) * a) / nx, yy + fh / 2, z0 + 0.3 + ((z1 - z0 - 0.6) * b) / nz, 0.55, fh, 0.55, CONCRETE);
     }
     box(c.solid, (x0 + x1) / 2, yy + fh - 0.15, (z0 + z1) / 2, x1 - x0, 0.3, z1 - z0, 0xaaa8a2);
+    c.boxes.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, maxY: yy + fh, minY: yy + fh - 0.3 });
     box(c.solid, (x0 + x1) / 2, yy + fh + 0.02, (z0 + z1) / 2, x1 - x0 - 0.4, 0.04, z1 - z0 - 0.4, SNOW);
     if (k < n - 1) box(c.glowSmall, (x0 + x1) / 2, yy + fh - 0.5, (z0 + z1) / 2, x1 - x0 - 4, 0.1, 0.1, 0xfff0c8, 0, 3);
   }
   const top = y + n * fh;
-  box(c.solid, (x0 + x1) / 2 + (x1 - x0) * 0.15, top + 1.2, (z0 + z1) / 2, 4, 2.4, 3, 0x3b6ea8);
+  const hutX = (x0 + x1) / 2 + (x1 - x0) * 0.15, hutZ = (z0 + z1) / 2;
+  box(c.solid, hutX, top + 1.2, hutZ, 4, 2.4, 3, 0x3b6ea8);
+  c.boxes.push({ minX: hutX - 2, maxX: hutX + 2, minZ: hutZ - 1.5, maxZ: hutZ + 1.5, maxY: top + 2.4, minY: top });
   for (let k = 0; k < 3; k++) box(c.solid, x0 + 4 + c.r() * (x1 - x0 - 8), top + 0.3 + k * 0.32, z0 + 3 + c.r() * (z1 - z0 - 6), 7, 0.3, 0.45, 0x8a3a22, c.r() * 3);
   if (net) {
     const col = pick(c.r, [0x2a5a9a, 0x2f6a3a, 0xc9a227]);
@@ -127,7 +135,7 @@ function concreteFloors(c: Ctx, x0: number, x1: number, z0: number, z1: number, 
 
 export function topConstruction(c: Ctx, x0: number, x1: number, z0: number, z1: number, y: number, n: number) {
   const top = concreteFloors(c, x0, x1, z0, z1, y, n, true);
-  c.boxes.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, maxY: top });
+  c.boxes.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, maxY: y });
   c.roofSpots.push(new THREE.Vector3((x0 + x1) / 2, top, (z0 + z1) / 2));
   const cx = x0 + 3, cz = z0 + 3;
   luffingCrane(c, cx, cz, top, 14 + c.r() * 10, Math.PI * 2 * c.r(), 30 + c.r() * 12, 0.9 + c.r() * 0.35);
@@ -170,7 +178,7 @@ export function genConstruction(c: Ctx, b: Block, landmark: boolean) {
   const done = floors(style, SHOP_H, 3 + Math.floor(r() * 8));
   mass(c, x0, x1, z0, z1, 0, done, { style, shop: 2, vBase: SHOP_H, parapet: null, box: false, spot: false });
   const top = concreteFloors(c, x0, x1, z0, z1, done, 3 + Math.floor(r() * 6), true);
-  c.boxes.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, maxY: top });
+  c.boxes.push({ minX: x0, maxX: x1, minZ: z0, maxZ: z1, maxY: done });
   c.roofSpots.push(new THREE.Vector3((x0 + x1) / 2, top, (z0 + z1) / 2));
   for (let f = 0; f < 4; f++) {
     if (r() < 0.5) continue;

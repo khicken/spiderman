@@ -36,15 +36,24 @@ export const MARKER: Record<Marker["kind"], { color: string; r: number; edge: bo
   pigeon: { color: "#b9c2cc", r: 2.5, edge: false, name: "Pigeons", hint: "Get close to the flock" },
   enemy: { color: "#ff4d5a", r: 2.8, edge: false, name: "Enemy", hint: "" },
   civilian: { color: "#ffffff", r: 1.8, edge: false, name: "Civilian", hint: "" },
+  door: { color: "#ffd27a", r: 2.6, edge: false, name: "Shop", hint: "Walk to the door, press E" },
 };
 const SUGGEST: Marker["kind"][] = ["race", "crime", "chase", "boss", "hideout", "challenge", "request", "photo", "cache", "pigeon"];
 
+const URGENT: Marker["kind"][] = ["crime", "chase", "boss"];
+
+// Active crimes, chases and bosses always come before the nearest other task.
 export function nextUp(h: HudState): (Labeled & { d: number }) | null {
   let best: (Labeled & { d: number }) | null = null;
+  let urgent = false;
   for (const m of h.markers as Labeled[]) {
     if (!SUGGEST.includes(m.kind)) continue;
+    const u = URGENT.includes(m.kind);
     const d = Math.hypot(m.x - h.x, m.z - h.z);
-    if (!best || d < best.d) best = { ...m, d };
+    if (!best || (u && !urgent) || (u === urgent && d < best.d)) {
+      best = { ...m, d };
+      urgent = u;
+    }
   }
   return best;
 }

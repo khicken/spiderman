@@ -123,7 +123,7 @@ export function createActivities(scene: THREE.Scene, city: City) {
     return true;
   };
   const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
-  const big = city.boxes.filter((b) => b.maxX - b.minX >= 9 && b.maxZ - b.minZ >= 9 && onLand((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2));
+  const big = city.boxes.filter((b) => b.minY === undefined && b.maxX - b.minX >= 9 && b.maxZ - b.minZ >= 9 && onLand((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2));
   const boxDistrict = (b: Box) => districtOf((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2);
   const roofCorner = (b: Box, inset: number) => {
     const k0 = Math.floor(r() * 4);

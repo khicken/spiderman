@@ -93,7 +93,7 @@ export type AimState = { kind: AimKind; dist: number; point: THREE.Vector3 };
 export type Marker = {
   x: number;
   z: number;
-  kind: "race" | "crime" | "chase" | "collectible" | "checkpoint" | "enemy" | "boss" | "photo" | "cache" | "request" | "pigeon" | "hideout" | "challenge" | "civilian";
+  kind: "race" | "crime" | "chase" | "collectible" | "checkpoint" | "enemy" | "boss" | "photo" | "cache" | "request" | "pigeon" | "hideout" | "challenge" | "civilian" | "door";
 };
 
 export type Objective = { title: string; text: string; timer?: number; progress?: string; medal?: string; target?: { x: number; y: number; z: number } };
@@ -123,6 +123,7 @@ export type HudState = {
   swingCue: number;
   mode: PlayerMode;
   aimDist: number;
+  inside: boolean; // in a shop or lobby
   stealth: null | { hidden: boolean; alert: number }; // set while unaware enemies are near; alert 0..1 is the highest suspicion
   progress: {
     level: number;

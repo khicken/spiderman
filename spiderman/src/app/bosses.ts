@@ -59,7 +59,7 @@ const vultureRoof = (city: City, avoid = NONE): Box => {
   const clear = (b: Box) => !city.near((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2, 40).some((o) => o !== b && o.maxY > b.maxY - 0.5 && o.minX < b.maxX && o.maxX > b.minX && o.minZ < b.maxZ && o.maxZ > b.minZ);
   const at = placeOf(city, "Empire Tower") ?? new THREE.Vector3();
   const d = (b: Box) => Math.hypot((b.minX + b.maxX) / 2 - at.x, (b.minZ + b.maxZ) / 2 - at.z);
-  const roofs = city.boxes.filter((b) => b.maxX - b.minX > 24 && b.maxZ - b.minZ > 24 && b.maxY > 25 && b.maxY < 90).sort((a, b) => d(a) - d(b));
+  const roofs = city.boxes.filter((b) => b.minY === undefined && b.maxX - b.minX > 24 && b.maxZ - b.minZ > 24 && b.maxY > 25 && b.maxY < 90).sort((a, b) => d(a) - d(b));
   return roofs.find((b) => clear(b) && !avoid((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2)) ?? roofs.find(clear) ?? roofs[0];
 };
 const roofAt = (city: City, p: THREE.Vector3) => city.near(p.x, p.z, 1).find((b) => inBox(b, p.x, p.z) && Math.abs(b.maxY - p.y) < 0.5) ?? vultureRoof(city);

@@ -138,7 +138,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       race: m.race,
       objective: useActivity ? a.objective : m.objective,
       prompts: [...c.prompts, ...m.prompts, ...a.prompts, ...(greetPrompt ? [greetPrompt] : [])],
-      markers: [...m.markers, ...a.markers, ...c.markers],
+      markers: [...m.markers, ...a.markers, ...c.markers, ...interiors.markers],
       combo: c.combo || m.combo,
       progress: { ...m.progress, completed: { ...m.progress.completed, ...a.completed }, districts: a.districts },
     };
@@ -342,6 +342,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         aimDist: player.aim.dist,
         stealth,
         progress: mh.progress,
+        inside: interiors.inside,
       });
     }
     audio?.update(dt, playing && !interiors.inside ? speed : 0, shownMusic as Parameters<Audio["update"]>[2]);

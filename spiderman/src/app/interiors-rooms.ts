@@ -37,7 +37,7 @@ export function makeAtlas(signs: { name: string; kind: ShopKind }[]) {
   c.height = 1024;
   const g = c.getContext("2d")!;
   const signRect: Rect[] = [];
-  signs.slice(0, 20).forEach((s, i) => {
+  signs.slice(0, 32).forEach((s, i) => {
     const x = (i % 2) * 512;
     const y = Math.floor(i / 2) * 64;
     const [bg, fg] = SIGN_COLORS[s.kind];
