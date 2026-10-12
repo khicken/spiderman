@@ -1,3 +1,4 @@
+import { equipMob } from "../armor-layer";
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { AIR, metaOf } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
@@ -32,6 +33,7 @@ function initZombie(e: Entity, ctx: GameCtx, cfg: ZombieCfg): void {
     else e.data.held = "";
   }
   e.data.armor = 2;
+  equipMob(e, ctx);
   if (cfg.type === "drowned") e.data.amphibious = true;
   if (!naturalSpawn(e)) return;
   if (cfg.type === "drowned" && !inWaterColumn(ctx, e.body.pos.x, e.body.pos.y + 0.5, e.body.pos.z)) discard(e);
@@ -262,8 +264,9 @@ function cureTick(e: Entity, ctx: GameCtx): void {
   e.data.curing = c - 1;
   if (c - 1 <= 0) {
     sound(ctx, e, "entity.zombie_villager.converted");
-    replaceWith(ctx, e, "villager", { profession: e.data.profession });
-    addEffect(e.effects, "nausea", 200);
+    const v = (e.data.villager as Record<string, unknown> | undefined) ?? { profession: e.data.profession };
+    const n = replaceWith(ctx, e, "villager", { ...v, cured: true, persistent: true, ...(e.data.baby ? { grow: -24000 } : {}) });
+    if (n) n.effects.push({ id: "nausea", amplifier: 0, ticks: 200 });
   }
 }
 

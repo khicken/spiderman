@@ -28,6 +28,22 @@ function nextCirclePoint(e: Entity, ctx: GameCtx): void {
   e.data._gz = num(e, "az") + num(e, "_dist") * Math.sin(ang);
 }
 
+const cats: Entity[] = [];
+function catNear(e: Entity, ctx: GameCtx): boolean {
+  if ((e.age + e.id) % 10 !== 0) return e.data._catNear === true;
+  const p = e.body.pos;
+  ctx.entities.near(p.x, p.y, p.z, 16, cats);
+  let found = false;
+  for (const o of cats) if (o.type === "cat" && !o.dead) {
+    found = true;
+    if (ctx.random() < 0.2) ctx.emit({ type: "sound", name: "entity.cat.hiss", x: o.body.pos.x, y: o.body.pos.y, z: o.body.pos.z });
+    break;
+  }
+  cats.length = 0;
+  e.data._catNear = found;
+  return found;
+}
+
 function tick(e: Entity, ctx: GameCtx): void {
   e.data.noGravity = true;
   e.data.noFall = true;
@@ -48,6 +64,10 @@ function tick(e: Entity, ctx: GameCtx): void {
     }
     e.data._sweep = sweep;
   } else if (swoop) {
+    swoop = false;
+    e.data.phase = "circle";
+  }
+  if (swoop && catNear(e, ctx)) {
     swoop = false;
     e.data.phase = "circle";
   }

@@ -11,7 +11,7 @@ function waterAt(ctx: GameCtx, x: number, y: number, z: number) {
   return isWater(ctx.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)));
 }
 
-export function swim(e: Entity, ctx: GameCtx, accel: number, change = 1 / 40, flop = "") {
+export function swim(e: Entity, ctx: GameCtx, accel: number, change = 1 / 40, flop = "", canFlee = true) {
   const b = e.body;
   if (!b.inWater) {
     e.data.noGravity = false;
@@ -28,7 +28,7 @@ export function swim(e: Entity, ctx: GameCtx, accel: number, change = 1 / 40, fl
   if (panicking) e.data._panic = num(e, "_panic") - 1;
   let tx = e.data._sx as number | undefined;
   let ty = e.data._sy as number, tz = e.data._sz as number;
-  const flee = playerDistSq(ctx, e) < 64 && e.type !== "squid" && e.type !== "glow_squid" && ctx.player.gameMode !== "spectator";
+  const flee = canFlee && playerDistSq(ctx, e) < 64 && e.type !== "squid" && e.type !== "glow_squid" && ctx.player.gameMode !== "spectator";
   if (tx === undefined || ctx.random() < (panicking || flee ? 0.1 : change) || (tx - b.pos.x) ** 2 + (ty - b.pos.y) ** 2 + (tz - b.pos.z) ** 2 < 1) {
     tx = undefined;
     for (let i = 0; i < 10; i++) {

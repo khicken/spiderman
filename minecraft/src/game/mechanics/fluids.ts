@@ -1,6 +1,7 @@
 import type { BlockBehavior, BlockState, GameCtx, WorldApi } from "../contracts";
 import { AIR, Face, MIN_Y, SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { BLOCKS, blockDef } from "../blocks/registry";
+import { WATERLOGGABLE, fluidState } from "../blocks/waterlog";
 import { FX, FY, FZ, HX, HZ, dropBlock, idn, isAir, isSolid, oppH, randInt, setOnFire, sound, st } from "./util";
 
 const WATER = idn("water");
@@ -36,7 +37,7 @@ function canPassInto(s: BlockState): boolean {
   if (isAir(s)) return true;
   const id = idOf(s);
   if (id === WATER || id === LAVA) return true;
-  if (NO_HOLD[id] || isSolid(s)) return false;
+  if (NO_HOLD[id] || WATERLOGGABLE[id] || isSolid(s)) return false;
   return blockDef(s).shape !== "fluid";
 }
 
@@ -53,7 +54,7 @@ export function newLiquid(w: WorldApi, x: number, y: number, z: number, fid: num
   let max = 0;
   let sources = 0;
   for (let h = 0; h < 4; h++) {
-    const n = w.getBlock(x + HX[h], y, z + HZ[h]);
+    const n = fluidState(w, x + HX[h], y, z + HZ[h]);
     if (idOf(n) !== fid) continue;
     if (metaOf(n) === 0) sources++;
     const a = amount(n);
@@ -61,9 +62,9 @@ export function newLiquid(w: WorldApi, x: number, y: number, z: number, fid: num
   }
   if (fid === WATER && sources >= 2) {
     const below = w.getBlock(x, y - 1, z);
-    if (isSolid(below) || isSourceOf(below, fid)) return stateOf(fid, 0);
+    if (isSolid(below) || isSourceOf(fluidState(w, x, y - 1, z), fid)) return stateOf(fid, 0);
   }
-  if (idOf(w.getBlock(x, y + 1, z)) === fid) return stateOf(fid, 8);
+  if (idOf(fluidState(w, x, y + 1, z)) === fid) return stateOf(fid, 8);
   const a = max - dropOff(w, fid);
   return a <= 0 ? AIR : stateOf(fid, 8 - a);
 }
@@ -123,7 +124,7 @@ function spreadTo(ctx: GameCtx, x: number, y: number, z: number, ns: BlockState,
 
 function sourceNeighbors(w: WorldApi, x: number, y: number, z: number, fid: number): number {
   let n = 0;
-  for (let h = 0; h < 4; h++) if (isSourceOf(w.getBlock(x + HX[h], y, z + HZ[h]), fid)) n++;
+  for (let h = 0; h < 4; h++) if (isSourceOf(fluidState(w, x + HX[h], y, z + HZ[h]), fid)) n++;
   return n;
 }
 
@@ -184,7 +185,7 @@ function lavaReacts(ctx: GameCtx, x: number, y: number, z: number, s: BlockState
   const soul = blockDef(w.getBlock(x, y - 1, z)).name === "soul_soil";
   for (let f = 0; f < 6; f++) {
     if (f === Face.Down) continue;
-    const n = w.getBlock(x + FX[f], y + FY[f], z + FZ[f]);
+    const n = fluidState(w, x + FX[f], y + FY[f], z + FZ[f]);
     let out: BlockState = AIR;
     if (idOf(n) === WATER) out = st(metaOf(s) === 0 ? "obsidian" : "cobblestone");
     else if (soul && blockDef(n).name === "blue_ice") out = st("basalt");

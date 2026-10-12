@@ -154,6 +154,7 @@ export function enchantingMenu(d: MenuDeps, pos: Pos | undefined): Menu {
       }
       d.enchantSeed.value = Math.floor((ctx?.random() ?? Math.random()) * 0x7fffffff);
       if (ctx && pos) ctx.emit({ type: "sound", name: "block.enchantment_table.use", x: pos.x + 0.5, y: pos.y + 0.5, z: pos.z + 0.5 });
+      ctx?.emit({ type: "advancement", title: "Enchanter" });
       menu.changed();
     },
   };
@@ -206,7 +207,7 @@ export function anvilMenu(d: MenuDeps, pos: Pos | undefined): Menu {
       res = anvilResult(inputs[0], inputs[1], rename, d.creative());
     },
     close: () => returnItems(d, inputs),
-    progress: () => (res ? { xp_cost: res.cost } : undefined),
+    progress: () => (res ? { xp_cost: res.cost, affordable: afford() || res.tooExpensive ? 1 : 0, creative: d.creative() ? 1 : 0 } : undefined),
     options: () =>
       res ? [{ id: "cost", label: res.tooExpensive ? "Too Expensive!" : `Enchantment Cost: ${res.cost}`, cost: res.cost, enabled: afford() }] : [],
     choose(id) {

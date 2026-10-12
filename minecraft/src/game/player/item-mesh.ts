@@ -4,8 +4,31 @@ import { blockByName } from "../blocks/registry";
 import { itemDef } from "../items/registry";
 import { paintBlockTexture } from "../textures/index";
 import { itemSprite, paintItemTexture } from "../textures/icons";
+import { dialFrame, paintDial } from "../textures/dials";
+import type { ItemStack } from "../contracts";
+import { GLINT_TIME } from "../entities/armor-layer";
+import { createShieldModel } from "./shield-model";
 
-export type ItemKind = "block" | "flat";
+export function itemKey(s: ItemStack | null): string | null {
+  if (!s) return null;
+  const f = dialFrame(s);
+  const base = f === null ? s.item : `${s.item}@${f}`;
+  return s.ench && Object.keys(s.ench).length ? `${base}#glint` : base;
+}
+
+const GLINT_FRAG = /* glsl */ `
+uniform float uTime;
+varying vec3 vPos;
+void main() {
+  float s = fract((vPos.x * 2.0 + vPos.y) * 1.5 - uTime * 0.35);
+  float k = smoothstep(0.0, 0.25, s) * smoothstep(0.6, 0.3, s);
+  gl_FragColor = vec4(vec3(0.5, 0.25, 0.8) * k * 0.7, 1.0);
+}`;
+const GLINT_VERT = /* glsl */ `
+varying vec3 vPos;
+void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+
+export type ItemKind = "block" | "flat" | "shield";
 
 export interface ItemModel {
   kind: ItemKind;
@@ -141,7 +164,42 @@ export function createItemMeshes(): ItemMeshes {
     return t;
   };
 
-  function build(name: string): ItemModel | null {
+  const glintMat = new THREE.ShaderMaterial({ uniforms: { uTime: GLINT_TIME }, vertexShader: GLINT_VERT, fragmentShader: GLINT_FRAG, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthFunc: THREE.LessEqualDepth });
+  let shieldTex: THREE.Texture | null = null;
+
+  function build(key: string): ItemModel | null {
+    if (key.endsWith("#glint")) {
+      const inner = model(key.slice(0, -6));
+      if (!inner) return null;
+      return {
+        kind: inner.kind,
+        create: () => {
+          const o = inner.create();
+          const g = new THREE.Group();
+          g.add(o);
+          o.traverse((c) => {
+            const mesh = c as THREE.Mesh;
+            if (mesh.isMesh) g.add(new THREE.Mesh(mesh.geometry, glintMat));
+          });
+          return g;
+        },
+      };
+    }
+    const at = key.indexOf("@");
+    if (at > 0) {
+      const geo = extrudeSprite(paintDial(key.slice(0, at), Number(key.slice(at + 1))));
+      geos.push(geo);
+      return { kind: "flat", create: () => new THREE.Mesh(geo, flatMat) };
+    }
+    const name = key;
+    if (name === "shield") {
+      const sm = createShieldModel();
+      geos.push(sm.geometry);
+      shieldTex = sm.texture;
+      const mat = new THREE.MeshBasicMaterial({ map: sm.texture });
+      shaded.push({ mat, shade: 1 });
+      return { kind: "shield", create: () => new THREE.Mesh(sm.geometry, mat) };
+    }
     const it = itemDef(name);
     const def = blockByName(it?.block ?? name);
     if (def && !it?.texture && BOXY.has(def.shape)) {
@@ -166,11 +224,13 @@ export function createItemMeshes(): ItemMeshes {
     return { kind: "flat", create: () => new THREE.Mesh(geo, flatMat) };
   }
 
+  function model(name: string): ItemModel | null {
+    if (!cache.has(name)) cache.set(name, build(name));
+    return cache.get(name) ?? null;
+  }
+
   return {
-    model(name) {
-      if (!cache.has(name)) cache.set(name, build(name));
-      return cache.get(name) ?? null;
-    },
+    model,
     setLight(v) {
       for (const s of shaded) s.mat.color.setScalar(v * s.shade);
     },
@@ -178,6 +238,8 @@ export function createItemMeshes(): ItemMeshes {
       for (const g of geos) g.dispose();
       for (const t of textures.values()) t.dispose();
       for (const s of shaded) s.mat.dispose();
+      glintMat.dispose();
+      shieldTex?.dispose();
       cache.clear();
     },
   };

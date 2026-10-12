@@ -62,6 +62,14 @@ export interface PlayerState extends PlayerApi {
   removeEffect(id: string): void;
   swing(): void;
   attackedBy: Entity | undefined;
+  swimming: boolean;
+  fallFlying: boolean;
+  fallFlyTicks: number;
+  spinTicks: number; // riptide spin attack
+  shieldCooldown: number; // ticks the shield stays disabled after an axe hit
+  totemTicks: number; // totem animation, counts down from 40
+  prevJump: boolean;
+  lastDeath: { x: number; y: number; z: number; dim: string } | null;
 }
 
 export const effectLevel = (p: { effects: { id: string; amplifier: number }[] }, id: string): number => {

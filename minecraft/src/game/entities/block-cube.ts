@@ -3,7 +3,7 @@ import type { BlockDef, BlockState, Shape } from "../contracts";
 import { blockDef, blockByName } from "../blocks/registry";
 import { itemDef } from "../items/registry";
 import { paintBlockTexture } from "../textures/index";
-import { itemSprite } from "../textures/icons";
+import { itemSpritePixels } from "../textures/icons";
 
 const TINT: Record<string, number> = { grass: 0x91bd59, foliage: 0x77ab2f, water: 0x3f76e4, birch: 0x80a755, spruce: 0x619961, stem: 0xe0c71c, redstone: 0xff0000 };
 
@@ -106,9 +106,7 @@ const spriteCache = new Map<string, SpriteView>();
 
 export function spritePixels(item: string): Uint8ClampedArray {
   try {
-    const c = itemSprite(item);
-    const g = c.getContext("2d");
-    if (g) return g.getImageData(0, 0, 16, 16).data;
+    return itemSpritePixels(item);
   } catch {
   }
   const d = new Uint8ClampedArray(1024);

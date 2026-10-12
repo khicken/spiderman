@@ -49,7 +49,26 @@ export function Button({ x, y, width = 200, height = 20, label, onClick, disable
       }}
       style={{ ...abs(x, y, width, height), backgroundImage: `url(${buttonUrl(width, height, look)})`, pointerEvents: "auto", cursor: disabled ? "default" : "pointer" }}
     >
-      <Text text={label} color={disabled ? 0xa0a0a0 : 0xffffff} x={width / 2} y={Math.floor((height - 8) / 2)} align="center" />
+      <Label text={label} color={disabled ? 0xa0a0a0 : 0xffffff} width={width} height={height} />
+    </div>
+  );
+}
+
+const SCROLL_CSS = `@keyframes mc-scroll{0%,15%{transform:translateX(0)}50%,65%{transform:translateX(var(--mc-d))}100%{transform:translateX(0)}}`;
+
+// Vanilla AbstractWidget.renderScrollingString: a label wider than the widget scrolls back and forth inside it.
+function Label({ text, color, width, height }: { text: string; color: number; width: number; height: number }) {
+  const y = Math.floor((height - 8) / 2);
+  const tw = textWidth(text);
+  const room = width - 4;
+  if (tw <= room) return <Text text={text} color={color} x={width / 2} y={y} align="center" />;
+  const d = room - tw;
+  return (
+    <div style={{ position: "absolute", left: 2, top: 0, width: room, height, overflow: "hidden" }}>
+      <style>{SCROLL_CSS}</style>
+      <div style={{ position: "absolute", left: 0, top: y, ["--mc-d" as string]: `${d}px`, animation: `mc-scroll ${Math.max(2, -d / 10) * 2}s ease-in-out infinite` }}>
+        <Text text={text} color={color} x={0} y={0} />
+      </div>
     </div>
   );
 }
@@ -96,7 +115,7 @@ export function Slider({ x, y, width = 150, height = 20, value, label, onChange 
       style={{ ...abs(x, y, width, height), backgroundImage: `url(${sliderTrackUrl(width, height)})`, pointerEvents: "auto", cursor: "pointer", outline: "none" }}
     >
       <div style={{ ...abs(Math.round(value * (width - 8)), 0, 8, height), backgroundImage: `url(${buttonUrl(8, height, hover || drag ? "hover" : "normal")})` }} />
-      <Text text={label} x={width / 2} y={Math.floor((height - 8) / 2)} align="center" />
+      <Label text={label} color={0xffffff} width={width} height={height} />
     </div>
   );
 }
@@ -183,7 +202,7 @@ export function TextField({ x, y, width = 200, height = 20, value, onChange, onE
   );
 }
 
-export type BackgroundKind = "dirt" | "ingame" | "none" | "death";
+export type BackgroundKind = "dirt" | "ingame" | "none" | "death" | "menu";
 
 export function Screen({ background = "dirt", children, onMouseDown }: { background?: BackgroundKind; children: ReactNode; onMouseDown?: (e: React.MouseEvent) => void }) {
   const { width, height } = useGui();
@@ -191,7 +210,7 @@ export function Screen({ background = "dirt", children, onMouseDown }: { backgro
     background === "dirt"
       ? { backgroundImage: `url(${dirtUrl()})`, backgroundSize: "32px 32px", imageRendering: "pixelated" }
       : background === "ingame"
-        ? { background: "linear-gradient(rgba(16,16,16,0.75), rgba(16,16,16,0.82))" }
+        ? { background: "linear-gradient(rgba(16,16,16,0.75), rgba(16,16,16,0.82))", backdropFilter: "blur(5px)", WebkitBackdropFilter: "blur(5px)" }
         : background === "death"
           ? { background: "linear-gradient(rgba(80,0,0,0.38), rgba(128,48,48,0.63))" }
           : {};

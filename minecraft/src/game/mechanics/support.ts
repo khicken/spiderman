@@ -8,7 +8,7 @@ import {
 export const enum Sup {
   None, Bush, DeadBush, Mushroom, Fungus, Crop, Wart, Upper, Cane, Cactus, Bamboo, LilyPad, Carpet, Snow, StandingTorch,
   WallTorch, FloorSign, WallSign, Ladder, Attach, Rail, Plate, Diode, DoorLower, Bed, Cocoa, HangDown, GrowUp,
-  Lantern, Fire, SoulFire, WallFan, Floor, Petals, WaterPlant, Azalea, AttachedStem, WitherRose, Frogspawn, HangingSign,
+  Lantern, Fire, SoulFire, WallFan, Floor, Petals, WaterPlant, Azalea, AttachedStem, WitherRose, Frogspawn, HangingSign, Dripleaf,
 }
 
 const FAMILY = new Uint8Array(4096);
@@ -56,7 +56,8 @@ function familyOf(name: string, shape: string, tags: string[]): Sup {
   if (name === "fire") return Sup.Fire;
   if (name === "soul_fire") return Sup.SoulFire;
   if (name === "kelp" || name === "kelp_plant" || name === "seagrass" || name === "tall_seagrass") return Sup.WaterPlant;
-  if (t("candles") || name === "sea_pickle" || name === "small_dripleaf" || name === "big_dripleaf" || name === "big_dripleaf_stem") return Sup.Floor;
+  if (t("candles") || name === "sea_pickle" || name === "small_dripleaf") return Sup.Floor;
+  if (name === "big_dripleaf" || name === "big_dripleaf_stem") return Sup.Dripleaf;
   return Sup.None;
 }
 
@@ -252,6 +253,15 @@ export function canSurviveAt(ctx: GameCtx, x: number, y: number, z: number, s: B
     case Sup.SoulFire: {
       const n = nameOf(below());
       return n === "soul_sand" || n === "soul_soil";
+    }
+    case Sup.Dripleaf: {
+      const b = below();
+      const bn = nameOf(b);
+      const onBase = bn === "big_dripleaf_stem" || bn === "clay" || bn === "moss_block" || isDirtLike(b) || (bn === "big_dripleaf" && def(s).name === "big_dripleaf");
+      if (!onBase) return false;
+      if (def(s).name === "big_dripleaf") return true;
+      const an = nameOf(above());
+      return an === "big_dripleaf_stem" || an === "big_dripleaf";
     }
     case Sup.WaterPlant: {
       const b = below();

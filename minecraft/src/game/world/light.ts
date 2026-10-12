@@ -1,5 +1,5 @@
 import { MAX_Y, MIN_Y } from "../contracts";
-import { LIGHT_EMIT, LIGHT_FILTER } from "../blocks/registry";
+import { LIGHT_FILTER, STATE_EMIT } from "../blocks/registry";
 import type { Chunk, Store } from "./store";
 
 // Index 3 is down: full sky light stays 15 going straight down through clear blocks.
@@ -109,7 +109,7 @@ export function createLight(store: Store, hasSky: boolean): LightEngine {
         const nl = (v >> shift) & 15;
         if (nl === 0) continue;
         if (nl < l || (sky && d === 3 && l === 15 && nl === 15)) {
-          const e = sky ? 0 : LIGHT_EMIT[nc.blocks[ni] & 0xfff];
+          const e = sky ? 0 : STATE_EMIT[nc.blocks[ni]];
           nc.light[ni] = (v & keep) | (e << shift);
           store.markDirty(nc, nx & 15, ny, nz & 15);
           pushRem(nx, ny, nz, nl);
@@ -130,7 +130,7 @@ export function createLight(store: Store, hasSky: boolean): LightEngine {
     const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
     const v = c.light[i];
     const old = (v >> shift) & 15;
-    const e = sky ? 0 : LIGHT_EMIT[c.blocks[i] & 0xfff];
+    const e = sky ? 0 : STATE_EMIT[c.blocks[i]];
     c.light[i] = (v & keep) | (e << shift);
     if (old !== e) store.markDirty(c, x & 15, y, z & 15);
     if (old > 0) pushRem(x, y, z, old);
@@ -197,7 +197,7 @@ export function createLight(store: Store, hasSky: boolean): LightEngine {
       counts[sec]++;
       if (tickable[id]) c.tickable[sec]++;
       if (LIGHT_FILTER[id] > 0) skyTop[col] = y + 1;
-      const e = LIGHT_EMIT[id];
+      const e = STATE_EMIT[blocks[i]];
       if (e > 0) {
         light[i] = e;
         pushAdd(bx + (col & 15), y, bz + (col >> 4));

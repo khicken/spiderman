@@ -24,7 +24,7 @@ function openSound(name: string, kind: "door" | "trapdoor" | "fence_gate", open:
   return `block.${woodKind(name)}_${kind}.${act}`;
 }
 
-// Door meta: bits 0-1 facing, bit 2 open, bit 3 upper half. Either half's power opens both.
+// Door meta: lower bits 0-1 facing, bit 2 open; upper bit 0 hinge, bit 2 open, bit 3 set. Either half's power opens both.
 const DOOR_EXTRA: BlockBehavior = {
   neighborChanged(ctx, x, y, z, s) {
     const upper = (metaOf(s) & 8) !== 0;

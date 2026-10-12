@@ -2,6 +2,8 @@ import * as THREE from "three";
 import type { Aabb, Body, BlockState, Entity, GameCtx, WorldApi } from "../contracts";
 import { idOf, metaOf } from "../contracts";
 import { BLOCKS, IS_FLUID, blockDef } from "../blocks/registry";
+import { collideHint } from "../world/collide-hint";
+import { fluidState } from "../blocks/waterlog";
 
 export { applyVanillaMotion, createMotionState } from "./motion";
 export type { MotionInput, MotionState } from "./motion";
@@ -10,6 +12,7 @@ export interface MoveOpts {
   sneak?: boolean; // sneaking edge guard (player on ground, not flying)
   living?: boolean; // slime bounce keeps full speed for living entities
   weaving?: boolean;
+  boots?: boolean; // leather boots: powder snow holds the body
   ctx?: GameCtx;
   entity?: Entity | null;
 }
@@ -186,7 +189,7 @@ export const isLavaId = (id: number) => id === ID.lava;
 export function fluidHeight(world: WorldApi, x: number, y: number, z: number, s: BlockState): number {
   const id = idOf(s);
   if (!IS_FLUID[id]) return 0;
-  const above = idOf(world.getBlock(x, y + 1, z));
+  const above = idOf(fluidState(world, x, y + 1, z));
   if (above === id || (isWaterId(id) && isWaterId(above))) return 1;
   if (id === ID.bubble) return 1;
   const m = metaOf(s);
@@ -195,7 +198,7 @@ export function fluidHeight(world: WorldApi, x: number, y: number, z: number, s:
 
 export function fluidAt(world: WorldApi, x: number, y: number, z: number): "water" | "lava" | null {
   const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
-  const s = world.getBlock(bx, by, bz);
+  const s = fluidState(world, bx, by, bz);
   const id = idOf(s);
   if (!IS_FLUID[id]) return null;
   if (y >= by + fluidHeight(world, bx, by, bz, s)) return null;
@@ -212,7 +215,7 @@ export function submergedHeight(world: WorldApi, body: Body, kind: "water" | "la
   for (let y = y0; y <= y1; y++)
     for (let z = z0; z <= z1; z++)
       for (let x = x0; x <= x1; x++) {
-        const s = world.getBlock(x, y, z);
+        const s = fluidState(world, x, y, z);
         const id = idOf(s);
         if (!IS_FLUID[id] || (kind === "lava") !== isLavaId(id)) continue;
         const top = y + fluidHeight(world, x, y, z, s);
@@ -229,12 +232,12 @@ function addFlow(world: WorldApi, x: number, y: number, z: number, s: BlockState
   for (let d = 0; d < 4; d++) {
     const dx = d === 0 ? 1 : d === 1 ? -1 : 0;
     const dz = d === 2 ? 1 : d === 3 ? -1 : 0;
-    const ns = world.getBlock(x + dx, y, z + dz);
+    const ns = fluidState(world, x + dx, y, z + dz);
     const nid = idOf(ns);
     let diff = 0;
     if (nid === id || (isWaterId(id) && isWaterId(nid))) diff = own - fluidHeight(world, x + dx, y, z + dz, ns);
-    else if (!blockDef(ns).solid) {
-      const bs = world.getBlock(x + dx, y - 1, z + dz);
+    else if (!blockDef(world.getBlock(x + dx, y, z + dz)).solid) {
+      const bs = fluidState(world, x + dx, y - 1, z + dz);
       if (idOf(bs) === id) diff = own - (fluidHeight(world, x + dx, y - 1, z + dz, bs) - 8 / 9);
     }
     fx += dx * diff;
@@ -260,7 +263,7 @@ function updateFluids(world: WorldApi, body: Body, nether: boolean): void {
   for (let y = Math.floor(bb.minY); y <= Math.floor(bb.maxY); y++)
     for (let z = Math.floor(bb.minZ); z <= Math.floor(bb.maxZ); z++)
       for (let x = Math.floor(bb.minX); x <= Math.floor(bb.maxX); x++) {
-        const s = world.getBlock(x, y, z);
+        const s = fluidState(world, x, y, z);
         const id = idOf(s);
         if (!IS_FLUID[id]) continue;
         const top = y + fluidHeight(world, x, y, z, s);
@@ -351,6 +354,33 @@ function stuckMultiplier(world: WorldApi, body: Body, weaving: boolean, out: THR
   return found;
 }
 
+// Bubble column direction comes from the block under the column: soul sand pushes up, magma pulls down.
+function columnDown(world: WorldApi, x: number, y: number, z: number): boolean | null {
+  for (let i = 0; i < 64; i++, y--) {
+    const id = idOf(world.getBlock(x, y, z));
+    if (id === ID.bubble) continue;
+    return id === ID.magma ? true : id === ID.soulSand ? false : null;
+  }
+  return null;
+}
+
+// Vanilla Entity.onInsideBubbleColumn and onAboveBubbleCol.
+export function applyBubbles(world: WorldApi, body: Body): void {
+  if (ID.bubble < 0) return;
+  bodyBox(body, bb2);
+  const x = Math.floor(body.pos.x), z = Math.floor(body.pos.z);
+  for (let y = Math.floor(bb2.minY + 1e-5); y <= Math.floor(bb2.maxY - 1e-5); y++) {
+    if (idOf(world.getBlock(x, y, z)) !== ID.bubble) continue;
+    const down = columnDown(world, x, y, z);
+    if (down === null) return;
+    const v = body.vel;
+    if (world.getBlock(x, y + 1, z) === 0) v.y = down ? Math.max(-0.9, v.y - 0.03) : Math.min(1.8, v.y + 0.1);
+    else v.y = down ? Math.max(-0.3, v.y - 0.03) : Math.min(0.7, v.y + 0.06);
+    body.fallDistance = 0;
+    return;
+  }
+}
+
 function insideBlocks(world: WorldApi, body: Body, opts: MoveOpts): void {
   const ctx = opts.ctx;
   if (!ctx) return;
@@ -401,7 +431,13 @@ export function moveBody(world: WorldApi, body: Body, opts: MoveOpts = NO_OPTS):
   }
   bodyBox(body, bb);
   const step = body.stepHeight;
+  collideHint.active = true;
+  collideHint.feetY = body.pos.y;
+  collideHint.descend = opts.sneak === true;
+  collideHint.boots = opts.boots === true;
+  collideHint.fall = body.fallDistance;
   const n = gather(world, bb, mx, my, mz, step);
+  collideHint.active = false;
   sweep(colliders, n, bb, mx, my, mz, res);
   const xCol = Math.abs(mx - res.x) > 1e-5;
   const zCol = Math.abs(mz - res.z) > 1e-5;
@@ -447,6 +483,7 @@ export function moveBody(world: WorldApi, body: Body, opts: MoveOpts = NO_OPTS):
     v.z *= d;
   }
   updateFluids(world, body, world.dim === "nether");
+  applyBubbles(world, body);
   if (body.inWater) {
     body.fallDistance = 0;
     landed = 0;

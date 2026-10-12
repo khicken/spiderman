@@ -2,7 +2,9 @@ import type * as THREE from "three";
 import type { Entity, GameCtx } from "../contracts";
 import { MIN_Y, idOf } from "../contracts";
 import { SOLID, IS_FLUID, blockByName, blockDef } from "../blocks/registry";
+import { fluidState } from "../blocks/waterlog";
 import { moveBody, blockBelow, blockOn, blockJumpFactor, fallMultiplier, isFree, submergedHeight, type MoveOpts } from "../player/physics";
+import { mobSpeedFactor } from "../systems/brewing/effects";
 
 // Speeds here are the vanilla movement_speed attribute times the goal modifier (zombie 0.23, cow 0.2).
 // The entity manager ages entities, counts down hurtTicks and calls applyPhysics after MobDef.tick
@@ -87,6 +89,7 @@ function slipAt(ctx: GameCtx, e: Entity) {
 
 // Push the mob toward (x, z) this tick. Returns the horizontal distance left.
 export function walkToward(e: Entity, ctx: GameCtx, x: number, z: number, speed: number) {
+  if (e.effects.length) speed *= mobSpeedFactor(e);
   const b = e.body;
   const dx = x - b.pos.x;
   const dz = z - b.pos.z;
@@ -557,7 +560,7 @@ export function idleLook(e: Entity, ctx: GameCtx, range = 8) {
 }
 
 export function inWaterColumn(ctx: GameCtx, x: number, y: number, z: number) {
-  return isWater(ctx.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)));
+  return isWater(fluidState(ctx.world, Math.floor(x), Math.floor(y), Math.floor(z)));
 }
 
 export function setOnFire(e: Entity, seconds: number) {

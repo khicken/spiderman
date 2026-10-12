@@ -27,6 +27,8 @@ export function buildMeshInput(store: Store, cx: number, sy: number, cz: number,
   const blocks = new Uint16Array(PAD * PAD * PAD);
   const light = new Uint8Array(PAD * PAD * PAD);
   const biomes = new Uint8Array(PAD * PAD);
+  let wet: Uint8Array | undefined;
+  for (let g = 0; g < 9 && !wet; g++) if (grid[g]!.wl.size) wet = new Uint8Array(PAD * PAD * PAD);
   const sky = hasSky ? 0xf0 : 0;
   const base = sy * 16 - 1;
   for (let pz = 0; pz < PAD; pz++) {
@@ -40,6 +42,7 @@ export function buildMeshInput(store: Store, cx: number, sy: number, cz: number,
       biomes[pz * PAD + px] = ch.data.biomes[col];
       const cb = ch.blocks;
       const cl = ch.light;
+      const wl = wet && ch.wl.size ? ch.wl : null;
       for (let py = 0; py < PAD; py++) {
         const ry = base + py;
         const o = (py * PAD + pz) * PAD + px;
@@ -51,9 +54,10 @@ export function buildMeshInput(store: Store, cx: number, sy: number, cz: number,
         const i = (ry << 8) | col;
         blocks[o] = cb[i];
         light[o] = cl[i];
+        if (wl && wl.has(i)) wet![o] = 1;
       }
     }
   }
   grid.fill(undefined);
-  return { cx, sy, cz, blocks, light, biomes };
+  return wet ? { cx, sy, cz, blocks, light, biomes, waterlogged: wet } : { cx, sy, cz, blocks, light, biomes };
 }

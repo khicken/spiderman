@@ -1,43 +1,69 @@
 import * as THREE from "three";
 import type { Entity, GameCtx, MobDef, MobModel } from "../../contracts";
-import { stateOf } from "../../contracts";
-import { blockByName } from "../../blocks/registry";
 import { applyPhysics, canSee, knockBody, playerTargetable, rotlerp, yawTo } from "../ai";
 import { explodeAt } from "../explosion";
 import { hurtAmount, nearby, num, particles, sound } from "./brain";
 import { dragonModel } from "./looks-dragon";
+import { END_STATE, EXIT_Y, GATEWAY_Y, gatewaySlot } from "../../systems/end/state";
+import { buildExitPortal, buildGateway, exitPortalLit } from "../../systems/end/exit";
 
 export const DRAGON_HP = 200;
 const tmp = new THREE.Vector3();
 const goal = new THREE.Vector3();
 
 export function fountainY(ctx: GameCtx): number {
-  return Math.max(ctx.world.topY(0, 0), 50);
+  return Math.max(ctx.world.topY(0, 0), EXIT_Y + 4);
 }
 
 export function exitPortalActive(ctx: GameCtx): boolean {
-  const portal = blockByName("end_portal");
-  if (!portal) return false;
-  const y = fountainY(ctx);
-  for (let dy = -2; dy <= 3; dy++) if ((ctx.world.getBlock(1, y + dy, 0) & 0xfff) === portal.id) return true;
-  return false;
+  return END_STATE.dragonKilled || exitPortalLit(ctx.world);
 }
 
-function buildExitPortal(ctx: GameCtx, egg: boolean): void {
-  const ids = { bedrock: blockByName("bedrock")?.id, portal: blockByName("end_portal")?.id, egg: blockByName("dragon_egg")?.id };
-  if (ids.bedrock === undefined || ids.portal === undefined) return;
-  const w = ctx.world;
-  const y = ctx.world.topY(0, 0) + 1;
-  for (let dx = -3; dx <= 3; dx++)
-    for (let dz = -3; dz <= 3; dz++) {
-      const r = dx * dx + dz * dz;
-      if (r > 12.5) continue;
-      w.setBlock(dx, y - 1, dz, stateOf(ids.bedrock));
-      if (dx === 0 && dz === 0) continue;
-      w.setBlock(dx, y, dz, stateOf(r <= 6.5 ? ids.portal : ids.bedrock));
+function spawnGateway(ctx: GameCtx): void {
+  if (END_STATE.order.length !== 20) {
+    const o = Array.from({ length: 20 }, (_, i) => i);
+    let h = (ctx.world.seed ^ 0x9e3779b9) >>> 0;
+    for (let i = 19; i > 0; i--) {
+      h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+      const j = h % (i + 1);
+      [o[i], o[j]] = [o[j], o[i]];
     }
-  for (let dy = 0; dy < 4; dy++) w.setBlock(0, y + dy, 0, stateOf(ids.bedrock));
-  if (egg && ids.egg !== undefined) w.setBlock(0, y + 4, 0, stateOf(ids.egg));
+    END_STATE.order = o;
+  }
+  const n = END_STATE.gateways.length;
+  if (n >= 20) return;
+  const { x, z } = gatewaySlot(END_STATE.order[n]);
+  buildGateway(ctx.world, x, GATEWAY_Y, z);
+  END_STATE.gateways.push({ x, y: GATEWAY_Y, z });
+  ctx.emit({ type: "sound", name: "block.end_gateway.spawn", x: x + 0.5, y: GATEWAY_Y + 0.5, z: z + 0.5, volume: 4 });
+}
+
+// Vanilla dragon death: 200 ticks, rises 0.1 per tick, spins 20 degrees per tick, 8% of the XP every 5 ticks after 150, 20% at the end.
+function dyingTick(e: Entity, ctx: GameCtx): void {
+  const t = num(e, "dying") + 1;
+  e.data.dying = t;
+  e.data._pa = e.age;
+  e.data.invulnerable = true;
+  const b = e.body;
+  b.vel.set(0, 0, 0);
+  b.pos.y += 0.1;
+  e.yaw += (20 * Math.PI) / 180;
+  e.headYaw = e.yaw;
+  e.data.bossbar = { id: "ender_dragon", name: "Ender Dragon", progress: 0, color: "pink" };
+  const total = num(e, "_xpTotal", 500);
+  const p = b.pos;
+  if (t >= 180 && t <= 200) particles(ctx, "explosion", p.x + (ctx.random() - 0.5) * 8, p.y + 2 + (ctx.random() - 0.5) * 4, p.z + (ctx.random() - 0.5) * 8, 1);
+  if (t > 150 && t % 5 === 0) ctx.entities.dropXp(Math.floor(total * 0.08), p.x, p.y, p.z);
+  if (t === 1) sound(ctx, e, "entity.ender_dragon.death", 1000);
+  if (t < 200) return;
+  ctx.entities.dropXp(Math.floor(total * 0.2), p.x, p.y, p.z);
+  const first = !END_STATE.dragonKilled;
+  buildExitPortal(ctx.world, true, first);
+  spawnGateway(ctx);
+  END_STATE.dragonKilled = true;
+  END_STATE.kills++;
+  e.data.bossbar = undefined;
+  e.data._remove = true;
 }
 
 function nearestCrystal(e: Entity, ctx: GameCtx): Entity | undefined {
@@ -99,6 +125,15 @@ function steer(e: Entity, speed: number, turn: number): void {
   e.pitch = Math.atan2(b.vel.y, Math.hypot(b.vel.x, b.vel.z)) * 0.5;
 }
 
+function breathe(e: Entity, ctx: GameCtx): void {
+  const b = e.body;
+  const hx = b.pos.x - Math.sin(e.yaw) * 7, hz = b.pos.z - Math.cos(e.yaw) * 7;
+  let y = Math.floor(b.pos.y);
+  for (let i = 0; i < 12 && !ctx.world.getBlock(Math.floor(hx), y - 1, Math.floor(hz)); i++) y--;
+  ctx.entities.spawn("dragon_fireball", hx, y, hz, { owner: e.id, cloud: 200 });
+  sound(ctx, e, "entity.ender_dragon.shoot", 5);
+}
+
 function contact(e: Entity, ctx: GameCtx): void {
   if (!playerTargetable(ctx) || num(e, "_hitCd") > e.age) return;
   const pp = ctx.player.body.pos;
@@ -121,6 +156,15 @@ function contact(e: Entity, ctx: GameCtx): void {
   }
 }
 
+// The dragon is one entity here, so a hit counts on the head when the player's eye is near the head part.
+function headHit(e: Entity, ctx: GameCtx): boolean {
+  if (e.data._byPlayer === undefined || num(e, "_byPlayer") < 99) return false;
+  const b = e.body;
+  const hx = b.pos.x - Math.sin(e.yaw) * 7, hy = b.pos.y + 3, hz = b.pos.z - Math.cos(e.yaw) * 7;
+  const eye = ctx.player.eye();
+  return Math.hypot(eye.x - hx, eye.y - hy, eye.z - hz) < 5;
+}
+
 function dragonTick(e: Entity, ctx: GameCtx): void {
   e.data.noGravity = true;
   e.data.noFall = true;
@@ -129,9 +173,10 @@ function dragonTick(e: Entity, ctx: GameCtx): void {
   e.data.kbResist = 1;
   const b = e.body;
   b.noClip = true;
+  if (typeof e.data.dying === "number") return dyingTick(e, ctx);
   const hurt = hurtAmount(e);
-  if (hurt > 0 && !e.data.perched) {
-    const keep = Math.min(hurt, hurt / 4 + 1);
+  if (hurt > 0 && !headHit(e, ctx)) {
+    const keep = hurt / 4 + Math.min(hurt, 1);
     e.health = Math.min(e.maxHealth, e.health + hurt - keep);
     e.data._hp = e.health;
   }
@@ -184,6 +229,7 @@ function dragonTick(e: Entity, ctx: GameCtx): void {
         e.headYaw = e.yaw;
       }
       contact(e, ctx);
+      if (sit === 60 || sit === 120) breathe(e, ctx);
       if (sit > 200) {
         e.data._sit = 0;
         b.vel.y = 0.4;
@@ -372,12 +418,12 @@ export const END_MOBS: MobDef[] = [
     createModel: dragonModel,
     tick: dragonTick,
     onDeath(e, ctx) {
-      const first = !exitPortalActive(ctx);
-      const total = first ? 12000 : 500;
-      for (let i = 0; i < 10; i++) ctx.entities.dropXp(total / 10, e.body.pos.x + (ctx.random() - 0.5) * 4, e.body.pos.y + 4, e.body.pos.z + (ctx.random() - 0.5) * 4);
-      for (let i = 0; i < 8; i++) particles(ctx, "explosion", e.body.pos.x + (ctx.random() - 0.5) * 8, e.body.pos.y + ctx.random() * 6, e.body.pos.z + (ctx.random() - 0.5) * 8, 1);
-      buildExitPortal(ctx, first);
-      e.data.bossbar = undefined;
+      e.dead = false;
+      e.health = 1;
+      e.data._hp = 1;
+      e.data.invulnerable = true;
+      e.data.dying = 0;
+      e.data._xpTotal = END_STATE.dragonKilled ? 500 : 12000;
       ctx.emit({ type: "advancement", title: "Free the End" });
     },
   },

@@ -1,6 +1,7 @@
 import type * as THREE from "three";
 import type { AudioApi } from "../contracts";
 import { createMusic, type MusicSetting } from "./music";
+import { createRecords } from "./records";
 import { rand } from "./synth/dsp";
 import { renderVariant, resolveSound, type Resolved } from "./synth/registry";
 
@@ -23,7 +24,30 @@ export interface AmbientState {
   rain?: number;
 }
 
+const HOSTILE = new Set([
+  "zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "creeper", "spider", "cave_spider",
+  "enderman", "endermite", "silverfish", "witch", "slime", "magma_cube", "blaze", "ghast", "phantom", "pillager", "vindicator",
+  "evoker", "illusioner", "ravager", "vex", "guardian", "elder_guardian", "shulker", "hoglin", "zoglin", "piglin_brute", "warden",
+  "breeze", "wither", "ender_dragon",
+]);
+
+// Vanilla SoundSource from the sound event name.
+export function soundCategory(name: string): string {
+  if (name.startsWith("ui.")) return "master";
+  if (name.startsWith("music_disc.") || name.startsWith("block.note_block.") || name.startsWith("block.jukebox")) return "records";
+  if (name.startsWith("weather.") || name.startsWith("entity.lightning_bolt")) return "weather";
+  if (name.startsWith("ambient.")) return "ambient";
+  if (name.startsWith("block.")) return "blocks";
+  if (name.startsWith("entity.player.") || name.startsWith("item.") || name === "random.pop") return "players";
+  if (name.startsWith("entity.")) {
+    const mob = name.slice(7, name.indexOf(".", 7) < 0 ? undefined : name.indexOf(".", 7));
+    return HOSTILE.has(mob) ? "hostile" : "neutral";
+  }
+  return "blocks";
+}
+
 export type GameAudio = AudioApi & {
+  setCategories(v: Record<string, number>): void;
   resume(): void;
   setUnderwater(on: boolean): void;
   setAmbient(s: AmbientState): void;
@@ -36,12 +60,14 @@ export function createAudio(): GameAudio {
   let musicBus: GainNode | null = null;
   let muffle: BiquadFilterNode | null = null;
   let music: ReturnType<typeof createMusic> | null = null;
+  let records: ReturnType<typeof createRecords> | null = null;
   let rainSrc: AudioBufferSourceNode | null = null;
   let rainGain: GainNode | null = null;
   const buffers = new Map<string, AudioBuffer>();
   const voices: Voice[] = [];
   const warned = new Set<string>();
   const vol = { master: 1, music: 1, sfx: 1 };
+  const cats: Record<string, number> = {};
   const listener = { x: 0, y: 0, z: 0 };
   let musicKind: MusicSetting = "none";
   let underwater = false;
@@ -129,7 +155,8 @@ export function createAudio(): GameAudio {
     while (voices.length >= MAX_VOICES) steal();
     const pv = rec.pitchVar ?? 0.1;
     const rate = Math.min(4, Math.max(0.25, (pitch ?? 1) * (1 + (Math.random() - Math.random()) * pv)));
-    const v = volume ?? 1;
+    const v = (volume ?? 1) * (cats[soundCategory(name)] ?? 1);
+    if (v <= 0) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = rate;
@@ -190,7 +217,7 @@ export function createAudio(): GameAudio {
       rainSrc.connect(rainGain).connect(sfx);
       rainSrc.start();
     }
-    if (rainGain) rainGain.gain.setTargetAtTime(Math.min(1, level) * 0.3, ctx.currentTime, 0.5);
+    if (rainGain) rainGain.gain.setTargetAtTime(Math.min(1, level) * 0.3 * (cats.weather ?? 1), ctx.currentTime, 0.5);
   }
 
   function guard<A extends unknown[]>(key: string, fn: (...a: A) => void): (...a: A) => void {
@@ -215,6 +242,7 @@ export function createAudio(): GameAudio {
         musicBus.connect(master);
         master.connect(ctx.destination);
         music = createMusic(ctx, musicBus);
+        records = createRecords(ctx, sfx);
         applyVolumes();
         music.setKind(musicKind);
         warmTimer = setTimeout(warm, 100);
@@ -222,6 +250,8 @@ export function createAudio(): GameAudio {
       if (ctx.state === "suspended") void ctx.resume().catch((err) => warnOnce("resume-promise", "audio resume failed", err));
     }),
     play: guard("play", play),
+    playRecord: guard("record", (id: string, disc: string, x: number, y: number, z: number, seconds: number) => records?.play(id, disc, x, y, z, seconds)),
+    stopRecord: guard("record", (id: string) => records?.stop(id)),
     setListener: guard("listener", (pos: THREE.Vector3, yaw: number, pitch: number) => {
       listener.x = pos.x;
       listener.y = pos.y;
@@ -247,6 +277,9 @@ export function createAudio(): GameAudio {
       vol.sfx = Math.max(0, Math.min(1, s));
       applyVolumes();
     }),
+    setCategories: guard("categories", (v: Record<string, number>) => {
+      for (const [k, x] of Object.entries(v)) cats[k] = Math.max(0, Math.min(1, x));
+    }),
     setMusic: guard("music", (kind: MusicSetting) => {
       musicKind = kind;
       music?.setKind(kind);
@@ -266,6 +299,7 @@ export function createAudio(): GameAudio {
       disposed = true;
       if (warmTimer) clearTimeout(warmTimer);
       music?.dispose();
+      records?.dispose();
       for (const v of voices.slice()) {
         try { v.src.stop(); } catch { /* not playing */ }
         release(v);

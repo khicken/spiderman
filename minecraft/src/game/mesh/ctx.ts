@@ -15,6 +15,7 @@ export const HDZ = [1, 0, -1, 0];
 export const M = {
   blocks: new Uint16Array(0) as Uint16Array,
   light: new Uint8Array(0) as Uint8Array,
+  wet: null as Uint8Array | null,
   pi: 0,
   bx: 0,
   by: 0,

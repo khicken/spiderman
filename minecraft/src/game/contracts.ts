@@ -249,6 +249,7 @@ export interface ChunkData {
   heightmap: Int16Array; // CHUNK * CHUNK, y of top non-air block
   blockEntities?: BlockEntityData[];
   entities?: EntitySave[]; // mobs placed by world gen (village, structures)
+  waterlogged?: number[]; // chunkIndex of waterlogged cells (blocks/waterlog.ts)
 }
 
 // Mesher input: one 16^3 section plus a 1-block border = 18^3, index (y * 18 + z) * 18 + x.
@@ -260,6 +261,7 @@ export interface MeshInput {
   blocks: Uint16Array; // PAD^3
   light: Uint8Array; // PAD^3
   biomes: Uint8Array; // PAD * PAD, index z * 18 + x
+  waterlogged?: Uint8Array; // PAD^3, 1 = cell holds water; absent when none
 }
 
 export interface MeshBuffers {
@@ -274,6 +276,7 @@ export interface MeshOutput {
   opaque: MeshBuffers | null;
   cutout: MeshBuffers | null;
   translucent: MeshBuffers | null;
+  vis?: number; // face-to-face open paths for cave culling, bit a * 6 + b for faces a < b
 }
 
 // Uniforms every chunk material exposes. The renderer writes them each frame.
@@ -286,6 +289,10 @@ export interface ChunkUniforms {
   uAtlas: { value: THREE.DataArrayTexture | null };
   uSkyTint: { value: THREE.Color }; // sky light color, red at sunset, dim in the nether
   uGamma: { value: number }; // brightness option 0..1
+  uNightVision?: { value: number }; // 0..1, scales light so its brightest channel is full
+  uSkyColor?: { value: THREE.Color }; // zenith color: far fog above the camera fades into the sky dome
+  uSkyFogEnd?: { value: number };
+  uSkyMix?: { value: number }; // 0 plain fog color, 1 sky dome color
 }
 
 // ---------- Block entities ----------
@@ -338,7 +345,7 @@ export interface Body {
 export type DamageSource =
   | "generic" | "fall" | "lava" | "fire" | "drown" | "starve" | "void" | "cactus"
   | "explosion" | "mob" | "player" | "arrow" | "suffocate" | "magic" | "wither"
-  | "lightning" | "freeze" | "thorns" | "mace";
+  | "lightning" | "freeze" | "thorns" | "mace" | "fly_into_wall" | "trident";
 
 export interface EntityHit {
   id: number;
@@ -395,6 +402,7 @@ export interface MobDef {
     group: [number, number];
     weight: number;
   };
+  seat?: number; // rider feet height above the mob feet
   createModel(): MobModel;
   // Runs each tick. Use ctx for world, physics, player, and entity calls.
   tick(e: Entity, ctx: GameCtx): void;
@@ -416,6 +424,7 @@ export type GameEvent =
   | { type: "player_died"; message: string }
   | { type: "chat"; text: string; color?: string }
   | { type: "title"; text: string; subtitle?: string }
+  | { type: "action_bar"; text: string }
   | { type: "change_dim"; dim: Dim; x: number; y: number; z: number }
   | { type: "explosion"; x: number; y: number; z: number; power: number }
   | { type: "advancement"; title: string };
@@ -426,7 +435,7 @@ export type ContainerKind =
   | "inventory" | "creative" | "crafting_table" | "furnace" | "blast_furnace" | "smoker"
   | "chest" | "large_chest" | "barrel" | "shulker_box" | "ender_chest" | "dispenser" | "dropper"
   | "hopper" | "crafter" | "anvil" | "enchanting_table" | "brewing_stand" | "grindstone"
-  | "stonecutter" | "smithing_table" | "loom" | "cartography_table" | "villager";
+  | "stonecutter" | "smithing_table" | "loom" | "cartography_table" | "villager" | "beacon";
 
 export type SlotRole =
   | "storage" | "hotbar" | "armor_head" | "armor_chest" | "armor_legs" | "armor_feet"
@@ -448,9 +457,19 @@ export interface ContainerView {
   cursor: ItemStack | null;
   progress?: Record<string, number>; // "cook" 0..1, "burn" 0..1, "brew" 0..1, "xp_cost"
   options?: { id: string; label: string; cost?: number; enabled: boolean }[]; // enchant, trade, stonecutter
+  merchant?: MerchantView; // villager and wandering trader screen
 }
 
-export type ClickKind = "left" | "right" | "shift" | "middle" | "drop" | "drop_all" | "double" | { hotbar: number };
+export interface MerchantView {
+  level: number; // 1..5, 0 for a wandering trader
+  xp: number;
+  xpMin: number;
+  xpMax: number;
+  selected: number;
+  trades: { buy: ItemStack; buyB?: ItemStack; sell: ItemStack; price: number; out: boolean }[];
+}
+
+export type ClickKind = "left" | "right" | "shift" | "middle" | "drop" | "drop_all" | "double" | { hotbar: number } | { drag: "left" | "right" | "middle"; slots: number[] };
 
 export interface InventoryApi {
   // Player storage: 0..8 hotbar, 9..35 main, 36..39 armor head..feet, 40 offhand.
@@ -505,6 +524,10 @@ export interface PlayerApi {
   target: RaycastHit | null; // block under the crosshair
   targetEntity: EntityHit | null;
   breakProgress: number; // 0..1 for crack overlay
+  vehicle?: number | null; // entity id the player rides
+  fallFlying?: boolean; // elytra glide
+  damageFrom?: { x: number; y: number; z: number } | null; // set before damage() for a source with no attacker (explosion, arrow), so shields can face it
+  pose?: "standing" | "crouching" | "swimming" | "fall_flying" | "spin_attack" | "sleeping";
   damage(amount: number, source: DamageSource, attacker?: Entity): void;
   heal(amount: number): void;
   addXp(points: number): void;
@@ -552,7 +575,10 @@ export interface WorldApi {
   collide(box: Aabb, out: Aabb[]): Aabb[]; // block collision boxes that touch the box
   scheduleTick(x: number, y: number, z: number, delay: number): void;
   getBlockEntity(x: number, y: number, z: number): BlockEntityData | undefined;
+  blockEntitiesIn?(cx: number, cz: number): Iterable<BlockEntityData> | undefined;
   setBlockEntity(be: BlockEntityData | null, x: number, y: number, z: number): void;
+  isWaterlogged?(x: number, y: number, z: number): boolean;
+  setWaterlogged?(x: number, y: number, z: number, on: boolean): boolean;
   meshInput(cx: number, sy: number, cz: number): MeshInput | null; // null when the section is empty or neighbors are missing
   on(fn: (e: ChunkEvent) => void): () => void;
   // Load and unload chunks around the center. Call each frame.
@@ -625,6 +651,8 @@ export interface AudioApi {
   setListener(pos: THREE.Vector3, yaw: number, pitch: number): void;
   setVolume(master: number, music: number, sfx: number): void;
   setMusic(kind: "menu" | "overworld" | "creative" | "underwater" | "nether" | "end" | "none"): void;
+  playRecord?(id: string, disc: string, x: number, y: number, z: number, seconds: number): void;
+  stopRecord?(id: string): void;
   dispose(): void;
 }
 
@@ -642,11 +670,29 @@ export interface RendererApi {
   setOutline(hit: RaycastHit | null, boxes: Aabb[] | null): void;
   setBreak(hit: RaycastHit | null, progress: number): void;
   setUnderwater(kind: "none" | "water" | "lava" | "powder_snow"): void;
+  setEffects?(v: { nightVision: number; blindness: number; darkness: number }): void; // status effect fog and light, each 0..1
+  setVisionFog?(far: number): void; // blindness / darkness fog end in blocks, 0 for none
   addParticles(e: Extract<GameEvent, { type: "particles" }>): void;
   meshQueue(): number; // sections waiting
+  stats?(): RenderStats;
   render(dt: number): void;
   resize(w: number, h: number): void;
   dispose(): void;
+}
+
+// Last-frame renderer costs in ms and chunk counts, for the F3 profiler.
+export interface RenderStats {
+  atmosphere: number;
+  upload: number;
+  draw: number;
+  sections: number;
+  visible: number;
+  queued: number;
+  inFlight: number;
+  results: number;
+  workers: number;
+  pages: number;
+  verts: number;
 }
 
 export type Quality = "low" | "medium" | "high";
@@ -699,6 +745,7 @@ export interface HudState {
   withered: boolean;
   frozen: boolean;
   mountHealth?: number;
+  mountJump?: number; // 0..1 horse jump bar charge
   bossBars: { id: string; name: string; progress: number; color: string }[];
   debug?: Record<string, string>; // F3 lines
   heldName?: string; // shows above the hotbar on change
@@ -706,4 +753,9 @@ export interface HudState {
   dead: boolean;
   deathMessage?: string;
   sleeping: number; // 0..1 fade
+  pumpkin?: boolean; // carved pumpkin on the head
+  spyglass?: boolean; // scoped in first person
+  freeze?: number; // 0..1 powder snow overlay
+  portal?: number; // 0..1 nether portal swirl
+  light?: number; // 0..1 brightness at the eye, for the vignette
 }

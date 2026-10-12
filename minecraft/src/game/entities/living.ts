@@ -2,6 +2,7 @@ import type { DropEntry, Entity, GameCtx, ItemStack, MobDef } from "../contracts
 import { MIN_Y, idOf } from "../contracts";
 import { OPAQUE, SOLID, blockDef } from "../blocks/registry";
 import { isWater } from "./ai";
+import { fluidState } from "../blocks/waterlog";
 import { isBaby } from "./geom";
 
 const COOKED: Record<string, string> = {
@@ -130,7 +131,7 @@ function breathe(e: Entity, ctx: GameCtx, def: MobDef) {
       }
     } else air = 300;
   } else {
-    const eye = ctx.world.getBlock(Math.floor(b.pos.x), Math.floor(b.pos.y + b.height * 0.85), Math.floor(b.pos.z));
+    const eye = fluidState(ctx.world, Math.floor(b.pos.x), Math.floor(b.pos.y + b.height * 0.85), Math.floor(b.pos.z));
     if (isWater(eye)) {
       air--;
       if (air <= -20) {

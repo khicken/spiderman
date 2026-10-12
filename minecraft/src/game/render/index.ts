@@ -1,8 +1,7 @@
 import * as THREE from "three";
-import type { Aabb, Dim, GameEvent, Quality, RaycastHit, RendererApi, WorldApi } from "../contracts";
+import type { Aabb, Dim, GameEvent, Quality, RaycastHit, RendererApi, RenderStats, WorldApi } from "../contracts";
 import { MIN_Y } from "../contracts";
-import { createChunkMaterials } from "../mesh";
-import { buildBlockTextureArray } from "../textures";
+import { createAtlasTexture, createChunkMaterials } from "../mesh";
 import {
   celestialAngle, cloudColor, daylight, fogRange, hexToRgb, moonPhase, overworldFog, skyColor, skyLightTint,
   starBrightness, sunriseColor, sunSide, voidFactor,
@@ -49,18 +48,12 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
 
   const mats = createChunkMaterials();
   const uniforms = mats.uniforms;
-  const art = buildBlockTextureArray();
-  const atlas = new THREE.DataArrayTexture(art.data, art.size, art.size, art.layers);
-  atlas.magFilter = THREE.NearestFilter;
-  atlas.minFilter = THREE.NearestFilter;
-  atlas.generateMipmaps = false;
-  atlas.colorSpace = THREE.SRGBColorSpace;
-  atlas.needsUpdate = true;
+  const atlas = createAtlasTexture(renderer.getContext() as WebGL2RenderingContext);
   uniforms.uAtlas.value = atlas;
   const getAtlas = () => atlas;
 
   const hc = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
-  const chunks = createChunkMeshes(world, scene, mats, hc >= 8 ? 3 : 2);
+  const chunks = createChunkMeshes(world, scene, mats, Math.max(2, Math.min(4, hc - 4)), renderer.getContext() as WebGL2RenderingContext);
   const sky = createSky();
   const clouds = createClouds(scene);
   const particles = createParticles(scene, world, getAtlas);
@@ -75,9 +68,11 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   let cloudsOn = true;
   let gamma = 0.5;
   let submersion: Submersion = "none";
+  let visionFar = 0;
   let submergedFor = 0;
   let time = 0;
   let width = 1, height = 1;
+  const stats: RenderStats = { atmosphere: 0, upload: 0, draw: 0, sections: 0, visible: 0, queued: 0, inFlight: 0, results: 0, workers: 0, pages: 0, verts: 0 };
 
   const sky3: Rgb = [0, 0, 0], fog3: Rgb = [0, 0, 0], cloud3: Rgb = [0, 0, 0], tint3: Rgb = [0, 0, 0], tmp3: Rgb = [0, 0, 0];
   const sunrise: Rgba = [0, 0, 0, 0];
@@ -120,6 +115,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     }
     lastDayTicks = dayTicks;
   }
+
+  const fx = { nightVision: 0, blindness: 0, darkness: 0 };
 
   function setUnderwater(kind: Submersion) {
     if (kind !== submersion) submergedFor = 0;
@@ -183,17 +180,36 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       }
     }
 
+    if (visionFar > 0 && visionFar < range.far) {
+      const k = Math.max(0, Math.min(1, (visionFar - 2) / 30));
+      fog3[0] *= k; fog3[1] *= k; fog3[2] *= k;
+      range.near = visionFar * 0.25;
+      range.far = visionFar;
+    }
+    if (fx.blindness > 0 || fx.darkness > 0) {
+      const k = Math.max(fx.blindness, fx.darkness);
+      fog3[0] *= 1 - k; fog3[1] *= 1 - k; fog3[2] *= 1 - k;
+      const end = fx.blindness > 0 ? 5 : 15;
+      range.far += (end - range.far) * k;
+      range.near += ((fx.blindness > 0 ? 0 : end * 0.75) - range.near) * k;
+    }
     uniforms.uFogColor.value.setRGB(fog3[0], fog3[1], fog3[2], THREE.SRGBColorSpace);
     fog.color.copy(uniforms.uFogColor.value);
     uniforms.uFogNear.value = range.near;
     uniforms.uFogFar.value = range.far;
     fog.near = Math.max(0, range.near);
     fog.far = range.far;
-    uniforms.uDaylight.value = day;
+    uniforms.uDaylight.value = day * (1 - fx.darkness * 0.8);
+    if (uniforms.uNightVision) uniforms.uNightVision.value = fx.nightVision;
     uniforms.uSkyTint.value.setRGB(tint3[0], tint3[1], tint3[2], THREE.SRGBColorSpace);
     uniforms.uGamma.value = gamma;
     uniforms.uTime.value = time;
     renderer.setClearColor(uniforms.uFogColor.value, 1);
+    if (uniforms.uSkyColor && uniforms.uSkyFogEnd && uniforms.uSkyMix) {
+      uniforms.uSkyColor.value.setRGB(sky3[0], sky3[1], sky3[2], THREE.SRGBColorSpace);
+      uniforms.uSkyFogEnd.value = Math.max(16, skyState.fogEnd);
+      uniforms.uSkyMix.value = dim === "overworld" && submersion === "none" && !(visionFar > 0 && visionFar < renderDistance * 16) && fx.blindness <= 0 && fx.darkness <= 0 ? 1 : 0;
+    }
 
     const lightK = dim === "overworld" ? day : dim === "nether" ? 0.8 : 0.7;
     for (const l of lights) {
@@ -235,17 +251,23 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     const step = Math.min(Math.max(dt, 0), 0.1);
     time += step;
     camera.updateMatrixWorld();
+    const t0 = performance.now();
     updateAtmosphere(step);
+    const t1 = performance.now();
     chunks.update(camera);
+    const t2 = performance.now();
     particles.update(step);
 
     renderer.info.reset();
     renderer.clear();
-    if (dim !== "nether" && submersion === "none") renderer.render(sky.scene, sky.camera);
+    if (dim !== "nether" && submersion === "none" && fx.blindness < 0.5) renderer.render(sky.scene, sky.camera);
     renderer.clearDepth();
     renderer.render(scene, camera);
     renderHand();
     overlays.renderTint(renderer);
+    stats.atmosphere = t1 - t0;
+    stats.upload = t2 - t1;
+    stats.draw = performance.now() - t2;
   }
 
   function resize(w: number, h: number) {
@@ -278,6 +300,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     mats.cutout.dispose();
     mats.translucent.dispose();
     for (const l of lights) { l.ambient.dispose(); l.a.dispose(); l.b.dispose(); }
+    // The next renderer reuses this GL context and its new state cache assumes FLIP_Y is off.
+    renderer.state.reset();
     renderer.dispose();
   }
 
@@ -297,8 +321,17 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     setOutline: (hit: RaycastHit | null, boxes: Aabb[] | null) => overlays.setOutline(hit, boxes),
     setBreak: (hit: RaycastHit | null, progress: number) => overlays.setBreak(hit, progress),
     setUnderwater,
+    setEffects(v: { nightVision: number; blindness: number; darkness: number }) {
+      fx.nightVision = v.nightVision;
+      fx.blindness = v.blindness;
+      fx.darkness = v.darkness;
+    },
+    setVisionFog(far: number) {
+      visionFar = far;
+    },
     addParticles: (e: Extract<GameEvent, { type: "particles" }>) => particles.addParticles(e),
     meshQueue: () => chunks.pending(),
+    stats: () => Object.assign(stats, chunks.counts()),
     render,
     resize,
     dispose,

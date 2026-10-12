@@ -1,14 +1,18 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import type { ClickKind, ContainerView, ItemStack } from "../contracts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ClickKind, ContainerView, ItemStack, SlotRole } from "../contracts";
 import { Text, useGui } from "./gui";
 import { tooltipLines } from "./item-icon";
 import { LAYOUTS, placeSlots } from "./container-layouts";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
 import { arrowUrl, flameUrl, panelUrl } from "./sprites";
 import { useKeyDown } from "./widgets";
-import { paintSteveSkin } from "../player/model";
+import { PlayerDoll } from "./player-doll";
+import { keyFor } from "./settings";
+import { canStack } from "../items/stack";
+import { maxStack } from "../items/registry";
+import type { EmptySlotKind } from "./sprites";
 import { ContainerExtras } from "./container-extras";
 import { CreativeScreen, type CreativeProps } from "./creative-screen";
 
@@ -24,22 +28,15 @@ export interface ContainerScreenProps {
   advanced?: boolean; // F3+H tooltips
 }
 
-const DOLL: [number, number, number, number, number, number][] = [
-  [8, 8, 8, 8, 4, 0], [20, 20, 8, 12, 4, 8], [44, 20, 4, 12, 0, 8], [36, 52, 4, 12, 12, 8], [4, 20, 4, 12, 4, 20], [20, 52, 4, 12, 8, 20],
-];
-let dollUrl: string | null = null;
+const EMPTY_ICON: Partial<Record<SlotRole, EmptySlotKind>> = {
+  armor_head: "helmet",
+  armor_chest: "chestplate",
+  armor_legs: "leggings",
+  armor_feet: "boots",
+  offhand: "shield",
+};
 
-function playerDoll(): string {
-  if (dollUrl) return dollUrl;
-  const skin = paintSteveSkin() as HTMLCanvasElement;
-  const c = document.createElement("canvas");
-  c.width = 16;
-  c.height = 32;
-  const g = c.getContext("2d")!;
-  for (const [u, v, w, h, x, y] of DOLL) g.drawImage(skin, u, v, w, h, x, y, w, h);
-  dollUrl = c.toDataURL();
-  return dollUrl;
-}
+type Drag = { mode: "left" | "right"; slots: number[]; start: number };
 
 const Img = ({ src, x, y, w, h }: { src: string; x: number; y: number; w: number; h: number }) => (
   <img alt="" src={src} width={w} height={h} draggable={false} style={{ position: "absolute", left: x, top: y, imageRendering: "pixelated", pointerEvents: "none" }} />
@@ -60,28 +57,76 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
   const typing = useRef(false);
   const hovered = placed.find((p) => p.slot.index === hover)?.slot ?? null;
   const tip = hovered?.stack ? tooltipLines(hovered.stack, advanced) : extraTip;
-  const { onMouseMove, setTip, setCursor } = usePointer(tip);
+  const { onMouseMove, setTip, setCursor, mouse } = usePointer(tip);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+  dragRef.current = drag;
+  const cursorRef = useRef(view.cursor);
+  cursorRef.current = view.cursor;
   const left = Math.floor((width - L.w) / 2);
   const top = Math.floor((height - L.h) / 2);
 
   useKeyDown((e) => {
     if (typing.current) return;
     const k = e.key.toLowerCase();
-    if (k === "escape" || k === "e") {
+    if (k === "escape" || e.code === keyFor("inventory")) {
       e.preventDefault();
       onClose();
       return;
     }
     if (hover === null) return;
-    if (k >= "1" && k <= "9") onClick(hover, { hotbar: Number(k) - 1 });
-    else if (k === "f") onClick(hover, { hotbar: 40 });
-    else if (k === "q") onClick(hover, e.ctrlKey || e.metaKey ? "drop_all" : "drop");
+    for (let i = 1; i <= 9; i++) if (e.code === keyFor(`hotbar.${i}`)) return onClick(hover, { hotbar: i - 1 });
+    if (e.code === keyFor("swap_offhand")) onClick(hover, { hotbar: 40 });
+    else if (e.code === keyFor("drop")) onClick(hover, e.ctrlKey || e.metaKey ? "drop_all" : "drop");
   });
 
-  const down = (index: number) => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const kind = clickKindOf(e);
+  useEffect(() => {
+    const up = () => {
+      const d = dragRef.current;
+      if (!d) return;
+      setDrag(null);
+      dragRef.current = null;
+      if (d.slots.length > 1) onClick(d.start, { drag: d.mode, slots: d.slots });
+      else click(d.start, d.mode);
+    };
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  });
+
+  const preview = useMemo(() => {
+    const c = view.cursor;
+    if (!drag || drag.slots.length < 2 || !c) return null;
+    const max = maxStack(c.item);
+    const per = drag.mode === "left" ? Math.floor(c.count / drag.slots.length) : 1;
+    const stacks = new Map<number, ItemStack>();
+    let left = c.count;
+    for (const i of drag.slots) {
+      const s = placed.find((p) => p.slot.index === i)?.slot.stack ?? null;
+      const have = s ? s.count : 0;
+      const n = Math.max(0, Math.min(per, max - have, left));
+      left -= n;
+      stacks.set(i, { ...c, count: have + n });
+    }
+    return { stacks, cursor: left > 0 ? { ...c, count: left } : null };
+  }, [drag, view.cursor, placed]);
+
+  const accepts = (index: number) => {
+    const c = cursorRef.current;
+    const s = placed.find((p) => p.slot.index === index)?.slot;
+    if (!c || !s || s.disabled || s.role === "craft_output" || s.role === "smelt_output") return false;
+    return !s.stack || (canStack(s.stack, c) && s.stack.count < maxStack(s.stack.item));
+  };
+
+  const enter = (index: number) => {
+    setHover(index);
+    const d = dragRef.current;
+    const c = cursorRef.current;
+    if (!d || !c || d.slots.includes(index) || !accepts(index)) return;
+    if (d.mode === "left" && d.slots.length >= c.count) return;
+    setDrag({ ...d, slots: [...d.slots, index] });
+  };
+
+  const click = (index: number, kind: ClickKind) => {
     const now = performance.now();
     if (kind === "left" && last.current.index === index && now - last.current.t < 250) {
       onClick(index, "double");
@@ -90,6 +135,19 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
     }
     last.current = { index, t: now };
     onClick(index, kind);
+  };
+
+  const down = (index: number) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const kind = clickKindOf(e);
+    if ((kind === "left" || kind === "right") && view.cursor && !dragRef.current) {
+      const d: Drag = { mode: kind, slots: [index], start: index };
+      dragRef.current = d;
+      setDrag(d);
+      return;
+    }
+    click(index, kind);
   };
 
   const cook = view.progress?.cook ?? 0;
@@ -112,8 +170,8 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
     >
       <div style={{ position: "absolute", left, top, width: L.w, height: L.h }}>
         <Img src={panelUrl(L.w, L.h)} x={0} y={0} w={L.w} h={L.h} />
-        {view.kind === "inventory" && <div style={{ position: "absolute", left: 26, top: 8, width: 49, height: 70, background: "#000" }} />}
-        {view.kind === "inventory" && <Img src={playerDoll()} x={34} y={11} w={32} h={64} />}
+        {view.kind === "inventory" && <div style={{ position: "absolute", left: 26, top: 8, width: 49, height: 70, background: "#000", boxShadow: "inset 1px 1px 0 #373737, inset -1px -1px 0 #fff" }} />}
+        {view.kind === "inventory" && <PlayerDoll x={26} y={8} w={49} h={70} panel={{ left, top }} mouse={mouse} />}
         {view.kind === "inventory" && <Img src={arrowUrl(0, 16, 13)} x={135} y={29} w={16} h={13} />}
         {view.kind === "crafting_table" && <Img src={arrowUrl(0)} x={90} y={35} w={22} h={15} />}
         {(view.kind === "furnace" || view.kind === "blast_furnace" || view.kind === "smoker") && (
@@ -131,16 +189,18 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
             x={p.x}
             y={p.y}
             big={p.big}
-            stack={p.slot.stack}
+            stack={preview?.stacks.get(p.slot.index) ?? p.slot.stack}
             disabled={p.slot.disabled}
+            empty={EMPTY_ICON[p.slot.role]}
+            dragged={!!drag && drag.slots.length > 1 && drag.slots.includes(p.slot.index)}
             hovered={hover === p.slot.index}
-            onEnter={() => setHover(p.slot.index)}
+            onEnter={() => enter(p.slot.index)}
             onLeave={() => setHover((h) => (h === p.slot.index ? null : h))}
             onDown={down(p.slot.index)}
           />
         ))}
       </div>
-      <PointerLayer cursor={view.cursor} tip={tip} setCursor={setCursor} setTip={setTip} />
+      <PointerLayer cursor={preview ? preview.cursor : view.cursor} tip={drag ? [] : tip} setCursor={setCursor} setTip={setTip} />
     </div>
   );
 }

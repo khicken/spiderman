@@ -19,6 +19,7 @@ export interface WorldMeta {
   rain?: number;
   thunder?: number;
   spawn?: { x: number; y: number; z: number };
+  icon?: string; // data URL screenshot taken on quit
 }
 
 export interface SavedChunk {
@@ -28,6 +29,7 @@ export interface SavedChunk {
   heightmap: Int16Array;
   blockEntities?: BlockEntityData[];
   entities?: EntitySave[];
+  waterlogged?: number[];
 }
 
 const DB_NAME = "minecraft";
@@ -142,6 +144,7 @@ export async function saveChunk(worldId: string, chunk: ChunkData): Promise<void
     heightmap: chunk.heightmap,
     blockEntities: chunk.blockEntities,
     entities: chunk.entities,
+    waterlogged: chunk.waterlogged,
   };
   await request("chunks", "readwrite", (s) => s.put(value, chunkSaveKey(worldId, chunk.dim, chunk.cx, chunk.cz)));
 }

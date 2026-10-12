@@ -118,6 +118,7 @@ export interface PoseInput {
   sneaking: boolean;
   usingRight: boolean;
   flying: boolean;
+  riding?: boolean;
 }
 
 function useBasic(m: BoxModel, mat: THREE.MeshBasicMaterial) {
@@ -188,6 +189,12 @@ export function createPlayerModel(): PlayerModel {
         P.right_leg.position.y -= 0.2 / 16;
         P.left_leg.position.y -= 0.2 / 16;
       } else P.body.rotation.x = 0;
+      if (o.riding) {
+        P.right_leg.rotation.set(1.4137, -0.3142, 0.0785);
+        P.left_leg.rotation.set(1.4137, 0.3142, -0.0785);
+        P.right_arm.rotation.x += 0.6283;
+        P.left_arm.rotation.x += 0.6283;
+      }
     },
     dispose() {
       material.dispose();

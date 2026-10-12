@@ -16,6 +16,7 @@ import { END_PORTAL_BEHAVIOR, NETHER_PORTAL_BEHAVIOR } from "./portal";
 import { RANDOM_TICKS, farmlandToDirt, leavesRandomTick, saplingRandomTick } from "./growth";
 import { copperRandomTick, oxidizes } from "./copper";
 import { bedScheduledTick, blockUseFor, composterScheduledTick } from "./interact";
+import { CHEST_BEHAVIOR, placeChest } from "./chest";
 
 const AXIS = new Set([
   "basalt", "polished_basalt", "quartz_pillar", "purpur_pillar", "hay_block", "bone_block", "deepslate", "infested_deepslate",
@@ -57,7 +58,7 @@ function placeFor(b: BlockDef): PlaceFn | undefined {
     case "lantern": return placeLantern;
     case "snow_layer": return placeSnow;
     case "anvil": return placeAnvil;
-    case "chest": return placeFrontToPlayer;
+    case "chest": return placeChest;
     case "hopper": return placeHopper;
   }
   if (AXIS.has(n) || t.includes("logs")) return placeAxis;
@@ -67,6 +68,7 @@ function placeFor(b: BlockDef): PlaceFn | undefined {
   if (n.endsWith("shulker_box") || CLICKED_FACE.has(n)) return placeClickedFace;
   if (FRONT_CUBES.has(n) || n.endsWith("glazed_terracotta")) return placeFrontToPlayer;
   if (n === "cocoa") return placeCocoa;
+  if (n === "tripwire_hook") return placeLadder;
   if (t.includes("hanging_signs") && !n.includes("wall")) return placeHangingSign;
   if ((n.endsWith("_banner") || t.includes("skulls")) && !n.includes("wall")) return placeFloorOrWall;
   if (n.endsWith("_coral_fan")) return placeFloorOrWall;
@@ -169,6 +171,7 @@ function behaviorFor(b: BlockDef): BlockBehavior | null {
   if (b.shape === "campfire") parts.push(campfireInside);
   if (n === "farmland") parts.push(farmlandBehavior);
   if (b.shape === "bed") parts.push({ scheduledTick: bedScheduledTick });
+  if (b.shape === "chest") parts.push(CHEST_BEHAVIOR);
   if (n === "composter") parts.push({ scheduledTick: composterScheduledTick });
   const use = blockUseFor(n, b.shape, t);
   if (use) parts.push({ use });

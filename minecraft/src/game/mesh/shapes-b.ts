@@ -2,6 +2,7 @@ import { box, cross, FL, planeY, planeZ, quad, setFL, setFLBlock, T, tiltA, tilt
 import { F2H, HDX, HDZ, M, OFF, PY, PZ } from "./ctx";
 import { FLAG_LAVA, FLAG_STILL } from "./fluid";
 import { torch } from "./shapes-a";
+import { C, CK, meshCustom } from "./shapes-c";
 import { blockName, blockTex, FULL, idOfName, K, KIND, layerOf, layerOr, REDSTONE_LINK, SH, SHAPE, TEX } from "./tables";
 import { waterAt } from "./tint";
 
@@ -32,6 +33,10 @@ function plain() {
 }
 
 function crossShape() {
+  if (CK[M.id] === C.Fire) {
+    meshCustom();
+    return;
+  }
   plain();
   if (KIND[M.id] & K.OffsetXZ) plantOffset();
   if (M.id === BAMBOO) {
@@ -431,6 +436,10 @@ function lectern() {
   FL[3] = bottom;
   tiltA(1, -22.5, 8, 14, 8);
   box(0, 12, 3, 16, 16, 16);
+  if (!(M.meta & 4)) return;
+  setFL(layerOr("white_wool", top));
+  FL[2] = layerOr("red_wool", top);
+  box(3, 16, 5, 13, 17, 14, 63 & ~D);
 }
 
 function campfire() {

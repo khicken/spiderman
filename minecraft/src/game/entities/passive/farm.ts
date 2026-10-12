@@ -3,7 +3,8 @@ import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { paintBlockTexture } from "../../textures/index";
 import { applyPhysics } from "../ai";
 import { isBaby } from "../geom";
-import { rig, wrap, quadLegs, look, setRot, type VPart } from "../rig";
+import { rig, wrap, quadLegs, look, setRot, overlay, type VPart } from "../rig";
+import { rider, mountPlayer, push, boostFactor, holdsItem } from "../riding";
 import { skin, patches, eyes, type Pix } from "./paint";
 import { animalAI, feed, exchangeHeld, sound, useItem, num, FARM_BIOMES, type AnimalOpts } from "./common";
 import { pixelTexture } from "../block-cube";
@@ -50,10 +51,25 @@ function pigModel() {
     [{ name: "snout", parent: "head", pivot: [0, 0, 0], box: [-2, 0, -9, 4, 3, 1], uv: [16, 16] }],
   );
   const r = rig(skin("pig", 64, 32, paintPig), parts);
+  const saddle = overlay(r, skin("pig_saddle", 64, 32, paintPigSaddle), [{ ...parts[1], inflate: 0.5 }]);
   return wrap(r, (a) => {
     quadLegs(r, a);
     look(r.p.head, a);
+    saddle.root.visible = a.e.data.saddle === true;
   });
+}
+
+function paintPigSaddle(p: Pix) {
+  const L = [0x6b4423, 0x5e3a1d, 0x7a4f2a];
+  const f = p.cuboid(28, 8, 10, 16, 8);
+  p.noise([f.back[0], f.back[1] + 4, 10, 7], L);
+  p.rect([f.back[0], f.back[1] + 4, 10, 1], 0x4a2c14);
+  p.rect([f.back[0] + 2, f.back[1] + 6, 6, 3], 0x8a5a30);
+  for (const side of [f.right, f.left]) {
+    p.noise([side[0], side[1] + 6, 8, 3], L);
+    p.rect([side[0] + 3, side[1] + 6, 2, 3], 0x3a3a3a);
+    p.rect([side[0] + 3, side[1] + 8, 2, 1], 0xb0b0b0);
+  }
 }
 
 const PIG_FOOD = ["carrot", "potato", "beetroot"];
@@ -72,11 +88,24 @@ export const PIG: MobDef = {
   sounds: { ambient: "entity.pig.ambient", hurt: "entity.pig.hurt", death: "entity.pig.death", step: "entity.pig.step" },
   spawn: { dims: ["overworld"], biomes: FARM_BIOMES, light: "grass", group: [4, 4], weight: 10 },
   createModel: pigModel,
+  seat: 0.26,
   tick(e, ctx) {
+    const ctl = rider(ctx, e);
+    if (ctl) {
+      e.yaw = ctl.yaw;
+      e.headYaw = ctl.yaw;
+      const boost = boostFactor(e, ctx);
+      if (holdsItem(ctx, "carrot_on_a_stick")) {
+        push(e, ctx, 1, 0, 0.25 * 0.225 * boost);
+        if (e.body.horizontalCollision && e.body.onGround) e.data._jump = true;
+      }
+      return;
+    }
     animalAI(e, ctx, pigOpts);
   },
   onInteract(e, ctx, held) {
     if (feed(e, ctx, PIG, held, pigOpts)) return true;
+    if (e.data.saddle && !isBaby(e) && held?.item !== "saddle" && held?.item !== "lead") return mountPlayer(ctx, e);
     if (held?.item === "saddle" && !isBaby(e) && !e.data.saddle) {
       e.data.saddle = true;
       useItem(ctx);

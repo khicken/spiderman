@@ -12,7 +12,7 @@ const AWKWARD: Record<string, string> = {
 };
 
 const WATER: Record<string, string> = { nether_wart: "awkward", redstone: "mundane", glowstone_dust: "thick", fermented_spider_eye: "weakness" };
-for (const k of Object.keys(AWKWARD)) if (k !== "breeze_rod" && k !== "slime_block" && k !== "stone" && k !== "cobweb") WATER[k] ??= "mundane";
+for (const k of ["glistering_melon_slice", "ghast_tear", "rabbit_foot", "blaze_powder", "spider_eye", "sugar", "magma_cream"]) WATER[k] = "mundane";
 
 const CORRUPT: Record<string, string> = {
   swiftness: "slowness", long_swiftness: "long_slowness", leaping: "slowness", long_leaping: "long_slowness",
@@ -60,18 +60,21 @@ export function brewData(be: BlockEntityData): { fuel: number; brewTime: number 
   return d as unknown as { fuel: number; brewTime: number };
 }
 
-export function brewTick(be: BlockEntityData): boolean {
+// 0 nothing changed, 1 fuel or progress changed, 2 a brew finished.
+export function brewTick(be: BlockEntityData): 0 | 1 | 2 {
   const items = ensureItems(be, 5);
   const d = brewData(be);
+  let changed: 0 | 1 = 0;
   if (d.fuel <= 0 && items[4]?.item === "blaze_powder") {
     d.fuel = 20;
     items[4] = items[4].count > 1 ? { ...items[4], count: items[4].count - 1 } : null;
+    changed = 1;
   }
   const ok = canBrew(items);
   if (d.brewTime > 0) {
     if (!ok) {
       d.brewTime = 0;
-      return false;
+      return 1;
     }
     d.brewTime--;
     if (d.brewTime === 0) {
@@ -82,13 +85,15 @@ export function brewTick(be: BlockEntityData): boolean {
         if (r) items[i] = r;
       }
       items[3] = ing.count > 1 ? { ...ing, count: ing.count - 1 } : ing.item === "dragon_breath" ? { item: "glass_bottle", count: 1 } : null;
-      return true;
+      return 2;
     }
+    return 1;
   } else if (ok && d.fuel > 0) {
     d.fuel--;
     d.brewTime = 400;
+    return 1;
   }
-  return false;
+  return changed;
 }
 
 export function brewProgress(be: BlockEntityData): Record<string, number> {

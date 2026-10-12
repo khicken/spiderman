@@ -8,11 +8,22 @@ import { createInteraction } from "./interact";
 import { createItemMeshes } from "./item-mesh";
 import { createPlayerModel } from "./model";
 import { applyVanillaMotion, createMotionState, type MotionInput } from "./motion";
-import { blockOn, fitsHeight, fluidAt, makeBody, noCollision, bodyBox, type MoveOpts } from "./physics";
-import { EYE_SNEAK, EYE_STAND, FLY_SPEED, HEIGHT_SNEAK, HEIGHT_STAND, MAX_AIR, SNEAK_MULT, SPRINT_MULT, WALK_SPEED, WIDTH, attackStats, attackStrength } from "./stats";
+import { blockOn, fluidAt, makeBody, noCollision, bodyBox, type MoveOpts } from "./physics";
+import { EYE_STAND, FLY_SPEED, HEIGHT_STAND, MAX_AIR, SNEAK_MULT, SPRINT_MULT, WALK_SPEED, WIDTH, attackStats, attackStrength, ench } from "./stats";
 import { effectLevel, type PlayerState } from "./state";
 import { addEffect, addExhaustion, addXp, damage, heal, onLand, respawnState, tickSurvival } from "./survival";
 import { tickUse } from "./use";
+import { tickGlide, tryStartGlide } from "./elytra";
+import { createPlayerExtras } from "./model-extras";
+import { createScreenFx } from "./screen-fx";
+import { effectView, tickEffectParticles } from "./effects-fx";
+import { tickSpin } from "./ranged";
+import { bubbleAmbient } from "../mechanics/bubble";
+import { bedStandSpot } from "../mechanics/interact";
+import { DIAL_STATE } from "../textures/dials";
+import { GLINT_TIME } from "../entities/armor-layer";
+import { movingSlowly, updatePose as updatePoseOf, updateSwimming } from "./pose";
+import { createRiding } from "./riding";
 
 export type { InputApi } from "./input";
 export { createInput } from "./input";
@@ -26,7 +37,10 @@ export type PlayerHandle = PlayerApi & {
   invertY: boolean;
   fov: number;
   viewBobbing: boolean;
+  fovEffects: number;
   selectHotbar(i: number): void;
+  mountJump(): number | undefined;
+  mountHealth(): number | undefined;
   addEffect(id: string, amplifier: number, ticks: number): void;
   save(): unknown;
   load(data: unknown): void;
@@ -51,6 +65,7 @@ interface PlayerSave {
   fireTicks: number;
   absorption: number;
   dead: boolean;
+  lastDeath?: PlayerState["lastDeath"];
 }
 
 const eyeOut = new THREE.Vector3();
@@ -62,6 +77,22 @@ const dropVel = new THREE.Vector3();
 const D = Math.PI / 180;
 const box = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
 
+function writeDials(p: PlayerState, ctx: GameCtx) {
+  const d = DIAL_STATE;
+  d.dayTime = ctx.time.dayTime;
+  d.dim = ctx.world.dim;
+  d.yaw = p.yaw;
+  d.x = p.body.pos.x;
+  d.z = p.body.pos.z;
+  d.spawnX = p.spawn.x;
+  d.spawnZ = p.spawn.z;
+  d.spin += 0.02 + ctx.random() * 0.03;
+  if (p.lastDeath && p.lastDeath.dim === ctx.world.dim) {
+    d.deathX = p.lastDeath.x;
+    d.deathZ = p.lastDeath.z;
+  } else d.deathX = d.deathZ = NaN;
+}
+
 export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHandle {
   const body = makeBody(WIDTH, HEIGHT_STAND);
   const motion = createMotionState();
@@ -72,6 +103,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   };
   let sprintTap = false;
   let viewBobbing = true;
+  let fovEffects = 1;
   let showHand = true;
   let handHeight = 1;
   let prevHandHeight = 1;
@@ -153,6 +185,15 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     invertY: false,
     fov: 70,
     attackedBy: undefined,
+    swimming: false,
+    fallFlying: false,
+    fallFlyTicks: 0,
+    spinTicks: 0,
+    shieldCooldown: 0,
+    totemTicks: 0,
+    prevJump: false,
+    lastDeath: null,
+    vehicle: null,
     eye() {
       return eyeOut.set(body.pos.x, body.pos.y + p.eyeHeight, body.pos.z);
     },
@@ -188,8 +229,9 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       respawnState(p);
       p.deathTime = 0;
       p.sleeping = false;
-      let y = p.spawn.y;
-      const x = p.spawn.x + 0.5, z = p.spawn.z + 0.5;
+      const spot = bedStandSpot(ctx, Math.floor(p.spawn.x), Math.floor(p.spawn.y), Math.floor(p.spawn.z));
+      let y = spot ? spot[1] : p.spawn.y;
+      const x = spot ? spot[0] : p.spawn.x + 0.5, z = spot ? spot[2] : p.spawn.z + 0.5;
       p.teleport(x, y, z);
       for (let i = 0; i < 64 && !noCollision(ctx.world, bodyBox(body, box)); i++) p.teleport(x, ++y, z);
       interaction.reset();
@@ -199,7 +241,11 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   const model = createPlayerModel();
   const items = createItemMeshes();
   const hand = createHand(model, items);
+  const extras = createPlayerExtras(model, items);
+  const screen = createScreenFx(items);
+  hand.root.add(screen.root);
   const interaction = createInteraction(p, input);
+  const riding = createRiding();
 
   function onAction(a: InputAction) {
     const ctx = getCtx();
@@ -258,12 +304,9 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   }
 
   function updatePose(ctx: GameCtx, wantCrouch: boolean) {
-    if (wantCrouch) body.height = HEIGHT_SNEAK;
-    else if (body.height !== HEIGHT_STAND && (p.gameMode === "spectator" || fitsHeight(ctx.world, body, HEIGHT_STAND))) body.height = HEIGHT_STAND;
-    const crouched = body.height < HEIGHT_STAND;
-    p.eyeHeight += ((crouched ? EYE_SNEAK : EYE_STAND) - p.eyeHeight) * 0.5;
-    if (p.sleeping) p.eyeHeight = 0.2;
-    return crouched;
+    updateSwimming(p, ctx);
+    updatePoseOf(p, ctx, wantCrouch);
+    return movingSlowly(p);
   }
 
   function stepSounds(ctx: GameCtx, dx: number, dy: number, dz: number, crouched: boolean) {
@@ -310,7 +353,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     const canStart = enoughFood && !p.using && fwd >= 0.8 && !p.hasEffect("blindness") && !crouched && (!body.inWater || eyeWater);
     if (!p.sprinting && canStart && on && (input.sprint || sprintTap)) p.sprinting = true;
     sprintTap = false;
-    if (p.sprinting && (!on || fwd < 0.8 || !enoughFood || (body.horizontalCollision && !p.flying) || (body.inWater && !eyeWater) || p.using)) p.sprinting = false;
+    if (p.sprinting && (!on || fwd < 0.8 || !enoughFood || (body.horizontalCollision && !p.flying) || (body.inWater && !eyeWater && !p.swimming) || (p.swimming && !body.inWater) || p.using)) p.sprinting = false;
     if (p.flying && on) {
       if (input.sneak) body.vel.y -= FLY_SPEED * 3;
       if (input.jump) body.vel.y += FLY_SPEED * 3;
@@ -321,6 +364,15 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     inp.strafe = str;
     inp.yaw = p.yaw;
     inp.jumping = on && input.jump && !p.flying;
+    const jumpNow = on && input.jump;
+    if (jumpNow && !p.prevJump && !body.onGround && !body.onClimbable && body.vel.y < 0) tryStartGlide(p, ctx);
+    p.prevJump = jumpNow;
+    inp.swimming = p.swimming;
+    inp.lookY = Math.sin(p.pitch);
+    inp.pitch = p.pitch;
+    inp.gliding = p.fallFlying;
+    inp.depthStrider = ench(ctx.inventory.slots[39], "depth_strider");
+    inp.dolphin = p.hasEffect("dolphins_grace") > 0;
     inp.sneaking = crouched || sneakKey;
     inp.sprinting = p.sprinting;
     inp.speed = speedAttr();
@@ -331,10 +383,12 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     inp.jumpBoost = p.hasEffect("jump_boost");
     inp.edgeGuard = !p.flying;
     inp.weaving = p.hasEffect("weaving") > 0;
+    inp.boots = ctx.inventory.slots[39]?.item === "leather_boots";
     moveOpts.ctx = ctx;
     const vy = body.vel.y;
     const x0 = body.pos.x, y0 = body.pos.y, z0 = body.pos.z;
     const landed = applyVanillaMotion(w, body, inp, motion, moveOpts);
+    tickGlide(p, ctx, motion.wallSpeed);
     if (p.flying) body.vel.y = vy * 0.6;
     if (p.flying) body.fallDistance = 0;
     if (p.flying && body.onGround && p.gameMode === "creative") p.flying = false;
@@ -388,6 +442,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       const t = Math.min(1, p.using.ticks / 20);
       fovT *= 1 - t * t * 0.15;
     }
+    fovT = 1 + (fovT - 1) * fovEffects;
     if (p.using?.kind === "spyglass" && p.thirdPerson === 0) fovT = 0.1;
     p.prevFovMod = p.fovMod;
     p.fovMod += (Math.max(0.1, Math.min(1.5, fovT)) - p.fovMod) * 0.5;
@@ -400,6 +455,14 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     set viewBobbing(v: boolean) {
       viewBobbing = v;
     },
+    get fovEffects() {
+      return fovEffects;
+    },
+    set fovEffects(v: number) {
+      fovEffects = v;
+    },
+    mountJump: () => riding.jumpBar(p, getCtx()),
+    mountHealth: () => riding.mountHealth(p, getCtx()),
     selectHotbar(i: number) {
       const inv = getCtx().inventory;
       if (i >= 0 && i < 9) inv.selected = i;
@@ -414,10 +477,15 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       p.prevWalkDist = p.walkDist;
       p.prevBob = p.bob;
       if (p.dead) p.deathTime++;
-      if (!p.sleeping) tickMovement(ctx);
+      if (!p.sleeping && !riding.tick(p, ctx, input)) tickMovement(ctx);
       tickSurvival(p, ctx);
       interaction.tick(ctx);
       tickUse(p, ctx, input);
+      tickSpin(p, ctx);
+      tickEffectParticles(p, ctx);
+      if (p.totemTicks > 0) p.totemTicks--;
+      bubbleAmbient(ctx, body.pos.x, body.pos.y, body.pos.z);
+      writeDials(p, ctx);
       tickAnimation(ctx);
     },
     frame(_dt: number, pt: number) {
@@ -438,13 +506,13 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
         if (wheel !== 0) ctx.inventory.selected = (((ctx.inventory.selected + wheel) % 9) + 9) % 9;
       } else input.consumeWheel();
       interaction.updateTarget(ctx);
-      updateCamera(p, ctx, pt, bob, viewBobbing);
+      updateCamera(p, ctx, pt, bob, viewBobbing, effectView(p, pt).nausea);
       const light = lightAt(ctx, body.pos.x, body.pos.y + p.eyeHeight, body.pos.z, p.hasEffect("night_vision") > 0);
       const third = p.thirdPerson !== 0 && p.gameMode !== "spectator";
       const root = model.model.root;
       root.visible = third;
       if (third) {
-        modelPos.set(lerp(p.prevPos.x, body.pos.x, pt), lerp(p.prevPos.y, body.pos.y, pt) - (body.height < HEIGHT_STAND ? 0.125 : 0), lerp(p.prevPos.z, body.pos.z, pt));
+        modelPos.set(lerp(p.prevPos.x, body.pos.x, pt), lerp(p.prevPos.y, body.pos.y, pt) - (p.pose === "crouching" ? 0.125 : 0), lerp(p.prevPos.z, body.pos.z, pt));
         root.position.copy(modelPos);
         model.pose({
           bodyYaw: lerp(p.prevBodyYaw, p.bodyYaw, pt),
@@ -453,11 +521,13 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
           limbSwing: walkPos - walkSpeed * (1 - pt),
           limbAmount: lerp(prevWalkSpeed, walkSpeed, pt),
           attack: lerp(p.prevAttackAnim, p.attackAnim, pt),
-          sneaking: body.height < HEIGHT_STAND,
+          sneaking: p.pose === "crouching",
           usingRight: p.using?.kind === "bow" || p.using?.kind === "crossbow",
           flying: p.flying,
+          riding: p.vehicle != null,
         });
         model.setLight(light, p.hurtTime > 0 || p.dead);
+        extras.update(p, ctx, pt, light, p.hurtTime > 0 || p.dead);
         hand.setThirdPerson(model.model.parts.right_arm, getCtx().inventory.held());
       }
       const u = p.using;
@@ -472,6 +542,13 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       hf.useTicks = u ? u.ticks + pt : 0;
       hf.light = light;
       hf.visible = showHand && !third && !p.dead && p.gameMode !== "spectator";
+      hf.off = ctx.inventory.slots[40] ?? null;
+      const scoping = p.using?.kind === "spyglass" && p.thirdPerson === 0;
+      if (scoping) hf.visible = false;
+      screen.update(ctx.renderer.camera, scoping && !p.dead, p.totemTicks, pt);
+      const fxv = effectView(p, pt);
+      ctx.renderer.setEffects?.(fxv);
+      GLINT_TIME.value += _dt;
       hand.update(hf);
     },
     save(): unknown {
@@ -494,6 +571,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
         fireTicks: p.fireTicks,
         absorption: p.absorption,
         dead: p.dead,
+        lastDeath: p.lastDeath,
       };
       return s;
     },
@@ -515,13 +593,14 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       p.xpTotal = num(s.xpTotal, 0);
       if (s.gameMode === "survival" || s.gameMode === "creative" || s.gameMode === "adventure" || s.gameMode === "spectator") p.gameMode = s.gameMode;
       p.flying = !!s.flying && p.gameMode !== "survival" && p.gameMode !== "adventure";
-      if (s.spawn && typeof s.spawn === "object") p.spawn = { x: num(s.spawn.x, 0), y: num(s.spawn.y, 80), z: num(s.spawn.z, 0) };
+      if (s.spawn && typeof s.spawn === "object") p.spawn = { x: num(s.spawn.x, 0), y: num(s.spawn.y, 80), z: num(s.spawn.z, 0), ...((s.spawn as { bed?: boolean }).bed ? { bed: true } : {}) };
       p.effects.length = 0;
       if (Array.isArray(s.effects)) for (const e of s.effects) if (e && typeof e.id === "string") p.effects.push({ id: e.id, amplifier: num(e.amplifier, 0), ticks: num(e.ticks, 0) });
       p.maxHealth = 20 + 4 * p.hasEffect("health_boost");
       p.fireTicks = num(s.fireTicks, 0);
       p.absorption = num(s.absorption, 0);
       p.dead = !!s.dead || p.health <= 0;
+      p.lastDeath = s.lastDeath && typeof s.lastDeath.x === "number" ? s.lastDeath : null;
     },
     dispose() {
       offAction();
@@ -529,6 +608,8 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       model.model.root.removeFromParent();
       if (ctx?.renderer?.scene.userData.hand === hand.root) delete ctx.renderer.scene.userData.hand;
       hand.dispose();
+      extras.dispose();
+      screen.dispose();
       model.dispose();
       items.dispose();
     },

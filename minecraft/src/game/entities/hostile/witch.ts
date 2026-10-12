@@ -1,67 +1,30 @@
 import * as THREE from "three";
-import type { Entity, GameCtx, MobDef, MobModel } from "../../contracts";
+import type { Entity, GameCtx, ItemStack, MobDef, MobModel } from "../../contracts";
+import { POTION_DEFS, potionColor } from "../../items/potions";
+import { AREA_EFFECT_CLOUD, applyPotion as applyPotionFx, potionImpact } from "../../systems/brewing/effects";
 import { applyPhysics, canSee, clearPath, idleLook, lookAt, moveTo } from "../ai";
 import { segmentBody } from "../geom";
 import { addEffect, hasEffect, hurtAmount, idle, nearby, num, pick, shootVel, sound, targetInfo, updateTarget, eyeY } from "./brain";
 import { witchModel } from "./looks-nether";
 import { MONSTER_BIOMES } from "./spawns";
 
-export const POTIONS: Record<string, [effect: string, ticks: number, amplifier: number, color: number]> = {
-  harming: ["instant_damage", 1, 0, 0x430a09],
-  strong_harming: ["instant_damage", 1, 1, 0x430a09],
-  healing: ["instant_health", 1, 0, 0xf82423],
-  strong_healing: ["instant_health", 1, 1, 0xf82423],
-  slowness: ["slowness", 1800, 0, 0x5a6c81],
-  poison: ["poison", 900, 0, 0x4e9331],
-  weakness: ["weakness", 1800, 0, 0x484d48],
-  fire_resistance: ["fire_resistance", 3600, 0, 0xe49a3a],
-  water_breathing: ["water_breathing", 3600, 0, 0x2e5299],
-  swiftness: ["speed", 3600, 0, 0x7cafc6],
-  regeneration: ["regeneration", 900, 0, 0xcd5cab],
-  strength: ["strength", 3600, 0, 0x932423],
-  invisibility: ["invisibility", 3600, 0, 0x7f8392],
-  night_vision: ["night_vision", 3600, 0, 0x1f1fa1],
-  leaping: ["jump_boost", 3600, 0, 0x22ff4c],
-  slow_falling: ["slow_falling", 1800, 0, 0xf3cfb9],
-  turtle_master: ["slowness", 400, 3, 0x755a6d],
-};
-
-const UNDEAD = new Set(["zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "phantom", "zombified_piglin", "wither", "zombie_horse", "skeleton_horse", "zoglin"]);
+export const POTIONS: Record<string, [effect: string, ticks: number, amplifier: number, color: number]> = Object.fromEntries(
+  Object.entries(POTION_DEFS).filter(([, d]) => d.effects.length).map(([k, d]) => [k, [d.effects[0][0], d.effects[0][1], d.effects[0][2], potionColor(k)]]),
+);
 
 export function applyPotion(ctx: GameCtx, name: string, target: Entity | "player", scale: number, owner?: Entity): void {
-  const p = POTIONS[name];
-  if (!p) return;
-  let [id, ticks, amp] = p;
-  if (target !== "player" && UNDEAD.has(target.type)) {
-    if (id === "instant_damage") id = "instant_health";
-    else if (id === "instant_health") id = "instant_damage";
-    else if (id === "poison" || id === "regeneration") return;
-  }
-  if (id === "instant_damage") {
-    const dmg = Math.floor(scale * (6 << amp) + 0.5);
-    if (target === "player") ctx.player.damage(dmg, "magic", owner);
-    else ctx.entities.damage(target.id, dmg, "magic", owner);
-    return;
-  }
-  if (id === "instant_health") {
-    const heal = Math.floor(scale * (4 << amp) + 0.5);
-    if (target === "player") ctx.player.heal(heal);
-    else target.health = Math.min(target.maxHealth, target.health + heal);
-    return;
-  }
-  const t = Math.floor(ticks * scale + 0.5);
-  if (t > 20) addEffect(target === "player" ? ctx.player.effects : target.effects, id, t, amp);
+  applyPotionFx(ctx, name, target, scale, owner);
 }
 
 const pv = new THREE.Vector3();
 
-// Thrown splash potion (vanilla entity id "potion"): data.potion names a POTIONS entry.
 function potionTick(e: Entity, ctx: GameCtx): void {
   e.data.noGravity = true;
   const b = e.body;
   const v = b.vel;
   const len = v.length();
   let hit = false;
+  let direct: Entity | "player" | undefined;
   if (len > 1e-6) {
     pv.copy(v).multiplyScalar(1 / len);
     const bh = ctx.world.raycast(b.pos, pv, len, false);
@@ -72,12 +35,16 @@ function potionTick(e: Entity, ctx: GameCtx): void {
   }
   if (!hit && e.age > 2) {
     const pb = ctx.player.body;
-    if (!ctx.player.dead && segmentBody(b.pos.x, b.pos.y, b.pos.z, v.x, v.y, v.z, pb, 0.3) >= 0 && e.data.owner !== "player") hit = true;
+    if (!ctx.player.dead && segmentBody(b.pos.x, b.pos.y, b.pos.z, v.x, v.y, v.z, pb, 0.3) >= 0 && e.data.owner !== "player") {
+      hit = true;
+      direct = "player";
+    }
     else {
       for (const o of nearby(ctx, e, 3)) {
         if (o === e || o.dead || o.id === e.data.owner || o.type === "potion") continue;
         if (segmentBody(b.pos.x, b.pos.y, b.pos.z, v.x, v.y, v.z, o.body, 0.3) >= 0) {
           hit = true;
+          direct = o;
           break;
         }
       }
@@ -85,7 +52,7 @@ function potionTick(e: Entity, ctx: GameCtx): void {
   }
   if (hit || e.age > 600) {
     e.data._pa = e.age;
-    splash(e, ctx);
+    splash(e, ctx, direct);
     return;
   }
   b.pos.add(v);
@@ -94,21 +61,16 @@ function potionTick(e: Entity, ctx: GameCtx): void {
   e.data._pa = e.age;
 }
 
-function splash(e: Entity, ctx: GameCtx): void {
-  const name = (e.data.potion as string) ?? "water";
+function potionName(e: Entity): string {
+  const item = e.data.item as ItemStack | undefined;
+  return String(e.data.potion ?? item?.data?.potion ?? "water");
+}
+
+function splash(e: Entity, ctx: GameCtx, direct?: Entity | "player"): void {
   const p = e.body.pos;
-  const color = POTIONS[name]?.[3] ?? 0x385dc6;
-  ctx.emit({ type: "particles", kind: "splash", x: p.x, y: p.y, z: p.z, count: 24, color });
-  ctx.emit({ type: "sound", name: "entity.splash_potion.break", x: p.x, y: p.y, z: p.z });
+  const item = e.data.item as ItemStack | undefined;
   const owner = typeof e.data.owner === "number" ? ctx.entities.get(e.data.owner) : undefined;
-  const pb = ctx.player.body;
-  const pd = pb.pos.distanceTo(p);
-  if (pd < 4 && !ctx.player.dead && ctx.player.gameMode !== "spectator" && ctx.player.gameMode !== "creative") applyPotion(ctx, name, "player", 1 - pd / 4, owner);
-  for (const o of nearby(ctx, e, 4)) {
-    if (o === e || o.dead || o.type === "potion" || o.type === "item") continue;
-    const d = o.body.pos.distanceTo(p);
-    if (d < 4) applyPotion(ctx, name, o, 1 - d / 4, owner);
-  }
+  potionImpact(ctx, p.x, p.y, p.z, potionName(e), item?.item === "lingering_potion" || e.data.lingering === true, owner, direct);
   e.data._remove = true;
 }
 
@@ -123,10 +85,10 @@ function potionModel(): MobModel {
   return {
     root,
     animate(e, pt) {
-      const name = (e.data.potion as string) ?? "water";
+      const name = potionName(e);
       if (name !== shown) {
         shown = name;
-        mat.color.setHex(POTIONS[name]?.[3] ?? 0x385dc6);
+        mat.color.setHex(potionColor(name));
         mat.userData.base = mat.color.clone();
       }
       mesh.rotation.x = (e.age + pt) * 0.4;
@@ -244,4 +206,5 @@ export const WITCH_MOBS: MobDef[] = [
     createModel: potionModel,
     tick: potionTick,
   },
+  AREA_EFFECT_CLOUD,
 ];

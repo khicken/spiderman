@@ -6,6 +6,7 @@ import { textWidth } from "./font";
 import { Text, useGui } from "./gui";
 import { ItemIcon } from "./item-icon";
 import { StatusBars } from "./hud-status";
+import { HudOverlays } from "./hud-overlays";
 import { EFFECTS } from "./data";
 import { barUrl, hotbarUrl, offhandUrl, panelUrl, pixelUrl, selectionUrl } from "./sprites";
 
@@ -20,6 +21,7 @@ export interface HudProps {
   actionBar?: TimedText;
   hurtAt?: number; // performance.now() of the last hurt, for the red flash
   pumpkin?: boolean;
+  vignette?: boolean; // fancy graphics
 }
 
 const HUD_CSS = `
@@ -42,7 +44,7 @@ const BOSS: Record<string, [number, number]> = {
 
 const lighten = (c: number) => (Math.min(255, ((c >> 16) & 255) + 50) << 16) | (Math.min(255, ((c >> 8) & 255) + 50) << 8) | Math.min(255, (c & 255) + 50);
 
-const effectIcon = (id: string) => {
+export const effectIcon = (id: string) => {
   const c = EFFECTS[id]?.color ?? 0x808080;
   return pixelUrl(`effect:${id}`, 18, 18, (x, y) => {
     const dx = x - 8.5;
@@ -59,7 +61,7 @@ const effectIcon = (id: string) => {
 
 const abs = (x: number, y: number, w: number, h: number, extra?: CSSProperties): CSSProperties => ({ position: "absolute", left: x, top: y, width: w, height: h, ...extra });
 
-export function Hud({ state, title, actionBar, hurtAt, pumpkin }: HudProps) {
+export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudProps) {
   const { width, height } = useGui();
   const cx = Math.floor(width / 2);
   const survival = state.gameMode === "survival" || state.gameMode === "adventure";
@@ -70,8 +72,7 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin }: HudProps) {
   return (
     <div style={abs(0, 0, width, height, { pointerEvents: "none" })}>
       <style>{HUD_CSS}</style>
-      {pumpkin && <div style={abs(0, 0, width, height, { background: "radial-gradient(ellipse 22% 18% at 40% 45%, transparent 60%, rgba(30,15,0,0.97) 100%), radial-gradient(ellipse 22% 18% at 60% 45%, transparent 60%, rgba(30,15,0,0.97) 100%)", backgroundBlendMode: "darken" })} />}
-      {state.frozen && <div style={abs(0, 0, width, height, { boxShadow: "inset 0 0 60px 20px rgba(200,235,255,0.6)" })} />}
+      <HudOverlays state={pumpkin ? { ...state, pumpkin } : state} width={width} height={height} vignette={vignette} />
       {hurtAt !== undefined && (
         <div key={hurtAt} style={abs(0, 0, width, height, { background: "radial-gradient(ellipse at center, transparent 45%, rgba(255,0,0,0.55) 100%)", animation: "mc-hurt 0.5s ease-out forwards" })} />
       )}
@@ -92,11 +93,22 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin }: HudProps) {
 
       {survival && (
         <>
-          <img alt="" src={barUrl("xp_bg", 182, 0x2a2a2a, 0x202020, 0x181818, 20)} width={182} height={5} style={abs(hx, height - 29, 182, 5, { imageRendering: "pixelated" })} />
-          <div style={abs(hx, height - 29, Math.floor(state.xpProgress * 183), 5, { overflow: "hidden" })}>
-            <img alt="" src={barUrl("xp_fill", 182, 0xa0ff60, 0x80ff20, 0x4c9a12, 20)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
-          </div>
-          {state.xpLevel > 0 && <XpLevel level={state.xpLevel} x={cx} y={height - 35} />}
+          {state.mountJump !== undefined ? (
+            <>
+              <img alt="" src={barUrl("jump_bg", 182, 0x3a3a52, 0x2c2c40, 0x1c1c2a, 0)} width={182} height={5} style={abs(hx, height - 29, 182, 5, { imageRendering: "pixelated" })} />
+              <div style={abs(hx, height - 29, Math.floor(state.mountJump * 183), 5, { overflow: "hidden" })}>
+                <img alt="" src={barUrl("jump_fill", 182, 0x9ab4ff, 0x6a8cf0, 0x3a50a0, 0)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
+              </div>
+            </>
+          ) : (
+            <>
+              <img alt="" src={barUrl("xp_bg", 182, 0x2a2a2a, 0x202020, 0x181818, 20)} width={182} height={5} style={abs(hx, height - 29, 182, 5, { imageRendering: "pixelated" })} />
+              <div style={abs(hx, height - 29, Math.floor(state.xpProgress * 183), 5, { overflow: "hidden" })}>
+                <img alt="" src={barUrl("xp_fill", 182, 0xa0ff60, 0x80ff20, 0x4c9a12, 20)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
+              </div>
+            </>
+          )}
+          {state.xpLevel > 0 && state.mountJump === undefined && <XpLevel level={state.xpLevel} x={cx} y={height - 35} />}
           <StatusBars state={state} width={width} height={height} />
         </>
       )}
@@ -135,8 +147,7 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin }: HudProps) {
       })}
 
       <Effects state={state} width={width} />
-      {state.debug && <DebugOverlay lines={state.debug} width={width} />}
-      {state.sleeping > 0 && <div style={abs(0, 0, width, height, { background: `rgba(16,16,32,${Math.min(1, state.sleeping)})` })} />}
+      <div style={abs(0, 0, width, height, { background: "rgb(16,16,32)", opacity: state.sleeping > 0 ? 0.86 * Math.min(1, state.sleeping) : 0, transition: state.sleeping > 0 ? "opacity 5s linear" : "opacity 0.5s linear" })} />
     </div>
   );
 }
@@ -170,12 +181,15 @@ function Effects({ state, width }: { state: HudState; width: number }) {
         const harmful = info?.kind === "bad";
         const n = harmful ? ++bad : ++good;
         const x = width - 25 * n;
-        const y = harmful ? 27 : 1;
+        const y = harmful ? 36 : 1;
         const ending = e.ticks <= 200;
+        const sec = Math.floor(e.ticks / 20);
+        const time = e.ticks >= 2147483647 / 2 ? "**:**" : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
         return (
           <div key={e.id} style={abs(x, y, 24, 24, { animation: ending ? "mc-blink 0.5s steps(1) infinite" : undefined })}>
             <img alt="" src={panelUrl(24, 24, 0x8b8b8b)} width={24} height={24} style={abs(0, 0, 24, 24, { imageRendering: "pixelated" })} />
             <img alt="" src={effectIcon(e.id)} width={18} height={18} style={abs(3, 3, 18, 18, { imageRendering: "pixelated" })} />
+            <Text text={time} color={0xffffff} x={12 - Math.floor(textWidth(time) / 2)} y={25} />
           </div>
         );
       })}
@@ -187,11 +201,15 @@ function Effects({ state, width }: { state: HudState; width: number }) {
 export function DebugOverlay({ lines, width }: { lines: Record<string, string>; width: number }) {
   const left: string[] = [];
   const right: string[] = [];
+  const extra: string[] = [];
   for (const [k, v] of Object.entries(lines)) {
-    if (k.startsWith("r:")) right.push(v);
-    else if (k.startsWith("l:")) left.push(v);
-    else left.push(v ? `${k}: ${v}` : "");
+    const side = k.startsWith("r:") ? right : k.startsWith("l:") ? left : null;
+    const n = side ? Number(k.slice(2)) : NaN;
+    if (side && Number.isInteger(n) && n >= 0 && n < 64) side[n] = v;
+    else extra.push(v ? `${k}: ${v}` : "");
   }
+  left.push(...extra);
+  for (const list of [left, right]) for (let i = 0; i < list.length; i++) list[i] ??= "";
   const col = (list: string[], side: "l" | "r") =>
     list.map((t, i) => {
       if (!t) return null;

@@ -1,12 +1,13 @@
 import * as THREE from "three";
-import type { Effect, Entity, GameCtx } from "../contracts";
+import type { Effect, Entity, GameCtx, ItemStack } from "../contracts";
 import { AIR, Face, idOf } from "../contracts";
 import { blockByName, OPAQUE } from "../blocks/registry";
 import { segmentBody, bodiesTouch } from "./geom";
 import { explodeAt, mobExplode, windBurst } from "./explosion";
 import { isMob } from "./registry";
-import { applyPotion } from "./hostile";
+import { applyPotion, potionImpact } from "../systems/brewing/effects";
 import { hitTarget } from "../mechanics/redstone";
+import { shieldFaces } from "../player/survival";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -163,7 +164,8 @@ function stick(e: Entity, ctx: GameCtx, h: Hit) {
   hitTarget(ctx, h.bx!, h.by!, h.bz!, b.pos.x, b.pos.y, b.pos.z, h.face ?? Face.Up, true);
 }
 
-function applyArrowEffects(e: Entity, list: Effect[]) {
+function applyArrowEffects(e: Entity, list: Effect[], ctx: GameCtx, t: Entity | "player") {
+  if (typeof e.data.potion === "string") applyPotion(ctx, e.data.potion, t, 1, undefined, 0.125);
   const fx = e.data.effects as Effect[] | undefined;
   if (!Array.isArray(fx)) return;
   for (const f of fx) {
@@ -181,7 +183,15 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
   const owner = ownerEntity(ctx, e.data.owner as Owner);
   const punch = (e.data.punch as number) ?? 0;
   if (h.kind === "player") {
+    const fx = b.pos.x - b.vel.x, fz = b.pos.z - b.vel.z;
+    const blocked = shieldFaces(ctx.player, fx, fz);
+    ctx.player.damageFrom = { x: fx, y: b.pos.y, z: fz };
     ctx.player.damage(dmg, "arrow", owner && owner !== "player" ? owner : undefined);
+    if (blocked) {
+      b.vel.multiplyScalar(-0.1);
+      e.data.owner = undefined;
+      return;
+    }
     const hl = Math.hypot(b.vel.x, b.vel.z);
     if (hl > 1e-4) {
       const k = (punch * 0.6 + 0.4) / hl;
@@ -189,7 +199,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
       ctx.player.body.vel.z += b.vel.z * k * 0.5;
       ctx.player.body.vel.y = Math.max(ctx.player.body.vel.y, 0.1);
     }
-    applyArrowEffects(e, ctx.player.effects);
+    applyArrowEffects(e, ctx.player.effects, ctx, "player");
   } else if (h.entity) {
     const t = h.entity;
     if (t.type === "enderman") {
@@ -200,7 +210,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
     ctx.entities.damage(t.id, dmg, "arrow", owner);
     if (punch > 0) ctx.entities.knockback(t.id, b.vel.x, b.vel.z, punch * 0.6);
     if (e.data.type === "spectral_arrow" || e.type === "spectral_arrow") t.effects.push({ id: "glowing", amplifier: 0, ticks: 200 });
-    applyArrowEffects(e, t.effects);
+    applyArrowEffects(e, t.effects, ctx, t);
     if (owner === "player") ctx.emit({ type: "sound", name: "entity.arrow.hit_player", volume: 0.18, pitch: 0.45 });
     const pierce = (e.data.pierce as number) ?? 0;
     if (pierce > 0) {
@@ -255,7 +265,10 @@ function impact(e: Entity, ctx: GameCtx, h: Hit) {
     const blaze = h.entity.type === "blaze" && e.type === "snowball";
     ctx.entities.damage(h.entity.id, blaze ? 3 : 0, e.type === "snowball" ? "generic" : "generic", owner);
   } else if (h.kind === "player") ctx.player.damage(0, "generic", owner && owner !== "player" ? owner : undefined);
-  if (e.type === "potion") splash(e, ctx, h, owner);
+  if (e.type === "potion" && e.data.lingering) {
+    ctx.emit({ type: "sound", name: "entity.splash_potion.break", x: p.x, y: p.y, z: p.z });
+    ctx.entities.spawn("area_effect_cloud", p.x, Math.floor(p.y + 0.1), p.z, { potion: e.data.potion, color: e.data.color });
+  } else if (e.type === "potion") splash(e, ctx, h, owner);
   else if (e.type === "experience_bottle") {
     ctx.emit({ type: "sound", name: "entity.splash_potion.break", x: p.x, y: p.y, z: p.z });
     ctx.emit({ type: "particles", kind: "splash", x: p.x, y: p.y, z: p.z, count: 12, color: 0x33ff66 });
@@ -284,23 +297,10 @@ function impact(e: Entity, ctx: GameCtx, h: Hit) {
 
 function splash(e: Entity, ctx: GameCtx, h: Hit, owner: Entity | "player" | undefined) {
   const p = e.body.pos;
-  const potion = (e.data.potion as string) ?? "water";
-  ctx.emit({ type: "sound", name: "entity.splash_potion.break", x: p.x, y: p.y, z: p.z });
-  ctx.emit({ type: "particles", kind: "splash", x: p.x, y: p.y, z: p.z, count: 24, color: (e.data.color as number) ?? 0x385dc6 });
-  const src = owner && owner !== "player" ? owner : undefined;
-  ctx.entities.near(p.x, p.y, p.z, 4.5, scratch);
-  const list = scratch.slice();
-  scratch.length = 0;
-  for (const o of list) {
-    if (o.dead || !isMob(o.type)) continue;
-    const d = Math.hypot(o.body.pos.x - p.x, o.body.pos.y + o.body.height / 2 - p.y, o.body.pos.z - p.z);
-    if (d > 4) continue;
-    const scale = h.entity === o ? 1 : 1 - d / 4;
-    applyPotion(ctx, potion, o, scale, src);
-  }
-  const pl = ctx.player;
-  const d = Math.hypot(pl.body.pos.x - p.x, pl.body.pos.y + 0.9 - p.y, pl.body.pos.z - p.z);
-  if (!pl.dead && d <= 4 && pl.gameMode !== "spectator") applyPotion(ctx, potion, "player", h.kind === "player" ? 1 : 1 - d / 4, src);
+  const item = e.data.item as ItemStack | undefined;
+  const potion = String(e.data.potion ?? item?.data?.potion ?? "water");
+  const direct = h.kind === "player" ? "player" : h.entity;
+  potionImpact(ctx, p.x, p.y, p.z, potion, item?.item === "lingering_potion" || e.data.lingering === true, owner && owner !== "player" ? owner : undefined, direct);
 }
 
 // ---------- Wind charges and fireballs ----------

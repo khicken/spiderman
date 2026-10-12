@@ -116,12 +116,12 @@ export function voidFactor(camY: number, bottomY: number): number {
 
 export function cloudColor(angle: number, rain: number, thunder: number, out: Rgb): Rgb {
   const g = sunHeight(angle);
-  let r = g * 0.9 + 0.1, gr = g * 0.9 + 0.1, b = g * 0.85 + 0.15;
+  let r = 1, gr = 1, b = 1;
   if (rain > 0) {
-    const l = (r * 0.3 + gr * 0.59 + b * 0.11) * 0.6;
-    const m = 1 - rain * 0.95;
-    r = r * m + l * (1 - m); gr = gr * m + l * (1 - m); b = b * m + l * (1 - m);
+    const l = 0.6, m = 1 - rain * 0.95;
+    r = gr = b = m + l * (1 - m);
   }
+  r *= g * 0.9 + 0.1; gr *= g * 0.9 + 0.1; b *= g * 0.85 + 0.15;
   if (thunder > 0) {
     const l = (r * 0.3 + gr * 0.59 + b * 0.11) * 0.2;
     const m = 1 - thunder * 0.95;

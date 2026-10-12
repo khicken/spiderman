@@ -3,9 +3,13 @@ import type { Aabb, BlockBehavior, BlockState, RaycastHit, WorldApi } from "../c
 import { Face, MAX_Y, MIN_Y } from "../contracts";
 import { BLOCKS, IS_FLUID, SOLID } from "../blocks/registry";
 import type { Store } from "./store";
+import { collideHint } from "./collide-hint";
 
 const POOL = 4096;
 const FULL: Aabb[] = [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 }];
+const SCAFFOLD_TOP: Aabb = { minX: 0, minY: 0.875, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 };
+const SCAFFOLD_ID = BLOCKS.find((b) => b.name === "scaffolding")?.id ?? -1;
+const POWDER_ID = BLOCKS.find((b) => b.name === "powder_snow")?.id ?? -1;
 
 export interface Query {
   getBlock(x: number, y: number, z: number): BlockState;
@@ -70,7 +74,15 @@ export function createQuery(store: Store, behaviors: Record<string, BlockBehavio
             continue;
           }
           const s = c.blocks[((y - MIN_Y) << 8) | col];
-          if (!SOLID[s & 0xfff]) continue;
+          const sid = s & 0xfff;
+          if (sid === SCAFFOLD_ID || sid === POWDER_ID) {
+            const h = collideHint;
+            if (!h.active || h.descend || h.feetY < y + 1 - 1e-5) continue;
+            if (sid === SCAFFOLD_ID) pushBox(out, box, SCAFFOLD_TOP, x, y, z);
+            else if (h.boots && h.fall <= 2.5) pushBox(out, box, FULL[0], x, y, z);
+            continue;
+          }
+          if (!SOLID[sid]) continue;
           const list = shapeBoxes(s, x, y, z) ?? FULL;
           for (let k = 0; k < list.length; k++) pushBox(out, box, list[k], x, y, z);
         }

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { DamageSource, Entity, GameCtx } from "../contracts";
+import type { DamageSource, Entity, GameCtx, PlayerApi } from "../contracts";
 import { MIN_Y, idOf, metaOf } from "../contracts";
 import { OPAQUE, SOLID, blockDef } from "../blocks/registry";
 import { itemDef } from "../items/registry";
@@ -79,14 +79,39 @@ function useTotem(p: PlayerState, ctx: GameCtx): boolean {
   const s = ctx.inventory.slots[slot]!;
   ctx.inventory.setSlot(slot, s.count > 1 ? { ...s, count: s.count - 1 } : null);
   p.health = 1;
+  p.totemTicks = 40;
   p.effects.length = 0;
   p.absorption = 0;
   p.addEffect("regeneration", 1, 900);
   p.addEffect("absorption", 1, 100);
   p.addEffect("fire_resistance", 0, 800);
   sound(ctx, "item.totem.use", p);
-  ctx.emit({ type: "particles", kind: "heart", x: p.body.pos.x, y: p.body.pos.y + 1, z: p.body.pos.z, count: 30, color: 0xb8e22b });
+  for (const color of [0xb8e22b, 0xf2d43c, 0x7ccf3a]) ctx.emit({ type: "particles", kind: "crit", x: p.body.pos.x, y: p.body.pos.y + 1, z: p.body.pos.z, count: 20, color });
   return true;
+}
+
+// Vanilla LivingEntity.isDamageSourceBlocked: the source must be in front of the view; an axe hit disables the shield for 5 s.
+export const shieldFaces = (p: PlayerApi, x: number, z: number) =>
+  !!(p as { blocking?: boolean }).blocking && -Math.sin(p.yaw) * (x - p.body.pos.x) - Math.cos(p.yaw) * (z - p.body.pos.z) > 0;
+
+function blockWithShield(p: PlayerState, ctx: GameCtx, amount: number, from: { x: number; z: number }, melee: Entity | undefined): boolean {
+  const dx = from.x - p.body.pos.x, dz = from.z - p.body.pos.z;
+  if (!shieldFaces(p, from.x, from.z)) return false;
+  const slot = p.using?.hand === "off" ? 40 : ctx.inventory.selected;
+  sound(ctx, "item.shield.block", p, 1, 0.8 + ctx.random() * 0.4);
+  if (amount >= 3) damageSlot(ctx, slot, 1 + Math.floor(amount));
+  if (melee) {
+    ctx.entities.knockback(melee.id, dx, dz, 0.5);
+    if (String(melee.data.held ?? "").endsWith("_axe")) disableShield(p, ctx);
+  }
+  return true;
+}
+
+export function disableShield(p: PlayerState, ctx: GameCtx): void {
+  p.itemCooldowns.shield = 100;
+  p.using = null;
+  p.blocking = false;
+  sound(ctx, "item.shield.break", p, 0.8, 0.8 + ctx.random() * 0.4);
 }
 
 function difficultyScale(ctx: GameCtx, amount: number, source: DamageSource): number {
@@ -113,15 +138,9 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
   if ((source === "fire" || source === "lava") && p.hasEffect("fire_resistance")) return;
   amount = difficultyScale(ctx, amount, source);
   if (amount <= 0) return;
-  if (p.blocking && attacker && (source === "mob" || source === "arrow" || source === "explosion" || source === "player")) {
-    const dx = attacker.body.pos.x - p.body.pos.x, dz = attacker.body.pos.z - p.body.pos.z;
-    if (-Math.sin(p.yaw) * dx - Math.cos(p.yaw) * dz > 0) {
-      sound(ctx, "item.shield.block", p);
-      if (amount >= 3) damageSlot(ctx, ctx.inventory.slots[40]?.item === "shield" ? 40 : ctx.inventory.selected, 1 + Math.floor(amount));
-      if (source === "mob") ctx.entities.knockback(attacker.id, dx, dz, 0.5);
-      return;
-    }
-  }
+  const from = p.damageFrom ?? (attacker ? attacker.body.pos : null);
+  p.damageFrom = null;
+  if (p.blocking && from && (source === "mob" || source === "arrow" || source === "explosion" || source === "player" || source === "trident") && blockWithShield(p, ctx, amount, from, source === "mob" || source === "player" ? attacker : undefined)) return;
   let dealt = amount;
   if (p.invulnerable > 10) {
     if (amount <= p.lastHurt) return;
@@ -192,6 +211,8 @@ export function die(p: PlayerState, ctx: GameCtx, source: DamageSource, attacker
   p.health = 0;
   p.using = null;
   p.blocking = false;
+  p.lastDeath = { x: p.body.pos.x, y: p.body.pos.y, z: p.body.pos.z, dim: ctx.world.dim };
+  p.fallFlying = false;
   const msg = deathMessage(source, attacker?.type, p.lastFall);
   p.deathMessage = msg;
   sound(ctx, "entity.player.death", p);

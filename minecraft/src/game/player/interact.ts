@@ -3,7 +3,8 @@ import type { Aabb, BlockState, Entity, GameCtx, RaycastHit } from "../contracts
 import { AIR, idOf, stateOf } from "../contracts";
 import { blockDef, blockId, hasTag } from "../blocks/registry";
 import { computeDrops } from "../items/drops";
-import { defaultBoxes } from "../mechanics/index";
+import { itemDef } from "../items/registry";
+import { defaultBoxes, outlineBoxes } from "../mechanics/index";
 import type { InputApi } from "./input";
 import { fluidAt } from "./physics";
 import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, attackStats, attackStrength, canHarvest, destroyProgress, ench, enchantDamageBonus, maceBonus, toolOf } from "./stats";
@@ -17,6 +18,20 @@ const nearby: Entity[] = [];
 const eyeV = new THREE.Vector3();
 const dirV = new THREE.Vector3();
 const kb = new THREE.Vector3();
+
+// Vanilla MaceItem: dust of the block under the target bursts in a ring that grows with the fall.
+function smashParticles(ctx: GameCtx, e: Entity, fall: number): void {
+  const x = e.body.pos.x, z = e.body.pos.z;
+  const y = Math.floor(e.body.pos.y - 0.2);
+  const ground = ctx.world.getBlock(Math.floor(x), y, Math.floor(z));
+  if (ground === AIR) return;
+  const rings = Math.min(3, 1 + Math.floor(fall / 5));
+  for (let r = 1; r <= rings; r++)
+    for (let k = 0; k < 8 * r; k++) {
+      const a = (k / (8 * r)) * Math.PI * 2;
+      ctx.emit({ type: "particles", kind: "block", x: x + Math.cos(a) * r * 0.9, y: y + 1.05, z: z + Math.sin(a) * r * 0.9, count: 2, state: ground });
+    }
+}
 
 export function blockBoxes(ctx: GameCtx, s: BlockState, x: number, y: number, z: number): Aabb[] {
   const beh = ctx.behaviors[blockDef(s).name];
@@ -49,7 +64,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
       lastTarget = null;
       return;
     }
-    const src = blockBoxes(ctx, hit.state, hit.x, hit.y, hit.z);
+    const src = outlineBoxes(hit.state, ctx.world, hit.x, hit.y, hit.z);
     outline.length = 0;
     for (let i = 0; i < src.length; i++) {
       const b = (pool[i] ??= { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 });
@@ -211,12 +226,15 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     }
     const crit = charged && b.fallDistance > 0 && !b.onGround && !b.onClimbable && !b.inWater && !p.hasEffect("blindness") && !p.sprinting;
     if (crit) dmg *= 1.5;
-    const smash = held?.item === "mace" && b.fallDistance > 1.5 && !p.flying;
+    const smash = held?.item === "mace" && b.fallDistance > 1.5 && !p.flying && !p.fallFlying;
     if (smash) dmg += maceBonus(b.fallDistance, ench(held, "density"));
     const total = dmg + bonus;
     const walked = Math.hypot(b.pos.x - p.prevPos.x, b.pos.z - p.prevPos.z);
     const sweep = charged && !crit && !sprintHit && b.onGround && walked < 0.13 && toolOf(held)?.kind === "sword";
+    if (held?.item === "mace") e.data._breach = ench(held, "breach");
     ctx.entities.damage(id, total, smash ? "mace" : "player", "player");
+    e.data._breach = undefined;
+    if (smash && total >= 100) ctx.emit({ type: "advancement", title: "Over-Overkill" });
     const fire = ench(held, "fire_aspect");
     if (fire > 0) e.data.fireTicks = Math.max(Number(e.data.fireTicks ?? 0), fire * 80);
     if (knock > 0) ctx.entities.knockback(id, -Math.sin(p.yaw), -Math.cos(p.yaw), knock * 0.5);
@@ -241,6 +259,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     if (smash) {
       const heavy = b.fallDistance > 5;
       ctx.emit({ type: "sound", name: heavy ? "item.mace.smash_ground_heavy" : "item.mace.smash_ground", x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z });
+      smashParticles(ctx, e, b.fallDistance);
       ctx.entities.near(e.body.pos.x, e.body.pos.y, e.body.pos.z, 3.5, nearby);
       for (const o of nearby) {
         if (o.id === id || o.dead || o.type === "item" || o.type === "xp_orb") continue;
@@ -280,7 +299,10 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     let item: string | null = null;
     if (p.targetEntity) {
       const e = ctx.entities.get(p.targetEntity.id);
-      if (e && p.gameMode === "creative") item = `${e.type}_spawn_egg`;
+      if (e && p.gameMode === "creative") {
+        const w = (e.data.wood as string) ?? "oak";
+        item = e.type.endsWith("minecart") ? e.type : e.type === "boat" || e.type === "chest_boat" ? (w === "bamboo" ? (e.type === "boat" ? "bamboo_raft" : "bamboo_chest_raft") : e.type === "boat" ? `${w}_boat` : `${w}_chest_boat`) : itemDef(`${e.type}_spawn_egg`) ? `${e.type}_spawn_egg` : null;
+      }
     } else if (p.target) {
       const d = blockDef(p.target.state);
       item = d.item === null ? null : d.item ?? d.name;

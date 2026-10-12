@@ -9,18 +9,26 @@ import {
   OptionsScreen, PauseScreen, SelectWorldScreen, TitleScreen, completeCommand, computeGuiScale, setUiClickSound,
   type ChatMessage, type NewWorldOptions, type Settings, type TimedText, type WorldListEntry,
 } from "../game/ui";
+import { Panorama } from "../game/ui/panorama";
+import { StatisticsScreen } from "../game/ui/menus-extra";
+import { AdvancementsScreen } from "../game/ui/advancements-screen";
+import { CreditsScreen } from "../game/ui/credits-screen";
+import { TOAST_MS, Toasts, type ToastEntry } from "../game/ui/toasts";
+import { mergeSettings, setActiveKeys } from "../game/ui/settings";
 import { createWorldMeta, deleteWorld, listWorlds, loadMeta, saveMeta, type WorldMeta } from "../game/world/save";
+import { HideWhileSigning, SignEditScreen } from "../game/ui/sign-screen";
 
 type Screen = "title" | "select" | "create" | "options" | "game";
-type Overlay = null | "pause" | "options" | "chat";
+type Overlay = null | "pause" | "options" | "chat" | "advancements" | "statistics";
 
 const SETTINGS_KEY = "mc-settings";
 
 function readSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) return mergeSettings(JSON.parse(raw));
   } catch {}
+  if (window.matchMedia?.("(pointer: coarse)").matches && navigator.maxTouchPoints > 0) return { ...DEFAULT_SETTINGS, renderDistance: 6, graphics: "fast", clouds: false };
   return DEFAULT_SETTINGS;
 }
 
@@ -53,7 +61,12 @@ export default function Page() {
   const [chatInit, setChatInit] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [title, setTitle] = useState<(TimedText & { subtitle?: string }) | undefined>();
+  const [actionBar, setActionBar] = useState<TimedText | undefined>();
   const [hurtAt, setHurtAt] = useState<number | undefined>();
+  const [freshWorld, setFreshWorld] = useState(false);
+  const advFromPause = useRef(false);
+  const [toasts, setToasts] = useState<ToastEntry[]>([]);
+  const [credits, setCredits] = useState(false);
   const [death, setDeath] = useState<string | null>(null);
   const [debug, setDebug] = useState(false);
   const [hideGui, setHideGui] = useState(false);
@@ -84,7 +97,8 @@ export default function Page() {
   useEffect(() => {
     const first = () => {
       const a = audio();
-      a.setVolume(settings.master, settings.music, settings.sound);
+      a.setVolume(settings.master, settings.volumes.music, 1);
+      a.setCategories(settings.volumes);
       if (!gameRef.current) a.setMusic("menu");
     };
     window.addEventListener("pointerdown", first, { once: true });
@@ -93,7 +107,9 @@ export default function Page() {
       window.removeEventListener("pointerdown", first);
       window.removeEventListener("keydown", first);
     };
-  }, [audio, settings.master, settings.music, settings.sound]);
+  }, [audio, settings.master, settings.volumes]);
+
+  useEffect(() => setActiveKeys(settings.keys), [settings.keys]);
 
   const refreshWorlds = useCallback(() => {
     listWorlds().then(setWorlds).catch(() => setWorlds([]));
@@ -104,7 +120,8 @@ export default function Page() {
       const next = { ...s, ...patch };
       writeSettings(next);
       gameRef.current?.setSettings(next);
-      audioRef.current?.setVolume(next.master, next.music, next.sound);
+      audioRef.current?.setVolume(next.master, next.volumes.music, 1);
+      audioRef.current?.setCategories(next.volumes);
       return next;
     });
   }, []);
@@ -126,12 +143,26 @@ export default function Page() {
         audio: audio(),
         ui: {
           hud: setHud,
-          phase: (p, progress) => setLoading(p === "loading" ? progress : null),
+          phase: (p, progress) => {
+            setLoading(p === "loading" ? progress : null);
+            if (p === "playing") setFreshWorld(false);
+          },
           container: (v) => setView(v),
           chat: (text) => addChat(text),
           title: (text, subtitle) => setTitle({ text, subtitle, at: performance.now() }),
+          actionBar: (text) => setActionBar({ text, at: performance.now() }),
           hurt: () => setHurtAt(performance.now()),
           died: (message) => setDeath(message),
+          toast: (t) => {
+            const id = ++msgId.current;
+            setToasts((l) => [...l, { ...t, id }]);
+            setTimeout(() => setToasts((l) => l.filter((x) => x.id !== id)), TOAST_MS);
+          },
+          credits: () => {
+            game?.setPaused(true);
+            document.exitPointerLock?.();
+            setCredits(true);
+          },
           action: (a) => {
             if (a === "pause") {
               if (overlayRef.current) return;
@@ -148,6 +179,13 @@ export default function Page() {
                 return !d;
               });
             } else if (a === "hide_gui") setHideGui((v) => !v);
+            else if (a === "advancements") {
+              if (overlayRef.current) return;
+              game?.setPaused(true);
+              document.exitPointerLock?.();
+              advFromPause.current = false;
+              setOverlay("advancements");
+            }
           },
         },
       });
@@ -168,12 +206,13 @@ export default function Page() {
     setOverlay(null);
     setMessages([]);
     setLoading(0);
+    setFreshWorld(!m.player);
     setMeta(m);
     setScreen("game");
   }, [audio]);
 
   const onCreate = useCallback(async (o: NewWorldOptions) => {
-    const m = await createWorldMeta(o.name, o.seed, o.gameMode, { hardcore: o.hardcore, cheats: o.cheats, rules: { difficulty: o.difficulty } });
+    const m = await createWorldMeta(o.name, o.seed, o.gameMode, { hardcore: o.hardcore, cheats: o.cheats, rules: { ...o.rules, difficulty: o.difficulty } });
     play(m);
   }, [play]);
 
@@ -203,13 +242,15 @@ export default function Page() {
     gameRef.current?.lock();
   }, []);
 
-  const entries: WorldListEntry[] = worlds.map((m) => ({ id: m.id, name: m.name, lastPlayed: m.lastPlayed, gameMode: m.gameMode, hardcore: m.hardcore, cheats: m.cheats }));
+  const entries: WorldListEntry[] = worlds.map((m) => ({ id: m.id, name: m.name, lastPlayed: m.lastPlayed, gameMode: m.gameMode, hardcore: m.hardcore, cheats: m.cheats, icon: m.icon }));
   const g = gameRef.current;
   const inv = g?.ctx.inventory;
 
   if (!mounted) return <main />;
   if (screen !== "game") {
     return (
+      <>
+      <Panorama blur={screen !== "title"} />
       <GuiRoot guiScale={settings.guiScale} style={{ pointerEvents: "auto" }}>
         {screen === "title" && (
           <TitleScreen
@@ -233,6 +274,7 @@ export default function Page() {
         {screen === "create" && <CreateWorldScreen onCreate={(o) => void onCreate(o)} onCancel={() => setScreen("select")} />}
         {screen === "options" && <OptionsScreen settings={settings} onChange={updateSettings} onDone={() => setScreen("title")} />}
       </GuiRoot>
+      </>
     );
   }
 
@@ -246,9 +288,19 @@ export default function Page() {
           if (playing && !overlay && !view && !death) gameRef.current?.lock();
         }}
       />
-      {playing && !hideGui && !view && !death && overlay !== "pause" && overlay !== "options" && <Crosshair scale={guiScale} />}
+      {playing && !hideGui && !view && !death && !credits && (!overlay || overlay === "chat") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
       <GuiRoot guiScale={settings.guiScale}>
-        {playing && hud && !hideGui && <Hud state={hud} title={title} hurtAt={hurtAt} />}
+        {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics === "fancy"} />}
+        {playing && !hideGui && <Toasts toasts={toasts} />}
+        {credits && (
+          <CreditsScreen
+            onDone={() => {
+              setCredits(false);
+              gameRef.current?.setPaused(false);
+              gameRef.current?.lock();
+            }}
+          />
+        )}
         {playing && debug && hud?.debug && <DebugOverlay lines={hud.debug} width={Math.ceil(w / guiScale)} />}
         {playing && !death && (
           <div style={{ pointerEvents: overlay === "chat" ? "auto" : "none" }}>
@@ -257,6 +309,10 @@ export default function Page() {
               open={overlay === "chat"}
               initial={chatInit}
               complete={(line) => (g ? completeCommand(g.ctx, line) : [])}
+              textOpacity={settings.chatOpacity}
+              bgOpacity={settings.chatBackground}
+              lineSpacing={settings.chatLineSpacing}
+              chatWidth={settings.chatWidth}
               onSend={(line) => {
                 const t = line.trim();
                 if (!t) return;
@@ -297,6 +353,7 @@ export default function Page() {
             />
           </div>
         )}
+        {playing && !death && <SignEditScreen game={g} />}
         {playing && death && (
           <div style={{ pointerEvents: "auto" }}>
             <DeathScreen
@@ -315,7 +372,20 @@ export default function Page() {
         )}
         {playing && overlay === "pause" && (
           <div style={{ pointerEvents: "auto" }}>
-            <PauseScreen onResume={resume} onOptions={() => setOverlay("options")} onQuit={() => void quit()} />
+            <PauseScreen onResume={resume} onOptions={() => setOverlay("options")} onQuit={() => void quit()} onAdvancements={() => {
+              advFromPause.current = true;
+              setOverlay("advancements");
+            }} onStatistics={() => setOverlay("statistics")} />
+          </div>
+        )}
+        {playing && overlay === "advancements" && (
+          <div style={{ pointerEvents: "auto" }}>
+            <AdvancementsScreen done={(g?.systems.parts.find((p) => p.name === "advancements")?.save?.() as Record<string, number> | undefined) ?? {}} onDone={() => (advFromPause.current ? setOverlay("pause") : resume())} />
+          </div>
+        )}
+        {playing && overlay === "statistics" && (
+          <div style={{ pointerEvents: "auto" }}>
+            <StatisticsScreen general={statsRows(g)} onDone={() => setOverlay("pause")} />
           </div>
         )}
         {playing && overlay === "options" && (
@@ -335,10 +405,29 @@ export default function Page() {
         )}
         {!playing && (
           <div style={{ pointerEvents: "auto" }}>
-            <LoadingScreen progress={loading ?? 0} title="Loading terrain..." status={meta?.name} />
+            <LoadingScreen progress={loading ?? 0} title={freshWorld ? "Generating world" : "Loading terrain..."} status={freshWorld ? "Building terrain" : undefined} />
           </div>
         )}
       </GuiRoot>
     </>
   );
+}
+
+function fmtTime(ticks: number): string {
+  const s = ticks / 20;
+  if (s < 60) return `${s.toFixed(2)} s`;
+  if (s < 3600) return `${(s / 60).toFixed(2)} m`;
+  if (s < 86400) return `${(s / 3600).toFixed(2)} h`;
+  return `${(s / 86400).toFixed(2)} d`;
+}
+
+function statsRows(g: GameHandle | null): [string, string][] {
+  if (!g) return [];
+  const c = g.ctx;
+  return [
+    ["Time Played", fmtTime(c.time.tick)],
+    ["Days Played", String(c.time.day)],
+    ["Experience Level", String(c.player.xpLevel)],
+    ["Total Experience", String(c.player.xpTotal)],
+  ];
 }

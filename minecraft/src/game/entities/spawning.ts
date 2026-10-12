@@ -2,7 +2,7 @@ import type { Entity, GameCtx, MobDef } from "../contracts";
 import { CHUNK, MIN_Y, SEA_LEVEL, idOf } from "../contracts";
 import { OPAQUE, SOLID, blockByName, blockDef } from "../blocks/registry";
 import { allMobs, mobDef } from "./registry";
-import { isWater, lightAt, skyDarken } from "./ai";
+import { isLava, isWater, lightAt, skyDarken } from "./ai";
 
 export type SpawnCat = "hostile" | "passive" | "ambient" | "water" | "water_ambient";
 
@@ -21,6 +21,8 @@ const FLOORS: Record<string, string[]> = {
   frog: ["grass_block", "mud", "mangrove_roots", "muddy_mangrove_roots"],
   armadillo: ["grass_block", "red_sand", "coarse_dirt", "terracotta"],
   llama: ["grass_block", "sand", "red_sand"],
+  turtle: ["sand"],
+  ocelot: ["grass_block", "jungle_leaves", "oak_leaves"],
 };
 
 export function spawnCat(def: MobDef): SpawnCat | null {
@@ -85,6 +87,7 @@ export function canSpawnAt(ctx: GameCtx, def: MobDef, x: number, y: number, z: n
     return true;
   }
   if (!passable(ctx, x, y, z, def.height, false)) return false;
+  if (def.type === "strider") return isLava(w.getBlock(x, y - 1, z));
   const below = w.getBlock(x, y - 1, z);
   const bid = idOf(below);
   const bdef = blockDef(below);

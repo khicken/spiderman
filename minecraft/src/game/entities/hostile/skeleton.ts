@@ -1,3 +1,4 @@
+import { equipMob } from "../armor-layer";
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { applyPhysics, canSee, clearPath, idleLook, lookAt, meleeAttack, moveTo } from "../ai";
 import { blockDef } from "../../blocks/registry";
@@ -71,6 +72,7 @@ function bowAttack(e: Entity, ctx: GameCtx, cfg: BowCfg, speed: number): void {
 
 function skeletonTick(cfg: BowCfg & { burns: boolean; sword?: boolean; witherHit?: boolean }) {
   return (e: Entity, ctx: GameCtx) => {
+    if (cfg.type === "skeleton" || cfg.type === "stray" || cfg.type === "bogged") equipMob(e, ctx);
     if (naturalSpawn(e)) {
       const p = e.body.pos;
       if (cfg.type === "wither_skeleton" || cfg.type === "stray") {

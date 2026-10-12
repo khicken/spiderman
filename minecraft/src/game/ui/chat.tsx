@@ -19,6 +19,10 @@ export interface ChatProps {
   onSend: (line: string) => void;
   onClose: () => void;
   complete?: (line: string) => string[]; // full-line candidates for Tab
+  textOpacity?: number;
+  bgOpacity?: number;
+  lineSpacing?: number;
+  chatWidth?: number;
 }
 
 const WIDTH = 320;
@@ -30,7 +34,8 @@ const fade = (ageMs: number) => {
   return t * t;
 };
 
-export function Chat({ messages, open, initial = "", onSend, onClose, complete }: ChatProps) {
+export function Chat({ messages, open, initial = "", onSend, onClose, complete, textOpacity = 1, bgOpacity = 0.5, lineSpacing = 0, chatWidth = WIDTH }: ChatProps) {
+  const lineH = Math.round(LINE * (1 + lineSpacing));
   const { width, height } = useGui();
   const [value, setValue] = useState(initial);
   const [scroll, setScroll] = useState(0);
@@ -63,9 +68,9 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete }
 
   const lines = useMemo(() => {
     const out: { key: string; text: string; at: number; color: number }[] = [];
-    for (const m of messages.slice(-100)) wrapText(m.text, WIDTH, true).forEach((t, i) => out.push({ key: `${m.id}:${i}`, text: t, at: m.at, color: m.color ?? 0xffffff }));
+    for (const m of messages.slice(-100)) wrapText(m.text, chatWidth, true).forEach((t, i) => out.push({ key: `${m.id}:${i}`, text: t, at: m.at, color: m.color ?? 0xffffff }));
     return out;
-  }, [messages]);
+  }, [messages, chatWidth]);
 
   const setCaretEnd = () =>
     requestAnimationFrame(() => {
@@ -134,10 +139,10 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete }
         onMouseDown={() => requestAnimationFrame(() => input.current?.focus())}
       >
         {visible.map((l, i) => {
-          const y = bottom - (i + 1) * LINE;
+          const y = bottom - (i + 1) * lineH;
           return (
-            <div key={l.key} style={{ position: "absolute", left: 0, top: y, width: WIDTH + 8, height: LINE, background: `rgba(0,0,0,${0.5 * l.alpha})` }}>
-              <Text text={l.text} color={l.color} amp x={2} y={1} opacity={l.alpha} />
+            <div key={l.key} style={{ position: "absolute", left: 0, top: y, width: chatWidth + 12, height: lineH, background: `rgba(0,0,0,${bgOpacity * l.alpha})` }}>
+              <Text text={l.text} color={l.color} amp x={4} y={lineH - 8} opacity={l.alpha * textOpacity} />
             </div>
           );
         })}

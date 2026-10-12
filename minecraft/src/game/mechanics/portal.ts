@@ -90,6 +90,7 @@ export const NETHER_PORTAL_BEHAVIOR: BlockBehavior = {
   entityInside(ctx, x, y, z, _s, body, entity) {
     if (entity || !isPlayerBody(ctx, body)) return;
     const t = ctx.time.tick;
+    if (t === lastInside) return;
     if (t - lastInside > 1) {
       portalTicks = 0;
       if (t - lastInside > 20) cooldown = false;

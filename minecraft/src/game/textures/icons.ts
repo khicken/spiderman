@@ -1,7 +1,7 @@
 import { itemDef } from "../items/registry";
 import { blockByName } from "../blocks/registry";
 import { paintBlockTexture } from "./index";
-import { paintItemTexture, hasItemPainter } from "./items";
+import { paintItemTexture, paintTintedItem, hasItemPainter } from "./items";
 import { blockIconPixels, flatBlockSprite, glintPixels, isFlatBlock, scaleSprite } from "./items-iso";
 
 export { paintItemTexture, paintTintedItem, ITEM_TEXTURE_KEYS, DEFAULT_GLINT } from "./items";
@@ -49,6 +49,16 @@ export function itemIconUrl(itemName: string): string {
   if (!u) {
     u = toCanvas(itemIconPixels(itemName), ICON_SIZE).toDataURL();
     URLS.set(itemName, u);
+  }
+  return u;
+}
+
+export function tintedIconUrl(itemName: string, color: number): string {
+  const k = `${itemName}#${color}`;
+  let u = URLS.get(k);
+  if (!u) {
+    u = toCanvas(scaleSprite(paintTintedItem(itemName, color), ICON_SIZE), ICON_SIZE).toDataURL();
+    URLS.set(k, u);
   }
   return u;
 }

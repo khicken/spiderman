@@ -9,6 +9,8 @@ import { ItemIcon, itemName } from "./item-icon";
 import type { PlacedSlot } from "./container-layouts";
 import { arrowUrl, buttonUrl, pixelUrl } from "./sprites";
 import { TextField, playClick } from "./widgets";
+import { MerchantPanel } from "./merchant-screen";
+import { BeaconExtras } from "./beacon-screen";
 
 export interface ExtrasProps {
   view: ContainerView;
@@ -159,7 +161,10 @@ export function ContainerExtras({ view, placed, onOption, onRename, setTip, setT
         <OptionGrid opts={opts} cols={cols} rows={rows} bw={bw} bh={bh} gx={gx} gy={gy} sel={sel} onPick={(i) => { setSel(i); choose(opts[i].id); }} setTip={setTip} />
       );
     }
+    case "beacon":
+      return <BeaconExtras view={view} onOption={onOption} setTip={setTip} />;
     case "villager":
+      if (view.merchant) return <MerchantPanel merchant={view.merchant} noOutput={noOutput} choose={choose} setTip={setTip} />;
       return (
         <>
           <Text text="Trades" color={0x404040} shadow={false} x={5 + 44} y={6} align="center" />

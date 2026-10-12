@@ -4,6 +4,7 @@ import { decorateCaves } from "./cave-deco";
 import { B } from "./ids";
 import { hash01 } from "./noise";
 import { placeOres } from "./ores";
+import { WATERLOGGABLE, canHoldWater } from "../blocks/waterlog";
 import { placeVeins } from "./veins";
 import { createWriter } from "./rng";
 import { placeStructures } from "./structures";
@@ -132,6 +133,7 @@ export function generateOverworld(seed: number, cx: number, cz: number): ChunkDa
   carve(ctx);
   placeVeins(ctx);
   placeOres(ctx);
+  const wasWater = waterMask(blocks);
   decorateCaves(ctx);
   const w = createWriter(cx, cz, blocks);
   placeStructures(ctx, w);
@@ -150,7 +152,24 @@ export function generateOverworld(seed: number, cx: number, cz: number): ChunkDa
     light: new Uint8Array(blocks.length),
     blockEntities: w.blockEntities,
     entities: w.entities,
+    waterlogged: waterloggedCells(blocks, wasWater),
   };
+}
+
+// Features that replaced a water source keep it, like vanilla placement into water.
+function waterMask(blocks: Uint16Array): Uint8Array {
+  const m = new Uint8Array(blocks.length >> 3);
+  for (let i = 0; i < blocks.length; i++) if (blocks[i] === WATER) m[i >> 3] |= 1 << (i & 7);
+  return m;
+}
+
+function waterloggedCells(blocks: Uint16Array, was: Uint8Array): number[] | undefined {
+  let out: number[] | undefined;
+  for (let i = 0; i < blocks.length; i++) {
+    if (!(was[i >> 3] & (1 << (i & 7))) || !WATERLOGGABLE[blocks[i] & 0xfff] || !canHoldWater(blocks[i])) continue;
+    (out ??= []).push(i);
+  }
+  return out;
 }
 
 const SOLID_SURF = new Uint8Array(4096);

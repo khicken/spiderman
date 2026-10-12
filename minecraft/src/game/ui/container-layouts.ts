@@ -64,6 +64,7 @@ export const LAYOUTS: Record<ContainerKind, Layout> = {
   loom: { w: 176, h: 166, inv: [8, 84], title: [8, 4], invLabel: [8, 72], rest: [[13, 26], [33, 26], [23, 45]], out: [[143, 58]] },
   cartography_table: { w: 176, h: 166, inv: [8, 84], title: [8, 4], invLabel: [8, 72], rest: [[15, 15], [15, 52]], out: [[145, 39]] },
   villager: { w: 276, h: 166, inv: [108, 84], title: "center", invLabel: [107, 72], rest: [[136, 37], [162, 37]], out: [[220, 37]] },
+  beacon: { w: 230, h: 219, inv: [36, 137], title: [8, 6], invLabel: null, rest: [[136, 110]] },
 };
 
 export interface PlacedSlot {

@@ -1,4 +1,5 @@
 import { hash32 } from "./noise";
+import { inRects, surfaceRects } from "./structures";
 import type { ChunkCtx } from "./overworld";
 import { createRng, type Rng, type Writer } from "./rng";
 import { BI, topBlockFor } from "./surface";
@@ -96,6 +97,7 @@ function grow(kind: Kind, x: number, y: number, z: number, r: Rng, ground: numbe
 export function placeTrees(ctx: ChunkCtx, w: Writer) {
   const { ow, sn, seed } = ctx.g;
   const ox = ctx.cx * 16, oz = ctx.cz * 16;
+  const rects = surfaceRects(seed, ctx.cx, ctx.cz);
   for (let ocz = ctx.cz - 1; ocz <= ctx.cz + 1; ocz++) {
     for (let ocx = ctx.cx - 1; ocx <= ctx.cx + 1; ocx++) {
       const own = ocx === ctx.cx && ocz === ctx.cz;
@@ -122,6 +124,7 @@ export function placeTrees(ctx: ChunkCtx, w: Writer) {
         const tseed = rng.int(0x7fffffff);
         const x = bx + lx, z = bz + lz;
         if (x < ox - REACH || x > ox + 15 + REACH || z < oz - REACH || z > oz + 15 + REACH) continue;
+        if (rects.length && inRects(rects, x, z)) continue;
         const biome = ow.biomeAt(x, z);
         const bspec = n >= count ? null : TREES.get(biome);
         if (n < count && (!bspec || !bspec.kinds.length)) continue;

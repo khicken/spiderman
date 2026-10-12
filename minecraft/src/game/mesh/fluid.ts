@@ -1,8 +1,10 @@
 import { SOLID } from "../blocks/registry";
-import { occludes } from "./box";
+import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE } from "../blocks/waterlog";
+import { occludes, resetT } from "./box";
 import { M, OFF, OPP, PX, PY, PZ, SHADE } from "./ctx";
-import { FLUID_GROUP, NONE, TEX } from "./tables";
-import { emitQuad, Q, QA, QB, QP, QS, QUV } from "./writer";
+import { FLUID_GROUP, LAYER, NONE, TEX } from "./tables";
+import { waterAt } from "./tint";
+import { BUFS, emitQuad, Q, QA, QB, QP, QS, QUV } from "./writer";
 
 export const FLAG_SCROLL = 1;
 export const FLAG_STILL = 2;
@@ -16,14 +18,37 @@ export function levelHeight(meta: number): number {
   return (8 - meta) / 9;
 }
 
+// Waterlogged cells and kelp/seagrass count as water sources.
+function groupAt(p: number): number {
+  const id = M.blocks[p] & 0xfff;
+  const g = FLUID_GROUP[id];
+  if (g) return g;
+  return IMPLICIT_WATER[id] || (M.wet !== null && M.wet[p]) ? 1 : 0;
+}
+
 function heightAt(p: number): number {
   const s = M.blocks[p];
   const id = s & 0xfff;
-  if (FLUID_GROUP[id] === group) {
-    if (FLUID_GROUP[M.blocks[p + PY] & 0xfff] === group) return 1;
-    return levelHeight(s >>> 12);
+  if (groupAt(p) === group) {
+    if (groupAt(p + PY) === group) return 1;
+    return FLUID_GROUP[id] ? levelHeight(s >>> 12) : 8 / 9;
   }
   return SOLID[id] ? -1 : 0;
+}
+
+export function meshWaterIn(pi: number, x: number, y: number, z: number) {
+  M.pi = pi;
+  M.bx = x;
+  M.by = y;
+  M.bz = z;
+  M.state = WATER_SOURCE;
+  M.id = WATER_ID;
+  M.meta = 0;
+  M.emit = 0;
+  M.tint = waterAt(z * 16 + x);
+  M.buf = BUFS[LAYER[WATER_ID]];
+  resetT();
+  meshFluid();
 }
 
 const W = new Float32Array(2);
@@ -93,7 +118,7 @@ export function meshFluid() {
   const still = TEX[tb + 2];
   const flow = TEX[tb + 4];
   const b = M.buf;
-  const covered = FLUID_GROUP[blocks[pi + PY] & 0xfff] === group;
+  const covered = groupAt(pi + PY) === group;
   let nw = 1, ne = 1, sw = 1, se = 1;
   const h0 = covered ? 1 : levelHeight(M.meta);
   const hN = heightAt(pi - PZ), hS = heightAt(pi + PZ), hE = heightAt(pi + PX), hW = heightAt(pi - PX);
@@ -124,7 +149,7 @@ export function meshFluid() {
     if (f === 2) continue;
     const npi = pi + OFF[f];
     const ns = blocks[npi];
-    if (FLUID_GROUP[ns & 0xfff] === group) continue;
+    if (groupAt(npi) === group) continue;
     if (occludes(ns, OPP[f])) continue;
     for (let k = 0; k < 4; k++) lightMax(pi, npi, k);
     if (f === 3) {

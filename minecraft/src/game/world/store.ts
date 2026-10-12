@@ -12,6 +12,7 @@ export interface Chunk {
   counts: Uint16Array; // non-air blocks per section
   tickable: Uint16Array; // random-tickable blocks per section
   be: Map<number, BlockEntityData>; // key: chunkIndex
+  wl: Set<number>; // waterlogged cells, key: chunkIndex
   dirty: number; // section bit mask
   modified: boolean;
   announced: boolean;
@@ -42,6 +43,7 @@ export function wrapChunk(data: ChunkData): Chunk {
     counts: new Uint16Array(SECTIONS),
     tickable: new Uint16Array(SECTIONS),
     be,
+    wl: new Set(data.waterlogged),
     dirty: 0,
     modified: false,
     announced: false,

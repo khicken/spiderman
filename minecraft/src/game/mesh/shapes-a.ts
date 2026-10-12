@@ -64,14 +64,25 @@ export function torch(wall: number, layer: number) {
   box(-1, 3.5, 7, 1, 13.5, 9);
 }
 
+// Facing and open come from the lower half, the hinge (bit 0) from the upper half. Texture u 0 is the hinge side.
 function door() {
-  const m = M.meta, upper = m & 8;
-  const tb = M.id * 16 * 6;
+  const upper = M.meta & 8, id = M.id;
+  const lo = upper ? M.blocks[M.pi - PY] : M.state;
+  const hi = upper ? M.state : M.blocks[M.pi + PY];
+  const lm = (lo & 0xfff) === id ? (lo >>> 12) & 7 : 0;
+  const right = (hi & 0xfff) === id && (hi >>> 12) & 8 ? (hi >>> 12) & 1 : 0;
+  const tb = id * 16 * 6;
   setFL(upper ? TEX[tb + 2] : TEX[tb + 3]);
-  T.rot = ((m & 3) - 3) & 3;
+  T.rot = ((lm & 3) - 3) & 3;
   const mask = 63 & ~(upper ? D : U);
-  if (m & 4) box(0, 0, 0, 16, 16, 3, mask);
-  else box(0, 0, 0, 3, 16, 16, mask);
+  if (lm & 4) {
+    uvRect(5, 16, 0, 0, 16);
+    if (right) box(0, 0, 13, 16, 16, 16, mask);
+    else box(0, 0, 0, 16, 16, 3, mask);
+  } else {
+    uvRect(right ? 1 : 0, 16, 0, 0, 16);
+    box(0, 0, 0, 3, 16, 16, mask);
+  }
 }
 
 function trapdoor() {
@@ -210,8 +221,20 @@ function bed() {
   const m = M.meta, head = m & 4;
   T.rot = ((m & 3) - 2) & 3;
   setFLBlock(M.id, 0, TEX);
-  box(0, 3, 0, 16, 9, 16, 63 & ~(head ? S : N));
-  setFL(FL[3]);
+  const wool = FL[2], planks = FL[3];
+  if (head) {
+    setFL(layerOr("white_wool", wool));
+    FL[3] = planks;
+    box(0, 3, 0, 16, 9, 12, 63 & ~S);
+    setFL(wool);
+    FL[3] = planks;
+    box(0, 3, 12, 16, 9, 16, 63 & ~S & ~N);
+  } else {
+    setFL(wool);
+    FL[3] = planks;
+    box(0, 3, 0, 16, 9, 16, 63 & ~N);
+  }
+  setFL(planks);
   if (head) {
     box(0, 0, 0, 3, 3, 3);
     box(13, 0, 0, 16, 3, 3);
@@ -221,13 +244,40 @@ function bed() {
   }
 }
 
+// Chest meta bit 3 marks the left half; see mechanics/chest.ts. Returns 1 left (partner +x canonical), 2 right, 0 single.
+function chestPair(h: number): number {
+  const m = M.meta, left = (m & 8) !== 0;
+  const n = nbH(left ? (h + 1) & 3 : (h + 3) & 3);
+  const nm = n >>> 12;
+  if ((n & 0xfff) !== M.id || (nm & 7) !== (m & 7) || ((nm & 8) !== 0) === left) return 0;
+  return left ? 1 : 2;
+}
+
 function chest() {
-  const h = F2H[M.meta] ?? -1;
+  const h = F2H[M.meta & 7] ?? -1;
   T.rot = ((h < 0 ? 2 : h) - 2) & 3;
   setFLBlock(M.id, 0, TEX);
-  box(1, 0, 1, 15, 14, 15);
-  setFL(FL[5]);
-  box(7, 7, 0, 9, 11, 1, 63 & ~S);
+  const front = FL[5];
+  const pair = h < 0 ? 0 : chestPair(h);
+  if (!pair) {
+    box(1, 0, 1, 15, 14, 15);
+    setFL(front);
+    box(7, 7, 0, 9, 11, 1, 63 & ~S);
+    return;
+  }
+  FL[5] = FL[0];
+  uvRect(2, 2, 1, 14, 15);
+  uvRect(3, 2, 1, 14, 15);
+  uvRect(4, 2, 2, 14, 16);
+  uvRect(5, 2, 2, 14, 16);
+  if (pair === 1) box(1, 0, 1, 16, 14, 15, 63 & ~E);
+  else box(0, 0, 1, 15, 14, 15, 63 & ~W);
+  T.uvMask = 0;
+  setFL(front);
+  const u = pair === 1 ? 7 : 8;
+  for (let f = 0; f < 6; f++) uvRect(f, u, 5, u + 1, 9);
+  if (pair === 1) box(15, 7, 0, 16, 11, 1, 63 & ~S & ~E);
+  else box(0, 7, 0, 1, 11, 1, 63 & ~S & ~W);
 }
 
 function cactus() {
@@ -239,7 +289,7 @@ function cactus() {
 }
 
 function cake() {
-  const bites = Math.min(M.meta, 6);
+  const bites = blockName(M.id) === "cake" ? Math.min(M.meta, 6) : 0;
   setFLBlock(M.id, 0, TEX);
   if (bites > 0) FL[1] = layerOr("cake_inner", FL[1]);
   box(1 + 2 * bites, 0, 1, 15, 8, 15);

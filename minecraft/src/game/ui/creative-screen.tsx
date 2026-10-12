@@ -5,6 +5,11 @@ import type { ClickKind, ContainerView, ItemStack, SlotView } from "../contracts
 import { Text, useGui } from "./gui";
 import { ItemIcon, tooltipLines } from "./item-icon";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
+import { PlayerDoll } from "./player-doll";
+import { keyFor } from "./settings";
+import type { EmptySlotKind } from "./sprites";
+
+const EMPTY_ICON: Partial<Record<string, EmptySlotKind>> = { armor_head: "helmet", armor_chest: "chestplate", armor_legs: "leggings", armor_feet: "boots", offhand: "shield" };
 import { buttonUrl, panelUrl, pixelUrl } from "./sprites";
 import { TextField, playClick, useKeyDown } from "./widgets";
 
@@ -71,7 +76,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced }: P
   })();
   const tabHover = hover?.startsWith("t") ? creative.tabs.find((t) => t.id === hover.slice(1)) : undefined;
   const tip = hoveredStack ? tooltipLines(hoveredStack, advanced) : tabHover ? [tabHover.label] : hover === "trash" ? ["Destroy Item"] : [];
-  const { onMouseMove, setTip, setCursor } = usePointer(tip);
+  const { onMouseMove, setTip, setCursor, mouse } = usePointer(tip);
   const hoveredSlot = hover?.startsWith("s") ? Number(hover.slice(1)) : null;
 
   const switchTab = (id: string) => {
@@ -83,14 +88,15 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced }: P
 
   useKeyDown((e) => {
     const k = e.key.toLowerCase();
-    if (k === "escape" || k === "e") {
+    if (k === "escape" || (!isSearch && e.code === keyFor("inventory"))) {
       e.preventDefault();
       onClose();
       return;
     }
     if (hoveredSlot !== null) {
-      if (k >= "1" && k <= "9") return onClick(hoveredSlot, { hotbar: Number(k) - 1 });
-      if (k === "q") return onClick(hoveredSlot, e.ctrlKey || e.metaKey ? "drop_all" : "drop");
+      for (let i = 1; i <= 9; i++) if (e.code === keyFor(`hotbar.${i}`)) return onClick(hoveredSlot, { hotbar: i - 1 });
+      if (e.code === keyFor("swap_offhand")) return onClick(hoveredSlot, { hotbar: 40 });
+      if (e.code === keyFor("drop")) return onClick(hoveredSlot, e.ctrlKey || e.metaKey ? "drop_all" : "drop");
     }
     if (k.length === 1 && /[a-z]/.test(k) && k !== "q" && k !== "f" && !isSearch && creative.tabs.some((t) => t.id === "search")) {
       e.preventDefault();
@@ -142,7 +148,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced }: P
   };
 
   const playerSlot = (s: SlotView, x: number, y: number) => (
-    <SlotBox key={s.index} x={x} y={y} stack={s.stack} hovered={hoveredSlot === s.index} onEnter={() => setHover(`s${s.index}`)} onLeave={() => setHover((h) => (h === `s${s.index}` ? null : h))} onDown={slotDown(s.index)} />
+    <SlotBox key={s.index} x={x} y={y} stack={s.stack} empty={EMPTY_ICON[s.role]} hovered={hoveredSlot === s.index} onEnter={() => setHover(`s${s.index}`)} onLeave={() => setHover((h) => (h === `s${s.index}` ? null : h))} onDown={slotDown(s.index)} />
   );
 
   const hotbar = slots.filter((s) => s.role === "hotbar");
@@ -171,6 +177,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced }: P
           {isInv ? (
             <>
               <div style={{ position: "absolute", left: 73, top: 6, width: 32, height: 43, background: "#000" }} />
+              <PlayerDoll x={73} y={6} w={32} h={43} scale={20} panel={{ left, top }} mouse={mouse} />
               {slots.filter((s) => ARMOR_POS[s.role]).map((s) => playerSlot(s, ARMOR_POS[s.role][0], ARMOR_POS[s.role][1]))}
               {slots.filter((s) => s.role === "offhand").map((s) => playerSlot(s, 35, 20))}
               {storage.map((s, i) => playerSlot(s, 9 + (i % 9) * 18, 54 + Math.floor(i / 9) * 18))}

@@ -5,6 +5,7 @@ import { N_LEVELS, NB, netherGen, type NetherGen } from "./nether-gen";
 import { runOres, type OreDef } from "./ores";
 import { createWriter, idTable } from "./rng";
 import { netherFeatures } from "./nether-features";
+import { placeDimStructures } from "./structures";
 
 const S = stateOf;
 
@@ -55,6 +56,7 @@ export function generateNether(seed: number, cx: number, cz: number): ChunkData 
   runOres(blocks, cx, cz, seed, NETHER_ORES, (x, z) => g.biomeAt(x, z), () => 0);
   const w = createWriter(cx, cz, blocks);
   netherFeatures(g, w, biomes);
+  placeDimStructures(seed, "nether", null, w);
   const heightmap = new Int16Array(256);
   for (let col = 0; col < 256; col++) {
     let y = HEIGHT - 1;

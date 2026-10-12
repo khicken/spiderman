@@ -2,9 +2,10 @@ import type { BlockBehavior, BlockState, GameCtx, PlaceInfo } from "../contracts
 import { Face, SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import {
-  FACE_H, FX, FY, FZ, H_FACE, HX, HZ, OPP, cw, has, inRange, isReplaceable, lookFace, lookFaces, lookH, oppH, rotation16, st,
+  FACE_H, FX, FY, FZ, H_FACE, HX, HZ, OPP, cw, has, inRange, isReplaceable, isSolid, lookFace, lookFaces, lookH, oppH, rotation16, st,
 } from "./util";
 import { canSurviveAt } from "./support";
+import { isFullCube } from "./shapes";
 
 export type PlaceFn = NonNullable<BlockBehavior["place"]>;
 
@@ -93,11 +94,32 @@ export const placeAttachFace: PlaceFn = (ctx, x, y, z, info, s) => {
   return null;
 };
 
-export const placeDoor: PlaceFn = (ctx, x, y, z, _info, s) => {
+// Vanilla DoorBlock.getHinge: walls on either side, then a neighbor door, then the click position. 1 = right hinge.
+function doorHinge(ctx: GameCtx, x: number, y: number, z: number, h: number, info: PlaceInfo, id: number): number {
+  const w = ctx.world;
+  const l = (h + 3) & 3, r = cw(h);
+  const full = (bx: number, by: number, bz: number) => (isSolid(w.getBlock(bx, by, bz)) && isFullCube(w.getBlock(bx, by, bz)) ? 1 : 0);
+  const door = (bx: number, bz: number) => {
+    const n = w.getBlock(bx, y, bz);
+    return idOf(n) === id && (metaOf(n) & 8) === 0;
+  };
+  const lx = x + HX[l], lz = z + HZ[l], rx = x + HX[r], rz = z + HZ[r];
+  const i = -full(lx, y, lz) - full(lx, y + 1, lz) + full(rx, y, rz) + full(rx, y + 1, rz);
+  const dl = door(lx, lz), dr = door(rx, rz);
+  if ((dl && !dr) || i > 0) return 1;
+  if ((dr && !dl) || i < 0) return 0;
+  const j = HX[h], k = HZ[h];
+  const left = (j >= 0 || info.hitZ >= 0.5) && (j <= 0 || info.hitZ <= 0.5) && (k >= 0 || info.hitX <= 0.5) && (k <= 0 || info.hitX >= 0.5);
+  return left ? 0 : 1;
+}
+
+// Door meta: lower half bits 0-1 facing, bit 2 open. Upper half bit 0 hinge (1 right), bit 2 open, bit 3 set.
+export const placeDoor: PlaceFn = (ctx, x, y, z, info, s) => {
   if (!inRange(y + 1) || !isReplaceable(ctx.world.getBlock(x, y + 1, z))) return null;
-  const lower = stateOf(idOf(s), lookH(ctx));
+  const h = lookH(ctx);
+  const lower = stateOf(idOf(s), h);
   if (!survives(ctx, x, y, z, lower)) return null;
-  ctx.world.setBlock(x, y + 1, z, stateOf(idOf(s), lookH(ctx) | 8), SET_NOTIFY);
+  ctx.world.setBlock(x, y + 1, z, stateOf(idOf(s), 8 | doorHinge(ctx, x, y, z, h, info, idOf(s))), SET_NOTIFY);
   return lower;
 };
 

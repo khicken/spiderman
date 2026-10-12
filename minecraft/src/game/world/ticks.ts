@@ -1,6 +1,7 @@
 import type { BlockBehavior, GameCtx } from "../contracts";
 import { MIN_Y, SECTIONS } from "../contracts";
 import { BLOCKS, blockByName } from "../blocks/registry";
+import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE } from "../blocks/waterlog";
 import { chunkKey, type Store } from "./store";
 
 const MAX_SCHEDULED_PER_TICK = 65536;
@@ -114,8 +115,12 @@ export function createTicker(store: Store, behaviors: Record<string, BlockBehavi
         continue;
       }
       keys.delete(`${x},${y},${z},${id}`);
-      const s = c.blocks[((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15)];
-      if ((s & 0xfff) !== id) continue;
+      const ci = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
+      const s = c.blocks[ci];
+      if ((s & 0xfff) !== id) {
+        if (id === WATER_ID && (c.wl.has(ci) || IMPLICIT_WATER[s & 0xfff])) behaviors.water?.scheduledTick?.(ctx, x, y, z, WATER_SOURCE);
+        continue;
+      }
       behaviors[BLOCKS[id].name]?.scheduledTick?.(ctx, x, y, z, s);
     }
   };

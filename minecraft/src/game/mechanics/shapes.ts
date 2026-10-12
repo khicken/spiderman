@@ -2,6 +2,7 @@ import type { Aabb, BlockState, WorldApi } from "../contracts";
 import { AIR, idOf, metaOf } from "../contracts";
 import { BLOCKS, blockDef, OPAQUE, SOLID } from "../blocks/registry";
 import { HX, HZ } from "./util";
+import { chestPartnerH } from "./chest";
 
 const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): Aabb => ({
   minX: x0 / 16, minY: y0 / 16, minZ: z0 / 16, maxX: x1 / 16, maxY: y1 / 16, maxZ: z1 / 16,
@@ -80,7 +81,6 @@ const MUSHROOM = [box(5, 0, 5, 11, 6, 11)];
 const BAMBOO = [box(6.5, 0, 6.5, 9.5, 16, 9.5)];
 const SOUL_SAND = [box(0, 0, 0, 16, 14, 16)];
 const HONEY = [box(1, 0, 1, 15, 15, 15)];
-const CANDLE = [box(7, 0, 7, 9, 6, 9)];
 const STONECUTTER = [box(0, 0, 0, 16, 9, 16)];
 const DAYLIGHT = [box(0, 0, 0, 16, 6, 16)];
 const SCULK_SENSOR = [box(0, 0, 0, 16, 8, 16)];
@@ -89,7 +89,6 @@ const CONDUIT = [box(5, 5, 5, 11, 11, 11)];
 const TURTLE_EGG = [box(3, 0, 3, 12, 7, 12)];
 const DRAGON_EGG = [box(1, 0, 1, 15, 16, 15)];
 const DECORATED_POT = [box(1, 0, 1, 15, 16, 15)];
-const PICKLE = [box(6, 0, 6, 10, 6, 10)];
 const VINE_FACE = [box(0, 0, 15, 16, 16, 16), box(0, 0, 0, 1, 16, 16), box(0, 0, 0, 16, 16, 1), box(15, 0, 0, 16, 16, 16)];
 const VINE_UP = box(0, 15, 0, 16, 16, 16);
 const CAKE = [0, 1, 2, 3, 4, 5, 6].map((b) => [box(1 + b * 2, 0, 1, 15, 8, 15)]);
@@ -100,6 +99,19 @@ const BEET_AGE = [0, 1, 2, 3].map((a) => [box(0, 0, 0, 16, (a + 1) * 2, 16)]);
 const WART_AGE = [5, 8, 11, 14].map((h) => [box(0, 0, 0, 16, h, 16)]);
 const COCOA = [0, 1, 2].map((a) => rot4([box(8 - (2 + a), 12 - (5 + 2 * a), 15 - (4 + 2 * a), 8 + (2 + a), 12, 15)]));
 const GRINDSTONE = [box(2, 0, 2, 14, 16, 14)];
+const CANDLES = [
+  [[7, 7, 6]], [[5, 7, 6], [9, 6, 5]], [[7, 8, 6], [5, 5, 5], [9, 5, 3]], [[5, 5, 6], [9, 5, 5], [5, 9, 5], [9, 9, 3]],
+].map((l) => l.map(([x, z, h]) => box(x, 0, z, x + 2, h, z + 2)));
+const PICKLES = [
+  [[6, 6, 6]], [[3, 3, 6], [9, 8, 4]], [[6, 10, 6], [2, 2, 4], [10, 4, 6]], [[2, 2, 6], [10, 2, 4], [2, 10, 4], [10, 10, 6]],
+].map((l) => l.map(([x, z, h]) => box(x, 0, z, x + 4, h, z + 4)));
+const TURTLE_EGGS = [TURTLE_EGG, [box(1, 0, 1, 15, 7, 15)]];
+const HOOK = rot4([box(5, 0, 0, 11, 10, 6)]);
+const PISTON_HEAD = faceBoxes(
+  [box(0, 12, 0, 16, 16, 16), box(6, 0, 6, 10, 12, 10)],
+  [box(0, 0, 0, 16, 4, 16), box(6, 4, 6, 10, 16, 10)],
+  [box(0, 0, 12, 16, 16, 16), box(6, 6, 0, 10, 10, 12)],
+);
 const BELL = [box(4, 0, 4, 12, 16, 12)];
 
 // Stairs from quadrant masks: bit 0 x-low z-low, 1 x-high z-low, 2 x-low z-high, 3 x-high z-high.
@@ -206,13 +218,24 @@ function stairMask(s: BlockState, world: WorldApi | null, x: number, y: number, 
   return base;
 }
 
+// Upper door halves keep the hinge (bit 0); facing and open come from the lower half.
+function doorIndex(s: BlockState, world: WorldApi | null, x: number, y: number, z: number): number {
+  const m = metaOf(s);
+  let lower = m, upper = m;
+  if (m & 8) {
+    const b = world ? world.getBlock(x, y - 1, z) : AIR;
+    lower = idOf(b) === idOf(s) ? metaOf(b) : 0;
+  } else {
+    const t = world ? world.getBlock(x, y + 1, z) : AIR;
+    upper = idOf(t) === idOf(s) ? metaOf(t) : 8;
+  }
+  return ((lower & 3) + (lower & 4 ? (upper & 1 ? 3 : 1) : 0)) & 3;
+}
+
 function chestBoxes(s: BlockState, world: WorldApi | null, x: number, y: number, z: number): Aabb[] {
   if (!world || name(s) === "ender_chest") return CHEST;
-  for (let h = 0; h < 4; h++) {
-    const n = world.getBlock(x + HX[h], y, z + HZ[h]);
-    if (idOf(n) !== idOf(s) || metaOf(n) !== metaOf(s)) continue;
-    const f = metaOf(s);
-    if ((f === 4 || f === 5) === (h === 0 || h === 2)) continue;
+  const h = chestPartnerH(world, x, y, z, s);
+  if (h >= 0) {
     const b = { ...CHEST[0] };
     if (h === 0) b.maxZ = 1;
     else if (h === 1) b.minX = 0;
@@ -286,7 +309,7 @@ function boxesFor(s: BlockState, world: WorldApi | null, x: number, y: number, z
         ? STANDING_TORCH
         : WALL_TORCH[(m - 1) & 3];
     case "door":
-      return DOOR[((m & 3) + ((m & 4) ? 1 : 0)) & 3];
+      return DOOR[doorIndex(s, world, x, y, z)];
     case "trapdoor":
       if (m & 4) return DOOR[m & 3];
       return m & 8 ? TRAP_TOP : TRAP_BOTTOM;
@@ -381,7 +404,7 @@ function customBoxes(s: BlockState, collision: boolean): Aabb[] {
   if (n.endsWith("_banner")) return BANNER;
   if (n.includes("_wall_skull") || n.includes("_wall_head")) return WALL_SKULL[m & 3];
   if (d.tags?.includes("skulls")) return SKULL;
-  if (d.tags?.includes("candles")) return CANDLE;
+  if (d.tags?.includes("candles")) return CANDLES[m & 3];
   if (n === "end_portal" || n === "end_gateway") return n === "end_portal" ? END_PORTAL : FULL;
   if (n === "cocoa") return COCOA[Math.min(2, m >> 2)][m & 3];
   if (n === "stonecutter") return STONECUTTER;
@@ -389,16 +412,19 @@ function customBoxes(s: BlockState, collision: boolean): Aabb[] {
   if (n === "sculk_sensor" || n === "calibrated_sculk_sensor") return SCULK_SENSOR;
   if (n === "brewing_stand") return BREWING;
   if (n === "conduit") return CONDUIT;
-  if (n === "turtle_egg" || n === "sniffer_egg") return TURTLE_EGG;
+  if (n === "turtle_egg") return TURTLE_EGGS[(m & 3) ? 1 : 0];
+  if (n === "sniffer_egg") return [box(1, 0, 2, 15, 16, 14)];
   if (n === "dragon_egg") return DRAGON_EGG;
   if (n === "decorated_pot") return DECORATED_POT;
-  if (n === "sea_pickle") return PICKLE;
+  if (n === "sea_pickle") return PICKLES[m & 3];
   if (n === "grindstone") return GRINDSTONE;
   if (n === "bell") return BELL;
   if (n === "big_dripleaf") return [box(0, 11, 0, 16, 15, 16)];
   if (n === "tripwire") return [box(0, 1, 0, 16, 2.5, 16)];
-  if (n === "tripwire_hook") return WALL_SKULL[m & 3];
-  if (n === "piston_head" || n === "sticky_piston_head" || n === "moving_piston" || n === "heavy_core") return n === "heavy_core" ? [box(4, 0, 4, 12, 8, 12)] : FULL;
+  if (n === "tripwire_hook") return HOOK[m & 3];
+  if (n === "piston_head" || n === "sticky_piston_head") return PISTON_HEAD[m > 5 ? 2 : m];
+  if (n === "heavy_core") return [box(4, 0, 4, 12, 8, 12)];
+  if (n === "moving_piston") return collision ? FULL : NONE;
   if (n === "sculk_shrieker") return [box(0, 0, 0, 16, 8, 16)];
   return collision && !d.solid ? PLANT : FULL;
 }

@@ -1,86 +1,91 @@
-import { stateOf } from "../contracts";
+import { chest, faceOf, fill, fillFn, frame, put, rnd, S, wx, wz, type Frame } from "./build";
 import { B } from "./ids";
-import type { Rng, Writer } from "./rng";
-import { loot } from "./structures";
+import { createRng, type Writer } from "./rng";
+import type { Start } from "./structure-grid";
 
-const S = stateOf;
-const MOBS = ["zombie", "skeleton", "spider", "husk", "stray", "slime", "silverfish", "cave_spider", "breeze"];
-const CHAMBER_LOOT: [string, number, number, number][] = [
-  ["arrow", 4, 8, 20], ["bread", 1, 3, 15], ["baked_potato", 1, 3, 15], ["trial_key", 1, 1, 4], ["emerald", 1, 3, 10],
-  ["iron_ingot", 1, 2, 10], ["honey_bottle", 1, 2, 10], ["wind_charge", 1, 3, 15], ["tipped_arrow", 2, 4, 5], ["glow_berries", 2, 6, 10],
-];
+const MOBS = ["zombie", "husk", "skeleton", "stray", "bogged", "spider", "cave_spider", "slime", "silverfish", "breeze"];
+const TB = B.tuff_bricks, PT = B.polished_tuff, CT = B.chiseled_tuff, CTB = B.chiseled_tuff_bricks, GRATE = B.waxed_copper_grate;
+const CUT = B.waxed_cut_copper, OXCUT = B.waxed_oxidized_cut_copper, BULB = B.waxed_copper_bulb, CHC = B.waxed_chiseled_copper;
 
-function box(w: Writer, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, wall: (x: number, y: number, z: number) => number) {
-  if (x1 < w.ox || x0 > w.ox + 15 || z1 < w.oz || z0 > w.oz + 15) return;
-  for (let x = Math.max(x0, w.ox); x <= Math.min(x1, w.ox + 15); x++) {
-    for (let z = Math.max(z0, w.oz); z <= Math.min(z1, w.oz + 15); z++) {
-      for (let y = y0; y <= y1; y++) {
-        const edge = x === x0 || x === x1 || z === z0 || z === z1 || y === y0 || y === y1;
-        w.set(x, y, z, edge ? wall(x, y, z) : 0);
-      }
-    }
-  }
+function shell(f: Frame, floorY: number, ceilY: number) {
+  return (_a: number, y: number, _b: number, x: number, wy: number, z: number) => {
+    const v = rnd(f, x, wy, z);
+    if (y === floorY) return S((x + z) % 6 === 0 ? CT : v < 0.15 ? CHC : PT);
+    if (y === ceilY) return S((x + z * 3) % 4 === 0 ? GRATE : v < 0.3 ? OXCUT : TB);
+    if (y === floorY + 3) return S(CTB);
+    if (y === floorY + 1) return S(v < 0.5 ? CUT : TB);
+    return S(TB);
+  };
 }
 
-const shell = (floorY: number, ceilY: number) => (x: number, y: number, z: number) => {
-  if (y === floorY) return S((x + z) % 7 === 0 ? B.chiseled_tuff : B.polished_tuff);
-  if (y === ceilY) return S((x * 3 + z) % 5 === 0 ? B.waxed_copper_grate : B.tuff_bricks);
-  if (y === floorY + 3) return S(B.chiseled_tuff_bricks);
-  return S((x + y + z) % 11 === 0 ? B.waxed_cut_copper : B.tuff_bricks);
-};
-
-function spawner(w: Writer, x: number, y: number, z: number, mob: string) {
-  w.set(x, y - 1, z, S(B.polished_tuff));
-  w.set(x, y, z, S(B.trial_spawner));
-  if (w.inside(x, z)) w.blockEntities.push({ x, y, z, type: "trial_spawner", data: { entity: mob, ominous: false, state: "waiting_for_players" } });
+function box(f: Frame, a0: number, y0: number, b0: number, a1: number, y1: number, b1: number) {
+  const sh = shell(f, y0, y1);
+  fillFn(f, a0, y0, b0, a1, y1, b1, (a, y, b, x, wy, z) => (a === a0 || a === a1 || b === b0 || b === b1 || y === y0 || y === y1 ? sh(a, y, b, x, wy, z) : 0));
 }
 
-export function trialChamber(w: Writer, r: Rng, cx: number, cy: number, cz: number) {
-  const R = 11, H = 10;
-  box(w, cx - R, cy, cz - R, cx + R, cy + H, cz + R, shell(cy, cy + H));
-  for (const [px, pz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
-    for (let y = cy + 1; y < cy + H; y++) w.set(cx + px, y, cz + pz, S(y === cy + H - 1 ? B.waxed_copper_bulb : B.tuff_bricks));
+function trialSpawner(f: Frame, a: number, y: number, b: number, mob: string) {
+  put(f, a, y - 1, b, S(PT));
+  const x = wx(f, a, b), z = wz(f, a, b);
+  if (!f.w.inside(x, z)) return;
+  f.w.set(x, f.y + y, z, S(B.trial_spawner));
+  f.w.blockEntities.push({ x, y: f.y + y, z, type: "trial_spawner", data: { mob, state: "waiting", ominous: false } });
+}
+
+function vault(f: Frame, a: number, y: number, b: number, h: number) {
+  const x = wx(f, a, b), z = wz(f, a, b);
+  if (!f.w.inside(x, z)) return;
+  f.w.set(x, f.y + y, z, S(B.vault, faceOf(f, h)));
+  f.w.blockEntities.push({ x, y: f.y + y, z, type: "vault", data: { key: "trial_key", lootTable: "trial_chambers_reward" } });
+}
+
+export function trialChamber(w: Writer, s: Start) {
+  const r = createRng(s.seed);
+  const f = frame(w, s.x, s.y, s.z, r.int(4), s.seed);
+  const R = 11, H = 11;
+  box(f, -R, 0, -R, R, H, R);
+  for (const [pa, pb] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
+    fillFn(f, pa, 1, pb, pa, H - 1, pb, (_a, y) => S(y === H - 1 ? BULB : y % 3 === 0 ? CTB : TB));
+    put(f, pa, 5, pb + (pb > 0 ? -1 : 1), S(BULB));
   }
-  const mobs = [MOBS[r.int(MOBS.length)], MOBS[r.int(MOBS.length)], MOBS[r.int(MOBS.length)], "breeze"];
-  const spots = [[-8, 0], [8, 0], [0, -8], [0, 8]];
-  spots.forEach(([dx, dz], i) => spawner(w, cx + dx, cy + 2, cz + dz, mobs[i]));
-  for (const dx of [-1, 1]) {
-    const vx = cx + dx, vz = cz;
-    w.set(vx, cy + 1, vz, S(B.vault, dx < 0 ? 1 : 3));
-    const items = loot(r, CHAMBER_LOOT, 3);
-    if (w.inside(vx, vz)) w.blockEntities.push({ x: vx, y: cy + 1, z: vz, type: "vault", data: { key: "trial_key", ominous: false, loot: items } });
-  }
-  for (let k = 0; k < 10; k++) {
+  fill(f, -3, 0, -3, 3, 0, 3, S(CHC));
+  fill(f, -2, 0, -2, 2, 0, 2, S(PT));
+  trialSpawner(f, -7, 2, 0, "breeze");
+  trialSpawner(f, 7, 2, 0, MOBS[r.int(MOBS.length - 1)]);
+  vault(f, -1, 1, 0, 1);
+  vault(f, 1, 1, 0, 3);
+  chest(f, 0, 1, 3, 0, "trial_chambers_intersection", B.barrel, "barrel");
+  for (let k = 0; k < 8; k++) {
     const side = r.int(4), t = r.int(2 * R - 3) - R + 2;
-    const px = side < 2 ? cx + (side === 0 ? -R + 1 : R - 1) : cx + t;
-    const pz = side >= 2 ? cz + (side === 2 ? -R + 1 : R - 1) : cz + t;
-    w.set(px, cy + 1, pz, S(B.decorated_pot));
+    const pa = side < 2 ? (side === 0 ? -R + 1 : R - 1) : t, pb = side >= 2 ? (side === 2 ? -R + 1 : R - 1) : t;
+    if (Math.abs(pa) <= 1 || Math.abs(pb) <= 1) continue;
+    put(f, pa, 1, pb, S(B.decorated_pot));
   }
   const dirs: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  for (const [dx, dz] of dirs) {
-    const len = 14 + r.int(8);
-    const sx = cx + dx * R, sz = cz + dz * R;
-    const ex = sx + dx * len, ez = sz + dz * len;
-    const x0 = Math.min(sx, ex) - (dz !== 0 ? 2 : 0), x1 = Math.max(sx, ex) + (dz !== 0 ? 2 : 0);
-    const z0 = Math.min(sz, ez) - (dx !== 0 ? 2 : 0), z1 = Math.max(sz, ez) + (dx !== 0 ? 2 : 0);
-    box(w, x0, cy, z0, x1, cy + 5, z1, shell(cy, cy + 5));
-    const rx = ex + dx * 4, rz = ez + dz * 4;
-    box(w, rx - 4, cy, rz - 4, rx + 4, cy + 6, rz + 4, shell(cy, cy + 6));
-    for (let a = -1; a <= 1; a++) for (let k = 1; k <= 3; k++) w.set(ex + dz * a, cy + k, ez + dx * a, 0);
-    spawner(w, rx, cy + 1, rz, MOBS[r.int(MOBS.length)]);
-    const chx = rx + (dz !== 0 ? 3 : 0), chz = rz + (dx !== 0 ? 3 : 0);
-    w.set(chx, cy + 1, chz, S(B.chest, 0));
-    const items = loot(r, CHAMBER_LOOT, 3 + r.int(4));
-    if (w.inside(chx, chz)) w.blockEntities.push({ x: chx, y: cy + 1, z: chz, type: "chest", items });
-    w.set(rx - (dz !== 0 ? 3 : 0), cy + 1, rz - (dx !== 0 ? 3 : 0), S(B.barrel, 2));
-    w.set(rx, cy + 5, rz, S(B.waxed_copper_bulb));
+  for (const [da, db] of dirs) {
+    const len = 12 + r.int(10);
+    const sa = da * R, sb = db * R;
+    const ea = sa + da * len, eb = sb + db * len;
+    box(f, Math.min(sa, ea) - (db ? 2 : 0), 0, Math.min(sb, eb) - (da ? 2 : 0), Math.max(sa, ea) + (db ? 2 : 0), 5, Math.max(sb, eb) + (da ? 2 : 0));
+    for (let t = 3; t < len; t += 5) put(f, sa + da * t, 4, sb + db * t, S(BULB));
+    const ma = sa + da * (len >> 1) + db * 1, mb = sb + db * (len >> 1) + da * 1;
+    chest(f, ma, 1, mb, 0, "trial_chambers_corridor", B.chest);
+    put(f, ma - db * 2, 1, mb - da * 2, S(B.decorated_pot));
+    const ca = ea + da * 6, cb = eb + db * 6;
+    box(f, ca - 6, 0, cb - 6, ca + 6, 7, cb + 6);
+    fill(f, ea - (db ? 1 : 0), 1, eb - (da ? 1 : 0), ea + da + (db ? 1 : 0), 3, eb + db + (da ? 1 : 0), 0);
+    trialSpawner(f, ca, 1, cb, MOBS[r.int(MOBS.length)]);
+    chest(f, ca + (db ? 4 : 0), 1, cb + (da ? 4 : 0), 0, "trial_chambers_supply", B.barrel, "barrel");
+    chest(f, ca - (db ? 4 : 0), 1, cb - (da ? 4 : 0), 0, "trial_chambers_entrance", B.chest);
+    vault(f, ca + da * 5, 1, cb + db * 5, da > 0 ? 1 : da < 0 ? 3 : db > 0 ? 2 : 0);
+    put(f, ca, 6, cb, S(BULB));
+    for (const [qa, qb] of [[-4, -4], [4, -4], [-4, 4], [4, 4]]) put(f, ca + qa, 1, cb + qb, S(B.decorated_pot));
   }
   for (let a = -1; a <= 1; a++) {
     for (let k = 1; k <= 3; k++) {
-      w.set(cx + R, cy + k, cz + a, 0);
-      w.set(cx - R, cy + k, cz + a, 0);
-      w.set(cx + a, cy + k, cz + R, 0);
-      w.set(cx + a, cy + k, cz - R, 0);
+      put(f, R, k, a, 0);
+      put(f, -R, k, a, 0);
+      put(f, a, k, R, 0);
+      put(f, a, k, -R, 0);
     }
   }
 }

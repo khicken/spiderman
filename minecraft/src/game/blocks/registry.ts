@@ -56,4 +56,19 @@ for (const b of BLOCKS) {
   IS_FLUID[b.id] = b.shape === "fluid" ? 1 : 0;
 }
 
+// Light by full state (id | meta << 12): lit candles, unlit campfires and active sculk sensors depend on meta.
+export const STATE_EMIT = new Uint8Array(65536);
+for (let s = 0; s < 65536; s++) STATE_EMIT[s] = LIGHT_EMIT[s & 0xfff];
+for (const b of BLOCKS) {
+  const tags = b.tags ?? [];
+  for (let m = 0; m < 16; m++) {
+    const s = b.id | (m << 12);
+    if (tags.includes("candles")) STATE_EMIT[s] = m & 4 ? 3 * ((m & 3) + 1) : 0;
+    else if (tags.includes("candle_cakes")) STATE_EMIT[s] = m & 1 ? 3 : 0;
+    else if (b.shape === "campfire") STATE_EMIT[s] = m & 4 ? 0 : b.lightEmission;
+    else if (b.name === "sculk_sensor" || b.name === "calibrated_sculk_sensor") STATE_EMIT[s] = m & 4 ? 1 : 0;
+    else if (b.name === "respawn_anchor") STATE_EMIT[s] = [0, 3, 7, 11, 15][Math.min(m, 4)];
+  }
+}
+
 export const hasTag = (s: BlockState, tag: string) => blockDef(s).tags?.includes(tag) ?? false;

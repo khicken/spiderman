@@ -3,6 +3,8 @@ import { HUMANOID, HUMANOID_OUTER, ILLAGER, SKELETON, paintHumanoid, paintSkelet
 import { Pix, shade } from "./pix";
 import { attackTime, headLook, humanoidLimbs, rig, setRot, wrap, zombieArms, type VPart } from "./rig";
 import { attachHeld } from "./held";
+import { createArmorLayer, type Equipment } from "../armor-layer";
+import { forgetModel } from "../render";
 
 const ZOMBIE_FACE = [
   "hhhhhhhh",
@@ -197,7 +199,9 @@ export function undeadModel(o: UndeadOpts): MobModel {
   const h = o.parts === "skeleton" || o.parts === "villager" ? 32 : 64;
   const r = rig(skinOf(o.key, 64, o.parts === "villager" ? 64 : h, o.paint), [...parts, ...extra]);
   const held = attachHeld(r, o.held);
-  return wrap(r, (a) => {
+  const armor = o.parts === "villager" || o.parts === "piglin" ? null : createArmorLayer(r.p, false);
+  const model = wrap(r, (a) => {
+    if (armor?.set((a.e.data.equipment as Equipment | undefined) ?? {})) forgetModel(model.root);
     headLook(r.p.head, a);
     humanoidLimbs(r, a, o.arms === "sword");
     const aggressive = !!a.e.data.aggressive;
@@ -217,6 +221,14 @@ export function undeadModel(o: UndeadOpts): MobModel {
     if (r.p.bogged_shroom2) r.p.bogged_shroom2.visible = !a.e.data.sheared;
     held?.update(a.e);
   }, { scale: o.scale });
+  if (armor) {
+    const base = model.dispose.bind(model);
+    model.dispose = () => {
+      armor.dispose();
+      base();
+    };
+  }
+  return model;
 }
 
 const villagerZombie: VPart[] = ILLAGER.filter((p) => p.name !== "arms").map((p) =>

@@ -4,6 +4,7 @@ import {
   applyPhysics, canSee, canSeePlayer, clearPath, findPath, followPath, hasPath, lookAt, moveTo, playerTargetable, randomSpot,
   rotlerp, sunBurns, wander, walkToward, yawTo, type Target,
 } from "../ai";
+import { playerVisibility } from "../../systems/brewing/effects";
 
 export const DIFF = { peaceful: 0, easy: 1, normal: 2, hard: 3 } as const;
 export const diffId = (ctx: GameCtx) => DIFF[ctx.rules.difficulty];
@@ -134,7 +135,8 @@ export function updateTarget(e: Entity, ctx: GameCtx, o: TargetOpts, hurt = 0): 
   }
   if (t === undefined && (e.age + e.id) % 10 === 0 && playerTargetable(ctx) && (!o.when || o.when())) {
     const d2 = ctx.player.body.pos.distanceToSquared(e.body.pos);
-    if (d2 < o.range * o.range && (o.sight === false || canSeePlayer(ctx, e))) t = "player";
+    const r = o.range * playerVisibility(ctx);
+    if (d2 < r * r && (o.sight === false || canSeePlayer(ctx, e))) t = "player";
   }
   if (t !== e.data._target) {
     clearPath(e);

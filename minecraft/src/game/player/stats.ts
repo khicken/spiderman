@@ -1,6 +1,7 @@
 import type { BlockDef, BlockState, DamageSource, ItemStack, ToolStats } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { itemDef } from "../items/registry";
+import { POTION_DEFS } from "../items/potions";
 
 export const PLAYER_NAME = "Player";
 export const WALK_SPEED = 0.1;
@@ -53,8 +54,9 @@ export function toolSpeed(def: BlockDef, held: ItemStack | null): number {
 }
 
 export function canHarvest(def: BlockDef, held: ItemStack | null): boolean {
-  if (def.toolTier === undefined) return true;
   const t = toolOf(held);
+  if (def.name === "cobweb") return t?.kind === "sword" || t?.kind === "shears";
+  if (def.toolTier === undefined) return true;
   return !!t && t.kind === def.tool && t.tier >= def.toolTier;
 }
 
@@ -95,7 +97,7 @@ export function armorReduce(dmg: number, armor: number, toughness: number): numb
 
 export const protectionReduce = (dmg: number, epf: number) => dmg * (1 - Math.max(0, Math.min(epf, 20)) / 25);
 
-export const BYPASS_ARMOR: ReadonlySet<DamageSource> = new Set<DamageSource>(["fall", "drown", "starve", "void", "suffocate", "magic", "wither", "generic", "freeze"]);
+export const BYPASS_ARMOR: ReadonlySet<DamageSource> = new Set<DamageSource>(["fall", "drown", "starve", "void", "suffocate", "magic", "wither", "generic", "freeze", "fly_into_wall"]);
 
 export function fallDamage(fallDistance: number, multiplier: number, jumpBoost: number): number {
   return Math.max(0, Math.ceil((fallDistance - 3 - jumpBoost) * multiplier));
@@ -159,30 +161,16 @@ export function deathMessage(source: DamageSource, attackerType?: string, fell =
     case "freeze": return `${p} froze to death`;
     case "thorns": return `${p} was killed while trying to hurt ${by || "something"}`;
     case "mace": return `${p} was smashed by ${by || "a mace"}`;
+    case "fly_into_wall": return `${p} experienced kinetic energy`;
+    case "trident": return `${p} was impaled by ${by || "a trident"}`;
     default: return `${p} died`;
   }
 }
 
-// Potion contents by stack.data.potion, as [effect, seconds, amplifier]. Instant effects use 0 seconds.
-export const POTIONS: Record<string, [string, number, number][]> = {
-  night_vision: [["night_vision", 180, 0]], long_night_vision: [["night_vision", 480, 0]],
-  invisibility: [["invisibility", 180, 0]], long_invisibility: [["invisibility", 480, 0]],
-  leaping: [["jump_boost", 180, 0]], long_leaping: [["jump_boost", 480, 0]], strong_leaping: [["jump_boost", 90, 1]],
-  fire_resistance: [["fire_resistance", 180, 0]], long_fire_resistance: [["fire_resistance", 480, 0]],
-  swiftness: [["speed", 180, 0]], long_swiftness: [["speed", 480, 0]], strong_swiftness: [["speed", 90, 1]],
-  slowness: [["slowness", 90, 0]], long_slowness: [["slowness", 240, 0]], strong_slowness: [["slowness", 20, 3]],
-  turtle_master: [["slowness", 20, 3], ["resistance", 20, 2]], long_turtle_master: [["slowness", 40, 3], ["resistance", 40, 2]],
-  strong_turtle_master: [["slowness", 20, 5], ["resistance", 20, 3]],
-  water_breathing: [["water_breathing", 180, 0]], long_water_breathing: [["water_breathing", 480, 0]],
-  healing: [["instant_health", 0, 0]], strong_healing: [["instant_health", 0, 1]],
-  harming: [["instant_damage", 0, 0]], strong_harming: [["instant_damage", 0, 1]],
-  poison: [["poison", 45, 0]], long_poison: [["poison", 90, 0]], strong_poison: [["poison", 21.6, 1]],
-  regeneration: [["regeneration", 45, 0]], long_regeneration: [["regeneration", 90, 0]], strong_regeneration: [["regeneration", 22.5, 1]],
-  strength: [["strength", 180, 0]], long_strength: [["strength", 480, 0]], strong_strength: [["strength", 90, 1]],
-  weakness: [["weakness", 90, 0]], long_weakness: [["weakness", 240, 0]],
-  luck: [["luck", 300, 0]], slow_falling: [["slow_falling", 90, 0]], long_slow_falling: [["slow_falling", 240, 0]],
-  wind_charged: [["wind_charged", 180, 0]], weaving: [["weaving", 180, 0]], oozing: [["oozing", 180, 0]], infested: [["infested", 180, 0]],
-};
+// Potion contents by stack.data.potion, as [effect, seconds, amplifier].
+export const POTIONS: Record<string, [string, number, number][]> = Object.fromEntries(
+  Object.entries(POTION_DEFS).map(([k, d]) => [k, d.effects.map(([id, t, a]) => [id, t / 20, a] as [string, number, number])]),
+);
 
 export const STEW_EFFECTS: Record<string, [string, number]> = {
   allium: ["fire_resistance", 3], azure_bluet: ["blindness", 11], blue_orchid: ["saturation", 0.35], dandelion: ["saturation", 0.35],

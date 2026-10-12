@@ -16,6 +16,15 @@ export interface Resolved {
 const SFX: Record<string, Recipe> = { ...PLAYER_SFX, ...WORLD_SFX, ...NOTE_SFX };
 
 const ALIASES: Record<string, string> = {
+  "item.elytra.flying": "item.trident.throw",
+  "item.trident.return": "item.trident.throw",
+  "item.trident.hit_ground": "item.trident.hit",
+  "item.trident.riptide_1": "item.trident.throw",
+  "item.trident.riptide_2": "item.trident.throw",
+  "item.trident.riptide_3": "item.trident.throw",
+  "item.trident.thunder": "entity.firework_rocket.large_blast",
+  "entity.ender_eye.launch": "entity.ender_pearl.throw",
+  "entity.ender_eye.death": "entity.splash_potion.break",
   "random.click": "ui.button.click",
   "random.orb": "entity.experience_orb.pickup",
   "random.levelup": "entity.player.levelup",

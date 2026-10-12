@@ -1,5 +1,6 @@
 import type { Body, WorldApi } from "../contracts";
-import { blockDef } from "../blocks/registry";
+import { idOf } from "../contracts";
+import { IS_FLUID, blockDef } from "../blocks/registry";
 import { blockBelow, blockJumpFactor, isFree, moveBody, onScaffolding, submergedHeight, type MoveOpts } from "./physics";
 
 export interface MotionInput {
@@ -18,14 +19,58 @@ export interface MotionInput {
   edgeGuard: boolean;
   living: boolean;
   weaving: boolean;
+  boots?: boolean; // leather boots: walk on powder snow
+  swimming?: boolean;
+  lookY?: number; // sin(pitch), positive looks up
+  depthStrider?: number; // 0..3
+  dolphin?: boolean;
+  gliding?: boolean;
+  pitch?: number; // radians, positive looks up
 }
 
 export interface MotionState {
   noJumpDelay: number;
   jumped: boolean;
+  wallSpeed: number; // horizontal speed lost to a wall while gliding
 }
 
-export const createMotionState = (): MotionState => ({ noJumpDelay: 0, jumped: false });
+export const createMotionState = (): MotionState => ({ noJumpDelay: 0, jumped: false, wallSpeed: 0 });
+
+function waterAbove(world: WorldApi, body: Body): boolean {
+  return IS_FLUID[idOf(world.getBlock(Math.floor(body.pos.x), Math.floor(body.pos.y + 0.9), Math.floor(body.pos.z)))] === 1;
+}
+
+// Vanilla LivingEntity.travel fall-flying branch. MC pitch is positive down, ours positive up.
+function glide(body: Body, inp: MotionInput, g: number): void {
+  const v = body.vel;
+  const pitch = inp.pitch ?? 0;
+  const cp = Math.cos(pitch);
+  const lx = -Math.sin(inp.yaw) * cp, lz = -Math.cos(inp.yaw) * cp;
+  if (v.y > -0.5) body.fallDistance = 1;
+  const d1 = Math.hypot(lx, lz);
+  const d2 = Math.hypot(v.x, v.z);
+  const d4 = cp * cp;
+  v.y += g * (-1 + d4 * 0.75);
+  if (v.y < 0 && d1 > 0) {
+    const d5 = v.y * -0.1 * d4;
+    v.x += (lx * d5) / d1;
+    v.y += d5;
+    v.z += (lz * d5) / d1;
+  }
+  if (pitch > 0 && d1 > 0) {
+    const d9 = d2 * Math.sin(pitch) * 0.04;
+    v.x -= (lx * d9) / d1;
+    v.y += d9 * 3.2;
+    v.z -= (lz * d9) / d1;
+  }
+  if (d1 > 0) {
+    v.x += ((lx / d1) * d2 - v.x) * 0.1;
+    v.z += ((lz / d1) * d2 - v.z) * 0.1;
+  }
+  v.x *= 0.99;
+  v.y *= 0.98;
+  v.z *= 0.99;
+}
 
 export const JUMP_POWER = 0.42;
 const FLUID_JUMP_THRESHOLD = 0.4;
@@ -90,14 +135,35 @@ export function applyVanillaMotion(world: WorldApi, body: Body, inp: MotionInput
   mo.sneak = inp.edgeGuard && inp.sneaking && !inp.flying;
   mo.living = inp.living;
   mo.weaving = inp.weaving;
+  mo.boots = inp.boots === true;
   const g = inp.gravity;
   const falling = v.y <= 0;
   let landed: number;
 
+  if (inp.gliding && !inp.flying && !body.inWater) {
+    const h0 = Math.hypot(v.x, v.z);
+    glide(body, inp, g);
+    landed = moveBody(world, body, mo);
+    st.wallSpeed = body.horizontalCollision ? h0 - Math.hypot(v.x, v.z) : 0;
+    return landed;
+  }
+  if (inp.swimming && body.inWater) {
+    const ly = inp.lookY ?? 0;
+    const k = ly < -0.2 ? 0.085 : 0.06;
+    if (ly <= 0 || inp.jumping || waterAbove(world, body)) v.y += (ly - v.y) * k;
+  }
   if (body.inWater && !inp.flying) {
     const y0 = body.pos.y;
-    const f = inp.sprinting ? 0.9 : 0.8;
-    moveRelative(body, inp, 0.02, fwd, str);
+    let f = inp.sprinting ? 0.9 : 0.8;
+    let speed = 0.02;
+    let ds = Math.min(3, inp.depthStrider ?? 0);
+    if (!body.onGround) ds *= 0.5;
+    if (ds > 0) {
+      f += (0.54600006 - f) * ds / 3;
+      speed += (inp.speed - speed) * ds / 3;
+    }
+    if (inp.dolphin) f = 0.96;
+    moveRelative(body, inp, speed, fwd, str);
     landed = moveBody(world, body, mo);
     if (body.horizontalCollision && body.onClimbable) v.y = 0.2;
     v.x *= f;

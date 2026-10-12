@@ -164,7 +164,10 @@ function hurtEntities(ctx: GameCtx, x: number, y: number, z: number, power: numb
   const impact = (1 - dist) * exposure(ctx, x, y, z, pb);
   if (doDamage) {
     const dmg = Math.floor(((impact * impact + impact) / 2) * 7 * reach + 1);
-    if (p.gameMode !== "creative") p.damage(dmg, "explosion", source && source !== "player" ? source : undefined);
+    if (p.gameMode !== "creative") {
+      p.damageFrom = { x, y, z };
+      p.damage(dmg, "explosion", source && source !== "player" ? source : undefined);
+    }
   }
   const blastProt = blastProtection(ctx);
   const k = impact * kbMul * (1 - blastProt);

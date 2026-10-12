@@ -1,36 +1,62 @@
-import { MIN_Y, stateOf, type ItemStack } from "../contracts";
+import { MIN_Y, stateOf, type Dim } from "../contracts";
+import { ancientCity } from "./ancient-city";
+import { bastion } from "./bastion";
+import { chest, frame } from "./build";
+import { endCity } from "./end-city";
+import { fortress } from "./fortress";
 import { B } from "./ids";
+import { mansion } from "./mansion";
+import { mineshaft } from "./mineshaft";
 import { hash32 } from "./noise";
+import { buriedTreasure, monument, oceanRuin, shipwreck } from "./ocean";
 import type { ChunkCtx } from "./overworld";
 import { createRng, idTable, type Rng, type Writer } from "./rng";
+import { forStarts, STRUCTS, type Start } from "./structure-grid";
+import { stronghold } from "./stronghold";
 import { BI } from "./surface";
+import { desertPyramid, igloo, jungleTemple, outpost, swampHut } from "./temples";
 import { trialChamber } from "./trial";
-import { village, VILLAGE_BIOMES } from "./village";
+import { village, villageRects } from "./village";
 
 const S = stateOf;
 const rng = createRng();
 
-// Vanilla random spread placement: one candidate chunk per region of `spacing` chunks.
-export function regionStart(seed: number, salt: number, rx: number, rz: number, spacing: number, separation: number, out: { x: number; z: number }) {
-  const h = hash32(seed, rx, rz, salt);
-  const span = spacing - separation;
-  out.x = rx * spacing + (h % span);
-  out.z = rz * spacing + ((h >>> 16) % span);
-}
+type Gen = (ctx: ChunkCtx | null, w: Writer, s: Start) => void;
 
-const start = { x: 0, z: 0 };
+const GENS: Record<string, Gen> = {
+  village: (c, w, s) => village(c!, w, s),
+  desert_pyramid: (_c, w, s) => desertPyramid(w, s),
+  jungle_temple: (_c, w, s) => jungleTemple(w, s),
+  igloo: (_c, w, s) => igloo(w, s),
+  swamp_hut: (_c, w, s) => swampHut(w, s),
+  pillager_outpost: (_c, w, s) => outpost(w, s),
+  ocean_ruin: (_c, w, s) => oceanRuin(w, s),
+  shipwreck: (_c, w, s) => shipwreck(w, s),
+  buried_treasure: (_c, w, s) => buriedTreasure(w, s),
+  ocean_monument: (_c, w, s) => monument(w, s),
+  woodland_mansion: (_c, w, s) => mansion(w, s),
+  mineshaft: (_c, w, s) => mineshaft(w, s),
+  ancient_city: (_c, w, s) => ancientCity(w, s),
+  trial_chambers: (_c, w, s) => trialChamber(w, s),
+  ruined_portal: (_c, w, s) => ruinedPortal(w, s),
+  stronghold: (_c, w, s) => stronghold(w, s),
+  fortress: (_c, w, s) => fortress(w, s),
+  bastion_remnant: (_c, w, s) => bastion(w, s),
+  end_city: (_c, w, s) => endCity(w, s),
+};
 
-function forStarts(ctx: ChunkCtx, salt: number, spacing: number, separation: number, reach: number, fn: (scx: number, scz: number) => void) {
-  const seen = new Set<number>();
-  for (let dx = -reach; dx <= reach; dx++) {
-    for (let dz = -reach; dz <= reach; dz++) {
-      const rx = Math.floor((ctx.cx + dx) / spacing), rz = Math.floor((ctx.cz + dz) / spacing);
-      const key = rx * 65536 + rz;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      regionStart(ctx.g.seed, salt, rx, rz, spacing, separation, start);
-      if (Math.abs(start.x - ctx.cx) <= reach && Math.abs(start.z - ctx.cz) <= reach) fn(start.x, start.z);
-    }
+// Underground pieces first so surface structures and their foundations win where they overlap.
+const ORDER: Record<Dim, string[]> = {
+  overworld: ["mineshaft", "stronghold", "trial_chambers", "ancient_city", "buried_treasure", "ocean_ruin", "shipwreck", "ocean_monument",
+    "ruined_portal", "desert_pyramid", "jungle_temple", "igloo", "swamp_hut", "pillager_outpost", "woodland_mansion", "village"],
+  nether: ["fortress", "bastion_remnant"],
+  end: ["end_city"],
+};
+
+export function placeDimStructures(seed: number, dim: Dim, ctx: ChunkCtx | null, w: Writer) {
+  for (const name of ORDER[dim]) {
+    const d = STRUCTS.find((x) => x.name === name)!;
+    forStarts(seed, d, w.cx, w.cz, (s) => GENS[name](ctx, w, s));
   }
 }
 
@@ -46,24 +72,7 @@ export function placeStructures(ctx: ChunkCtx, w: Writer) {
       if (y >= 63) desertWell(w, x, y, z);
     }
   }
-  forStarts(ctx, 0x9071, 40, 15, 1, (scx, scz) => {
-    const x = scx * 16 + 8, z = scz * 16 + 8;
-    const y = ow.surfaceY(x, z);
-    if (y < 40) return;
-    rng.seed(hash32(seed, scx, scz, 0x9072));
-    ruinedPortal(w, rng, x, Math.max(y, 63) - (rng.chance(0.3) ? 0 : 1), z);
-  });
-  forStarts(ctx, 0x7111, 34, 8, 3, (scx, scz) => {
-    const x = scx * 16 + 8, z = scz * 16 + 8;
-    if (!VILLAGE_BIOMES.has(ow.biomeAt(x, z))) return;
-    const y = ow.surfaceY(x, z);
-    if (y < 63 || y > 120) return;
-    village(ctx, w, scx, scz, x, y, z);
-  });
-  forStarts(ctx, 0x7a1a, 34, 12, 3, (scx, scz) => {
-    rng.seed(hash32(seed, scx, scz, 0x7a1b));
-    trialChamber(w, rng, scx * 16 + 8, -40 + rng.int(20), scz * 16 + 8);
-  });
+  placeDimStructures(seed, "overworld", ctx, w);
   dungeons(ctx, w);
 }
 
@@ -89,7 +98,9 @@ function desertWell(w: Writer, x: number, y: number, z: number) {
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) w.set(x + dx, y + 4, z + dz, dx === 0 && dz === 0 ? SS : SLAB);
 }
 
-function ruinedPortal(w: Writer, r: Rng, x: number, y: number, z: number) {
+function ruinedPortal(w: Writer, s: Start) {
+  const r: Rng = createRng(s.seed);
+  const x = s.x, z = s.z, y = s.y - (r.chance(0.3) ? 0 : 1);
   const alongX = r.chance(0.5);
   const wid = 4, hei = 5;
   for (let dx = -4; dx <= 4 + wid; dx++) {
@@ -103,60 +114,16 @@ function ruinedPortal(w: Writer, r: Rng, x: number, y: number, z: number) {
   }
   for (let i = 0; i < wid; i++) {
     for (let j = 0; j < hei; j++) {
-      const frame = i === 0 || i === wid - 1 || j === 0 || j === hei - 1;
-      if (!frame) continue;
+      const edge = i === 0 || i === wid - 1 || j === 0 || j === hei - 1;
+      if (!edge) continue;
       if (j > 1 && r.chance(0.3)) continue;
       const px = alongX ? x + i - 2 : x, pz = alongX ? z : z + i - 2;
       w.set(px, y + 1 + j, pz, S(r.chance(0.2) ? B.crying_obsidian : B.obsidian));
     }
   }
-  for (let k = 0; k < 3; k++) {
-    const px = x + r.int(9) - 4, pz = z + r.int(9) - 4;
-    w.set(px, y + 1, pz, S(B.obsidian));
-  }
+  for (let k = 0; k < 3; k++) w.set(x + r.int(9) - 4, y + 1, z + r.int(9) - 4, S(B.obsidian));
   const cx = alongX ? x + 3 : x + 2, cz = alongX ? z + 2 : z + 3;
-  w.set(cx, y + 1, cz, S(B.chest, 0));
-  const items = loot(r, PORTAL_LOOT, 4 + r.int(5));
-  if (w.inside(cx, cz)) w.blockEntities.push({ x: cx, y: y + 1, z: cz, type: "chest", items });
-}
-
-type Loot = [item: string, min: number, max: number, weight: number];
-const PORTAL_LOOT: Loot[] = [
-  ["obsidian", 1, 2, 40], ["flint", 1, 4, 40], ["iron_nugget", 9, 18, 40], ["flint_and_steel", 1, 1, 40], ["fire_charge", 1, 1, 40],
-  ["golden_apple", 1, 1, 15], ["gold_nugget", 4, 24, 15], ["golden_sword", 1, 1, 15], ["golden_axe", 1, 1, 15], ["golden_hoe", 1, 1, 15],
-  ["golden_shovel", 1, 1, 15], ["golden_pickaxe", 1, 1, 15], ["golden_boots", 1, 1, 15], ["golden_chestplate", 1, 1, 15],
-  ["golden_helmet", 1, 1, 15], ["golden_leggings", 1, 1, 15], ["glistering_melon_slice", 4, 12, 5], ["golden_horse_armor", 1, 1, 5],
-  ["light_weighted_pressure_plate", 1, 1, 5], ["golden_carrot", 4, 12, 5], ["clock", 1, 1, 5], ["gold_ingot", 2, 8, 5],
-  ["bell", 1, 1, 1], ["enchanted_golden_apple", 1, 1, 1], ["gold_block", 1, 2, 1],
-];
-export const DUNGEON_LOOT: Loot[] = [
-  ["saddle", 1, 1, 20], ["golden_apple", 1, 1, 15], ["enchanted_golden_apple", 1, 1, 2], ["music_disc_otherside", 1, 1, 2],
-  ["music_disc_13", 1, 1, 15], ["music_disc_cat", 1, 1, 15], ["name_tag", 1, 1, 20], ["golden_horse_armor", 1, 1, 10],
-  ["iron_horse_armor", 1, 1, 15], ["diamond_horse_armor", 1, 1, 5], ["enchanted_book", 1, 1, 10], ["iron_ingot", 1, 4, 10],
-  ["gold_ingot", 1, 4, 5], ["bread", 1, 1, 20], ["wheat", 1, 4, 20], ["bucket", 1, 1, 10], ["redstone", 1, 4, 15], ["coal", 1, 4, 15],
-  ["melon_seeds", 2, 4, 10], ["pumpkin_seeds", 2, 4, 10], ["beetroot_seeds", 2, 4, 10], ["bone", 1, 8, 10], ["gunpowder", 1, 8, 10],
-  ["rotten_flesh", 1, 8, 10], ["string", 1, 8, 10],
-];
-
-export function loot(r: Rng, table: Loot[], rolls: number): (ItemStack | null)[] {
-  const items: (ItemStack | null)[] = new Array(27).fill(null);
-  let total = 0;
-  for (const t of table) total += t[3];
-  for (let k = 0; k < rolls; k++) {
-    let roll = r.next() * total;
-    let pick = table[0];
-    for (const t of table) {
-      roll -= t[3];
-      if (roll <= 0) {
-        pick = t;
-        break;
-      }
-    }
-    const stack: ItemStack = { item: pick[0], count: r.range(pick[1], pick[2]) };
-    if (pick[0] === "enchanted_book") stack.ench = { [["sharpness", "protection", "efficiency", "unbreaking", "power", "mending"][r.int(6)]]: 1 + r.int(3) };
-    items[r.int(27)] = stack;
-  }
-  return items;
+  chest(frame(w, cx, y + 1, cz, 0, s.seed), 0, 0, 0, 0, "ruined_portal", B.chest);
 }
 
 const ROOM_OK = idTable(B.stone, B.deepslate, B.granite, B.diorite, B.andesite, B.tuff, B.dirt, B.gravel, B.cobblestone, B.mossy_cobblestone);
@@ -200,7 +167,7 @@ function dungeons(ctx: ChunkCtx, w: Writer) {
     const x = w.ox + lx, z = w.oz + lz;
     blocks[at(lx, y, lz)] = S(B.spawner);
     const mob = ["zombie", "zombie", "skeleton", "spider"][dr.int(4)];
-    w.blockEntities.push({ x, y, z, type: "spawner", data: { entity: mob, delay: 20 } });
+    w.blockEntities.push({ x, y, z, type: "spawner", data: { mob, delay: 20 } });
     const chests = 1 + dr.int(2);
     for (let c = 0; c < chests; c++) {
       const side = dr.int(4);
@@ -209,8 +176,26 @@ function dungeons(ctx: ChunkCtx, w: Writer) {
       if (cx === lx && cz === lz) continue;
       const facing = side === 0 ? 0 : side === 1 ? 1 : side === 2 ? 4 : 5;
       blocks[at(cx, y, cz)] = S(B.chest, facing);
-      w.blockEntities.push({ x: w.ox + cx, y, z: w.oz + cz, type: "chest", items: loot(dr, DUNGEON_LOOT, 4 + dr.int(5)) });
+      w.blockEntities.push({ x: w.ox + cx, y, z: w.oz + cz, type: "chest", items: new Array(27).fill(null), data: { lootTable: "simple_dungeon", lootSeed: hash32(seed, w.ox + cx, y, w.oz + cz) } });
     }
     break;
   }
+}
+
+const TREE_FREE: [string, number][] = [["desert_pyramid", 13], ["jungle_temple", 17], ["igloo", 8], ["swamp_hut", 10], ["pillager_outpost", 16], ["woodland_mansion", 44]];
+const rectOut: number[] = [];
+
+export function surfaceRects(seed: number, cx: number, cz: number): number[] {
+  rectOut.length = 0;
+  for (const [name, r] of TREE_FREE) {
+    const d = STRUCTS.find((x) => x.name === name)!;
+    forStarts(seed, d, cx, cz, (s) => rectOut.push(s.x - r, s.z - r, s.x + r, s.z + r));
+  }
+  forStarts(seed, STRUCTS.find((x) => x.name === "village")!, cx, cz, (s) => villageRects(s, rectOut));
+  return rectOut;
+}
+
+export function inRects(r: number[], x: number, z: number): boolean {
+  for (let i = 0; i < r.length; i += 4) if (x >= r[i] && x <= r[i + 2] && z >= r[i + 1] && z <= r[i + 3]) return true;
+  return false;
 }

@@ -104,7 +104,7 @@ export function decorateCaves(ctx: ChunkCtx) {
           if (floor && n < 0.6) {
             blocks[i - 256] = S(B.sculk);
             if (r < 0.02) blocks[i] = S(B.sculk_sensor);
-            else if (r < 0.026) blocks[i] = S(B.sculk_shrieker);
+            else if (r < 0.026) blocks[i] = S(B.sculk_shrieker, 1);
             else if (r < 0.03) blocks[i - 256] = S(B.sculk_catalyst);
             else if (r < 0.2) blocks[i] = S(B.sculk_vein, 1 << 3);
           }

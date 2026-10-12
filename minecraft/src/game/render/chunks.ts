@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { CHUNK, MIN_Y, SECTIONS } from "../contracts";
 import type { ChunkEvent, MeshBuffers, MeshInput, MeshOutput, WorldApi } from "../contracts";
 import { meshSection } from "../mesh";
+import { ALL_VIS } from "../mesh/vis";
+import { createCaveCull } from "./cave-cull";
+import { createSectionBatches } from "./section-batch";
 import { chunkKey, createMeshQueue, sectionKey } from "./mesh-queue";
 
 interface Materials {
@@ -13,11 +16,12 @@ interface Materials {
 interface Section {
   key: number;
   cx: number;
+  sy: number;
   cz: number;
   box: THREE.Box3;
-  opaque: THREE.Mesh | null;
-  cutout: THREE.Mesh | null;
-  translucent: THREE.Mesh | null;
+  opaque: boolean;
+  cutout: boolean;
+  translucent: boolean;
   dist: number;
 }
 
@@ -37,28 +41,13 @@ interface PoolWorker {
 }
 
 const LAYERS = ["opaque", "cutout", "translucent"] as const;
-const LOCAL_BOX = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(CHUNK, CHUNK, CHUNK));
-const LOCAL_SPHERE = new THREE.Sphere(new THREE.Vector3(8, 8, 8), Math.sqrt(3 * 64));
 const MAX_IN_FLIGHT = 4;
 const now = () => performance.now();
-
-function toGeometry(b: MeshBuffers): THREE.BufferGeometry | null {
-  if (!b.index.length) return null;
-  const g = new THREE.BufferGeometry();
-  for (const name in b.attributes) {
-    const a = b.attributes[name];
-    g.setAttribute(name, new THREE.BufferAttribute(a.array, a.itemSize, a.normalized ?? false));
-  }
-  g.setIndex(new THREE.BufferAttribute(b.index, 1));
-  g.boundingBox = LOCAL_BOX;
-  g.boundingSphere = LOCAL_SPHERE;
-  return g;
-}
 
 const _frustum = new THREE.Frustum();
 const _proj = new THREE.Matrix4();
 
-export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Materials, workerCount: number) {
+export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Materials, workerCount: number, gl: WebGL2RenderingContext) {
   const group = new THREE.Group();
   group.name = "chunks";
   scene.add(group);
@@ -69,10 +58,17 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
   const versions = new Map<number, number>();
   const inFlight = new Map<number, Pending>();
   const results: { p: Pending; out: MeshOutput }[] = [];
-  const translucent: Section[] = [];
+  const drawList: Section[] = [];
+  const batches = {
+    opaque: createSectionBatches(gl, group, mats.opaque, 0, "opaque"),
+    cutout: createSectionBatches(gl, group, mats.cutout, 1, "cutout"),
+    translucent: createSectionBatches(gl, group, mats.translucent, 10, "translucent"),
+  };
   let nextId = 1;
   let renderDistance = 12;
   let uploadMs = 4;
+  let visible = 0;
+  const cave = createCaveCull((cx, cz) => ready.has(chunkKey(cx, cz)));
 
   const workers: PoolWorker[] = [];
   function spawnWorkers(n: number) {
@@ -130,23 +126,21 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     const k = chunkKey(cx, cz);
     if (ready.has(k) || !neighborsLoaded(cx, cz)) return;
     ready.add(k);
+    cave.touch();
     queueChunk(cx, cz, false);
   }
 
   function disposeSection(s: Section) {
     for (const layer of LAYERS) {
-      const m = s[layer];
-      if (m) {
-        group.remove(m);
-        m.geometry.dispose();
-        s[layer] = null;
-      }
+      if (s[layer]) batches[layer].remove(s.key);
+      s[layer] = false;
     }
     sections.delete(s.key);
   }
 
   function unloadChunk(cx: number, cz: number) {
     ready.delete(chunkKey(cx, cz));
+    cave.clearChunk(cx, cz);
     queue.removeChunk(cx, cz, SECTIONS);
     for (let sy = 0; sy < SECTIONS; sy++) {
       const key = sectionKey(cx, sy, cz);
@@ -170,37 +164,21 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     }
   });
 
-  function setLayer(s: Section, layer: (typeof LAYERS)[number], b: MeshBuffers | null, sy: number) {
-    const g = b ? toGeometry(b) : null;
-    let m = s[layer];
-    if (!g) {
-      if (m) {
-        group.remove(m);
-        m.geometry.dispose();
-        s[layer] = null;
-      }
+  function setLayer(s: Section, layer: (typeof LAYERS)[number], b: MeshBuffers | null) {
+    if (!b || !b.index.length) {
+      if (s[layer]) batches[layer].remove(s.key);
+      s[layer] = false;
       return;
     }
-    if (m) {
-      m.geometry.dispose();
-      m.geometry = g;
-      return;
-    }
-    m = new THREE.Mesh(g, mats[layer]);
-    m.position.set(s.cx * CHUNK, MIN_Y + sy * CHUNK, s.cz * CHUNK);
-    m.matrixAutoUpdate = false;
-    m.updateMatrix();
-    m.frustumCulled = false;
-    m.renderOrder = layer === "opaque" ? 0 : layer === "cutout" ? 1 : 10;
-    m.name = layer;
-    group.add(m);
-    s[layer] = m;
+    batches[layer].set(s.key, b, s.cx * CHUNK, MIN_Y + s.sy * CHUNK, s.cz * CHUNK);
+    s[layer] = true;
   }
 
   function apply(p: Pending, out: MeshOutput | null) {
     if (!ready.has(chunkKey(p.cx, p.cz))) return;
     if (versions.get(p.key) !== p.version) return;
     let s = sections.get(p.key);
+    cave.setVis(p.key, out?.vis ?? ALL_VIS);
     if (!out || (!out.opaque && !out.cutout && !out.translucent)) {
       if (s) disposeSection(s);
       return;
@@ -208,13 +186,13 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     if (!s) {
       const x = p.cx * CHUNK, y = MIN_Y + p.sy * CHUNK, z = p.cz * CHUNK;
       s = {
-        key: p.key, cx: p.cx, cz: p.cz,
+        key: p.key, cx: p.cx, sy: p.sy, cz: p.cz,
         box: new THREE.Box3(new THREE.Vector3(x, y, z), new THREE.Vector3(x + CHUNK, y + CHUNK, z + CHUNK)),
-        opaque: null, cutout: null, translucent: null, dist: 0,
+        opaque: false, cutout: false, translucent: false, dist: 0,
       };
       sections.set(p.key, s);
     }
-    for (const layer of LAYERS) setLayer(s, layer, out[layer], p.sy);
+    for (const layer of LAYERS) setLayer(s, layer, out[layer]);
     if (!s.opaque && !s.cutout && !s.translucent) sections.delete(p.key);
   }
 
@@ -287,22 +265,28 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     const px = camera.position.x, py = camera.position.y, pz = camera.position.z;
     const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK);
     const maxD = renderDistance + 1;
-    translucent.length = 0;
+    cave.update(pcx, Math.floor((py - MIN_Y) / CHUNK), pcz, maxD, now());
+    visible = 0;
+    batches.opaque.begin();
+    batches.cutout.begin();
+    batches.translucent.begin();
     for (const s of sections.values()) {
-      const vis = Math.abs(s.cx - pcx) <= maxD && Math.abs(s.cz - pcz) <= maxD && _frustum.intersectsBox(s.box);
-      if (s.opaque) s.opaque.visible = vis;
-      if (s.cutout) s.cutout.visible = vis;
-      if (s.translucent) {
-        s.translucent.visible = vis;
-        if (vis) {
-          const dx = (s.box.min.x + 8) - px, dy = (s.box.min.y + 8) - py, dz = (s.box.min.z + 8) - pz;
-          s.dist = dx * dx + dy * dy + dz * dz;
-          translucent.push(s);
-        }
-      }
+      if (!(Math.abs(s.cx - pcx) <= maxD && Math.abs(s.cz - pcz) <= maxD && cave.visible(s.cx, s.sy, s.cz) && _frustum.intersectsBox(s.box))) continue;
+      const dx = (s.box.min.x + 8) - px, dy = (s.box.min.y + 8) - py, dz = (s.box.min.z + 8) - pz;
+      s.dist = dx * dx + dy * dy + dz * dz;
+      drawList[visible++] = s;
     }
-    translucent.sort(byDistDesc);
-    for (let k = 0; k < translucent.length; k++) translucent[k].translucent!.renderOrder = 10 + k;
+    drawList.length = visible;
+    drawList.sort(byDist);
+    for (let k = 0; k < visible; k++) {
+      const s = drawList[k];
+      if (s.opaque) batches.opaque.draw(s.key);
+      if (s.cutout) batches.cutout.draw(s.key);
+    }
+    for (let k = visible - 1; k >= 0; k--) if (drawList[k].translucent) batches.translucent.draw(drawList[k].key);
+    batches.opaque.end();
+    batches.cutout.end();
+    batches.translucent.end();
   }
 
   return {
@@ -310,6 +294,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     update,
     pending: () => queue.size() + inFlight.size + results.length,
     sectionCount: () => sections.size,
+    counts: () => ({
+      pages: batches.opaque.pageCount() + batches.cutout.pageCount() + batches.translucent.pageCount(),
+      verts: batches.opaque.usedVerts() + batches.cutout.usedVerts() + batches.translucent.usedVerts(),
+      sections: sections.size, visible, queued: queue.size(), inFlight: inFlight.size, results: results.length, workers: workers.length }),
     setRenderDistance(n: number) { renderDistance = n; },
     setUploadBudget(ms: number) { uploadMs = ms; },
     dispose() {
@@ -317,16 +305,18 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
       for (const w of workers) w.w.terminate();
       workers.length = 0;
       for (const s of [...sections.values()]) disposeSection(s);
+      for (const layer of LAYERS) batches[layer].dispose();
       scene.remove(group);
       queue.clear();
       inFlight.clear();
       results.length = 0;
       ready.clear();
+      cave.clear();
     },
   };
 }
 
 const isLive = (w: PoolWorker) => !w.dead;
-const byDistDesc = (a: Section, b: Section) => b.dist - a.dist;
+const byDist = (a: Section, b: Section) => a.dist - b.dist;
 
 export type ChunkMeshes = ReturnType<typeof createChunkMeshes>;

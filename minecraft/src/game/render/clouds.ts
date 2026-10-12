@@ -35,9 +35,9 @@ void main() {
   if (texture2D(uMap, uv).r < 0.5) discard;
   #endif
   float d = length(vWorld.xz - uCam.xz);
-  float f = smoothstep(uFadeEnd * 0.55, uFadeEnd, d);
-  vec3 c = mix(uColor * vShade, uFog, f * 0.6);
-  gl_FragColor = sRGBTransferEOTF(vec4(c, 0.8 * (1.0 - f)));
+  float f = smoothstep(uFadeEnd * 0.4, uFadeEnd, d);
+  vec3 c = mix(uColor * vShade, uFog, f);
+  gl_FragColor = sRGBTransferEOTF(vec4(c, 0.8 * (1.0 - smoothstep(0.85, 1.0, d / uFadeEnd))));
   #include <colorspace_fragment>
 }`;
 

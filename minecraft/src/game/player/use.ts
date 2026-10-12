@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Aabb, BlockDef, BlockState, Entity, GameCtx, ItemStack, PlaceInfo, RaycastHit } from "../contracts";
 import { AIR, Face, MAX_Y, MIN_Y, idOf, metaOf, stateOf } from "../contracts";
 import { blockByName, blockDef, blockId, hasBlock } from "../blocks/registry";
+import { IMPLICIT_WATER, canHoldWater } from "../blocks/waterlog";
 import { itemDef } from "../items/registry";
 import type { InputApi } from "./input";
 import { blockBoxes } from "./interact";
@@ -9,8 +10,10 @@ import { bodyBox, intersects } from "./physics";
 import { POTIONS, STEW_EFFECTS, ench } from "./stats";
 import { damageSlot, eat } from "./survival";
 import type { PlayerState, UseState } from "./state";
+import { boostRocket, canRiptide, crossbowCharge, findAmmo, loadCrossbow, releaseBow, releaseTrident, shootCrossbow, useFishingRod } from "./ranged";
+import { collectBreath } from "../systems/brewing/effects";
 
-type Hand = "main" | "off";
+export type Hand = "main" | "off";
 const FACE_DIR: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const DRINKS = new Set(["potion", "milk_bucket", "honey_bottle", "ominous_bottle"]);
 const CONTAINERS: Record<string, string> = {
@@ -32,7 +35,6 @@ const STRIPPABLE = /^(.*)_(log|wood|stem|hyphae|block)$/;
 const TILLABLE = new Set(["grass_block", "dirt", "dirt_path"]);
 const FLATTENABLE = new Set(["grass_block", "dirt", "podzol", "mycelium", "coarse_dirt", "rooted_dirt"]);
 const COPPER_STAGES = ["exposed_", "weathered_", "oxidized_"];
-const ARROWS = ["arrow", "spectral_arrow", "tipped_arrow"];
 
 const vel = new THREE.Vector3();
 const dir = new THREE.Vector3();
@@ -108,6 +110,9 @@ function blocked(p: PlayerState, ctx: GameCtx, st: BlockState, x: number, y: num
   return false;
 }
 
+// Candles, sea pickles and turtle eggs keep a count of 1-4 in meta bits 0-1.
+const STACKED = /(^|_)candle$|^sea_pickle$|^turtle_egg$/;
+
 export function placeBlock(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack, hit: RaycastHit): boolean {
   if (p.gameMode === "adventure") return false;
   const it = itemDef(stack.item);
@@ -121,6 +126,7 @@ export function placeBlock(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemSta
   const m = metaOf(clicked);
   if (placed.shape === "slab" && idOf(clicked) === id && ((m === 0 && hit.face === Face.Up) || (m === 1 && hit.face === Face.Down))) st = stateOf(id, 2);
   else if (placed.shape === "snow_layer" && idOf(clicked) === id && m < 7) st = stateOf(id, m + 1);
+  else if (STACKED.test(placed.name) && idOf(clicked) === id && (m & 3) < 3) st = stateOf(id, m + 1);
   if (st === null) {
     if (!blockDef(clicked).replaceable || idOf(clicked) === id) {
       const d = FACE_DIR[hit.face];
@@ -203,6 +209,13 @@ function useOn(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack, hit: Ray
     return true;
   }
   if (name === "water_bucket" || name === "lava_bucket" || name === "powder_snow_bucket" || (name.endsWith("_bucket") && name !== "milk_bucket" && name !== "bucket")) {
+    const watery = name !== "lava_bucket" && name !== "powder_snow_bucket";
+    if (watery && w.dim !== "nether" && canHoldWater(hit.state) && w.setWaterlogged?.(hit.x, hit.y, hit.z, true)) {
+      if (name !== "water_bucket") ctx.entities.spawn(name.slice(0, -"_bucket".length), hit.x + 0.5, hit.y, hit.z + 0.5);
+      sound(ctx, name !== "water_bucket" ? "item.bucket.empty_fish" : "item.bucket.empty", hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+      if (!creative(p)) ctx.inventory.setSlot(slotOf(ctx, h), { item: "bucket", count: 1 });
+      return true;
+    }
     adjacent(hit, cell);
     const cur = w.getBlock(cell[0], cell[1], cell[2]);
     if (cur !== AIR && !blockDef(cur).replaceable) return false;
@@ -266,23 +279,6 @@ function useOn(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack, hit: Ray
   return placeBlock(p, ctx, h, stack, hit);
 }
 
-function hasArrow(p: PlayerState, ctx: GameCtx): number {
-  const inv = ctx.inventory.slots;
-  if (inv[40] && ARROWS.includes(inv[40].item)) return 40;
-  for (const i of [ctx.inventory.selected]) if (inv[i] && ARROWS.includes(inv[i]!.item)) return i;
-  for (let i = 0; i < 36; i++) if (inv[i] && ARROWS.includes(inv[i]!.item)) return i;
-  return creative(p) ? -2 : -1;
-}
-
-function takeArrow(p: PlayerState, ctx: GameCtx, keepForInfinity: boolean): ItemStack {
-  const i = hasArrow(p, ctx);
-  if (i < 0) return { item: "arrow", count: 1 };
-  const s = ctx.inventory.slots[i]!;
-  const one = { ...s, count: 1 };
-  if (!creative(p) && !(keepForInfinity && s.item === "arrow")) ctx.inventory.setSlot(i, s.count > 1 ? { ...s, count: s.count - 1 } : null);
-  return one;
-}
-
 export function shoot(p: PlayerState, ctx: GameCtx, type: string, speed: number, inaccuracy: number, data: Record<string, unknown>, yawOffset = 0, pitchOffset = 0): Entity | null {
   eyeV.copy(p.eye());
   const yaw = p.yaw + (yawOffset * Math.PI) / 180, pitch = p.pitch - (pitchOffset * Math.PI) / 180;
@@ -322,8 +318,27 @@ function equipArmor(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bo
 }
 
 function fillBucket(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): boolean {
+  if (stack.item === "glass_bottle" && collectBreath(ctx)) {
+    exchange(p, ctx, h, { item: "dragon_breath", count: 1 });
+    return true;
+  }
   eyeV.copy(p.eye());
-  const hit = ctx.world.raycast(eyeV, p.lookDir(), 4.5 + (creative(p) ? 0.5 : 0), true);
+  const reach = 4.5 + (creative(p) ? 0.5 : 0);
+  let hit = ctx.world.raycast(eyeV, p.lookDir(), reach, true);
+  // Vanilla buckets clip SOURCE_ONLY: flowing fluid does not stop the ray.
+  for (let i = 0, gone = 0; stack.item === "bucket" && hit && i < 32; i++) {
+    const d = blockDef(hit.state);
+    if (d.shape !== "fluid" || metaOf(hit.state) === 0) break;
+    const { x, y, z } = hit;
+    gone += hit.dist + 0.05;
+    eyeV.copy(p.eye()).addScaledVector(p.lookDir(), gone);
+    hit = ctx.world.raycast(eyeV, p.lookDir(), reach - gone, true);
+    while (hit && hit.x === x && hit.y === y && hit.z === z && gone < reach) {
+      gone += 0.1;
+      eyeV.copy(p.eye()).addScaledVector(p.lookDir(), gone);
+      hit = ctx.world.raycast(eyeV, p.lookDir(), reach - gone, true);
+    }
+  }
   if (!hit) return false;
   const def = blockDef(hit.state);
   const source = def.shape === "fluid" && metaOf(hit.state) === 0;
@@ -335,6 +350,12 @@ function fillBucket(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bo
   }
   let result: string | null = null;
   let snd = "item.bucket.fill";
+  if (stack.item === "bucket" && p.gameMode !== "adventure" && !IMPLICIT_WATER[hit.state & 0xfff] && ctx.world.isWaterlogged?.(hit.x, hit.y, hit.z)) {
+    ctx.world.setWaterlogged?.(hit.x, hit.y, hit.z, false);
+    sound(ctx, snd, hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+    exchange(p, ctx, h, { item: "water_bucket", count: 1 });
+    return true;
+  }
   if (source && def.name === "water") result = "water_bucket";
   else if (source && def.name === "lava") { result = "lava_bucket"; snd = "item.bucket.fill_lava"; }
   else if (def.name === "powder_snow") { result = "powder_snow_bucket"; snd = "item.bucket.fill_powder_snow"; }
@@ -369,28 +390,27 @@ function useInAir(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bool
     return true;
   }
   if (name === "bow") {
-    if (hasArrow(p, ctx) === -1 && !ench(stack, "infinity")) return false;
+    if (findAmmo(p, ctx, false) === -1 && !ench(stack, "infinity")) return false;
     start(p, h, name, "bow", 72000);
     return true;
   }
   if (name === "crossbow") {
     if (stack.data?.charged) {
-      const multishot = ench(stack, "multishot") > 0;
-      const proj = String(stack.data.projectile ?? "arrow");
-      const offsets = multishot ? [0, -10, 10] : [0];
-      for (const o of offsets)
-        shoot(p, ctx, proj === "firework_rocket" ? "firework_rocket" : "arrow", proj === "firework_rocket" ? 1.6 : 3.15, 1, { damage: 2, item: proj, pickup: o === 0 && !creative(p) ? "allowed" : "creative", piercing: ench(stack, "piercing") }, o);
-      ctx.inventory.setSlot(slotOf(ctx, h), { ...stack, data: { ...stack.data, charged: false, projectile: undefined } });
-      if (!creative(p)) damageSlot(ctx, slotOf(ctx, h), multishot ? 3 : 1);
-      sound(ctx, "item.crossbow.shoot", p.body.pos.x, p.body.pos.y, p.body.pos.z, 1, 1 / (ctx.random() * 0.5 + 1.8) + 0.63);
+      shootCrossbow(p, ctx, h, stack, shoot);
       return true;
     }
-    if (hasArrow(p, ctx) === -1) return false;
-    start(p, h, name, "crossbow", 25 - 5 * ench(stack, "quick_charge"));
+    if (findAmmo(p, ctx, true) === -1) return false;
+    start(p, h, name, "crossbow", crossbowCharge(stack));
     return true;
   }
   if (name === "trident") {
+    if ((stack.damage ?? 0) >= (itemDef("trident")?.durability ?? 250) - 1 || !canRiptide(p, ctx, stack)) return false;
     start(p, h, name, "trident", 72000);
+    return true;
+  }
+  if (name === "firework_rocket") {
+    if (!boostRocket(p, ctx, stack)) return false;
+    consume(p, ctx, h);
     return true;
   }
   if (name === "shield") {
@@ -404,7 +424,11 @@ function useInAir(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bool
   }
   const t = THROWN[name];
   if (t) {
-    shoot(p, ctx, t.type, t.speed, 1, { item: { ...stack, count: 1 } }, 0, t.pitchOffset ?? 0);
+    if (name === "ender_eye") {
+      if (ctx.world.dim !== "overworld") return false;
+      const e = p.eye();
+      ctx.entities.spawn("eye_of_ender", e.x, e.y - 0.1, e.z, { owner: "player" });
+    } else shoot(p, ctx, t.type, t.speed, 1, { item: { ...stack, count: 1 }, potion: stack.data?.potion, lingering: name === "lingering_potion" || undefined }, 0, t.pitchOffset ?? 0);
     sound(ctx, t.sound, p.body.pos.x, p.body.pos.y, p.body.pos.z, 0.5, 0.4 / (ctx.random() * 0.4 + 0.8));
     if (t.cooldown) p.itemCooldowns[name] = t.cooldown;
     consume(p, ctx, h);
@@ -412,24 +436,20 @@ function useInAir(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bool
   }
   if (name === "bucket" || name === "glass_bottle") return fillBucket(p, ctx, h, stack);
   if (name.endsWith("_boat") || name.endsWith("_raft")) return placeBoat(p, ctx, h, stack);
+  if ((name === "carrot_on_a_stick" || name === "warped_fungus_on_a_stick") && p.vehicle != null) {
+    const v = ctx.entities.get(p.vehicle);
+    if (!v || v.type !== (name === "carrot_on_a_stick" ? "pig" : "strider") || !v.data.saddle || v.data._boost) return false;
+    v.data._boostReq = true;
+    if (!creative(p)) damageSlot(ctx, slotOf(ctx, h), name === "carrot_on_a_stick" ? 7 : 1);
+    return true;
+  }
   if (name === "goat_horn") {
     sound(ctx, `item.goat_horn.sound.${Number(stack.data?.instrument ?? 0)}`, p.body.pos.x, p.body.pos.y, p.body.pos.z, 16);
     p.itemCooldowns[name] = 140;
     return true;
   }
   if (name === "fishing_rod") {
-    const id = Number(p.itemCooldowns.bobber ?? 0);
-    const cur = id ? ctx.entities.get(id) : undefined;
-    if (cur && !cur.dead) {
-      cur.data.retrieve = true;
-      p.itemCooldowns.bobber = 0;
-      sound(ctx, "entity.fishing_bobber.retrieve", p.body.pos.x, p.body.pos.y, p.body.pos.z, 1, 0.4 / (ctx.random() * 0.4 + 0.8));
-      if (!creative(p)) damageSlot(ctx, slotOf(ctx, h), 1);
-    } else {
-      const e = shoot(p, ctx, "fishing_bobber", 0.6, 1, {});
-      if (e) p.itemCooldowns.bobber = e.id;
-      sound(ctx, "entity.fishing_bobber.throw", p.body.pos.x, p.body.pos.y, p.body.pos.z, 0.5, 0.4 / (ctx.random() * 0.4 + 0.8));
-    }
+    useFishingRod(p, ctx, h);
     return true;
   }
   return equipArmor(p, ctx, h, stack);
@@ -510,29 +530,8 @@ function release(p: PlayerState, ctx: GameCtx, u: UseState) {
   const stack = stackOf(ctx, u.hand);
   if (!stack || stack.item !== u.item) return;
   const b = p.body;
-  if (u.kind === "bow") {
-    let f = u.ticks / 20;
-    f = Math.min(1, (f * f + f * 2) / 3);
-    if (f < 0.1) return;
-    const infinity = ench(stack, "infinity") > 0;
-    const arrow = takeArrow(p, ctx, infinity);
-    const power = ench(stack, "power");
-    shoot(p, ctx, arrow.item === "spectral_arrow" ? "spectral_arrow" : "arrow", f * 3, 1, {
-      damage: 2 + (power > 0 ? power * 0.5 + 0.5 : 0),
-      crit: f === 1,
-      knockback: ench(stack, "punch"),
-      fire: ench(stack, "flame") > 0,
-      item: arrow.item,
-      potion: arrow.data?.potion,
-      pickup: creative(p) || (infinity && arrow.item === "arrow") ? "creative" : "allowed",
-    });
-    if (!creative(p)) damageSlot(ctx, slotOf(ctx, u.hand), 1);
-    sound(ctx, "entity.arrow.shoot", b.pos.x, b.pos.y, b.pos.z, 1, 1 / (ctx.random() * 0.4 + 1.2) + f * 0.5);
-  } else if (u.kind === "trident" && u.ticks >= 10) {
-    const e = shoot(p, ctx, "trident", 2.5, 1, { item: { ...stack }, damage: 8, loyalty: ench(stack, "loyalty") });
-    if (e && !creative(p)) ctx.inventory.setSlot(slotOf(ctx, u.hand), null);
-    sound(ctx, "item.trident.throw", b.pos.x, b.pos.y, b.pos.z);
-  }
+  if (u.kind === "bow") releaseBow(p, ctx, u.hand, stack, u.ticks, shoot);
+  else if (u.kind === "trident") releaseTrident(p, ctx, u.hand, stack, u.ticks, shoot);
 }
 
 export function tickUse(p: PlayerState, ctx: GameCtx, input: InputApi): void {
@@ -570,11 +569,7 @@ export function tickUse(p: PlayerState, ctx: GameCtx, input: InputApi): void {
   } else if (u.kind === "crossbow") {
     if (u.ticks === Math.floor(u.total * 0.2)) sound(ctx, "item.crossbow.loading_start", b.pos.x, b.pos.y, b.pos.z, 0.5);
     if (u.ticks === Math.floor(u.total * 0.5)) sound(ctx, "item.crossbow.loading_middle", b.pos.x, b.pos.y, b.pos.z, 0.5);
-    if (u.ticks === u.total) {
-      const arrow = takeArrow(p, ctx, false);
-      ctx.inventory.setSlot(slotOf(ctx, u.hand), { ...stack, data: { ...stack.data, charged: true, projectile: arrow.item } });
-      sound(ctx, "item.crossbow.loading_end", b.pos.x, b.pos.y, b.pos.z, 1, 1 / (ctx.random() * 0.5 + 1) + 0.2);
-    }
+    if (u.ticks === u.total) loadCrossbow(p, ctx, u.hand, stack);
   } else if (u.kind === "shield") p.blocking = u.ticks >= 5;
   else if (u.kind === "spyglass" && u.ticks >= u.total) p.using = null;
 }

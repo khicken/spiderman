@@ -1,4 +1,4 @@
-import type { BlockBehavior, BlockState, ContainerKind, GameCtx, ItemStack } from "../contracts";
+import type { BlockBehavior, BlockState, ContainerKind, Entity, GameCtx, ItemStack } from "../contracts";
 import { AIR, Face, SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import {
@@ -6,6 +6,7 @@ import {
   lookH, nameOf, oppH, randInt, sound, st, tag, useHeld, withMeta,
 } from "./util";
 import { canSurviveAt } from "./support";
+import { mobDef } from "../entities/registry";
 import { fireStateAt, igniteTnt } from "./fire";
 import { insertEye, lightPortal } from "./portal";
 import { applyBoneMeal, boneMealEffects } from "./bonemeal";
@@ -116,13 +117,17 @@ const useBed: UseFn = (ctx, x, y, z, s) => {
     return true;
   }
   const p = ctx.player;
-  const sp = p.spawn;
-  if (sp.x !== hx + 0.5 || sp.z !== hz + 0.5 || sp.y !== y + 0.5625) {
-    p.spawn = { x: hx + 0.5, y: y + 0.5625, z: hz + 0.5 };
+  const sp = p.spawn as BedSpawn;
+  if (!sp.bed || sp.x !== hx || sp.z !== hz || sp.y !== y) {
+    p.spawn = { x: hx, y, z: hz, bed: true } as BedSpawn;
     ctx.emit({ type: "chat", text: "Respawn point set" });
   }
   if (!isNight(ctx)) {
     ctx.emit({ type: "chat", text: "You can sleep only at night" });
+    return true;
+  }
+  if (monstersNear(ctx, hx, y, hz)) {
+    ctx.emit({ type: "chat", text: "You may not rest now; there are monsters nearby" });
     return true;
   }
   p.sleeping = true;
@@ -140,7 +145,49 @@ export const bedScheduledTick: NonNullable<BlockBehavior["scheduledTick"]> = (ct
   t.rain = 0;
   t.thunder = 0;
   p.sleeping = false;
+  const b = p.body.pos;
+  const spot = bedStandSpot(ctx, Math.floor(b.x), Math.floor(b.y), Math.floor(b.z));
+  if (spot) p.teleport(spot[0], spot[1], spot[2]);
 };
+
+export type BedSpawn = { x: number; y: number; z: number; bed?: boolean };
+
+const nearby: Entity[] = [];
+function monstersNear(ctx: GameCtx, x: number, y: number, z: number): boolean {
+  ctx.entities.near(x + 0.5, y, z + 0.5, 12, nearby);
+  for (const e of nearby) {
+    if (e.dead || Math.abs(e.body.pos.x - x - 0.5) > 8 || Math.abs(e.body.pos.z - z - 0.5) > 8 || Math.abs(e.body.pos.y - y) > 5) continue;
+    if (mobDef(e.type)?.category !== "hostile") continue;
+    if (e.type === "zombified_piglin" && !e.data.angry) continue;
+    return true;
+  }
+  return false;
+}
+
+// Vanilla BedBlock.findStandUpPosition: a free 2-high spot with a solid floor around the head, then the foot.
+export function bedStandSpot(ctx: GameCtx, x: number, y: number, z: number): [number, number, number] | null {
+  const w = ctx.world;
+  const s = w.getBlock(x, y, z);
+  if (!blockDef(s).name.endsWith("_bed")) return null;
+  const m = metaOf(s);
+  const h = m & 3;
+  const dir = m & 4 ? -1 : 1;
+  const parts: [number, number][] = [[x, z], [x + HX[h] * dir, z + HZ[h] * dir]];
+  const free = (bx: number, by: number, bz: number) => {
+    const d = blockDef(w.getBlock(bx, by, bz));
+    return !d.solid && !d.name.endsWith("lava") && !d.name.endsWith("fire");
+  };
+  for (const dy of [0, 1, -1]) {
+    for (const [px, pz] of parts) {
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        const bx = px + dx, by = y + dy, bz = pz + dz;
+        if (blockDef(w.getBlock(bx, by, bz)).name.endsWith("_bed")) continue;
+        if (blockDef(w.getBlock(bx, by - 1, bz)).solid && free(bx, by, bz) && free(bx, by + 1, bz)) return [bx + 0.5, by, bz + 0.5];
+      }
+    }
+  }
+  return null;
+}
 
 const COMPOST: [number, string[]][] = [
   [0.3, ["beetroot_seeds", "dried_kelp", "short_grass", "kelp", "melon_seeds", "pumpkin_seeds", "seagrass", "sweet_berries", "wheat_seeds",

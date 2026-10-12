@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { textWidth } from "./font";
 import { Text, useGui } from "./gui";
 import { Button, Screen } from "./widgets";
-import { pixelUrl } from "./sprites";
+import { buttonUrl, gridUrl, pixelUrl } from "./sprites";
 import { paintBlockTexture } from "../textures";
 
 const LETTERS: Record<string, string[]> = {
@@ -139,20 +139,64 @@ export function TitleScreen({ onSingleplayer, onOptions, version = "Minecraft 1.
   const by = Math.floor(height / 4 + 48);
   const logoY = 30;
   return (
-    <Screen background="dirt">
+    <Screen background="none">
       {img && (
         <img alt="Minecraft" src={img.url} width={img.w} height={img.h} draggable={false} style={{ position: "absolute", left: Math.floor(width / 2 - img.w / 2), top: logoY, imageRendering: "pixelated" }} />
       )}
       <Text text="JAVA EDITION" color={0xd0d0d0} x={Math.floor(width / 2)} y={logoY + 40} align="center" />
-      <div ref={splashRef} style={{ position: "absolute", left: Math.floor(width / 2 + 90), top: 70, width: 0, height: 0, transformOrigin: "0 0" }}>
+      <div ref={splashRef} style={{ position: "absolute", left: Math.floor(width / 2 + 123), top: 69, width: 0, height: 0, transformOrigin: "0 0" }}>
         <Text text={text} color={0xffff00} x={0} y={-8} align="center" />
       </div>
       <Button x={bx} y={by} label="Singleplayer" onClick={onSingleplayer} />
       <Button x={bx} y={by + 24} label="Multiplayer" disabled />
       <Button x={bx} y={by + 48} label="Minecraft Realms" disabled />
-      <Button x={bx} y={by + 84} label="Options..." onClick={onOptions} />
+      <IconButton x={bx - 24} y={by + 84} icon="language" />
+      <Button x={bx} y={by + 84} width={98} label="Options..." onClick={onOptions} />
+      <Button x={bx + 102} y={by + 84} width={98} label="Quit Game" disabled />
+      <IconButton x={bx + 204} y={by + 84} icon="accessibility" />
       <Text text={version} x={2} y={height - 10} />
       <Text text="Not affiliated with Mojang or Microsoft" x={width - 2} y={height - 10} align="right" />
     </Screen>
+  );
+}
+
+const ICONS: Record<"language" | "accessibility", string[]> = {
+  language: [
+    "....#####....",
+    "..##.#.#.##..",
+    ".#..#...#..#.",
+    ".###########.",
+    "#...#...#...#",
+    "#...#...#...#",
+    "#############",
+    "#...#...#...#",
+    "#...#...#...#",
+    ".###########.",
+    ".#..#...#..#.",
+    "..##.#.#.##..",
+    "....#####....",
+  ],
+  accessibility: [
+    "......#......",
+    ".....###.....",
+    "......#......",
+    ".###########.",
+    "......#......",
+    "......#......",
+    "......#......",
+    ".....#.#.....",
+    "....#...#....",
+    "...#.....#...",
+    "..#.......#..",
+    "",
+    "",
+  ],
+};
+
+function IconButton({ x, y, icon }: { x: number; y: number; icon: "language" | "accessibility" }) {
+  return (
+    <div style={{ position: "absolute", left: x, top: y, width: 20, height: 20, backgroundImage: `url(${buttonUrl(20, 20, "normal")})` }}>
+      <img alt="" src={gridUrl(`icon:${icon}`, ICONS[icon].map((r) => r.padEnd(13, ".")), { "#": 0xffffffff })} width={13} height={13} draggable={false} style={{ position: "absolute", left: 3, top: 3, imageRendering: "pixelated" }} />
+    </div>
   );
 }

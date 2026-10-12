@@ -5,6 +5,7 @@ import { daylight } from "./ai";
 import { brightnessAt, shadeModel, shadeMaterials, nameTag, forgetModel } from "./render";
 import { blockCube, blockStateOfItem, disposeCaches, isCubeItem, itemSpriteView, itemTexture } from "./block-cube";
 import { orbIcon } from "./items";
+import { extraView } from "./visuals-extra";
 import { arrowGeometry, arrowMaterial, orbTextures, disposeMisc } from "./misc-art";
 
 interface View {
@@ -223,10 +224,16 @@ export function createViews(getCtx: () => GameCtx) {
       if (!mobView(e, v)) return null;
     } else if (e.type === "item") itemView(e, v);
     else if (e.type === "xp_orb") orbView(e, v);
-    else if (e.type === "arrow" || e.type === "spectral_arrow" || e.type === "trident") arrowView(e, v);
+    else if (e.type === "arrow" || e.type === "spectral_arrow") arrowView(e, v);
     else if (e.type === "tnt" || e.type === "falling_block") blockView(e, v);
     else if (e.type === "snowball" || e.type === "egg" || e.type === "ender_pearl" || e.type === "potion" || e.type === "experience_bottle" || e.type.includes("wind_charge") || e.type.includes("fireball")) thrownView(e, v);
-    else return null;
+    else {
+      const x = extraView(e, getCtx());
+      if (!x) return null;
+      v.group.add(x.root);
+      v.owned.push(...(x.owned as (THREE.Material | THREE.BufferGeometry)[]));
+      v.update = (en, pt, px, py, pz) => x.update(en, pt, px, py, pz, day);
+    }
     scene.add(v.group);
     return v;
   }

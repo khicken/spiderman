@@ -1,11 +1,16 @@
 import type { MeshInput, MeshOutput } from "../contracts";
 import { occludes, resetT } from "./box";
 import { CA, CB, CS, M, OFF, OPP, PY, SHADE, smoothCorners } from "./ctx";
-import { meshFluid } from "./fluid";
+import { meshFluid, meshWaterIn } from "./fluid";
+import { IMPLICIT_WATER } from "../blocks/waterlog";
+import { greedyFlush, greedyPut, greedyReset } from "./greedy";
+import { sectionVisibility } from "./vis";
 import { meshShapeA } from "./shapes-a";
 import { meshShapeB } from "./shapes-b";
 import { blendTints, tintOf } from "./tint";
-import { EMIT, FULL, GRASS_OVERLAY, GRASS_SNOW, K, KIND, LAYER, NONE, SH, SHAPE, TEX, TINT } from "./tables";
+import { FULL, GRASS_OVERLAY, GRASS_SNOW, K, KIND, LAYER, NONE, SH, SHAPE, TEX, TINT } from "./tables";
+import { hasCustomMesh, meshCustom } from "./shapes-c";
+import { STATE_EMIT } from "../blocks/registry";
 import { BUFS, emitQuad, finish, Q, QA, QB, QP, QS, QUV } from "./writer";
 
 const FV = [
@@ -36,7 +41,8 @@ function meshCube() {
   const kind = KIND[id];
   const leaves = kind & K.Leaves;
   const snowy = kind & K.Snowy && KIND[blocks[pi + PY] & 0xfff] & K.SnowCover;
-  const b = BUFS[LAYER[id]];
+  const bi = LAYER[id];
+  const b = BUFS[bi];
   const own = M.light[pi];
   const emit = M.emit;
   for (let f = 0; f < 6; f++) {
@@ -62,6 +68,10 @@ function meshCube() {
         else overlay = GRASS_OVERLAY;
       }
     }
+    if (GREEDY.on && CS[0] === CS[1] && CS[0] === CS[2] && CS[0] === CS[3] && CB[0] === CB[1] && CB[0] === CB[2] && CB[0] === CB[3] && CA[0] === CA[1] && CA[0] === CA[2] && CA[0] === CA[3]) {
+      greedyPut(f, M.bx, M.by, M.bz, bi, layer, overlay, tint, CS[0] * 4, (CB[0] > emit ? CB[0] : emit) * 4, Math.round((1 - CA[0]) * 5));
+      continue;
+    }
     const fo = f * 12;
     for (let v = 0; v < 4; v++) {
       QP[v * 3] = FV[fo + v * 3] + M.bx;
@@ -85,14 +95,18 @@ function meshCube() {
   }
 }
 
+export const GREEDY = { on: true };
+
 export const padIndex = (x: number, y: number, z: number) => ((y + 1) * 18 + z + 1) * 18 + x + 1;
 
 export function meshInto(input: MeshInput) {
   const blocks = input.blocks;
   M.blocks = blocks;
   M.light = input.light;
+  const wet = (M.wet = input.waterlogged ?? null);
   blendTints(input.biomes);
   BUFS[0].n = BUFS[1].n = BUFS[2].n = 0;
+  greedyReset();
   const ox = input.cx * 16, oy = input.sy * 16 - 64, oz = input.cz * 16;
   for (let y = 0; y < 16; y++) {
     for (let z = 0; z < 16; z++) {
@@ -101,8 +115,9 @@ export function meshInto(input: MeshInput) {
         const s = blocks[pi];
         const id = s & 0xfff;
         if (!id) continue;
+        if (IMPLICIT_WATER[id] || (wet !== null && wet[pi])) meshWaterIn(pi, x, y, z);
         const shape = SHAPE[id];
-        if (shape === SH.air || shape === SH.custom) continue;
+        if (shape === SH.air || (shape === SH.custom && !hasCustomMesh(id))) continue;
         M.pi = pi;
         M.bx = x;
         M.by = y;
@@ -113,7 +128,7 @@ export function meshInto(input: MeshInput) {
         M.state = s;
         M.id = id;
         M.meta = s >>> 12;
-        M.emit = EMIT[id];
+        M.emit = STATE_EMIT[s];
         M.tint = TINT[id] ? tintOf(id, M.meta, z * 16 + x) : 0xffffff;
         M.buf = BUFS[LAYER[id]];
         if (shape === SH.cube) {
@@ -121,11 +136,13 @@ export function meshInto(input: MeshInput) {
           continue;
         }
         resetT();
-        if (shape === SH.fluid) meshFluid();
+        if (shape === SH.custom) meshCustom();
+        else if (shape === SH.fluid) meshFluid();
         else if (!meshShapeA(shape)) meshShapeB(shape);
       }
     }
   }
+  greedyFlush(FV);
 }
 
 export function meshSection(input: MeshInput): MeshOutput {
@@ -137,5 +154,6 @@ export function meshSection(input: MeshInput): MeshOutput {
     opaque: finish(BUFS[0]),
     cutout: finish(BUFS[1]),
     translucent: finish(BUFS[2]),
+    vis: sectionVisibility(input.blocks),
   };
 }

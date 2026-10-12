@@ -80,7 +80,7 @@ export interface CameraOut {
 
 const out: CameraOut = { pos: camPos, thirdDist: 0 };
 
-export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THREE.Matrix4, bobbing: boolean): CameraOut {
+export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THREE.Matrix4, bobbing: boolean, nausea = 0): CameraOut {
   const cam = ctx.renderer.camera;
   interpolatedEye(p, pt, eye);
   bobMatrix(p, pt, bobbing && p.thirdPerson === 0, bob);
@@ -100,7 +100,8 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
     camPos.addScaledVector(back, d);
     out.thirdDist = d;
   }
-  quat.setFromEuler(euler.set(pitch, yaw, 0, "YXZ"));
+  const wob = nausea > 0 ? Math.sin((p.ticks + pt) * 0.18) * nausea : 0;
+  quat.setFromEuler(euler.set(pitch, yaw, wob * 0.2, "YXZ"));
   base.compose(camPos, quat, scl);
   inv.copy(bob).invert();
   base.multiply(inv);
@@ -112,6 +113,7 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
   ctx.renderer.setUnderwater(p.gameMode === "spectator" ? "none" : fluid ?? (powder ? "powder_snow" : "none"));
   let fov = p.fov * lerp(p.prevFovMod, p.fovMod, pt);
   if (fluid) fov *= 0.85714287;
+  if (nausea > 0) fov *= 1 + Math.sin((p.ticks + pt) * 0.27) * 0.12 * nausea;
   if (Math.abs(cam.fov - fov) > 1e-3) {
     cam.fov = fov;
     cam.updateProjectionMatrix();

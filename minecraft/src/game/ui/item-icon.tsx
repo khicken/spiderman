@@ -2,10 +2,13 @@
 
 import type { ItemDef, ItemStack } from "../contracts";
 import { itemDef } from "../items/registry";
-import { itemIconUrl } from "../textures/icons";
+import { itemIconUrl, tintedIconUrl } from "../textures/icons";
+import { dialFrame, dialIconUrl } from "../textures/dials";
+import { isPotionItem, potionItemName, potionOf, potionTooltip, stackPotionColor } from "../items/potions";
 import { textWidth } from "./font";
 import { Text } from "./gui";
 import { ENCHANTS, enchantName, titleCase } from "./data";
+import { DISCS, discLabel } from "../systems/blocks-a/discs";
 
 export const maxDurability = (d: ItemDef | undefined) => d?.tool?.durability ?? d?.armor?.durability ?? d?.durability ?? 0;
 
@@ -13,7 +16,8 @@ const GLINT_CSS = `@keyframes mc-glint{0%{background-position:0 0}100%{backgroun
 
 export function ItemIcon({ stack, x, y, count = true }: { stack: ItemStack; x: number; y: number; count?: boolean }) {
   const def = itemDef(stack.item);
-  const url = itemIconUrl(stack.item);
+  const frame = dialFrame(stack);
+  const url = isPotionItem(stack.item) ? tintedIconUrl(stack.item, stackPotionColor(stack)) : frame !== null ? dialIconUrl(stack.item, frame) : itemIconUrl(stack.item);
   const max = maxDurability(def);
   const dmg = stack.damage ?? 0;
   const glint = !!stack.ench && Object.keys(stack.ench).length > 0;
@@ -56,7 +60,10 @@ const RARITY_COLOR = { common: "§f", uncommon: "§e", rare: "§b", epic: "§d" 
 const BUMP = { common: "rare", uncommon: "rare", rare: "epic", epic: "epic" } as const;
 
 export function itemName(stack: ItemStack): string {
-  return stack.name ?? itemDef(stack.item)?.displayName ?? titleCase(stack.item);
+  if (stack.name) return stack.name;
+  if (isPotionItem(stack.item)) return potionItemName(stack.item, potionOf(stack));
+  if (stack.item === "compass" && stack.data?.lodestone) return "Lodestone Compass";
+  return itemDef(stack.item)?.displayName ?? titleCase(stack.item);
 }
 
 export function tooltipLines(stack: ItemStack, advanced = false): string[] {
@@ -67,6 +74,9 @@ export function tooltipLines(stack: ItemStack, advanced = false): string[] {
   const rarity = enchanted ? BUMP[base] : base;
   const lines = [`${RARITY_COLOR[rarity]}${stack.name ? "§o" : ""}${itemName(stack)}`];
   for (const [id, lvl] of Object.entries(ench)) lines.push(`${ENCHANTS[id]?.curse ? "§c" : "§7"}${enchantName(id, lvl)}`);
+  if (isPotionItem(stack.item)) lines.push(...potionTooltip(stack.item, potionOf(stack)));
+  const stored = stack.data?.stored as Record<string, number> | undefined;
+  if (stored) for (const [id, lvl] of Object.entries(stored)) lines.push(`${ENCHANTS[id]?.curse ? "§c" : "§7"}${enchantName(id, lvl)}`);
   if (def?.tool) {
     const sharp = ench.sharpness ? 0.5 * ench.sharpness + 0.5 : 0;
     const fmt = (v: number) => String(Math.round(v * 100) / 100);
@@ -78,6 +88,9 @@ export function tooltipLines(stack: ItemStack, advanced = false): string[] {
     if (def.armor.toughness) lines.push(`§9+${def.armor.toughness} Armor Toughness`);
     if (def.armor.knockbackResistance) lines.push(`§9+${def.armor.knockbackResistance * 10} Knockback Resistance`);
   }
+  if (DISCS[stack.item]) lines.push(`§7${discLabel(stack.item)}`);
+  const lode = stack.data?.lodestone as { x: number; y: number; z: number; dim?: string } | undefined;
+  if (lode && stack.item === "compass") lines.push(`§7Lodestone: ${lode.x}, ${lode.y}, ${lode.z}${lode.dim ? ` (${lode.dim})` : ""}`);
   const max = maxDurability(def);
   if (advanced) {
     if (max > 0) lines.push(`§fDurability: ${max - (stack.damage ?? 0)} / ${max}`);

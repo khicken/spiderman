@@ -5,7 +5,7 @@ import type { ClickKind, ItemStack } from "../contracts";
 import { LINE_HEIGHT, textWidth } from "./font";
 import { useGui, Text } from "./gui";
 import { ItemIcon } from "./item-icon";
-import { disabledSlotUrl, slotUrl } from "./sprites";
+import { disabledSlotUrl, emptySlotUrl, slotUrl, type EmptySlotKind } from "./sprites";
 
 export interface SlotBoxProps {
   x: number; // item top-left; the 18x18 frame starts 1px up-left
@@ -14,13 +14,15 @@ export interface SlotBoxProps {
   big?: boolean;
   disabled?: boolean;
   frame?: boolean;
+  empty?: EmptySlotKind; // silhouette when the slot has no item
+  dragged?: boolean; // part of a drag split
   hovered: boolean;
   onEnter: () => void;
   onLeave: () => void;
   onDown: (e: React.MouseEvent) => void;
 }
 
-export function SlotBox({ x, y, stack, big, disabled, frame = true, hovered, onEnter, onLeave, onDown }: SlotBoxProps) {
+export function SlotBox({ x, y, stack, big, disabled, frame = true, empty, dragged, hovered, onEnter, onLeave, onDown }: SlotBoxProps) {
   const pad = big ? 5 : 1;
   const size = 16 + pad * 2;
   return (
@@ -30,8 +32,9 @@ export function SlotBox({ x, y, stack, big, disabled, frame = true, hovered, onE
       onMouseDown={onDown}
       style={{ position: "absolute", left: x - pad, top: y - pad, width: size, height: size, backgroundImage: frame ? `url(${disabled ? disabledSlotUrl() : slotUrl(size)})` : undefined }}
     >
+      {!stack && empty && <img alt="" src={emptySlotUrl(empty)} width={16} height={16} draggable={false} style={{ position: "absolute", left: pad, top: pad, imageRendering: "pixelated" }} />}
       {stack && <ItemIcon stack={stack} x={pad} y={pad} />}
-      {hovered && !disabled && <div style={{ position: "absolute", left: pad, top: pad, width: 16, height: 16, background: "rgba(255,255,255,0.5)" }} />}
+      {(hovered || dragged) && !disabled && <div style={{ position: "absolute", left: pad, top: pad, width: 16, height: 16, background: "rgba(255,255,255,0.5)" }} />}
     </div>
   );
 }
@@ -73,12 +76,24 @@ export function TooltipBox({ lines }: { lines: string[] }) {
   );
 }
 
+// The last client mouse position, tracked from page load so a screen opened under a still mouse knows where it is.
+const lastClient = { x: -1000, y: -1000 };
+if (typeof window !== "undefined") {
+  const track = (e: MouseEvent) => {
+    lastClient.x = e.clientX;
+    lastClient.y = e.clientY;
+  };
+  window.addEventListener("mousemove", track, { passive: true });
+  window.addEventListener("mousedown", track, { passive: true });
+}
+export const lastMouse = () => lastClient;
+
 // Moves the cursor stack and tooltip with DOM writes, so mouse motion does not re-render React.
 export function usePointer(tipLines: string[]) {
   const { scale, width, height } = useGui();
   const cursorRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
-  const mouse = useRef({ x: -100, y: -100 });
+  const mouse = useRef({ x: lastClient.x / scale, y: lastClient.y / scale });
   const size = tooltipSize(tipLines);
   const sizeRef = useRef(size);
   sizeRef.current = size;

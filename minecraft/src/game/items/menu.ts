@@ -33,6 +33,7 @@ export interface Menu {
   progress?(): Record<string, number> | undefined;
   options?(): ContainerView["options"];
   choose?(id: string, env: MenuEnv): void;
+  extra?(): Partial<ContainerView>;
 }
 
 export const limitOf = (slot: Slot, s: ItemStack) => Math.min(slot.max ?? 64, maxStack(s.item));
@@ -139,7 +140,7 @@ export function clickMenu(menu: Menu, index: number, click: ClickKind, env: Menu
   }
   const slot = menu.slots[index];
   if (!slot) return;
-  if (typeof click === "object") return hotbarSwap(slot, click.hotbar, env);
+  if (typeof click === "object") return "drag" in click ? dragSplit(menu, click.drag, click.slots, env) : hotbarSwap(slot, click.hotbar, env);
   switch (click) {
     case "shift":
       menu.quickMove(index, env);
@@ -219,8 +220,37 @@ function pickPlace(slot: Slot, right: boolean, env: MenuEnv): void {
   }
 }
 
+// Vanilla quick craft: left splits the cursor evenly, right places one each, middle (creative) a full stack each.
+function dragSplit(menu: Menu, mode: "left" | "right" | "middle", indices: number[], env: MenuEnv): void {
+  const c = env.cursor;
+  if (!c || (mode === "middle" && !env.creative)) return;
+  const targets: Slot[] = [];
+  for (const i of new Set(indices)) {
+    const slot = menu.slots[i];
+    if (!slot || !mayPlace(slot, c)) continue;
+    const s = slot.get();
+    if (s && (!canStack(s, c) || s.count >= limitOf(slot, s))) continue;
+    targets.push(slot);
+  }
+  if (!targets.length) return;
+  const max = maxStack(c.item);
+  const per = mode === "left" ? Math.floor(c.count / targets.length) : mode === "right" ? 1 : max;
+  if (per <= 0) return;
+  let left = c.count;
+  for (const slot of targets) {
+    if (mode !== "middle" && left <= 0) break;
+    const s = slot.get();
+    const have = s ? s.count : 0;
+    const n = Math.min(per, limitOf(slot, c) - have, mode === "middle" ? max : left);
+    if (n <= 0) continue;
+    slot.set(copyStack(c, have + n));
+    if (mode !== "middle") left -= n;
+  }
+  env.cursor = left > 0 ? { ...c, count: left } : null;
+}
+
 function hotbarSwap(slot: Slot, n: number, env: MenuEnv): void {
-  if (n < 0 || n > 8 || env.cursor) return;
+  if (n < 0 || (n > 8 && n !== 40) || env.cursor) return;
   const h = env.hotbar[n];
   if (slot.output) {
     if (h) return;

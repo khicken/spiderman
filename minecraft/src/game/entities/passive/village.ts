@@ -1,5 +1,6 @@
-import type { Entity, ItemStack, MobDef } from "../../contracts";
-import { panic, moveTo, meleeAttack, targetPos, wander, idleLook, lookAt, playerDistSq, clearPath, distSq, type Target } from "../ai";
+import type { Entity, MobDef } from "../../contracts";
+import { moveTo, meleeAttack, targetPos, wander, idleLook, lookAt, distSq, type Target } from "../ai";
+import { initVillager, villagerDeath, villagerTick } from "../../systems/villagers/brain";
 import { isBaby } from "../geom";
 import { rig, wrap, setRot, look, type VPart } from "../rig";
 import { mobDef } from "../registry";
@@ -96,11 +97,16 @@ function villagerModel() {
     { name: "left_leg", pivot: [2, 12, 0], box: [-2, 0, -2, 4, 12, 4], uv: [0, 22], mirror: true },
   ];
   const r = rig(villagerSkin("villager_none"), parts);
+  const rootY = r.root.position.y;
   return wrap(
     r,
     (a) => {
+      const lying = !!a.e.data.sleeping;
+      r.root.rotation.x = lying ? HALF_PI : 0;
+      r.root.position.y = rootY + (lying ? 0.3 : 0);
       const shake = num(a.e, "_shake");
-      if (shake > 0) setRot(r.p.head, a.pitch, a.yaw, 0.3 * Math.sin((shake - a.pt) * 0.45));
+      if (lying) setRot(r.p.head, 0, 0, 0);
+      else if (shake > 0) setRot(r.p.head, a.pitch, a.yaw, 0.3 * Math.sin((shake - a.pt) * 0.45));
       else look(r.p.head, a);
       const s = Math.cos(a.phase * 0.6662) * 1.4 * a.walk * 0.5;
       setRot(r.p.right_leg, s, 0, 0);
@@ -109,46 +115,6 @@ function villagerModel() {
     { scale: 0.9375, variant: villagerKey, variantSkin: villagerSkin },
   );
 }
-
-export interface Trade {
-  buy: ItemStack;
-  buyB?: ItemStack;
-  sell: ItemStack;
-  uses: number;
-  maxUses: number;
-  xp: number;
-}
-
-const T = (bi: string, bc: number, si: string, sc: number, max = 16, xp = 2, b2?: [string, number]): Trade => ({ buy: { item: bi, count: bc }, buyB: b2 ? { item: b2[0], count: b2[1] } : undefined, sell: { item: si, count: sc }, uses: 0, maxUses: max, xp });
-
-const TRADES: Partial<Record<Prof, Trade[]>> = {
-  farmer: [T("wheat", 20, "emerald", 1), T("potato", 26, "emerald", 1), T("carrot", 22, "emerald", 1), T("beetroot", 15, "emerald", 1), T("emerald", 1, "bread", 6, 16, 1), T("pumpkin", 6, "emerald", 1, 12, 10), T("emerald", 1, "pumpkin_pie", 4, 12, 5), T("emerald", 1, "apple", 4, 16, 5)],
-  librarian: [T("paper", 24, "emerald", 1), T("emerald", 9, "bookshelf", 1, 12, 1), T("book", 4, "emerald", 1, 12, 10), T("emerald", 1, "lantern", 1, 12, 5), T("ink_sac", 5, "emerald", 1, 12, 20), T("emerald", 1, "glass", 4, 12, 10)],
-  armorer: [T("coal", 15, "emerald", 1), T("emerald", 5, "iron_helmet", 1, 12, 1), T("emerald", 9, "iron_chestplate", 1, 12, 1), T("emerald", 7, "iron_leggings", 1, 12, 1), T("emerald", 4, "iron_boots", 1, 12, 1), T("iron_ingot", 4, "emerald", 1, 12, 10), T("emerald", 36, "bell", 1, 12, 5)],
-  butcher: [T("chicken", 14, "emerald", 1), T("porkchop", 7, "emerald", 1), T("rabbit", 4, "emerald", 1), T("emerald", 1, "rabbit_stew", 1, 12, 1), T("coal", 15, "emerald", 1, 16, 2), T("emerald", 1, "cooked_porkchop", 5, 16, 5), T("emerald", 1, "cooked_chicken", 8, 16, 5)],
-  cartographer: [T("paper", 24, "emerald", 1), T("emerald", 7, "map", 1, 12, 1), T("glass_pane", 11, "emerald", 1, 16, 10), T("emerald", 7, "item_frame", 1, 12, 15)],
-  cleric: [T("rotten_flesh", 32, "emerald", 1), T("emerald", 1, "redstone", 2, 12, 1), T("gold_ingot", 3, "emerald", 1, 12, 10), T("emerald", 1, "lapis_lazuli", 1, 12, 5), T("emerald", 4, "glowstone", 1, 12, 15)],
-  fisherman: [T("string", 20, "emerald", 1), T("coal", 10, "emerald", 1), T("emerald", 1, "cooked_cod", 6, 16, 1, ["cod", 6]), T("emerald", 3, "cod_bucket", 1, 16, 1), T("cod", 15, "emerald", 1, 16, 10), T("emerald", 1, "cooked_salmon", 6, 16, 5, ["salmon", 6])],
-  fletcher: [T("stick", 32, "emerald", 1), T("emerald", 1, "arrow", 16, 12, 1), T("emerald", 1, "flint", 10, 12, 1, ["gravel", 10]), T("flint", 26, "emerald", 1, 12, 10), T("emerald", 2, "bow", 1, 12, 5)],
-  leatherworker: [T("leather", 6, "emerald", 1), T("emerald", 3, "leather_leggings", 1, 12, 1), T("emerald", 7, "leather_chestplate", 1, 12, 1), T("flint", 26, "emerald", 1, 12, 10), T("emerald", 5, "leather_helmet", 1, 12, 5)],
-  mason: [T("clay_ball", 10, "emerald", 1), T("emerald", 1, "bricks", 10, 16, 1), T("stone", 20, "emerald", 1, 16, 10), T("emerald", 1, "chiseled_stone_bricks", 4, 16, 5)],
-  shepherd: [T("white_wool", 18, "emerald", 1), T("brown_wool", 18, "emerald", 1), T("black_wool", 18, "emerald", 1), T("gray_wool", 18, "emerald", 1), T("emerald", 2, "shears", 1, 12, 1), T("emerald", 1, "white_wool", 1, 16, 5)],
-  toolsmith: [T("coal", 15, "emerald", 1), T("emerald", 1, "stone_axe", 1, 12, 1), T("emerald", 1, "stone_shovel", 1, 12, 1), T("emerald", 1, "stone_pickaxe", 1, 12, 1), T("emerald", 1, "stone_hoe", 1, 12, 1), T("iron_ingot", 4, "emerald", 1, 12, 10)],
-  weaponsmith: [T("coal", 15, "emerald", 1), T("emerald", 3, "iron_axe", 1, 12, 1), T("emerald", 2, "iron_sword", 1, 12, 1), T("iron_ingot", 4, "emerald", 1, 12, 10), T("emerald", 36, "bell", 1, 12, 5)],
-};
-
-export function tradesFor(prof: string, r: () => number): Trade[] {
-  const all = TRADES[prof as Prof];
-  if (!all) return [];
-  const novice = all.slice(0, Math.min(4, all.length));
-  const pick: Trade[] = [];
-  while (pick.length < 2 && novice.length) pick.push(novice.splice(Math.floor(r() * novice.length), 1)[0]);
-  const rest = all.slice(4);
-  while (pick.length < 4 && rest.length) pick.push(rest.splice(Math.floor(r() * rest.length), 1)[0]);
-  return pick.map((t) => ({ ...t, buy: { ...t.buy }, buyB: t.buyB && { ...t.buyB }, sell: { ...t.sell } }));
-}
-
-const SCARY = new Set(["zombie", "husk", "drowned", "zombie_villager", "pillager", "vindicator", "evoker", "vex", "ravager", "illusioner", "zoglin"]);
 
 export const VILLAGER: MobDef = {
   type: "villager",
@@ -160,47 +126,13 @@ export const VILLAGER: MobDef = {
   speed: 0.5,
   sounds: { ambient: "entity.villager.ambient", hurt: "entity.villager.hurt", death: "entity.villager.death" },
   createModel: villagerModel,
-  tick(e, ctx) {
-    e.data.persistent = true;
-    if (!e.data.profession) {
-      const r = ctx.random();
-      e.data.profession = isBaby(e) ? "none" : r < 0.05 ? "nitwit" : PROFESSIONS[1 + Math.floor(ctx.random() * 13)];
-    }
-    if (!e.data.trades && e.data.profession !== "none" && e.data.profession !== "nitwit") e.data.trades = tradesFor(e.data.profession as string, ctx.random);
-    const shake = num(e, "_shake");
-    if (shake > 0) e.data._shake = shake - 1;
-    const speed = num(e, "_speed", 0.5);
-    if (panic(e, ctx, 1)) return;
-    if (e.age % 10 === 0) {
-      const p = e.body.pos;
-      ctx.entities.near(p.x, p.y, p.z, 8, near);
-      const threat = near.find((o) => SCARY.has(o.type) && !o.dead);
-      near.length = 0;
-      if (threat) {
-        e.data._panic = 40;
-        e.data._fromX = threat.body.pos.x;
-        e.data._fromZ = threat.body.pos.z;
-        clearPath(e);
-      }
-    }
-    if (e.data._trading) {
-      if (playerDistSq(ctx, e) > 64) e.data._trading = false;
-      clearPath(e);
-      const pp = ctx.player.body.pos;
-      lookAt(e, pp.x, pp.y + 1.62, pp.z);
-      return;
-    }
-    const night = ctx.time.dayTime > 12500 && ctx.time.dayTime < 23500;
-    if (!wander(e, ctx, speed * 0.5, night ? 1 / 600 : 1 / 120)) idleLook(e, ctx);
-    if (ctx.inventory.held()?.item === "emerald" && playerDistSq(ctx, e) < 64) {
-      const pp = ctx.player.body.pos;
-      lookAt(e, pp.x, pp.y + 1.62, pp.z);
-    }
-  },
+  tick: villagerTick,
+  onDeath: villagerDeath,
   onInteract(e, ctx, held) {
     if (held?.item === "villager_spawn_egg" || held?.item === "name_tag") return false;
-    const trades = e.data.trades as Trade[] | undefined;
-    if (isBaby(e) || !trades || !trades.length) {
+    if (!e.data._init) initVillager(e, ctx);
+    const trades = e.data.trades as unknown[] | undefined;
+    if (isBaby(e) || !trades || !trades.length || e.data.sleeping) {
       e.data._shake = 40;
       sound(ctx, e, "entity.villager.no");
       return true;

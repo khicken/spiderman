@@ -7,10 +7,15 @@ import { applyPhysics, knockBody, alertPets } from "./ai";
 import { tickItem, tickOrb, tickCollected, orbValue } from "./items";
 import { tickArrow, tickThrown, tickWindCharge, tickFireball, deflect, PROJECTILES } from "./projectiles";
 import { tickTnt, tickFallingBlock } from "./falling";
+import { tickFirework } from "./firework";
+import { tickCloud } from "./cloud";
+import { tickBobber } from "./fishing";
+import { tickEnderEye, tickTrident } from "./trident";
 import { explodeAt } from "./explosion";
 import { createSpawner, despawns } from "./spawning";
 import { baseTick, rollDrops, deathSound, hurtSound, ambientTick, stepSounds } from "./living";
 import { createViews } from "./visuals";
+import { mobEffectDeath, mobEffectHurt } from "../systems/brewing/effects";
 
 const MISC_SIZE: Record<string, [number, number]> = {
   item: [0.25, 0.25],
@@ -29,6 +34,10 @@ const MISC_SIZE: Record<string, [number, number]> = {
   small_fireball: [0.3125, 0.3125],
   tnt: [0.98, 0.98],
   falling_block: [0.98, 0.98],
+  firework_rocket: [0.25, 0.25],
+  fishing_bobber: [0.25, 0.25],
+  eye_of_ender: [0.25, 0.25],
+  area_effect_cloud: [6, 0.5],
 };
 
 const MISC_TICK: Record<string, (e: Entity, ctx: GameCtx) => void> = {
@@ -36,7 +45,7 @@ const MISC_TICK: Record<string, (e: Entity, ctx: GameCtx) => void> = {
   xp_orb: tickOrb,
   arrow: tickArrow,
   spectral_arrow: tickArrow,
-  trident: tickArrow,
+  trident: tickTrident,
   snowball: tickThrown,
   egg: tickThrown,
   ender_pearl: tickThrown,
@@ -48,6 +57,10 @@ const MISC_TICK: Record<string, (e: Entity, ctx: GameCtx) => void> = {
   small_fireball: tickFireball,
   tnt: tickTnt,
   falling_block: tickFallingBlock,
+  firework_rocket: tickFirework,
+  fishing_bobber: tickBobber,
+  eye_of_ender: tickEnderEye,
+  area_effect_cloud: tickCloud,
 };
 
 const CELL = 16;
@@ -227,8 +240,9 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
     near(mx, my, mz, maxDist * 0.5 + 3, rayList);
     let best: Entity | null = null;
     let bestT = Infinity;
+    const ridden = getCtx().player.vehicle;
     for (const e of rayList) {
-      if (e.dead || !(isMob(e.type) || e.type === "fireball" || e.type === "small_fireball")) continue;
+      if (e.dead || e.id === ridden || e.type === "area_effect_cloud" || e.type === "potion" || !(isMob(e.type) || e.type === "fireball" || e.type === "small_fireball")) continue;
       const t = segmentBody(origin.x, origin.y, origin.z, dir.x * maxDist, dir.y * maxDist, dir.z * maxDist, e.body, 0);
       if (t >= 0 && t < bestT) {
         bestT = t;
@@ -246,7 +260,8 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
     if (armor <= 0) return amount;
     const tough = (e.data.toughness as number) ?? 0;
     const eff = Math.min(20, Math.max(armor / 5, armor - amount / (2 + tough / 4)));
-    return amount * (1 - eff / 25);
+    const breach = Math.max(0, 1 - 0.15 * Number(e.data._breach ?? 0));
+    return amount * (1 - (eff / 25) * breach);
   }
 
   function damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player") {
@@ -265,6 +280,7 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
       return;
     }
     if (e.data.invulnerable && source !== "void") return;
+    if (e.data.arrowImmune && source === "arrow") return;
     if ((source === "fire" || source === "lava") && (e.data.fireImmune || e.effects.some((f) => f.id === "fire_resistance"))) return;
     if (source === "drown" && e.data.waterBreathing) return;
     const inv = (e.data._inv as number) ?? 0;
@@ -283,6 +299,7 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
     if (res) dealt *= Math.max(0, 1 - (res.amplifier + 1) * 0.2);
     e.health -= dealt;
     e.data._idle = 0;
+    if (e.effects.length && dealt > 0) mobEffectHurt(ctx, e);
     if (fresh) {
       e.hurtTicks = 10;
       hurtSound(e, ctx, def);
@@ -319,6 +336,7 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
     e.body.vel.z *= 0.2;
     deathSound(e, ctx, def);
     def.onDeath?.(e, ctx);
+    if (e.effects.length) mobEffectDeath(ctx, e);
     const byPlayer = attacker === "player" || ((e.data._byPlayer as number) ?? 0) > 0;
     e.data._xpDrop = byPlayer;
     if (!isBaby(e) && def.drops) {

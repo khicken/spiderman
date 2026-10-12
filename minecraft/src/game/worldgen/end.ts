@@ -3,6 +3,7 @@ import { biomeId } from "./biomes";
 import { B } from "./ids";
 import { createOctaves, hash01, hash32, type Octaves } from "./noise";
 import { createRng, createWriter, type Rng, type Writer } from "./rng";
+import { placeDimStructures } from "./structures";
 
 const S = stateOf;
 const EB = {
@@ -107,6 +108,7 @@ export function generateEnd(seed: number, cx: number, cz: number): ChunkData {
     exitPortal(w);
   }
   chorus(g, w, tops, biomes);
+  placeDimStructures(seed, "end", null, w);
   const heightmap = new Int16Array(256);
   for (let c = 0; c < 256; c++) {
     let y = HEIGHT - 1;
@@ -194,4 +196,8 @@ function growChorus(w: Writer, r: Rng, x: number, y: number, z: number, depth: n
 export function endBiomeAt(seed: number, x: number, z: number): number {
   column(endGen(seed), x, z, col);
   return col.biome;
+}
+
+export function endTopAt(seed: number, x: number, z: number): number {
+  return column(endGen(seed), x, z, col) ? col.top : -1;
 }

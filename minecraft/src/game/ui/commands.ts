@@ -2,6 +2,7 @@ import type { Effect, GameCtx, GameMode, ItemStack, Rules } from "../contracts";
 import { hasItem, itemDef, ITEMS } from "../items/registry";
 import { BLOCKS, blockByName } from "../blocks/registry";
 import { SET_NOTIFY, stateOf } from "../contracts";
+import { findNear, STRUCTS } from "../worldgen/structure-grid";
 import { EFFECTS, ENCHANTS, enchantName, enchantsConflict, titleCase, type EnchantTarget } from "./data";
 
 let playerName = "Player";
@@ -364,7 +365,7 @@ const COMMANDS: Cmd[] = [
       const type = id(a[0]);
       const p = ctx.player.body.pos;
       const { x, y, z } = a.length >= 4 ? xyz(ctx, a, 1, true) : { x: p.x, y: p.y, z: p.z };
-      const e = ctx.entities.spawn(type, x, y, z);
+      const e = ctx.entities.spawn(type, x, y, z, summonData(a.slice(a.length >= 4 ? 4 : 1).join(" ")));
       if (!e) return fail(`Can't find element 'minecraft:${type}' of type 'minecraft:entity_type'`);
       return [`Summoned new ${titleCase(type)}`];
     },
@@ -520,6 +521,24 @@ const COMMANDS: Cmd[] = [
     },
     complete: (_c, a) => (a.length <= 1 ? ["@s"] : ITEMS.map((i) => i.name)),
   },
+  {
+    name: "locate",
+    cheat: true,
+    usage: ["/locate structure <structure>"],
+    run: (ctx, a) => {
+      if (a[0] !== "structure") return fail("Unknown or incomplete command, see below for error");
+      const name = id(a[1] ?? "");
+      const def = STRUCTS.find((d) => d.name === name);
+      if (!def) return fail(`There is no structure with type "${a[1] ?? ""}"`);
+      const p = ctx.player.body.pos;
+      if (def.dim !== ctx.world.dim) return fail(`Could not find a structure of type "${name}" nearby`);
+      const s = findNear(ctx.world.seed, name, p.x, p.z, 6400);
+      if (!s) return fail(`Could not find a structure of type "${name}" nearby`);
+      const dist = Math.floor(Math.hypot(s.x - p.x, s.z - p.z));
+      return [`The nearest minecraft:${name} is at [${s.x}, ${def.dim === "overworld" && s.y >= 50 ? "~" : s.y}, ${s.z}] (${dist} blocks away)`];
+    },
+    complete: (_c, a) => (a.length <= 1 ? ["structure"] : STRUCTS.map((d) => d.name)),
+  },
 ];
 
 const find = (name: string) => COMMANDS.find((c) => c.name === name || c.aliases?.includes(name));
@@ -562,3 +581,16 @@ export function completeCommand(ctx: GameCtx, line: string): string[] {
 }
 
 export const COMMAND_NAMES = COMMANDS.map((c) => c.name);
+
+// Flat key:value pairs from SNBT, e.g. {VillagerData:{profession:"minecraft:librarian",level:3}}.
+function summonData(snbt: string): Record<string, unknown> | undefined {
+  if (!snbt.trim().startsWith("{")) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const m of snbt.matchAll(/(\w+)\s*:\s*"?([\w.:-]+)"?/g)) {
+    const v = m[2].replace(/^minecraft:/, "");
+    out[m[1]] = /^-?\d+(\.\d+)?[bsLfd]?$/.test(v) ? parseFloat(v) : v === "true" || v === "1b" ? true : v === "false" ? false : v;
+  }
+  if (out.NoAI) out.noAI = true;
+  if (out.Age !== undefined && Number(out.Age) < 0) out.grow = Number(out.Age);
+  return out;
+}

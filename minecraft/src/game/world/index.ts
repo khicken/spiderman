@@ -1,6 +1,7 @@
 import type { BlockBehavior, BlockEntityData, BlockState, ChunkData, ChunkEvent, Dim, EntitySave, GameCtx, WorldApi } from "../contracts";
 import { MAX_Y, MIN_Y, SECTIONS, SET_DEFAULT, SET_NO_DROP, SET_NO_LIGHT, SET_NOTIFY } from "../contracts";
-import { BLOCKS, LIGHT_EMIT, LIGHT_FILTER } from "../blocks/registry";
+import { BLOCKS, LIGHT_FILTER, STATE_EMIT } from "../blocks/registry";
+import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE, canHoldWater } from "../blocks/waterlog";
 import { BIOMES } from "../worldgen/biomes";
 import { createGenPool, type GenPool } from "./gen-pool";
 import { createLight } from "./light";
@@ -23,6 +24,8 @@ export interface WorldOpts {
 export interface World extends WorldApi {
   // Structure mobs placed by world gen. Returns them once, then clears them from the chunk.
   takeEntities(cx: number, cz: number): EntitySave[] | undefined;
+  // Live chunk arrays for renderers that scan loaded chunks (enchanting books, sign text).
+  chunkAt(cx: number, cz: number): { blocks: Uint16Array; be: Map<number, BlockEntityData> } | undefined;
 }
 
 const MAX_DEPTH = 64;
@@ -108,6 +111,7 @@ export function createWorld(opts: WorldOpts): World {
 
   const persist = (c: Chunk) => {
     c.data.blockEntities = [...c.be.values()];
+    c.data.waterlogged = c.wl.size ? [...c.wl] : undefined;
     c.modified = false;
     if (!useIdb) return Promise.resolve();
     const data = c.data;
@@ -204,6 +208,9 @@ export function createWorld(opts: WorldOpts): World {
   const callNeighbor = (ctx: GameCtx, nx: number, ny: number, nz: number, fx: number, fy: number, fz: number) => {
     const ns = query.getBlock(nx, ny, nz);
     if (ns === 0) return;
+    if (IMPLICIT_WATER[ns & 0xfff] || store.get(nx >> 4, nz >> 4)?.wl.has(((ny - MIN_Y) << 8) | ((nz & 15) << 4) | (nx & 15))) {
+      ticker.schedule(nx, ny, nz, WATER_ID, lastTick + 5);
+    }
     behaviors[BLOCKS[ns & 0xfff]?.name]?.neighborChanged?.(ctx, nx, ny, nz, ns, fx, fy, fz);
   };
 
@@ -238,7 +245,12 @@ export function createWorld(opts: WorldOpts): World {
     const col = (lz << 4) | lx;
     const i = ((y - MIN_Y) << 8) | col;
     const old = c.blocks[i];
+    const wasWet = c.wl.has(i) || IMPLICIT_WATER[old & 0xfff] === 1;
+    if (s === 0 && wasWet) s = WATER_SOURCE;
     if (old === s) return false;
+    const holds = canHoldWater(s) && (wasWet || old === WATER_SOURCE) && !IMPLICIT_WATER[s & 0xfff];
+    if (holds) c.wl.add(i);
+    else c.wl.delete(i);
     const oid = old & 0xfff;
     const nid = s & 0xfff;
     c.blocks[i] = s;
@@ -265,7 +277,7 @@ export function createWorld(opts: WorldOpts): World {
     const lostBe = oid !== nid ? c.be.get(i) : undefined;
     if (lostBe) c.be.delete(i);
     store.markDirty(c, lx, y, lz);
-    if (!(flags & SET_NO_LIGHT) && (LIGHT_FILTER[oid] !== LIGHT_FILTER[nid] || LIGHT_EMIT[oid] !== LIGHT_EMIT[nid])) {
+    if (!(flags & SET_NO_LIGHT) && (LIGHT_FILTER[oid] !== LIGHT_FILTER[nid] || STATE_EMIT[old] !== STATE_EMIT[s])) {
       light.update(x, y, z);
     }
     flush();
@@ -283,6 +295,7 @@ export function createWorld(opts: WorldOpts): World {
         if (nid) behaviors[BLOCKS[nid]?.name]?.onPlaced?.(ctx, x, y, z, s);
       }
       if (flags & SET_NOTIFY) notifyNeighbors(ctx, x, y, z);
+      if (holds || IMPLICIT_WATER[nid]) ticker.schedule(x, y, z, WATER_ID, lastTick + 5);
     } finally {
       depth--;
       if (depth === 0 && notifyQ.length) drain(ctx);
@@ -323,6 +336,9 @@ export function createWorld(opts: WorldOpts): World {
       const id = query.getBlock(x, y, z) & 0xfff;
       ticker.schedule(x, y, z, id, lastTick + Math.max(1, delay | 0));
     },
+    blockEntitiesIn(cx, cz) {
+      return store.get(cx, cz)?.be.values();
+    },
     getBlockEntity(x, y, z) {
       if (y < MIN_Y || y > MAX_Y) return undefined;
       return store.get(x >> 4, z >> 4)?.be.get(((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15));
@@ -339,6 +355,38 @@ export function createWorld(opts: WorldOpts): World {
         c.be.set(i, be);
       } else c.be.delete(i);
       c.modified = true;
+    },
+    isWaterlogged(x, y, z) {
+      if (y < MIN_Y || y > MAX_Y) return false;
+      const c = store.get(x >> 4, z >> 4);
+      if (!c) return false;
+      const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
+      return c.wl.has(i) || IMPLICIT_WATER[c.blocks[i] & 0xfff] === 1;
+    },
+    setWaterlogged(x, y, z, on) {
+      if (y < MIN_Y || y > MAX_Y) return false;
+      const c = store.get(x >> 4, z >> 4);
+      if (!c) return false;
+      const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
+      const s = c.blocks[i];
+      if (IMPLICIT_WATER[s & 0xfff] || (on && !canHoldWater(s)) || on === c.wl.has(i)) return false;
+      if (on) c.wl.add(i);
+      else c.wl.delete(i);
+      c.modified = true;
+      store.markDirty(c, x & 15, y, z & 15);
+      flush();
+      const ctx = safeCtx();
+      if (!ctx) return true;
+      ctx.emit({ type: "block_changed", x, y, z, from: s, to: s });
+      depth++;
+      try {
+        notifyNeighbors(ctx, x, y, z);
+        if (on) ticker.schedule(x, y, z, WATER_ID, lastTick + 5);
+      } finally {
+        depth--;
+        if (depth === 0 && notifyQ.length) drain(ctx);
+      }
+      return true;
     },
     meshInput: (cx, sy, cz) => buildMeshInput(store, cx, sy, cz, hasSky),
     on(fn) {
@@ -393,6 +441,7 @@ export function createWorld(opts: WorldOpts): World {
       for (const c of store.chunks.values()) if (c.modified) jobs.push(persist(c));
       await Promise.all(jobs);
     },
+    chunkAt: (cx, cz) => store.get(cx, cz),
     takeEntities(cx, cz) {
       const c = store.get(cx, cz);
       const list = c?.data.entities;

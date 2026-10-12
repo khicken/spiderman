@@ -9,9 +9,15 @@ import { FURNACE_KINDS, furnaceTick, type FurnaceKind } from "./furnace";
 import { clickMenu, type Menu, type MenuEnv } from "./menu";
 import { containerMenu, crafterMenu, craftingMenu, enderMenu, inventoryMenu, type BoundBE, type MenuDeps } from "./menus";
 import { anvilMenu, brewingMenu, enchantingMenu, furnaceMenu, grindstoneMenu, smithingMenu, stonecutterMenu } from "./menus-station";
+import { merchantMenu } from "./menus-merchant";
+import { cartographyMenu, loomMenu } from "./menus-loom";
 import { itemDef, maxStack } from "./registry";
 import { canStack, copyStack, maxDurability } from "./stack";
 import { containerChanged } from "../mechanics/redstone/inventory";
+import { chestPartnerH } from "../mechanics/chest";
+import { HX, HZ } from "../mechanics/util";
+import { fillLoot } from "../loot";
+import { beaconMenu } from "../systems/blocks-a/beacon-menu";
 
 export { computeDrops } from "./drops";
 export { crafterCraft } from "./crafter";
@@ -99,9 +105,22 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
   function bind(type: string, p: Pos, size: number): BoundBE | null {
     const ctx = ctxOrNull();
     if (!ctx) return null;
+    if (p.entityId !== undefined) {
+      const ent = ctx.entities.get(p.entityId);
+      if (!ent) return null;
+      const ebe = (ent.data.be as BlockEntityData | undefined) ?? { x: 0, y: 0, z: 0, type, items: new Array(size).fill(null) };
+      ent.data.be = ebe;
+      return { be: ebe, dirty: () => {} };
+    }
     let be = ctx.world.getBlockEntity(p.x, p.y, p.z);
     if (!be) {
       be = { x: p.x, y: p.y, z: p.z, type, items: new Array(size).fill(null) };
+      ctx.world.setBlockEntity(be, p.x, p.y, p.z);
+    }
+    if (be.data && typeof be.data.lootTable === "string") {
+      be.items = fillLoot(be.data.lootTable, Number(be.data.lootSeed ?? 0) || (p.x * 73856093) ^ (p.y * 19349663) ^ (p.z * 83492791), size);
+      delete be.data.lootTable;
+      delete be.data.lootSeed;
       ctx.world.setBlockEntity(be, p.x, p.y, p.z);
     }
     const bound = be;
@@ -123,10 +142,8 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
     const f = FACE_XZ[metaOf(s) & 7];
     if (!f) return null;
     const [lx, lz] = [-f[1], f[0]];
-    const same = (x: number, z: number) => {
-      const n = ctx.world.getBlock(x, p.y, z);
-      return idOf(n) === idOf(s) && (metaOf(n) & 7) === (metaOf(s) & 7);
-    };
+    const d = chestPartnerH(ctx.world, p.x, p.y, p.z, s);
+    const same = (x: number, z: number) => d >= 0 && x === p.x + HX[d] && z === p.z + HZ[d];
     if (same(p.x + lx, p.z + lz)) return [{ x: p.x + lx, y: p.y, z: p.z + lz }, p];
     if (same(p.x - lx, p.z - lz)) return [p, { x: p.x - lx, y: p.y, z: p.z - lz }];
     return null;
@@ -146,6 +163,10 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
     if (kind === "grindstone") return grindstoneMenu(deps, at);
     if (kind === "stonecutter") return stonecutterMenu(deps, at);
     if (kind === "smithing_table") return smithingMenu(deps, at);
+    if (kind === "beacon") return beaconMenu(deps, at);
+    if (kind === "villager") return merchantMenu(deps, at);
+    if (kind === "loom") return loomMenu(deps, at);
+    if (kind === "cartography_table") return cartographyMenu(deps, at);
     if (!at) return null;
     if ((FURNACE_KINDS as readonly string[]).includes(kind)) {
       const b = bind(kind, at, 3);
@@ -220,9 +241,12 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
     const base = name.startsWith("lit_") ? name.slice(4) : name;
     const be = ctx.world.getBlockEntity(x, y, z);
     if (base === "brewing_stand") {
-      if (be && brewTick(be)) {
-        ctx.emit({ type: "sound", name: "block.brewing_stand.brew", x: x + 0.5, y: y + 0.5, z: z + 0.5 });
-        ctx.world.setBlockEntity(be, x, y, z);
+      const r = be ? brewTick(be) : 0;
+      if (r && be) {
+        if (r === 2) {
+          ctx.emit({ type: "sound", name: "block.brewing_stand.brew", x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+          ctx.world.setBlockEntity(be, x, y, z);
+        }
         api.version++;
       }
       return;
@@ -311,6 +335,7 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
         cursor: env.cursor,
         progress: m.progress?.(),
         options: m.options?.(),
+        ...m.extra?.(),
       };
     },
     clickSlot(index: number, click: ClickKind) {
@@ -335,7 +360,7 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
       const max = maxStack(stack.item);
       const c = env.cursor;
       if (typeof click === "object") {
-        if (click.hotbar >= 0 && click.hotbar < 9) slots[click.hotbar] = copyStack(stack, max);
+        if ("hotbar" in click && click.hotbar >= 0 && click.hotbar < 9) slots[click.hotbar] = copyStack(stack, max);
       } else if (click === "shift") give(copyStack(stack, max));
       else if (click === "drop") dropStack(copyStack(stack, 1));
       else if (click === "drop_all") dropStack(copyStack(stack, max));

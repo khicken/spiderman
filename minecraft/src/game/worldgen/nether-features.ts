@@ -25,12 +25,6 @@ function findFloor(g: NetherGen, x: number, z: number, from: number): number {
   return -1;
 }
 
-function findCeiling(g: NetherGen, x: number, z: number, from: number): number {
-  g.profile(x, z, prof);
-  for (let y = from; y < 126; y++) if (!solid(y) && solid(y + 1)) return y;
-  return -1;
-}
-
 function hugeFungus(w: Writer, x: number, y: number, z: number, crimson: boolean) {
   const stem = S(crimson ? B.crimson_stem : B.warped_stem);
   const wart = S(crimson ? B.nether_wart_block : B.warped_wart_block);
@@ -59,25 +53,40 @@ function hugeFungus(w: Writer, x: number, y: number, z: number, crimson: boolean
   w.setIf(x, y + h, z, wart, SOFT);
 }
 
-function glowstone(w: Writer, x: number, y: number, z: number) {
-  const n = 30 + tr.int(60);
-  const g = S(B.glowstone);
-  w.setIf(x, y, z, g, AIR_ONLY);
-  let cx = x, cy = y, cz = z;
-  for (let i = 0; i < n; i++) {
-    const d = tr.int(6);
-    if (d === 0) cx++;
-    else if (d === 1) cx--;
-    else if (d === 2) cz++;
-    else if (d === 3) cz--;
-    else cy--;
-    if (Math.abs(cx - x) > 3 || Math.abs(cz - z) > 3 || y - cy > 9) {
-      cx = x;
-      cy = y;
-      cz = z;
+const GX = 17, GY = 14;
+const cells = new Uint8Array(GX * GY * GX);
+const cell = (dx: number, dy: number, dz: number) => ((dy + 12) * GX + dz + 8) * GX + dx + 8;
+const NB6 = [1, -1, GX, -GX, GX * GX, -GX * GX];
+
+// Vanilla GlowstoneFeature: start under a ceiling, then 1500 tries that add a cell touching exactly one glowstone.
+function glowstone(g: NetherGen, w: Writer, x: number, y: number, z: number) {
+  g.profile(x, z, prof);
+  if (y <= 31 || solid(y)) return;
+  // Our terrain has fewer overhangs than vanilla's 3D noise, so a start in open air climbs to the ceiling above it.
+  let up = 0;
+  while (up < 24 && y < 126 && !solid(y + 1)) { y++; up++; }
+  if (!solid(y + 1)) return;
+  for (let dz = -8; dz <= 8; dz++) {
+    for (let dx = -8; dx <= 8; dx++) {
+      g.profile(x + dx, z + dz, prof);
+      for (let dy = -12; dy <= 1; dy++) {
+        const yy = y + dy;
+        cells[cell(dx, dy, dz)] = yy <= 31 || solid(yy) ? 1 : 0;
+      }
     }
-    w.setIf(cx, cy, cz, g, AIR_ONLY);
   }
+  cells[cell(0, 0, 0)] = 2;
+  for (let i = 0; i < 1500; i++) {
+    const c = cell(tr.int(8) - tr.int(8), -tr.int(12), tr.int(8) - tr.int(8));
+    if (cells[c] !== 0) continue;
+    let n = 0;
+    for (let k = 0; k < 6 && n < 2; k++) if (cells[c + NB6[k]] === 2) n++;
+    if (n === 1) cells[c] = 2;
+  }
+  const s = S(B.glowstone);
+  for (let dz = -7; dz <= 7; dz++)
+    for (let dx = -7; dx <= 7; dx++)
+      for (let dy = -11; dy <= 0; dy++) if (cells[cell(dx, dy, dz)] === 2) w.setIf(x + dx, y + dy, z + dz, s, AIR_ONLY);
 }
 
 export function netherFeatures(g: NetherGen, w: Writer, biomes: Uint8Array) {
@@ -87,14 +96,13 @@ export function netherFeatures(g: NetherGen, w: Writer, biomes: Uint8Array) {
     for (let ocx = cx - 1; ocx <= cx + 1; ocx++) {
       const bx = ocx * 16, bz = ocz * 16;
       rng.seed(hash32(seed, ocx, ocz, 0x6105));
-      for (let n = 0; n < 10; n++) {
-        const x = bx + rng.int(16), z = bz + rng.int(16), y = 4 + rng.int(118);
+      const extra = rng.int(rng.int(10) + 1);
+      for (let n = 0; n < extra + 10; n++) {
+        const x = bx + rng.int(16), z = bz + rng.int(16), y = n < extra ? 4 + rng.int(120) : rng.int(128);
         const ts = rng.int(0x7fffffff);
-        if (x < w.ox - 3 || x > w.ox + 18 || z < w.oz - 3 || z > w.oz + 18) continue;
-        const cy = findCeiling(g, x, z, y);
-        if (cy < 0) continue;
+        if (x < w.ox - 7 || x > w.ox + 22 || z < w.oz - 7 || z > w.oz + 22) continue;
         tr.seed(ts);
-        glowstone(w, x, cy, z);
+        glowstone(g, w, x, y, z);
       }
       rng.seed(hash32(seed, ocx, ocz, 0xf0f0));
       for (let n = 0; n < 10; n++) {

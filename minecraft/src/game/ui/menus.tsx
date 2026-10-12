@@ -30,9 +30,11 @@ export interface PauseScreenProps {
   onResume: () => void;
   onOptions: () => void;
   onQuit: () => void;
+  onAdvancements?: () => void;
+  onStatistics?: () => void;
 }
 
-export function PauseScreen({ onResume, onOptions, onQuit }: PauseScreenProps) {
+export function PauseScreen({ onResume, onOptions, onQuit, onAdvancements, onStatistics }: PauseScreenProps) {
   const { width, height } = useGui();
   useKeyDown((e) => e.key === "Escape" && onResume());
   const x = Math.floor(width / 2 - 102);
@@ -41,9 +43,9 @@ export function PauseScreen({ onResume, onOptions, onQuit }: PauseScreenProps) {
     <Screen background="ingame">
       <Text text="Game Menu" x={width / 2} y={40} align="center" />
       <Button x={x} y={y} width={204} label="Back to Game" onClick={onResume} />
-      <Button x={x} y={y + 24} width={98} label="Advancements" disabled />
-      <Button x={x + 106} y={y + 24} width={98} label="Statistics" disabled />
-      <Button x={x} y={y + 48} width={98} label="Send Feedback" disabled />
+      <Button x={x} y={y + 24} width={98} label="Advancements" disabled={!onAdvancements} onClick={onAdvancements} />
+      <Button x={x + 106} y={y + 24} width={98} label="Statistics" disabled={!onStatistics} onClick={onStatistics} />
+      <Button x={x} y={y + 48} width={98} label="Give Feedback" disabled />
       <Button x={x + 106} y={y + 48} width={98} label="Report Bugs" disabled />
       <Button x={x} y={y + 72} width={98} label="Options..." onClick={onOptions} />
       <Button x={x + 106} y={y + 72} width={98} label="Open to LAN" disabled />
@@ -70,7 +72,7 @@ export function DeathScreen({ message, score, hardcore, onRespawn, onTitle }: De
   const x = Math.floor(width / 2 - 100);
   return (
     <Screen background="death">
-      <Text text={hardcore ? "Game over!" : "You died!"} scale={2} x={width / 2} y={60} align="center" />
+      <Text text={hardcore ? "Game Over!" : "You Died!"} scale={2} x={width / 2} y={60} align="center" />
       <Text text={message} x={width / 2} y={85} align="center" />
       <Text text={`Score: §e${score}`} x={width / 2} y={100} align="center" />
       <Button x={x} y={Math.floor(height / 4 + 72)} label={hardcore ? "Spectate World" : "Respawn"} disabled={!ready} onClick={onRespawn} />
