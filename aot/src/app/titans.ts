@@ -1579,7 +1579,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       }
       for (let i = list.length - 1; i >= 0; i--) if (list[i].removed) list.splice(i, 1);
       if (heldBy) {
-        esc = Math.max(0, esc - dt * 0.12);
         palm(heldBy, holdSide, heldPos);
         if (!heldBy.alive || !pv.alive) heldBy = null;
       }
@@ -1648,9 +1647,10 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     held() {
       return heldBy ? heldPos : null;
     },
-    struggle() {
+
+    struggle(add) {
       if (!heldBy) return [];
-      esc += (0.09 * 12) / (heldBy.height + 5);
+      esc += add;
       if (esc < 1) return [{ type: "shake", strength: 0.06 }];
       const t = heldBy;
       heldBy = null;

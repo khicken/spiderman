@@ -10,7 +10,7 @@ const MOUSE = ["LMB", "MMB", "RMB"];
 const NAMES: Record<string, string> = { ShiftLeft: "Shift", ShiftRight: "Shift", Escape: "Esc" };
 const keyName = (code: string) => NAMES[code] ?? code.replace(/^(Key|Digit|Arrow)/, "");
 
-export const keyFor = (a: Action) => keysOf(a).at(-1);
+export const keyFor = (a: Action) => keysOf(a)[0];
 
 function keysOf(a: Action) {
   const out = new Set<string>();
@@ -21,7 +21,7 @@ function keysOf(a: Action) {
 }
 
 type Row = { a?: Action; keys?: string[]; pc?: string; btn?: string; tap?: string };
-type Group = { group: string; jp: string; rows: Row[]; note?: string };
+type Group = { group: string; jp: string; rows: Row[]; note?: string; pcNote?: string };
 
 const GROUPS: Group[] = [
   {
@@ -37,40 +37,38 @@ const GROUPS: Group[] = [
   {
     group: "Hook",
     jp: "アンカー",
-    note: "Tap an anchor to latch, tap again to let go. Hold it to swing.",
+    note: "Hooks fire at the crosshair, else at the lock. Tap to latch, tap again to let go. Hold to swing.",
+    pcNote: "No mouse? C / V hooks",
     rows: [
-      { a: "anchorL", pc: "Left", btn: "L", tap: "Left anchor" },
-      { a: "anchorR", pc: "Right", btn: "R", tap: "Right anchor" },
-      { btn: "L+R", tap: "Both" },
-      { a: "autoHook", pc: "Both at the lock", btn: "Hook", tap: "Both at the lock" },
+      { a: "anchorL", keys: ["LMB"], pc: "Left", btn: "L", tap: "Left anchor" },
+      { a: "anchorR", keys: ["RMB"], pc: "Right", btn: "R", tap: "Right anchor" },
+      { keys: ["LMB", "RMB"], pc: "Both", btn: "L+R", tap: "Both" },
     ],
   },
   {
     group: "Attack",
     jp: "攻撃",
     rows: [
-      { a: "lock", pc: "Lock on", btn: "Lock", tap: "Lock on, tap for next part" },
+      { a: "lock", pc: "Lock on, tap for next part, hold to clear", btn: "Lock", tap: "Lock on, tap for next part, hold to clear" },
       { a: "cycle", pc: "Next part" },
       { a: "attack", pc: "Hold, release to strike", btn: "Slash", tap: "Hold, release to strike" },
-      { a: "swap", pc: "Swap blades", btn: "Swap", tap: "Swap blades" },
       { a: "weapon", pc: "Next weapon", btn: "Weapon", tap: "Next weapon" },
       { a: "shift", pc: "Titan shift", btn: "Shift", tap: "Titan shift" },
-      { keys: ["E", "Space"], pc: "Mash to break a grab", btn: "Slash", tap: "Mash to break a grab" },
+      { keys: ["E"], pc: "In a grab: release on the chime", btn: "Slash", tap: "In a grab: release on the chime" },
     ],
   },
   {
     group: "Squad",
     jp: "分隊",
     rows: [
-      { keys: ["G"], pc: "Attack or regroup", btn: "Squad", tap: "Attack or regroup" },
-      { a: "teamAttack", pc: "Team attack on the lock", btn: "Team", tap: "Team attack on the lock" },
+      { a: "teamAttack", pc: "Team attack on the lock, else attack or regroup", btn: "Squad", tap: "Team attack on the lock, else attack or regroup" },
     ],
   },
 ];
 
 const LOOP: [Action, string, string][] = [
   ["lock", "Lock", "Lock on"],
-  ["autoHook", "Hook", "Hook"],
+  ["anchorL", "L", "Hook"],
   ["attack", "Slash", "Strike the nape"],
 ];
 
@@ -128,6 +126,7 @@ export function ControlsGrid({ touch }: { touch: boolean }) {
               ),
             )}
             {g.note && <span className="basis-full text-[11px] text-bone/55">{g.note}</span>}
+            {!touch && g.pcNote && <span className="basis-full text-[11px] text-bone/55">{g.pcNote}</span>}
           </div>
         </div>
       ))}

@@ -7,18 +7,15 @@ export const KEYS: Record<string, Action> = {
   ShiftRight: "dash",
   KeyE: "attack",
   KeyQ: "lock",
-  Tab: "cycle",
-  KeyX: "autoHook",
-  KeyR: "swap",
-  KeyZ: "weapon",
+  KeyR: "weapon",
   KeyF: "teamAttack",
   KeyT: "shift",
   KeyC: "anchorL",
   KeyV: "anchorR",
 };
-export const BUTTONS: Record<number, Action> = { 0: "anchorL", 1: "autoHook", 2: "anchorR" };
+export const BUTTONS: Record<number, Action> = { 0: "anchorL", 2: "anchorR" };
 const MOVE = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-const SYSTEM = new Set(["Escape", "Enter", "KeyM", "KeyG", "Digit1", "Digit2", "Digit3"]);
+const SYSTEM = new Set(["Escape", "Enter", "KeyM", "Digit1", "Digit2", "Digit3"]);
 
 export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) => void): Controls {
   const held = new Set<Action>();
@@ -74,7 +71,7 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
       return;
     }
     if (!enabled) return;
-    if (a || MOVE.has(e.code)) e.preventDefault();
+    if (a || MOVE.has(e.code) || e.code === "Tab") e.preventDefault();
     if (e.repeat) return;
     if (a || MOVE.has(e.code)) codes.add(e.code);
     if (a) down(a, e.code);

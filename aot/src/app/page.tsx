@@ -390,7 +390,6 @@ export default function TitanPage() {
       {touch && screen === "playing" && hud && !hud.intro && !hud.dead && (
         <TouchControls
           pad={gameRef.current!.virtual}
-          onOrder={() => gameRef.current?.order()}
           h={hud}
           onPause={() => gameRef.current?.pause()}
         />

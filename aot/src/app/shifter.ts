@@ -131,7 +131,7 @@ export function createShifter(scene: THREE.Scene, world: World, titans: Titans, 
       if (!active) {
         if (titans.kills > lastKills && meter < 1) {
           meter = Math.min(1, meter + (titans.kills - lastKills) / KILLS);
-          if (meter >= 1) out.push({ type: "toast", title: "Titan power ready", text: "Press T to bite your hand" }, { type: "sfx", name: "lightning", volume: 0.4 });
+          if (meter >= 1) out.push({ type: "toast", title: "Titan power ready", text: "Press T to bite your hand", touch: "Tap Shift to bite your hand" }, { type: "sfx", name: "lightning", volume: 0.4 });
         }
         lastKills = titans.kills;
         if (fadeT > 0 && rig) {
@@ -193,7 +193,7 @@ export function createShifter(scene: THREE.Scene, world: World, titans: Titans, 
       }
       place(dt);
 
-      if (titans.held()) out.push(...titans.struggle());
+      if (titans.held()) out.push(...titans.struggle(1));
       view.pos.set(pos.x, H * 0.6, pos.z);
       nape(player.pos);
       player.vel.set(0, 0, 0);
