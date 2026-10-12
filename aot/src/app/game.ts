@@ -127,7 +127,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       if (introT >= 0) endIntro();
       else route(run.skip());
     }
-    else if (code === "KeyG") route(allies.toggle());
     else if (code.startsWith("Digit")) route(run.pick(Number(code.slice(5)) - 1));
     else if (code === "KeyM") {
       cur.muted = !cur.muted;
@@ -254,8 +253,9 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (introT >= 0) intro(real);
     const control = playing && introT < 0;
     route(world.update(dt, t));
-    if (control && inp.pressed.has("shift")) route(shifter.start(player, rig.yaw));
-    if (control && inp.pressed.has("teamAttack") && !shifter.active) route(allies.team(player.lock));
+    const live = control && dt > 0;
+    if (live && inp.pressed.has("shift")) route(shifter.start(player, rig.yaw));
+    if (live && inp.pressed.has("teamAttack") && !shifter.active) route(player.lock?.titan.alive ? allies.team(player.lock) : allies.toggle());
     if (opening !== allies.opening > 0) {
       opening = !opening;
       if (baseBoost) player.setBoost(baseBoost);
@@ -272,7 +272,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     const speed = player.vel.length();
     view.frame(dt, player.pos, control ? THREE.MathUtils.clamp((speed - 25) / 35, 0, 1) : 0);
     fx.update(dt, view.camera);
-    input.endFrame();
+    // keep presses through a hitstop so Q and E edges are not lost
+    if (dt > 0 || !control) input.endFrame();
 
     const lock = player.lock;
     if (reticle) {
@@ -361,7 +362,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     pause,
     skipIntro: endIntro,
     skipDrill: () => route(run.skip()),
-    order: () => route(allies.toggle()),
     pick: (i: number) => route(run.pick(i)),
     virtual: input.virtual,
     bindReticle(el: HTMLElement | null) {

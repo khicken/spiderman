@@ -69,7 +69,7 @@ export function Hud({
       <WavePanel h={h} />
       <KillPanel h={h} />
       {free && <Crosshair h={h} />}
-      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b} />}
+      {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b || (touch && !!h.run.choice)} />}
       {free && !h.shift.active && <Prompt h={h} touch={touch} />}
       <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
       <ScorePops pops={pops} />
@@ -683,7 +683,6 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
             <span className={h.squad.order === "attack" ? "text-ember" : "text-[#8fd6a0]"}>
               {h.squad.order === "attack" ? "Attack" : "Regroup"}
             </span>
-            <span data-keyhint className="ml-1"><Key>G</Key></span>
           </span>
         )}
       </div>
@@ -853,7 +852,7 @@ function Grab({ escape, touch }: { escape: number; touch: boolean }) {
       </div>
       <div className="mt-1 flex items-center justify-center gap-4">
         <span className="font-display text-5xl uppercase tracking-wider ink-shadow">
-          {touch ? "Tap Slash" : "Mash"}
+          Cut
         </span>
         <span className="pulse inline-flex h-14 w-14 items-center justify-center border-2 border-bone bg-blood font-display text-4xl shadow-[0_0_20px_rgba(255,40,20,0.8)]">
           {touch ? <span className="font-jp font-black">斬</span> : "E"}

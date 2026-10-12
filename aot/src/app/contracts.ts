@@ -15,12 +15,10 @@ export type Action =
   | "gas" // hold Space: boost, Space on the ground: jump
   | "dash" // Shift: gas dash in the move direction
   | "attack" // hold E to charge, release to strike
-  | "lock" // Q: lock on or off
-  | "cycle" // Tab or mouse wheel: next part on the locked titan
-  | "autoHook" // X or middle mouse: fire both anchors at the locked titan
-  | "swap" // R: swap blades
-  | "weapon" // Z: next weapon slot
-  | "teamAttack" // F: squad attacks the locked titan
+  | "lock" // Q: lock on, next part, hold to clear
+  | "cycle" // mouse wheel: next part on the locked titan
+  | "weapon" // R: next weapon slot
+  | "teamAttack" // F: team attack on the lock, else attack or regroup
   | "shift"; // T: titan shifting
 
 export type Input = {
@@ -156,7 +154,7 @@ export interface Titans {
   nearest(pos: THREE.Vector3, look: THREE.Vector3, maxDist: number): TitanView | null;
   strike(blade: Blade, target: { titan: TitanView; part: TitanPart } | null): StrikeResult;
   held(): THREE.Vector3 | null; // where the player is held, null when free
-  struggle(): GameEvent[]; // one mash while held
+  struggle(add: number): GameEvent[]; // add to the escape meter while held, 1 frees
   readonly escape: number | null; // 0..1 while held
   pushOut(pos: THREE.Vector3, radius: number, vel: THREE.Vector3): void;
   boss(): { name: string; kind: TitanKind; health: number; hardened: boolean } | null;

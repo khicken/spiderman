@@ -7,8 +7,6 @@ import { PARTS } from "./ui-hud";
 
 const STICK_R = 58;
 const LOOK_GAIN = 1.8;
-const LONG_MS = 450;
-const SWIPE_PX = 26;
 
 export function isTouch() {
   return window.matchMedia("(pointer: coarse)").matches;
@@ -26,18 +24,14 @@ export function enterFullscreen() {
     .catch(() => {});
 }
 
-type Kind = Action | "both";
-const ACTIONS: Record<Kind, Action[]> = {
+const ACTIONS: Record<Action, Action[]> = {
   anchorL: ["anchorL"],
   anchorR: ["anchorR"],
-  both: ["anchorL", "anchorR"],
   gas: ["gas"],
   dash: ["dash"],
   attack: ["attack"],
   lock: ["lock"],
   cycle: ["cycle"],
-  autoHook: ["autoHook"],
-  swap: ["swap"],
   weapon: ["weapon"],
   teamAttack: ["teamAttack"],
   shift: ["shift"],
@@ -50,7 +44,7 @@ const at = (right: number, bottom: number, size: number) => ({
   height: `calc(var(--u) * ${size})`,
 });
 
-export function TouchControls({ pad, h, onPause, onOrder }: { pad: VirtualPad; h: HudState; onPause: () => void; onOrder: () => void }) {
+export function TouchControls({ pad, h, onPause }: { pad: VirtualPad; h: HudState; onPause: () => void }) {
   const base = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
   const touches = useRef(new Map<number, { stick: boolean; x0: number; y0: number; x: number; y: number }>());
@@ -60,7 +54,7 @@ export function TouchControls({ pad, h, onPause, onOrder }: { pad: VirtualPad; h
     return () => {
       map.clear();
       pad.stick(0, 0);
-      for (const a of Object.keys(ACTIONS) as Kind[]) for (const x of ACTIONS[a]) pad.up(x);
+      for (const a of Object.keys(ACTIONS) as Action[]) for (const x of ACTIONS[a]) pad.up(x);
     };
   }, [pad]);
 
@@ -135,7 +129,7 @@ export function TouchControls({ pad, h, onPause, onOrder }: { pad: VirtualPad; h
             className="transition-[stroke-dashoffset] duration-100"
           />
         </svg>
-        <Face jp="斬" en={held ? "Mash" : "Slash"} />
+        <Face jp="斬" en={held ? "Cut" : "Slash"} />
       </HoldButton>
       <HoldButton pad={pad} kind="gas" style={at(188, 50, 78)}>
         <Face jp="ガス" en="Gas" />
@@ -146,49 +140,22 @@ export function TouchControls({ pad, h, onPause, onOrder }: { pad: VirtualPad; h
       <HoldButton pad={pad} kind="anchorR" style={at(84, 186, 68)} lit={h.hooks[1]}>
         <Face jp="R" en="Anchor" latin />
       </HoldButton>
-      <HoldButton pad={pad} kind="both" style={at(250, 140, 56)} lit={h.hooks[0] && h.hooks[1]}>
-        <Face jp="L+R" en="Both" latin small />
-      </HoldButton>
       <HoldButton pad={pad} kind="dash" style={at(282, 44, 58)}>
         <Face jp="翔" en="Dash" small />
       </HoldButton>
 
       <LockButton pad={pad} locked={!!h.lock} label={lockLabel} style={at(34, 248, 54)} />
-      <HoldButton pad={pad} kind="autoHook" style={at(108, 250, 48)} small>
-        <Face jp="アンカー" en="Hook" small />
-      </HoldButton>
-      <HoldButton pad={pad} kind="swap" style={at(168, 246, 44)} small>
-        <Face jp="刃" en={`Swap ${h.blades}`} small />
-      </HoldButton>
-      <HoldButton pad={pad} kind="weapon" style={at(284, 246, 44)} small>
+      <HoldButton pad={pad} kind="weapon" style={at(102, 252, 46)} small>
         <Face jp="武器" en={h.weapon} small />
       </HoldButton>
-      {(h.shift.active || h.shift.meter >= 1) && (
-        <HoldButton pad={pad} kind="shift" style={at(168, 304, 44)} small lit>
-          <Face jp="巨人" en="Shift" small />
+      {h.squad.max > 0 && (
+        <HoldButton pad={pad} kind="teamAttack" style={at(164, 252, 46)} small lit={h.squad.opening > 0 || h.squad.order === "attack"}>
+          <Face jp={h.lock && h.squad.team <= 0 ? "連携" : h.squad.order === "attack" ? "攻撃" : "集合"} en="Squad" small />
         </HoldButton>
       )}
-      {h.squad.max > 0 && (
-        <div
-          role="button"
-          aria-label="order"
-          className="touch-btn text-[calc(var(--u)*13)]"
-          data-lit={h.squad.order === "attack" ? "1" : undefined}
-          style={at(226, 246, 44)}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onOrder();
-          }}
-          onPointerMove={(e) => e.stopPropagation()}
-          onPointerUp={(e) => e.stopPropagation()}
-        >
-          <Face jp={h.squad.order === "attack" ? "攻撃" : "集合"} en="Squad" small />
-        </div>
-      )}
-      {h.squad.max > 0 && h.lock && h.squad.team <= 0 && (
-        <HoldButton pad={pad} kind="teamAttack" style={at(226, 304, 44)} small lit={h.squad.opening > 0}>
-          <Face jp="連携" en="Team" small />
+      {(h.shift.active || h.shift.meter >= 1) && (
+        <HoldButton pad={pad} kind="shift" style={at(226, 252, 46)} small lit>
+          <Face jp="巨人" en="Shift" small />
         </HoldButton>
       )}
 
@@ -228,7 +195,7 @@ function HoldButton({
   pulse,
 }: {
   pad: VirtualPad;
-  kind: Kind;
+  kind: Action;
   style: React.CSSProperties;
   children: ReactNode;
   big?: boolean;
@@ -271,27 +238,16 @@ function HoldButton({
 }
 
 function LockButton({ pad, locked, label, style }: { pad: VirtualPad; locked: boolean; label: string; style: React.CSSProperties }) {
-  const start = useRef({ x: 0, y: 0, t: 0 });
-  const tap = (a: Action) => {
-    pad.down(a);
-    pad.up(a);
-  };
   const down = (e: PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.dataset.on = "1";
-    start.current = { x: e.clientX, y: e.clientY, t: performance.now() };
+    pad.down("lock");
   };
   const up = (e: PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     delete e.currentTarget.dataset.on;
-    if (e.type === "pointercancel") return;
-    const s = start.current;
-    const swipe = Math.hypot(e.clientX - s.x, e.clientY - s.y) > SWIPE_PX;
-    const long = performance.now() - s.t > LONG_MS;
-    if (!locked) tap("lock");
-    else if (long && !swipe) tap("lock");
-    else tap("cycle");
+    pad.up("lock");
   };
   return (
     <div

@@ -190,7 +190,10 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
   const lintel = mk(wallInfo.lintel, wallMat);
   const door = mk(wallInfo.door, propMat);
 
-  const plane = new THREE.PlaneGeometry(9000, 9000, 1, 1);
+  // Hole under the town disk: the coplanar overlap z-fights green through the cobbles.
+  const ground = new THREE.Shape([new THREE.Vector2(-4500, -4500), new THREE.Vector2(4500, -4500), new THREE.Vector2(4500, 4500), new THREE.Vector2(-4500, 4500)]);
+  ground.holes.push(new THREE.Path().absarc(0, 1, WALL_R - 2, 0, Math.PI, false));
+  const plane = new THREE.ShapeGeometry(ground, 96);
   plane.rotateX(-Math.PI / 2);
   const puv = plane.getAttribute("uv");
   const ppos = plane.getAttribute("position");
@@ -213,8 +216,9 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
   mk(disk, overlay("#ffffff", cobble()), false);
   const road = new Mesher();
   road.setColor("#d2bf96");
-  road.quad([-9, 0, -WALL_R - 4], [9, 0, -WALL_R - 4], [9, 0, -1600], [-9, 0, -1600], 0, 0, 1, 1, [0, -1, -400]);
-  road.quad([-9, 0, 10], [9, 0, 10], [9, 0, 1600], [-9, 0, 1600], 0, 0, 1, 1, [0, -1, 400]);
+  // lifted 5 cm: long coplanar quads z-fight with the field on weaker GPUs
+  road.quad([-9, 0.05, -WALL_R - 4], [9, 0.05, -WALL_R - 4], [9, 0.05, -1600], [-9, 0.05, -1600], 0, 0, 1, 1, [0, -1, -400]);
+  road.quad([-9, 0.05, 10], [9, 0.05, 10], [9, 0.05, 1600], [-9, 0.05, 1600], 0, 0, 1, 1, [0, -1, 400]);
   const roadMat = overlay("#ffffff");
   (roadMat as THREE.MeshToonMaterial).vertexColors = true;
   mk(road.geometry(), roadMat, false);
