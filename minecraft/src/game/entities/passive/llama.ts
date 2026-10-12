@@ -1,0 +1,284 @@
+import * as THREE from "three";
+import type { Entity, GameCtx, MobDef, MobModel } from "../../contracts";
+import { clearPath, lookAt, moveTo, playerTargetable, type Target } from "../ai";
+import { isBaby, segmentBody } from "../geom";
+import { rig, wrap, quadLegs, look, type VPart } from "../rig";
+import { shootVel, targetInfo } from "../hostile/brain";
+import { isRidden, mountPlayer, dismountPlayer } from "../riding";
+import { skin, shade, type Pix } from "./paint";
+import { DYE_RGB, animalAI, dyeOf, feed, num, sound, useItem, type AnimalOpts, type Dye } from "./common";
+
+const COATS: Record<string, number> = { creamy: 0xd8c39a, white: 0xe9e6dc, brown: 0x8a5e3c, gray: 0x8e8983 };
+const VARIANTS = Object.keys(COATS);
+const near: Entity[] = [];
+
+function paintLlama(p: Pix, coat: string, decor: string) {
+  const c = COATS[coat] ?? COATS.creamy;
+  const B = [c, shade(c, 0.93), shade(c, 1.05), shade(c, 0.88)];
+  const snout = p.fillCuboid(0, 0, 4, 4, 9, B);
+  p.rect([snout.front[0] + 1, snout.front[1] + 1, 2, 1], shade(c, 0.55));
+  p.rect([snout.front[0], snout.front[1] + 3, 4, 1], shade(c, 0.7));
+  const head = p.fillCuboid(0, 14, 8, 18, 6, B);
+  p.px(head.front[0], head.front[1] + 1, 0x1a1410);
+  p.px(head.front[0] + 7, head.front[1] + 1, 0x1a1410);
+  p.px(head.right[0] + 4, head.right[1] + 1, 0x1a1410);
+  p.px(head.left[0] + 1, head.left[1] + 1, 0x1a1410);
+  p.fillCuboid(30, 0, 3, 3, 2, B);
+  const body = p.fillCuboid(40, 0, 12, 18, 10, B);
+  p.fillCuboid(40, 30, 4, 14, 4, B);
+  p.rect([40, 30 + 4 + 12, 16, 2], shade(c, 0.7));
+  if (decor === "none") return;
+  const trader = decor === "trader";
+  const base = trader ? 0x3c44aa : DYE_RGB[decor as Dye] ?? 0xffffff;
+  const trim = trader ? 0xe8b830 : shade(base, 0.75);
+  const D = [base, shade(base, 0.92)];
+  p.noise(body.front, D);
+  for (const r of [body.right, body.left, body.back]) {
+    p.noise([r[0], r[1], r[2], 7], D);
+    p.rect([r[0], r[1] + 7, r[2], 1], trim);
+  }
+  p.rect([body.front[0], body.front[1], 12, 1], trim);
+  p.rect([body.front[0], body.front[1] + 17, 12, 1], trim);
+  for (let x = 0; x < 12; x += 3) p.px(body.front[0] + x + 1, body.front[1] + 8, trim);
+  if (trader) {
+    p.rect([head.front[0], head.front[1] + 7, 8, 2], base);
+    p.rect([head.front[0] + 3, head.front[1] + 7, 2, 2], trim);
+  }
+}
+
+function llamaModel(trader: boolean): MobModel {
+  const leg = (name: string, x: number, z: number, mirror = false): VPart => ({ name, pivot: [x, 10, z], box: [-2, 0, -2, 4, 14, 4], uv: [40, 30], mirror });
+  const parts: VPart[] = [
+    { name: "head", pivot: [0, 7, -6], box: [-4, -16, -6, 8, 18, 6], uv: [0, 14] },
+    { name: "snout", parent: "head", pivot: [0, 0, 0], box: [-2, -14, -10, 4, 4, 9], uv: [0, 0] },
+    { name: "right_ear", parent: "head", pivot: [0, 0, 0], box: [-4, -19, -4, 3, 3, 2], uv: [30, 0] },
+    { name: "left_ear", parent: "head", pivot: [0, 0, 0], box: [1, -19, -4, 3, 3, 2], uv: [30, 0], mirror: true },
+    { name: "body", pivot: [0, 5, 2], box: [-6, -10, -7, 12, 18, 10], uv: [40, 0], rot: [Math.PI / 2, 0, 0] },
+    leg("right_hind_leg", -3.5, 6),
+    leg("left_hind_leg", 3.5, 6, true),
+    leg("right_front_leg", -3.5, -5),
+    leg("left_front_leg", 3.5, -5, true),
+  ];
+  const key = (e: Entity) => `llama_${(e.data.variant as string) ?? "creamy"}_${trader ? "trader" : (e.data.decor as string) ?? "none"}`;
+  const paint = (k: string) => {
+    const [, coat, decor] = k.split("_");
+    return skin(k, 128, 64, (p) => paintLlama(p, coat, decor));
+  };
+  const r = rig(paint(trader ? "llama_creamy_trader" : "llama_creamy_none"), parts);
+  return wrap(
+    r,
+    (a) => {
+      quadLegs(r, a);
+      look(r.p.head, a);
+    },
+    { variant: key, variantSkin: paint, babyHead: 1.4 },
+  );
+}
+
+function spit(e: Entity, ctx: GameCtx, t: Target) {
+  const i = targetInfo(ctx, t);
+  if (!i) return;
+  const b = e.body;
+  const sx = b.pos.x - Math.sin(e.yaw) * 0.6, sy = b.pos.y + b.height * 0.85, sz = b.pos.z - Math.cos(e.yaw) * 0.6;
+  const s = ctx.entities.spawn("llama_spit", sx, sy, sz, { owner: e.id });
+  if (!s) return;
+  const dx = i.pos.x - sx, dz = i.pos.z - sz;
+  const dy = i.pos.y + i.height * 0.33 - sy;
+  shootVel(ctx, s.body.vel, dx, dy + Math.hypot(dx, dz) * 0.2, dz, 1.5, 10);
+  sound(ctx, e, "entity.llama.spit");
+}
+
+const llamaOpts: AnimalOpts = {
+  food: ["hay_block"],
+  tempt: 1.25,
+  breed(a, b, baby, ctx) {
+    baby.data.variant = ctx.random() < 0.5 ? a.data.variant : b.data.variant;
+  },
+};
+const HEAL: Record<string, number> = { wheat: 2, hay_block: 10 };
+
+function llamaDef(trader: boolean): MobDef {
+  const type = trader ? "trader_llama" : "llama";
+  const def: MobDef = {
+    type,
+    displayName: trader ? "Trader Llama" : "Llama",
+    category: "neutral",
+    width: 0.9,
+    height: 1.87,
+    maxHealth: 30,
+    speed: 0.175,
+    xp: [1, 3],
+    drops: [{ item: "leather", count: [0, 2] }],
+    sounds: { ambient: "entity.llama.ambient", hurt: "entity.llama.hurt", death: "entity.llama.death", step: "entity.llama.step" },
+    spawn: trader
+      ? undefined
+      : { dims: ["overworld"], biomes: ["savanna", "savanna_plateau", "windswept_hills", "windswept_gravelly_hills", "windswept_forest"], light: "grass", group: [4, 6], weight: 5 },
+    seat: 0.95,
+    createModel: () => llamaModel(trader),
+    tick(e, ctx) {
+      if (e.data.hp === undefined) {
+        const r = ctx.random;
+        e.data.hp = 15 + 3 * Math.floor(r() * 6);
+        e.data.strength = 1 + Math.floor(r() * 5);
+        e.data.variant ??= VARIANTS[Math.floor(r() * VARIANTS.length)];
+        e.health = Math.min(e.health, e.data.hp as number);
+      }
+      e.maxHealth = e.data.hp as number;
+      if (isRidden(ctx, e)) {
+        clearPath(e);
+        if (!e.data.tamed) {
+          const t = num(e, "_ride") + 1;
+          e.data._ride = t;
+          if (t > 40) {
+            e.data._ride = 0;
+            if (ctx.random() * 30 < num(e, "temper")) {
+              e.data.tamed = true;
+              e.data.owner = "player";
+              ctx.emit({ type: "particles", kind: "heart", x: e.body.pos.x, y: e.body.pos.y + 2, z: e.body.pos.z, count: 7 });
+            } else {
+              e.data.temper = num(e, "temper") + 5;
+              dismountPlayer(ctx);
+              sound(ctx, e, "entity.llama.angry");
+              ctx.emit({ type: "particles", kind: "angry", x: e.body.pos.x, y: e.body.pos.y + 2, z: e.body.pos.z, count: 3 });
+            }
+          }
+        }
+        return;
+      }
+      let t = e.data._target as Target;
+      if (trader && t === undefined && typeof e.data.trader === "number") {
+        const tr = ctx.entities.get(e.data.trader as number);
+        if (tr && !tr.dead && num(tr, "_defend") > 0) t = "player";
+      }
+      if (t === undefined && !e.data.owner && e.age % 20 === 0 && ctx.random() < 0.1) {
+        const p = e.body.pos;
+        ctx.entities.near(p.x, p.y, p.z, 16, near);
+        const w = near.find((o) => o.type === "wolf" && !o.dead && !o.data.owner);
+        near.length = 0;
+        if (w) t = w.id;
+      }
+      if (t === "player" && !playerTargetable(ctx)) t = undefined;
+      const i = t !== undefined ? targetInfo(ctx, t) : null;
+      if (i) {
+        e.data._target = t;
+        lookAt(e, i.pos.x, i.pos.y + i.height * 0.85, i.pos.z);
+        const d2 = i.pos.distanceToSquared(e.body.pos);
+        if (d2 > 100) moveTo(e, ctx, i.pos.x, i.pos.y, i.pos.z, num(e, "_speed", 0.175) * 1.25);
+        else clearPath(e);
+        if (d2 < 400 && e.age >= num(e, "_atk")) {
+          e.data._atk = e.age + 40;
+          spit(e, ctx, t);
+          e.data._target = undefined;
+        }
+        return;
+      }
+      e.data._target = undefined;
+      animalAI(e, ctx, llamaOpts);
+    },
+    onInteract(e, ctx, held) {
+      const p = e.body.pos;
+      if (held && HEAL[held.item] && e.health < e.maxHealth && !(held.item === "hay_block" && !isBaby(e) && e.data.tamed && num(e, "breedCd") <= 0)) {
+        useItem(ctx);
+        e.health = Math.min(e.maxHealth, e.health + HEAL[held.item]);
+        e.data.temper = Math.min(30, num(e, "temper") + (held.item === "wheat" ? 3 : 6));
+        sound(ctx, e, "entity.llama.eat");
+        return true;
+      }
+      if (held?.item.endsWith("_carpet") && e.data.tamed && !trader) {
+        const dye = dyeOf(held.item.replace("_carpet", "_dye"));
+        if (!dye) return false;
+        if (e.data.decor) ctx.entities.dropItem({ item: `${e.data.decor}_carpet`, count: 1 }, p.x, p.y + 1, p.z);
+        e.data.decor = dye;
+        useItem(ctx);
+        sound(ctx, e, "entity.llama.swag");
+        return true;
+      }
+      if (feed(e, ctx, def, held, llamaOpts)) return true;
+      if (!held && !isBaby(e)) return mountPlayer(ctx, e);
+      return false;
+    },
+    onDeath(e, ctx) {
+      if (e.data.decor && !trader) ctx.entities.dropItem({ item: `${e.data.decor}_carpet`, count: 1 }, e.body.pos.x, e.body.pos.y + 1, e.body.pos.z);
+    },
+  };
+  return def;
+}
+
+export const LLAMA = llamaDef(false);
+export const TRADER_LLAMA = llamaDef(true);
+
+const spitList: Entity[] = [];
+const rayO = new THREE.Vector3();
+const rayD = new THREE.Vector3();
+
+function spitModel(): MobModel {
+  const p = skin("llama_spit", 16, 16, (x) => x.fillCuboid(0, 0, 2, 2, 2, [0xf0f0e8, 0xd8d8cc, 0xffffff]));
+  const r = rig(p, [{ name: "ball", pivot: [0, 22, 0], box: [-1, -1, -1, 2, 2, 2], uv: [0, 0] }]);
+  return wrap(r, () => {}, { head: [] });
+}
+
+export const LLAMA_SPIT: MobDef = {
+  type: "llama_spit",
+  displayName: "Llama Spit",
+  category: "misc",
+  width: 0.25,
+  height: 0.25,
+  maxHealth: 1,
+  speed: 0,
+  sounds: { hurt: "", death: "" },
+  createModel: spitModel,
+  tick(e, ctx) {
+    e.data._pa = e.age;
+    e.data.noFall = true;
+    e.data.amphibious = true;
+    e.data.invulnerable = true;
+    const b = e.body;
+    const v = b.vel;
+    const len = v.length();
+    if (len > 1e-4) {
+      rayO.set(b.pos.x, b.pos.y + 0.125, b.pos.z);
+      rayD.copy(v).multiplyScalar(1 / len);
+      const blockHit = ctx.world.raycast(rayO, rayD, len, false);
+      const maxT = blockHit ? blockHit.dist / len : 1;
+      const owner = e.data.owner as number | undefined;
+      let hitT = maxT;
+      let hit: Entity | "player" | null = null;
+      if (owner !== undefined && ctx.player.vehicle !== owner && !ctx.player.dead) {
+        const t = segmentBody(rayO.x, rayO.y, rayO.z, v.x, v.y, v.z, ctx.player.body, 0.1);
+        if (t >= 0 && t <= hitT) {
+          hitT = t;
+          hit = "player";
+        }
+      }
+      ctx.entities.near(b.pos.x, b.pos.y, b.pos.z, len + 2, spitList);
+      for (const o of spitList) {
+        if (o === e || o.id === owner || o.dead || o.type === "llama_spit" || o.type === "item" || o.type === "xp_orb") continue;
+        const t = segmentBody(rayO.x, rayO.y, rayO.z, v.x, v.y, v.z, o.body, 0.1);
+        if (t >= 0 && t <= hitT) {
+          hitT = t;
+          hit = o;
+        }
+      }
+      spitList.length = 0;
+      const src = owner !== undefined ? ctx.entities.get(owner) : undefined;
+      if (hit === "player") {
+        ctx.player.damage(1, "mob", src);
+        e.data._remove = true;
+        return;
+      }
+      if (hit) {
+        ctx.entities.damage(hit.id, 1, "mob", src);
+        e.data._remove = true;
+        return;
+      }
+      if (blockHit) {
+        e.data._remove = true;
+        return;
+      }
+      b.pos.add(v);
+    }
+    v.multiplyScalar(0.99);
+    v.y -= 0.06;
+    if (e.age > 100 || b.inWater) e.data._remove = true;
+  },
+};
