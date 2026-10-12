@@ -9,9 +9,9 @@ import type { Fade } from "./interiors-fade";
 
 const ROOM_X = 6000;
 const ROOM_Z = 6000;
-const DOOR_RANGE = 2.4;
+const DOOR_RANGE = 3.5;
 const ACT_RANGE = 2.2;
-const ICON_RANGE = 14;
+const ICON_RANGE = 30;
 const CAM_ARM = 3.2;
 const EDGE = ROAD_W / 2 + SIDEWALK;
 
@@ -31,7 +31,7 @@ const NAMES: Record<Exclude<ShopKind, "lobby">, string[]> = {
   comic: ["Panel Comics", "Web Head Comics", "Ink & Cape Comics"],
   laundromat: ["Suds City Laundromat", "Spin Cycle Wash", "Fresh Fold Laundry"],
 };
-const LOBBIES = ["The Ashford", "Parkview Tower", "The Calloway", "Hudson Court"];
+const LOBBIES = ["The Ashford", "Parkview Tower", "The Calloway", "Hudson Court", "The Beresford", "Riverside Arms", "The Delmonico", "Gramercy House"];
 const SHOP_ORDER: Exclude<ShopKind, "lobby">[] = ["bodega", "pizza", "coffee", "comic", "laundromat"];
 
 const streetFace = (x: number, z: number) => Math.abs(streetDist(x, z) - EDGE) < 1.5;
@@ -52,7 +52,7 @@ function findDoors(city: City, spawn: THREE.Vector3) {
   const cands: Cand[] = [];
   const free = (x: number, z: number) => !insideAny(city, x, 1, z, 0.3);
   for (const b of city.boxes) {
-    if (b.maxY < 9 || b.maxX - b.minX < 10 || b.maxZ - b.minZ < 10) continue;
+    if (b.minY !== undefined || b.maxY < 9 || b.maxX - b.minX < 10 || b.maxZ - b.minZ < 10) continue;
     if (!inBounds(b)) continue;
     const mx = (b.minX + b.maxX) / 2, mz = (b.minZ + b.maxZ) / 2;
     const faces: [number, number, number, number, boolean][] = [
@@ -97,13 +97,13 @@ function findDoors(city: City, spawn: THREE.Vector3) {
   if (byDist[0]) addShop(byDist[0]);
   const ordered = [...cands].sort((a, b) => (Math.sin(a.pos.x * 12.9898 + a.pos.z * 78.233) * 43758.5453) % 1 - (Math.sin(b.pos.x * 12.9898 + b.pos.z * 78.233) * 43758.5453) % 1);
   for (const c of ordered) {
-    if (shop >= 16) break;
-    if ((counts[c.district] ?? 0) >= 2 || taken(c.pos, 90)) continue;
+    if (shop >= 60) break;
+    if ((counts[c.district] ?? 0) >= 6 || taken(c.pos, 40)) continue;
     addShop(c);
   }
   for (const c of ordered) {
     if (lobbyBoxes.length >= LOBBIES.length) break;
-    if (!c.tall || taken(c.pos, 60) || lobbyBoxes.includes(c.b)) continue;
+    if (!c.tall || taken(c.pos, 20) || lobbyBoxes.includes(c.b)) continue;
     const roof = roofSpot(city, c.b);
     if (!roof) continue;
     const i = lobbyBoxes.length;
@@ -132,7 +132,8 @@ function roofSpot(city: City, b: Box) {
 
 export function createInteriors(scene: THREE.Scene, city: City, keep: THREE.Object3D[], spawn: THREE.Vector3, hooks: { heal: (amount: number) => void; setYaw: (yaw: number) => void }) {
   const doors = findDoors(city, spawn);
-  const atlas = makeAtlas(doors.filter((d) => !d.roof).map((d) => ({ name: d.name, kind: d.kind })));
+  const signs = [...new Map(doors.filter((d) => !d.roof).map((d) => [d.name, { name: d.name, kind: d.kind }])).values()];
+  const atlas = makeAtlas(signs);
   const solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82 });
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
   const artMat = new THREE.MeshBasicMaterial({ map: atlas.tex, vertexColors: true });
@@ -141,7 +142,6 @@ export function createInteriors(scene: THREE.Scene, city: City, keep: THREE.Obje
   const dGlow = new Bucket();
   const dArt = new Bucket();
   const roofBoxes: Box[] = [];
-  let sign = 0;
   for (const d of doors) {
     const ry = Math.atan2(d.n.x, d.n.z);
     const at = (along: number, y: number, out: number) => [d.pos.x + d.n.x * out - d.n.z * along, y, d.pos.z + d.n.z * out + d.n.x * along] as const;
@@ -170,7 +170,7 @@ export function createInteriors(scene: THREE.Scene, city: City, keep: THREE.Obje
     dSolid.add(UNIT.box, mat(ax, ay, az, 3.4, 0.08, 1.4, ry, 0.35), awn);
     put(dSolid, 0, 3.08, 1.38, 3.4, 0.35, 0.04, awn);
     const [sx, sy, sz] = at(0, 4.05, 0.08);
-    dArt.add(UNIT.plane, mat(sx, sy, sz, 3.8, 0.48, 1, ry), 0xffffff, 1.3, [0, 0], atlas.signRect[sign++]);
+    dArt.add(UNIT.plane, mat(sx, sy, sz, 3.8, 0.48, 1, ry), 0xffffff, 1.3, [0, 0], atlas.signRect[signs.findIndex((g) => g.name === d.name)]);
     put(dGlow, 0, 4.36, 0.12, 3.6, 0.05, 0.08, 0xfff1d0, 2);
   }
   const outside = new THREE.Group();
@@ -297,8 +297,11 @@ export function createInteriors(scene: THREE.Scene, city: City, keep: THREE.Obje
   const focus = new THREE.Vector3();
   const dir = new THREE.Vector3();
 
+  const markers = doors.filter((d) => !d.roof).map((d) => ({ x: d.pos.x, z: d.pos.z, kind: "door" as const, label: d.name }));
+
   return {
     doors,
+    markers,
     get inside() {
       return room !== null;
     },

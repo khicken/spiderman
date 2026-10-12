@@ -9,7 +9,7 @@ import { PanelFrame } from "./ui-menu";
 const PAD = 20;
 const VB = { x: BOUNDS.minX - PAD, y: BOUNDS.minZ - PAD, w: BOUNDS.maxX - BOUNDS.minX + PAD * 2, h: BOUNDS.maxZ - BOUNDS.minZ + PAD * 2 };
 const MAX_ZOOM = 8;
-const LEGEND: Marker["kind"][] = ["race", "crime", "chase", "boss", "hideout", "challenge", "request", "photo", "cache", "pigeon", "collectible"];
+const LEGEND: Marker["kind"][] = ["race", "crime", "chase", "boss", "hideout", "challenge", "request", "photo", "cache", "pigeon", "collectible", "door"];
 const SHOWN = new Set<Marker["kind"]>([...LEGEND, "checkpoint"]);
 const OTHER = ["Manhattan", "Brooklyn", "Queens"] as const;
 const DETAIL_ZOOM = 1.6;
