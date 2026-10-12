@@ -1,5 +1,5 @@
 import { blockId as I } from "../blocks/registry";
-import { chest, fill, fillFn, frame, mob, put, S, stairs, wx, wz, type Frame } from "./build";
+import { chest, faceOf, fill, fillFn, frame, mob, put, S, stairs, wx, wz, type Frame } from "./build";
 import { createRng, type Rng, type Writer } from "./rng";
 import type { Start } from "./structure-grid";
 
@@ -37,7 +37,7 @@ function tower(f: Frame, r: Rng, a: number, b: number, floors: number): number {
     });
     for (let y = y0; y < y0 + H; y++) put(f, a, y, b + 2, S(I("ladder"), 2));
     put(f, a - 2, y0 + 3, b - 2, S(ROD));
-    if (r.chance(0.6)) mob(f, a + 3, y0 + 2, b, "shulker", { attach: "west" });
+    if (r.chance(0.6)) mob(f, a + 3, y0 + 2, b, "shulker");
   }
   fill(f, a, 1, b - 3, a, 2, b - 3, 0);
   return 1 + floors * H;
@@ -72,7 +72,6 @@ function smallTop(f: Frame, a: number, y0: number, b: number) {
   mob(f, a - 2, y0 + 1, b + 2, "shulker");
 }
 
-// Item frames are not modeled, so the elytra sits in a chest.
 function ship(f: Frame) {
   fillFn(f, -4, 0, -12, 4, 9, 12, (a, y, b) => {
     const len = 12 - Math.max(0, 3 - y) * 2;
@@ -91,12 +90,10 @@ function ship(f: Frame) {
   put(f, 0, 3, 12, S(I("dragon_head"), 0));
   fill(f, -1, 5, -11, 1, 7, -8, S(PUR));
   fill(f, 0, 5, -10, 0, 6, -9, 0);
-  const x = wx(f, 0, 4), z = wz(f, 0, 4);
+  const x = wx(f, 0, -11), z = wz(f, 0, -11);
   if (f.w.inside(x, z)) {
-    f.w.set(x, f.y + 3, z, S(CHEST));
-    const items = new Array(27).fill(null);
-    items[13] = { item: "elytra", count: 1 };
-    f.w.blockEntities.push({ x, y: f.y + 3, z, type: "chest", items, data: { itemFrame: "elytra" } });
+    const face = faceOf(f, 0);
+    f.w.entities.push({ type: "item_frame", x: x + 0.5, y: f.y + 4, z: z + 0.5, data: { x, y: f.y + 4, z, face, item: { item: "elytra", count: 1 }, persistent: true } });
   }
   chest(f, -2, 3, -4, 0, "end_city_treasure", CHEST);
   chest(f, 2, 3, -4, 0, "end_city_treasure", CHEST);

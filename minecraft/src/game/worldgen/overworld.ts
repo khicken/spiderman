@@ -1,5 +1,6 @@
 import { HEIGHT, MIN_Y, stateOf, type ChunkData } from "../contracts";
 import { carve } from "./carvers";
+import { caveBiomeIds, caveKinds } from "./cave-biomes";
 import { decorateCaves } from "./cave-deco";
 import { B } from "./ids";
 import { hash01 } from "./noise";
@@ -35,6 +36,7 @@ export interface ChunkCtx {
   biomes: Uint8Array;
   surface: Int16Array; // top solid y after the density pass, before carvers
   cave: Uint8Array; // 1 where air or fluid came from a cave, same index as blocks
+  caveKind?: Uint8Array; // CAVE_* per 4x4x4 cell, see cave-biomes.ts
 }
 
 const pf = new Float32Array(LEVELS);
@@ -129,6 +131,7 @@ export function generateOverworld(seed: number, cx: number, cz: number): ChunkDa
   }
 
   const ctx: ChunkCtx = { g, cx, cz, blocks, biomes, surface, cave };
+  ctx.caveKind = caveKinds(ctx);
   applySurface(ctx);
   carve(ctx);
   placeVeins(ctx);
@@ -153,6 +156,7 @@ export function generateOverworld(seed: number, cx: number, cz: number): ChunkDa
     blockEntities: w.blockEntities,
     entities: w.entities,
     waterlogged: waterloggedCells(blocks, wasWater),
+    caveBiomes: caveBiomeIds(ctx.caveKind),
   };
 }
 

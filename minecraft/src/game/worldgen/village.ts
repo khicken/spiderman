@@ -287,6 +287,7 @@ function house(f: Frame, r: Rng, st: Style, size: number) {
   }
   mob(f, 0, 1, Math.floor(d / 2), "villager", { profession: job[1], level: 1 });
   if (beds > 1) mob(f, -1, 1, 3, "villager", { profession: JOBS[r.int(JOBS.length)][1], level: 1 });
+  if (r.chance(0.35)) mob(f, 0, 1, 1, "cat");
   put(f, 0, 0, -1, S(st.name === "desert" ? B.smooth_sandstone : B.cobblestone));
   if (!st.flat) put(f, 0, 0, -1, stairs(f, I(st.name === "snowy" || st.name === "taiga" ? "cobblestone_stairs" : "cobblestone_stairs"), 0));
 }

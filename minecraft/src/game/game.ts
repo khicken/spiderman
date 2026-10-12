@@ -8,7 +8,7 @@ import { createEntities } from "./entities";
 import { createHostileWorld } from "./entities/hostile";
 import { createInventory } from "./items";
 import { BEHAVIORS } from "./mechanics";
-import { bedStandSpot, type BedSpawn } from "./mechanics/interact";
+import { bedStandSpot, wakeUp, type BedSpawn } from "./mechanics/interact";
 import { createInput, createPlayer } from "./player";
 import { setKeyBinds } from "./player/input";
 import { createTouchControls, isTouchDevice } from "./player/touch";
@@ -661,7 +661,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     const dir = player.lookDir();
     const f = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 1 : 3) : dir.z > 0 ? 2 : 0;
     const yawDeg = ((((-player.yaw * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
-    const biome = world.getBiome(bx, bz);
+    const biome = world.getBiomeAt?.(bx, by, bz) ?? world.getBiome(bx, bz);
     const info = renderer.renderer.info;
     const t = player.target;
     const sky = world.getSkyLight(bx, by + 1, bz), blk = world.getBlockLight(bx, by + 1, bz);
@@ -774,6 +774,9 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     },
     lock() {
       input.requestLock();
+    },
+    leaveBed() {
+      wakeUp(ctx);
     },
     command(line: string): string[] {
       return runCommand(ctx, line);

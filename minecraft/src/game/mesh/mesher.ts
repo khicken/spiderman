@@ -104,7 +104,7 @@ export function meshInto(input: MeshInput) {
   M.blocks = blocks;
   M.light = input.light;
   const wet = (M.wet = input.waterlogged ?? null);
-  blendTints(input.biomes);
+  blendTints(input.biomes, input.tints);
   BUFS[0].n = BUFS[1].n = BUFS[2].n = 0;
   greedyReset();
   const ox = input.cx * 16, oy = input.sy * 16 - 64, oz = input.cz * 16;

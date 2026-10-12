@@ -5,7 +5,13 @@ const GRASS = new Uint32Array(256);
 const FOLIAGE = new Uint32Array(256);
 const WATER = new Uint32Array(256);
 
-export function blendTints(biomes: Uint8Array) {
+export function blendTints(biomes: Uint8Array, tints?: Uint32Array) {
+  if (tints) {
+    GRASS.set(tints.subarray(0, 256));
+    FOLIAGE.set(tints.subarray(256, 512));
+    WATER.set(tints.subarray(512, 768));
+    return;
+  }
   for (let z = 0; z < 16; z++) {
     for (let x = 0; x < 16; x++) {
       let gr = 0, gg = 0, gb = 0, fr = 0, fg = 0, fb = 0, wr = 0, wg = 0, wb = 0;

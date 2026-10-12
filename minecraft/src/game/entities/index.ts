@@ -242,7 +242,7 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
     let bestT = Infinity;
     const ridden = getCtx().player.vehicle;
     for (const e of rayList) {
-      if (e.dead || e.id === ridden || e.type === "area_effect_cloud" || e.type === "potion" || !(isMob(e.type) || e.type === "fireball" || e.type === "small_fireball")) continue;
+      if (e.dead || e.id === ridden || typeof e.data.shoulder === "number" || e.type === "area_effect_cloud" || e.type === "potion" || !(isMob(e.type) || e.type === "fireball" || e.type === "small_fireball")) continue;
       const t = segmentBody(origin.x, origin.y, origin.z, dir.x * maxDist, dir.y * maxDist, dir.z * maxDist, e.body, 0);
       if (t >= 0 && t < bestT) {
         bestT = t;

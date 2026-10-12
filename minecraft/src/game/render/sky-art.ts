@@ -58,8 +58,8 @@ export function paintEndSky(): { data: Uint8Array; size: number } {
   for (let y = 0; y < n; y++)
     for (let x = 0; x < n; x++) {
       const r = rand();
-      const v = r > 0.985 ? 255 : 120 + Math.floor(rand() * 90);
-      put(px, n, x, y, v, Math.min(255, v + 12), v);
+      const v = r > 0.985 ? 78 : 34 + Math.floor(rand() * 22);
+      put(px, n, x, y, v, Math.round(v * 0.86), Math.round(v * 1.12));
     }
   return { data: px, size: n };
 }

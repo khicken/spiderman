@@ -3,6 +3,7 @@ import { CHUNK, MIN_Y, SEA_LEVEL, idOf } from "../contracts";
 import { OPAQUE, SOLID, blockByName, blockDef } from "../blocks/registry";
 import { allMobs, mobDef } from "./registry";
 import { isLava, isWater, lightAt, skyDarken } from "./ai";
+import { structureSpawn, type StructureSpawn } from "./structure-spawns";
 
 export type SpawnCat = "hostile" | "passive" | "ambient" | "water" | "water_ambient";
 
@@ -107,6 +108,14 @@ export function canSpawnAt(ctx: GameCtx, def: MobDef, x: number, y: number, z: n
   return true;
 }
 
+function structureSpawnOk(ctx: GameCtx, over: StructureSpawn, def: MobDef, x: number, y: number, z: number, darken: number) {
+  if (over.water) return passable(ctx, x, y, z, def.height, true) && isWater(ctx.world.getBlock(x, y + 1, z));
+  if (!passable(ctx, x, y, z, def.height, false)) return false;
+  const bid = idOf(ctx.world.getBlock(x, y - 1, z));
+  if (!SOLID[bid] || !OPAQUE[bid]) return false;
+  return over.anyLight || darkEnough(ctx, x, y, z, darken);
+}
+
 type Pool = { def: MobDef; weight: number }[];
 const pools = new Map<string, Pool>();
 
@@ -153,6 +162,7 @@ export function createSpawner() {
     if (OPAQUE[idOf(w.getBlock(x, y, z))]) return;
     for (let g = 0; g < 3; g++) {
       let def: MobDef | null = null;
+      let over: StructureSpawn | null = null;
       let left = 0;
       let sx = x, sz = z;
       for (let i = 0; i < 8; i++) {
@@ -162,12 +172,13 @@ export function createSpawner() {
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 < 24 * 24 || d2 > 128 * 128 || !w.isLoaded(sx, sz)) continue;
         if (!def) {
-          def = pick(ctx, pool(ctx, cat, w.getBiome(sx, sz).name));
+          over = cat === "hostile" ? structureSpawn(ctx, sx, y, sz) : null;
+          def = over ? mobDef(over.mob) ?? null : pick(ctx, pool(ctx, cat, (w.getBiomeAt?.(sx, y, sz) ?? w.getBiome(sx, sz)).name));
           if (!def) return;
-          const [a, b] = def.spawn!.group;
+          const [a, b] = over ? over.group : def.spawn!.group;
           left = a + ri(ctx, b - a + 1);
         }
-        if (!canSpawnAt(ctx, def, sx, y, sz, darken)) continue;
+        if (over ? !structureSpawnOk(ctx, over, def, sx, y, sz, darken) : !canSpawnAt(ctx, def, sx, y, sz, darken)) continue;
         const e = ctx.entities.spawn(def.type, sx + 0.5, y, sz + 0.5, { natural: true });
         if (!e) continue;
         counts[cat]++;

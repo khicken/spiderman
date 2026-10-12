@@ -123,8 +123,10 @@ function breedOpts(kind: Kind): AnimalOpts {
     food: FOOD,
     panic: 1.2,
     noBreed: kind === "mule" || kind === "skeleton_horse" || kind === "zombie_horse",
+    mates: kind === "horse" ? ["donkey"] : kind === "donkey" ? ["horse"] : undefined,
+    babyOf: (a, b) => (a.type === b.type ? a.type : "mule"),
     breed(a, b, baby, ctx) {
-      baby.data.variant = ctx.random() < 0.5 ? a.data.variant : b.data.variant;
+      if (a.type === b.type) baby.data.variant = ctx.random() < 0.5 ? a.data.variant : b.data.variant;
       const avg = (k: string) => (num(a, k) + num(b, k) + ((k === "hp" ? 15 + ctx.random() * 15 : k === "spd" ? 0.1125 + ctx.random() * 0.225 : 0.4 + ctx.random() * 0.6))) / 3;
       baby.data.hp = avg("hp");
       baby.data.spd = avg("spd");

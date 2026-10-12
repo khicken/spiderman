@@ -8,7 +8,7 @@ export { SelectWorldScreen, CreateWorldScreen, ConfirmScreen, seedFromString, ty
 export { LoadingScreen, PauseScreen, DeathScreen, type LoadingScreenProps, type PauseScreenProps, type DeathScreenProps } from "./menus";
 export { OptionsScreen, type OptionsScreenProps } from "./options-screen";
 export { DEFAULT_SETTINGS, KEY_BINDS, type Settings } from "./settings";
-export { Chat, type ChatMessage, type ChatProps } from "./chat";
+export { Chat, LeaveBedButton, type ChatMessage, type ChatProps } from "./chat";
 export { Hud, Crosshair, DebugOverlay, type HudProps, type TimedText } from "./hud";
 export { ContainerScreen, OUTSIDE, type ContainerScreenProps } from "./container-screen";
 export { type CreativeProps } from "./creative-screen";

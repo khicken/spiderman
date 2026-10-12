@@ -77,6 +77,10 @@ uniform float uGamma;
 uniform float uNightVision;
 uniform vec3 uFogColor;
 uniform vec3 uSkyTint;
+uniform vec2 uDimLight;
+#ifdef HELD
+uniform vec2 uHeldLight;
+#endif
 varying vec2 vUv;
 flat varying float vLayer;
 flat varying float vOverlay;
@@ -115,19 +119,36 @@ void main() {
 #ifdef OPAQUE
   alpha = 1.0;
 #endif
-  float skyFactor = mix(0.2, 1.0, clamp(uDaylight, 0.0, 1.0));
-  float sky = brightness(vLight.x) * skyFactor;
-  float b = brightness(vLight.y);
-  vec3 blockCol = vec3(b, b * ((b * 0.6 + 0.4) * 0.6 + 0.4), b * (b * b * 0.6 + 0.4));
-  vec3 skyTint = pow(max(uSkyTint, vec3(0.0)), vec3(1.0 / 2.2));
-  vec3 light = max(vec3(sky) * skyTint, blockCol);
-  light = mix(light, vec3(0.75), 0.04);
+#ifdef HELD
+  vec2 lv = uHeldLight;
+#else
+  vec2 lv = vLight;
+#endif
+  float amb = uDimLight.x;
+  float sb = lv.x / (4.0 - 3.0 * lv.x);
+  float bb = lv.y / (4.0 - 3.0 * lv.y);
+  float darken = mix(0.2, 1.0, clamp(uDaylight, 0.0, 1.0));
+  float sky = (amb + (1.0 - amb) * sb) * (darken * 0.95 + 0.05);
+  float q = (amb + (1.0 - amb) * bb) * 1.5;
+  vec3 light = vec3(q, q * ((q * 0.6 + 0.4) * 0.6 + 0.4), q * (q * q * 0.6 + 0.4));
+  if (uDimLight.y > 0.5) {
+    light = mix(light, vec3(0.99, 1.12, 1.0), 0.25);
+  } else {
+    light += mix(vec3(darken, darken, 1.0), vec3(1.0), 0.35) * sky;
+    light = mix(light, vec3(0.75), 0.04);
+  }
+  light = clamp(light, 0.0, 1.0);
   light = mix(light, light / max(max(light.r, light.g), max(light.b, 0.001)), uNightVision);
   vec3 inv = 1.0 - clamp(light, 0.0, 1.0);
   light = mix(light, 1.0 - inv * inv * inv * inv, uGamma);
+  light = mix(light, vec3(0.75), 0.04);
   col *= clamp(light, 0.0, 1.0) * vShade;
   col = toLinear(col);
+#ifdef HELD
+  float fog = 0.0;
+#else
   float fog = clamp((vFogDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
+#endif
   vec3 fogCol = uFogColor;
   if (uSkyMix > 0.0 && vDir.y > 0.0 && fog > 0.0) {
     vec3 dd = normalize(vDir);
@@ -155,6 +176,7 @@ export function createChunkUniforms(): ChunkUniforms {
     uSkyColor: { value: new THREE.Color(0x78a7ff) },
     uSkyFogEnd: { value: 192 },
     uSkyMix: { value: 0 },
+    uDimLight: { value: new THREE.Vector2(0, 0) },
   };
 }
 
@@ -172,6 +194,14 @@ function make(uniforms: ChunkUniforms, kind: "OPAQUE" | "CUTOUT" | "TRANSLUCENT"
     m.blending = THREE.NormalBlending;
   }
   return m;
+}
+
+// Chunk shader with one light level for the whole mesh (held blocks), sky and block 0..1.
+export function createHeldMaterial(uniforms: ChunkUniforms, cutout: boolean): THREE.ShaderMaterial & { uniforms: { uHeldLight: { value: THREE.Vector2 } } } {
+  const m = make(uniforms, cutout ? "CUTOUT" : "OPAQUE");
+  m.uniforms.uHeldLight = { value: new THREE.Vector2(1, 0) };
+  m.defines.HELD = "";
+  return m as THREE.ShaderMaterial & { uniforms: { uHeldLight: { value: THREE.Vector2 } } };
 }
 
 // uDaylight 0 is the darkest night (vanilla sky darken floor 0.2), uGamma is the brightness option.

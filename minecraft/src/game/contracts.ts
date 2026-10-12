@@ -250,6 +250,7 @@ export interface ChunkData {
   blockEntities?: BlockEntityData[];
   entities?: EntitySave[]; // mobs placed by world gen (village, structures)
   waterlogged?: number[]; // chunkIndex of waterlogged cells (blocks/waterlog.ts)
+  caveBiomes?: Uint8Array; // 4x4x4-block cells, index (((y - MIN_Y) >> 2) * 4 + (lz >> 2)) * 4 + (lx >> 2); 255 = surface biome
 }
 
 // Mesher input: one 16^3 section plus a 1-block border = 18^3, index (y * 18 + z) * 18 + x.
@@ -262,6 +263,7 @@ export interface MeshInput {
   light: Uint8Array; // PAD^3
   biomes: Uint8Array; // PAD * PAD, index z * 18 + x
   waterlogged?: Uint8Array; // PAD^3, 1 = cell holds water; absent when none
+  tints?: Uint32Array; // 768: blended grass, foliage, water 0xRRGGBB per column z * 16 + x; overrides biomes for tints
 }
 
 export interface MeshBuffers {
@@ -293,6 +295,7 @@ export interface ChunkUniforms {
   uSkyColor?: { value: THREE.Color }; // zenith color: far fog above the camera fades into the sky dome
   uSkyFogEnd?: { value: number };
   uSkyMix?: { value: number }; // 0 plain fog color, 1 sky dome color
+  uDimLight?: { value: THREE.Vector2 }; // x dimension ambient light, y 1 for the End fixed lightmap
 }
 
 // ---------- Block entities ----------
@@ -569,6 +572,7 @@ export interface WorldApi {
   getSkyLight(x: number, y: number, z: number): number;
   getBlockLight(x: number, y: number, z: number): number;
   getBiome(x: number, z: number): BiomeDef;
+  getBiomeAt?(x: number, y: number, z: number): BiomeDef; // cave biomes underground, else getBiome
   topY(x: number, z: number): number;
   isLoaded(x: number, z: number): boolean;
   raycast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, fluids?: boolean): RaycastHit | null;

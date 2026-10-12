@@ -30,6 +30,7 @@ export interface SavedChunk {
   blockEntities?: BlockEntityData[];
   entities?: EntitySave[];
   waterlogged?: number[];
+  caveBiomes?: Uint8Array;
 }
 
 const DB_NAME = "minecraft";
@@ -145,6 +146,7 @@ export async function saveChunk(worldId: string, chunk: ChunkData): Promise<void
     blockEntities: chunk.blockEntities,
     entities: chunk.entities,
     waterlogged: chunk.waterlogged,
+    caveBiomes: chunk.caveBiomes,
   };
   await request("chunks", "readwrite", (s) => s.put(value, chunkSaveKey(worldId, chunk.dim, chunk.cx, chunk.cz)));
 }

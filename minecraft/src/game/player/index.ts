@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { DamageSource, Effect, Entity, GameCtx, GameMode, PlayerApi } from "../contracts";
+import type { ChunkUniforms, DamageSource, Effect, Entity, GameCtx, GameMode, PlayerApi } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { lerp, lightAt, updateCamera } from "./camera";
 import { createHand, type HandFrame } from "./hand";
@@ -239,7 +239,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   };
 
   const model = createPlayerModel();
-  const items = createItemMeshes();
+  const items = createItemMeshes(() => getCtx().renderer?.scene.userData.chunkUniforms as ChunkUniforms | undefined);
   const hand = createHand(model, items);
   const extras = createPlayerExtras(model, items);
   const screen = createScreenFx(items);
@@ -541,7 +541,9 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       hf.use = u;
       hf.useTicks = u ? u.ticks + pt : 0;
       hf.light = light;
-      hf.visible = showHand && !third && !p.dead && p.gameMode !== "spectator";
+      const lx = Math.floor(body.pos.x), ly = Math.floor(body.pos.y + p.eyeHeight), lz = Math.floor(body.pos.z);
+      items.setLevels(ctx.world.getSkyLight(lx, ly, lz), ctx.world.getBlockLight(lx, ly, lz));
+      hf.visible = showHand && !third && !p.dead && !p.sleeping && p.gameMode !== "spectator";
       hf.off = ctx.inventory.slots[40] ?? null;
       const scoping = p.using?.kind === "spyglass" && p.thirdPerson === 0;
       if (scoping) hf.visible = false;

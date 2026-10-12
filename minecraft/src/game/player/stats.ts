@@ -2,6 +2,7 @@ import type { BlockDef, BlockState, DamageSource, ItemStack, ToolStats } from ".
 import { blockDef } from "../blocks/registry";
 import { itemDef } from "../items/registry";
 import { POTION_DEFS } from "../items/potions";
+import { mobDef } from "../entities/registry";
 
 export const PLAYER_NAME = "Player";
 export const WALK_SPEED = 0.1;
@@ -137,7 +138,16 @@ export function enchantDamageBonus(held: ItemStack | null, targetType: string): 
 const UNDEAD = new Set(["zombie", "husk", "drowned", "skeleton", "stray", "bogged", "wither_skeleton", "zombie_villager", "zombified_piglin", "zoglin", "phantom", "wither", "skeleton_horse", "zombie_horse"]);
 const ARTHROPODS = new Set(["spider", "cave_spider", "silverfish", "endermite", "bee"]);
 
-const display = (type: string) => type.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+// Vanilla entity names for attackers that are not mobs.
+const ENTITY_NAMES: Record<string, string> = {
+  tnt: "Primed TNT", tnt_minecart: "Minecart with TNT", end_crystal: "End Crystal", arrow: "Arrow", spectral_arrow: "Spectral Arrow",
+  fireball: "Fireball", small_fireball: "Small Fireball", dragon_fireball: "Dragon Fireball", wither_skull: "Wither Skull",
+  firework_rocket: "Firework Rocket", trident: "Trident", potion: "Potion", evoker_fangs: "Evoker Fangs", falling_block: "Falling Block",
+  lightning_bolt: "Lightning Bolt", shulker_bullet: "Shulker Bullet", llama_spit: "Llama Spit", wind_charge: "Wind Charge",
+  breeze_wind_charge: "Wind Charge", area_effect_cloud: "Area Effect Cloud", player: PLAYER_NAME,
+};
+const display = (type: string) =>
+  mobDef(type)?.displayName ?? ENTITY_NAMES[type] ?? type.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 
 export function deathMessage(source: DamageSource, attackerType?: string, fell = 0): string {
   const p = PLAYER_NAME;

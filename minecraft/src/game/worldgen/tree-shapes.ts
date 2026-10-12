@@ -420,4 +420,7 @@ export function bush(x: number, y: number, z: number, wood: Wood) {
 
 export function beeNest(x: number, y: number, z: number) {
   put(x, y, z + 1, S(B.bee_nest, 0));
+  if (!w.inside(x, z + 1) || (w.get(x, y, z + 1) & 0xfff) !== B.bee_nest) return;
+  const n = 2 + r.int(2);
+  for (let i = 0; i < n; i++) w.entities.push({ type: "bee", x: x + 0.5, y: y + 0.2, z: z + 2.5, data: { hive: [x, y, z + 1] } });
 }

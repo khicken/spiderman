@@ -187,7 +187,7 @@ export function createSky() {
   const endTex = dataTex(endArt.data, endArt.size, endArt.size, true);
   const endMat = spriteMaterial(endTex, false, 16);
   endMat.side = THREE.BackSide;
-  (endMat.uniforms.uColor.value as THREE.Vector3).setScalar(40 / 255);
+  (endMat.uniforms.uColor.value as THREE.Vector3).setScalar(1);
   const endGeo = new THREE.BoxGeometry(200, 200, 200);
   const endBox = new THREE.Mesh(endGeo, endMat);
   endBox.visible = false;

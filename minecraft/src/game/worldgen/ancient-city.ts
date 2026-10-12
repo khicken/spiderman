@@ -1,5 +1,5 @@
 import { blockId as I } from "../blocks/registry";
-import { chest, fill, fillFn, frame, mob, put, rnd, S, stairs, type Frame } from "./build";
+import { chest, fill, fillFn, frame, put, rnd, S, stairs, type Frame } from "./build";
 import { createRng, type Rng, type Writer } from "./rng";
 import type { Start } from "./structure-grid";
 
@@ -93,7 +93,6 @@ function house(f: Frame, r: Rng, a: number, b: number, brick: (x: number, y: num
   put(f, a, 4, b, S(SLANT, 1));
   put(f, a - 1, 1, b, S(SCULK));
   put(f, a - 1, 2, b, S(I("candle"), 3));
-  if (r.chance(0.5)) mob(f, a, 1, b, "skeleton");
 }
 
 function tower(f: Frame, r: Rng, a: number, b: number, brick: (x: number, y: number, z: number) => number) {

@@ -34,6 +34,7 @@ export interface Overworld {
   base: Float32Array;
   biomeAt(x: number, z: number): number;
   caveAt(x: number, z: number): number;
+  deepDarkAt(x: number, z: number): boolean; // erosion/selector rule alone, ignores lush and dripstone priority
   temperatureAt(x: number, z: number): number;
   // Interpolated column profile at 49 levels (final and base density).
   profile(x: number, z: number, outFinal: Float32Array, outBase: Float32Array): void;
@@ -60,7 +61,7 @@ export function createOverworld(seed: number): Overworld {
   const c = new Float32Array(SLOTS), e = new Float32Array(SLOTS), w = new Float32Array(SLOTS);
   const t = new Float32Array(SLOTS), h = new Float32Array(SLOTS);
   const height = new Float32Array(SLOTS), spread = new Float32Array(SLOTS), underwater = new Uint8Array(SLOTS);
-  const biome = new Uint8Array(SLOTS), cave = new Uint8Array(SLOTS), ready = new Uint8Array(SLOTS);
+  const biome = new Uint8Array(SLOTS), cave = new Uint8Array(SLOTS), deep = new Uint8Array(SLOTS), ready = new Uint8Array(SLOTS);
   const final = new Float32Array(SLOTS * LEVELS), base = new Float32Array(SLOTS * LEVELS);
   const qxs = new Int32Array(SLOTS), qzs = new Int32Array(SLOTS);
   const lastUse = new Float64Array(SLOTS);
@@ -104,7 +105,8 @@ export function createOverworld(seed: number): Overworld {
     underwater[s] = H < 62 ? 1 : 0;
     biome[s] = pickBiome(C, E, W, T, Hu);
     const sel = caveSel.sample2(x0, z0);
-    cave[s] = C > 0.75 || (sel > 0.35 && Hu < -0.1) ? CAVE_DRIPSTONE : Hu > 0.55 || (sel < -0.4 && Hu > 0.1) ? CAVE_LUSH : E < -0.4 && sel > -0.2 ? CAVE_DEEP_DARK : CAVE_NONE;
+    deep[s] = E < -0.4 && sel > -0.2 ? 1 : 0;
+    cave[s] = C > 0.75 || (sel > 0.35 && Hu < -0.1) ? CAVE_DRIPSTONE : Hu > 0.55 || (sel < -0.4 && Hu > 0.1) ? CAVE_LUSH : deep[s] ? CAVE_DEEP_DARK : CAVE_NONE;
     qxs[s] = qx; qzs[s] = qz;
   }
 
@@ -209,6 +211,7 @@ export function createOverworld(seed: number): Overworld {
     seed, slot, dens, c, e, w, t, h, height, biome, cave, final, base, profile, surfaceY,
     biomeAt: (x, z) => biome[nearest(x, z)],
     caveAt: (x, z) => cave[nearest(x, z)],
+    deepDarkAt: (x, z) => deep[nearest(x, z)] === 1,
     temperatureAt: (x, z) => t[nearest(x, z)],
     heightAt(x, z) {
       const qx = Math.floor(x / 4), qz = Math.floor(z / 4);

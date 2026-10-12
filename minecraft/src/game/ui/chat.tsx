@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { wrapText } from "./font";
 import { Text, useGui } from "./gui";
-import { TextField } from "./widgets";
+import { Button, TextField } from "./widgets";
 
 export interface ChatMessage {
   id: number;
@@ -23,6 +23,7 @@ export interface ChatProps {
   bgOpacity?: number;
   lineSpacing?: number;
   chatWidth?: number;
+  keepOpen?: boolean; // Enter sends and clears instead of closing (in-bed chat)
 }
 
 const WIDTH = 320;
@@ -34,7 +35,7 @@ const fade = (ageMs: number) => {
   return t * t;
 };
 
-export function Chat({ messages, open, initial = "", onSend, onClose, complete, textOpacity = 1, bgOpacity = 0.5, lineSpacing = 0, chatWidth = WIDTH }: ChatProps) {
+export function Chat({ messages, open, initial = "", onSend, onClose, complete, textOpacity = 1, bgOpacity = 0.5, lineSpacing = 0, chatWidth = WIDTH, keepOpen }: ChatProps) {
   const lineH = Math.round(LINE * (1 + lineSpacing));
   const { width, height } = useGui();
   const [value, setValue] = useState(initial);
@@ -86,7 +87,11 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
         if (history.current[history.current.length - 1] !== line) history.current.push(line);
         onSend(line);
       }
-      onClose();
+      if (!keepOpen) onClose();
+      else {
+        setValue("");
+        histPos.current = -1;
+      }
     } else if (e.key === "Escape") onClose();
     else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
@@ -162,4 +167,10 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
       </div>
     </>
   );
+}
+
+// Vanilla InBedChatScreen button.
+export function LeaveBedButton({ onLeave }: { onLeave: () => void }) {
+  const { width, height } = useGui();
+  return <Button x={Math.floor(width / 2) - 100} y={height - 40} label="Leave Bed" onClick={onLeave} />;
 }

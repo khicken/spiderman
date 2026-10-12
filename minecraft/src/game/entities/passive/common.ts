@@ -9,6 +9,8 @@ export interface AnimalOpts {
   tempt?: number;
   breed?: (a: Entity, b: Entity, baby: Entity, ctx: GameCtx) => void;
   noBreed?: boolean;
+  mates?: string[]; // other types this animal breeds with
+  babyOf?: (a: Entity, b: Entity) => string;
 }
 
 const near: Entity[] = [];
@@ -61,7 +63,7 @@ export function breedTick(e: Entity, ctx: GameCtx, o: AnimalOpts) {
   let mate: Entity | null = null;
   let best = Infinity;
   for (const other of near) {
-    if (other === e || other.type !== e.type || other.dead || isBaby(other) || !((other.data._love as number) > 0)) continue;
+    if (other === e || (other.type !== e.type && !o.mates?.includes(other.type)) || other.dead || isBaby(other) || !((other.data._love as number) > 0)) continue;
     const d = distSq(other.body.pos, p);
     if (d < best) {
       best = d;
@@ -88,7 +90,7 @@ function makeBaby(a: Entity, b: Entity, ctx: GameCtx, o: AnimalOpts) {
     clearPath(x);
   }
   const p = a.body.pos;
-  const baby = ctx.entities.spawn(a.type, p.x, p.y, p.z, { grow: -24000 });
+  const baby = ctx.entities.spawn(o.babyOf?.(a, b) ?? a.type, p.x, p.y, p.z, { grow: -24000 });
   if (!baby) return;
   o.breed?.(a, b, baby, ctx);
   ctx.emit({ type: "particles", kind: "heart", x: p.x, y: p.y + a.body.height, z: p.z, count: 7 });

@@ -1,4 +1,5 @@
 import type { Entity, GameCtx, MobDef } from "../../contracts";
+import { metaOf } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
 import { lookAt, playerTargetable } from "../ai";
 import { isBaby } from "../geom";
@@ -92,6 +93,28 @@ function flowerNear(ctx: GameCtx, e: Entity): [number, number, number] | null {
   return null;
 }
 
+const HOME_DIR: [number, number][] = [[0, 1], [-1, 0], [0, -1], [1, 0]];
+
+function homeTick(e: Entity, ctx: GameCtx, accel: number): boolean {
+  const hive = e.data.hive as [number, number, number] | undefined;
+  if (!hive || !ctx.world.isLoaded(hive[0], hive[2])) return false;
+  const night = ctx.time.dayTime > 12500 && ctx.time.dayTime < 23500;
+  if (!night && ctx.time.rain < 0.2 && !e.data.nectar) return false;
+  const s = ctx.world.getBlock(hive[0], hive[1], hive[2]);
+  if (!blockDef(s).tags?.includes("beehives")) {
+    e.data.hive = undefined;
+    return false;
+  }
+  const [fx, fz] = HOME_DIR[metaOf(s) & 3];
+  const d = flyToward(e, hive[0] + 0.5 + fx * 1.2, hive[1] + 0.4, hive[2] + 0.5 + fz * 1.2, accel);
+  if (d < 1 && e.data.nectar) {
+    e.data.nectar = false;
+    sound(ctx, e, "block.beehive.enter", 0.6);
+  }
+  flyDrag(e);
+  return true;
+}
+
 function tick(e: Entity, ctx: GameCtx) {
   e.data.noGravity = true;
   e.data.noFall = true;
@@ -132,6 +155,7 @@ function tick(e: Entity, ctx: GameCtx) {
     flyDrag(e);
     return;
   }
+  if (homeTick(e, ctx, accel)) return;
   const love = num(e, "_love") > 0;
   if (!love && !isBaby(e) && !e.data.nectar && !e.data.stung) {
     let fl = e.data._flower as [number, number, number] | undefined;

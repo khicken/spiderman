@@ -3,6 +3,7 @@ import { B } from "./ids";
 import { hash01, hash32 } from "./noise";
 import type { ChunkCtx } from "./overworld";
 import { createRng, idTable } from "./rng";
+import { caveCell } from "./cave-biomes";
 import { CAVE_DEEP_DARK, CAVE_DRIPSTONE, CAVE_LUSH } from "./terrain";
 
 const S = stateOf;
@@ -39,13 +40,13 @@ function sealed(i: number): boolean {
 
 export function decorateCaves(ctx: ChunkCtx) {
   blocks = ctx.blocks;
-  const { ow, seed } = ctx.g;
+  const { seed } = ctx.g;
+  const kinds = ctx.caveKind!;
   const ox = ctx.cx * 16, oz = ctx.cz * 16;
   for (let lz = 0; lz < 16; lz++) {
     for (let lx = 0; lx < 16; lx++) {
       const x = ox + lx, z = oz + lz;
       const col = (lz << 4) | lx;
-      const cave = ow.caveAt(x, z);
       const yTop = Math.min(ctx.surface[col] - 4, 300);
       for (let y = MIN_Y + 2; y < yTop; y++) {
         const i = at(lx, y, lz);
@@ -54,7 +55,7 @@ export function decorateCaves(ctx: ChunkCtx) {
         const floor = ROCK[below] === 1, ceil = ROCK[above] === 1;
         if (!floor && !ceil) continue;
         const r = hash01(seed, x, y, z);
-        const kind = cave === CAVE_DEEP_DARK && y > 0 ? 0 : cave;
+        const kind = kinds[caveCell(lx, y, lz)];
         if (kind === CAVE_LUSH) {
           if (floor) {
             blocks[i - 256] = S(B.moss_block);

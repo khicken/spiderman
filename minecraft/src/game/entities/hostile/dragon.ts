@@ -49,7 +49,7 @@ function dyingTick(e: Entity, ctx: GameCtx): void {
   b.pos.y += 0.1;
   e.yaw += (20 * Math.PI) / 180;
   e.headYaw = e.yaw;
-  e.data.bossbar = { id: "ender_dragon", name: "Ender Dragon", progress: 0, color: "pink" };
+  e.data.bossbar = ctx.world.dim === "end" ? { id: "ender_dragon", name: "Ender Dragon", progress: 0, color: "pink" } : undefined;
   const total = num(e, "_xpTotal", 500);
   const p = b.pos;
   if (t >= 180 && t <= 200) particles(ctx, "explosion", p.x + (ctx.random() - 0.5) * 8, p.y + 2 + (ctx.random() - 0.5) * 4, p.z + (ctx.random() - 0.5) * 8, 1);
@@ -57,11 +57,13 @@ function dyingTick(e: Entity, ctx: GameCtx): void {
   if (t === 1) sound(ctx, e, "entity.ender_dragon.death", 1000);
   if (t < 200) return;
   ctx.entities.dropXp(Math.floor(total * 0.2), p.x, p.y, p.z);
-  const first = !END_STATE.dragonKilled;
-  buildExitPortal(ctx.world, true, first);
-  spawnGateway(ctx);
-  END_STATE.dragonKilled = true;
-  END_STATE.kills++;
+  if (ctx.world.dim === "end") {
+    const first = !END_STATE.dragonKilled;
+    buildExitPortal(ctx.world, true, first);
+    spawnGateway(ctx);
+    END_STATE.dragonKilled = true;
+    END_STATE.kills++;
+  }
   e.data.bossbar = undefined;
   e.data._remove = true;
 }
@@ -251,7 +253,8 @@ function dragonTick(e: Entity, ctx: GameCtx): void {
   e.data.flap = prev + step;
   if (Math.cos(prev * Math.PI * 2) <= -0.3 && Math.cos((prev + step) * Math.PI * 2) >= -0.3) sound(ctx, e, "entity.ender_dragon.flap", 5, 0.8 + ctx.random() * 0.3);
   if (ctx.random() < 0.002) sound(ctx, e, "entity.ender_dragon.growl", 5);
-  e.data.bossbar = { id: "ender_dragon", name: "Ender Dragon", progress: Math.max(0, e.health / e.maxHealth), color: "pink" };
+  // Vanilla ties the boss bar to the End fight: a dragon summoned elsewhere shows none.
+  e.data.bossbar = ctx.world.dim === "end" ? { id: "ender_dragon", name: "Ender Dragon", progress: Math.max(0, e.health / e.maxHealth), color: "pink" } : undefined;
   applyPhysics(e, ctx);
   b.vel.x /= 0.91;
   b.vel.y /= 0.98;

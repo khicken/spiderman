@@ -147,7 +147,7 @@ export function createSculk(cache: BlockCache) {
     for (const e of ctx.entities.all()) if (e.type === "warden" && !e.dead && e.body.pos.distanceTo(pp) < 48) return;
     const spot = findWardenSpot(ctx, x, y, z);
     if (!spot) return;
-    ctx.entities.spawn("warden", spot[0] + 0.5, spot[1], spot[2] + 0.5, { emerge: true });
+    ctx.entities.spawn("warden", spot[0] + 0.5, spot[1], spot[2] + 0.5, { emerge: 134 });
     ctx.emit({ type: "sound", name: "entity.warden.emerge", x: spot[0] + 0.5, y: spot[1], z: spot[2] + 0.5, volume: 3 });
     state.warning = 0;
   }

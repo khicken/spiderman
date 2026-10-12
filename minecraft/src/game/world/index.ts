@@ -325,6 +325,16 @@ export function createWorld(opts: WorldOpts): World {
       const c = store.get(x >> 4, z >> 4);
       return (c && BIOMES[c.data.biomes[((z & 15) << 4) | (x & 15)]]) || BIOMES[0];
     },
+    getBiomeAt(x, y, z) {
+      const c = store.get(x >> 4, z >> 4);
+      if (!c) return BIOMES[0];
+      const cb = c.data.caveBiomes;
+      if (cb && y >= MIN_Y && y <= MAX_Y) {
+        const id = cb[(((y - MIN_Y) >> 2) << 4) | (z & 12) | ((x & 15) >> 2)];
+        if (id !== 255 && BIOMES[id]) return BIOMES[id];
+      }
+      return BIOMES[c.data.biomes[((z & 15) << 4) | (x & 15)]] || BIOMES[0];
+    },
     topY(x, z) {
       const c = store.get(x >> 4, z >> 4);
       return c ? c.data.heightmap[((z & 15) << 4) | (x & 15)] : MIN_Y - 1;

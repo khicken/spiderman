@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { GameCtx } from "../contracts";
-import { idOf } from "../contracts";
+import { idOf, metaOf } from "../contracts";
+import { blockDef } from "../blocks/registry";
 import { blockIds, fluidAt } from "./physics";
 import type { PlayerState } from "./state";
 
@@ -64,13 +65,29 @@ export function daylight(dayTime: number): number {
   return Math.max(0, Math.min(1, c * 2 + 0.5));
 }
 
+// Mean channel of the vanilla lightmap at default gamma, matching the chunk shader.
 export function lightAt(ctx: GameCtx, x: number, y: number, z: number, nightVision: boolean): number {
   if (nightVision) return 1;
   const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
-  const day = ctx.world.dim === "overworld" ? daylight(ctx.time.dayTime) : ctx.world.dim === "end" ? 0.6 : 0.35;
-  const l = Math.max(ctx.world.getSkyLight(bx, by, bz) * Math.max(0.2, day), ctx.world.getBlockLight(bx, by, bz)) / 15;
-  const curve = l / (4 - 3 * l);
-  return Math.max(0.12, Math.min(1, curve * 0.85 + 0.15));
+  const dim = ctx.world.dim;
+  const amb = dim === "nether" ? 0.1 : 0;
+  const curve = (l: number) => amb + (1 - amb) * (l / 15 / (4 - (3 * l) / 15));
+  const q = curve(ctx.world.getBlockLight(bx, by, bz)) * 1.5;
+  let r = q, g = q * ((q * 0.6 + 0.4) * 0.6 + 0.4), b = q * (q * q * 0.6 + 0.4);
+  if (dim === "end") {
+    r += (0.99 - r) * 0.25; g += (1.12 - g) * 0.25; b += (1 - b) * 0.25;
+  } else {
+    const f = dim === "overworld" ? 0.2 + 0.8 * daylight(ctx.time.dayTime) : 0.2;
+    const s = curve(ctx.world.getSkyLight(bx, by, bz)) * (f * 0.95 + 0.05);
+    const sk = 0.35 + 0.65 * f;
+    r += sk * s; g += sk * s; b += s;
+  }
+  return Math.min(1, (gammaMix(r) + gammaMix(g) + gammaMix(b)) / 3);
+}
+
+function gammaMix(c: number): number {
+  const v = Math.min(1, c * 0.96 + 0.03);
+  return ((v + 1 - Math.pow(1 - v, 4)) / 2) * 0.96 + 0.03;
 }
 
 export interface CameraOut {
@@ -79,6 +96,7 @@ export interface CameraOut {
 }
 
 const out: CameraOut = { pos: camPos, thirdDist: 0 };
+const BED_X = [0, -1, 0, 1], BED_Z = [1, 0, -1, 0];
 
 export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THREE.Matrix4, bobbing: boolean, nausea = 0): CameraOut {
   const cam = ctx.renderer.camera;
@@ -89,7 +107,17 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
   let yaw = p.yaw, pitch = p.pitch;
   camPos.copy(eye);
   out.thirdDist = 0;
-  if (p.thirdPerson !== 0 && !p.dead) {
+  if (p.sleeping && p.thirdPerson === 0) {
+    // Vanilla Camera.setup: face from the bed head toward the foot, raised 0.3.
+    const s = ctx.world.getBlock(Math.floor(eye.x), Math.floor(p.body.pos.y), Math.floor(eye.z));
+    if (blockDef(s).shape === "bed") {
+      const h = metaOf(s) & 3;
+      yaw = Math.atan2(BED_X[h], BED_Z[h]);
+      look.set(-BED_X[h], 0, -BED_Z[h]);
+    }
+    pitch = 0;
+    camPos.y += 0.3;
+  } else if (p.thirdPerson !== 0 && !p.dead) {
     if (p.thirdPerson === 1) back.copy(look).negate();
     else {
       back.copy(look);

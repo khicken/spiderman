@@ -5,7 +5,7 @@ import type { ContainerView, HudState } from "../game/contracts";
 import type { GameHandle } from "../game/game";
 import { createAudio, type GameAudio } from "../game/audio";
 import {
-  Chat, ContainerScreen, CreateWorldScreen, Crosshair, DEFAULT_SETTINGS, DeathScreen, DebugOverlay, GuiRoot, Hud, LoadingScreen,
+  Chat, LeaveBedButton, ContainerScreen, CreateWorldScreen, Crosshair, DEFAULT_SETTINGS, DeathScreen, DebugOverlay, GuiRoot, Hud, LoadingScreen,
   OptionsScreen, PauseScreen, SelectWorldScreen, TitleScreen, completeCommand, computeGuiScale, setUiClickSound,
   type ChatMessage, type NewWorldOptions, type Settings, type TimedText, type WorldListEntry,
 } from "../game/ui";
@@ -19,7 +19,7 @@ import { createWorldMeta, deleteWorld, listWorlds, loadMeta, saveMeta, type Worl
 import { HideWhileSigning, SignEditScreen } from "../game/ui/sign-screen";
 
 type Screen = "title" | "select" | "create" | "options" | "game";
-type Overlay = null | "pause" | "options" | "chat" | "advancements" | "statistics";
+type Overlay = null | "pause" | "options" | "chat" | "bed" | "advancements" | "statistics";
 
 const SETTINGS_KEY = "mc-settings";
 
@@ -76,6 +76,21 @@ export default function Page() {
   const msgId = useRef(0);
   const overlayRef = useRef<Overlay>(null);
   overlayRef.current = overlay;
+  const asleep = (hud?.sleeping ?? 0) > 0;
+  useEffect(() => {
+    const g = gameRef.current;
+    if (!g) return;
+    if (asleep && !overlayRef.current) {
+      setChatInit("");
+      g.setInputBlocked(true);
+      document.exitPointerLock?.();
+      setOverlay("bed");
+    } else if (!asleep && overlayRef.current === "bed") {
+      setOverlay(null);
+      g.setInputBlocked(false);
+      g.lock();
+    }
+  }, [asleep]);
   const { w, h } = useWindowSize();
   const guiScale = computeGuiScale(settings.guiScale, w, h);
 
@@ -288,7 +303,7 @@ export default function Page() {
           if (playing && !overlay && !view && !death) gameRef.current?.lock();
         }}
       />
-      {playing && !hideGui && !view && !death && !credits && (!overlay || overlay === "chat") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
+      {playing && !hideGui && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
       <GuiRoot guiScale={settings.guiScale}>
         {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics === "fancy"} />}
         {playing && !hideGui && <Toasts toasts={toasts} />}
@@ -303,10 +318,11 @@ export default function Page() {
         )}
         {playing && debug && hud?.debug && <DebugOverlay lines={hud.debug} width={Math.ceil(w / guiScale)} />}
         {playing && !death && (
-          <div style={{ pointerEvents: overlay === "chat" ? "auto" : "none" }}>
+          <div style={{ pointerEvents: overlay === "chat" || overlay === "bed" ? "auto" : "none" }}>
             <Chat
               messages={messages}
-              open={overlay === "chat"}
+              open={overlay === "chat" || overlay === "bed"}
+              keepOpen={overlay === "bed"}
               initial={chatInit}
               complete={(line) => (g ? completeCommand(g.ctx, line) : [])}
               textOpacity={settings.chatOpacity}
@@ -320,11 +336,16 @@ export default function Page() {
                 else addChat(`<Player> ${t}`);
               }}
               onClose={() => {
+                if (overlayRef.current === "bed") {
+                  gameRef.current?.leaveBed();
+                  return;
+                }
                 setOverlay(null);
                 gameRef.current?.setInputBlocked(false);
                 gameRef.current?.lock();
               }}
             />
+            {overlay === "bed" && <LeaveBedButton onLeave={() => gameRef.current?.leaveBed()} />}
           </div>
         )}
         {playing && view && inv && (

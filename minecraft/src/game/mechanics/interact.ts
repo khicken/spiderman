@@ -131,24 +131,39 @@ const useBed: UseFn = (ctx, x, y, z, s) => {
     return true;
   }
   p.sleeping = true;
+  sleepTick = ctx.time.tick;
   p.teleport(hx + 0.5, y + 0.5625, hz + 0.5);
   ctx.world.scheduleTick(hx, y, hz, 100);
   return true;
 };
 
-export const bedScheduledTick: NonNullable<BlockBehavior["scheduledTick"]> = (ctx) => {
+let sleepTick = 0;
+
+export const bedScheduledTick: NonNullable<BlockBehavior["scheduledTick"]> = (ctx, x, y, z) => {
   const p = ctx.player;
   if (!p.sleeping) return;
+  const left = 100 - (ctx.time.tick - sleepTick);
+  if (left > 1) {
+    ctx.world.scheduleTick(x, y, z, left);
+    return;
+  }
   const t = ctx.time;
   t.dayTime = 0;
   t.day += 1;
   t.rain = 0;
   t.thunder = 0;
+  wakeUp(ctx);
+};
+
+// Vanilla stopSleeping: stand up beside the bed, or stay where the bed was.
+export function wakeUp(ctx: GameCtx) {
+  const p = ctx.player;
+  if (!p.sleeping) return;
   p.sleeping = false;
   const b = p.body.pos;
   const spot = bedStandSpot(ctx, Math.floor(b.x), Math.floor(b.y), Math.floor(b.z));
   if (spot) p.teleport(spot[0], spot[1], spot[2]);
-};
+}
 
 export type BedSpawn = { x: number; y: number; z: number; bed?: boolean };
 

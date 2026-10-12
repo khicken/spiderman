@@ -115,6 +115,62 @@ function imitate(e: Entity, ctx: GameCtx) {
   sound(ctx, e, `entity.parrot.imitate.${o.type}`, 0.7, (ctx.random() - ctx.random()) * 0.2 + 1.8);
 }
 
+function leaveShoulder(e: Entity, ctx: GameCtx) {
+  const pp = ctx.player.body.pos;
+  e.data.shoulder = undefined;
+  e.data.sitting = false;
+  e.data._shCd = 0;
+  e.body.noClip = false;
+  e.body.pos.set(pp.x, pp.y + 0.6, pp.z);
+}
+
+function shoulderFree(ctx: GameCtx, e: Entity): number {
+  const pp = ctx.player.body.pos;
+  ctx.entities.near(pp.x, pp.y + 1.4, pp.z, 3, near);
+  let used = 0;
+  for (const o of near) if (o !== e && o.type === "parrot" && !o.dead && typeof o.data.shoulder === "number") used |= o.data.shoulder === 1 ? 1 : 2;
+  near.length = 0;
+  return used & 1 ? (used & 2 ? 0 : -1) : 1;
+}
+
+// Vanilla removes shoulder parrots on a fall over 0.5, water, flying, sleep or damage; they may land again after 100 ticks.
+function shoulderTick(e: Entity, ctx: GameCtx): boolean {
+  const pl = ctx.player, pb = pl.body, b = e.body;
+  const side = e.data.shoulder;
+  if (typeof side === "number") {
+    if (pl.dead || !isTame(e) || pb.fallDistance > 0.5 || pb.inWater || pl.flying || pl.sleeping || pl.vehicle != null || pl.gameMode === "spectator" || pl.health < num(e, "_ph", pl.health)) {
+      leaveShoulder(e, ctx);
+      return false;
+    }
+    e.data._ph = pl.health;
+    const rx = Math.cos(pl.yaw), rz = -Math.sin(pl.yaw), off = -0.4 * side;
+    b.pos.set(pb.pos.x + pb.vel.x + rx * off, pb.pos.y + pb.vel.y + (pl.sneaking ? 1.1 : 1.4), pb.pos.z + pb.vel.z + rz * off);
+    b.vel.set(0, 0, 0);
+    b.noClip = true;
+    e.data.noGravity = true;
+    e.data.sitting = true;
+    e.data._goal = undefined;
+    e.yaw = pl.yaw;
+    e.headYaw = pl.yaw;
+    clearPath(e);
+    return true;
+  }
+  e.data._shCd = num(e, "_shCd") + 1;
+  if (!isTame(e) || e.data.sitting || num(e, "_shCd") < 100 || pl.dead || !pb.onGround || pb.inWater || pl.sleeping || pl.vehicle != null || pl.gameMode === "spectator") return false;
+  const d2 = playerDistSq(ctx, e);
+  if (d2 > 64) return false;
+  const free = shoulderFree(ctx, e);
+  if (!free) return false;
+  if (d2 < 4) {
+    e.data.shoulder = free;
+    e.data._ph = pl.health;
+    sound(ctx, e, "entity.parrot.step", 0.5);
+    return shoulderTick(e, ctx);
+  }
+  e.data._goal = [pb.pos.x, pb.pos.y + 1.4, pb.pos.z];
+  return false;
+}
+
 export const PARROT: MobDef = {
   type: "parrot",
   displayName: "Parrot",
@@ -134,12 +190,13 @@ export const PARROT: MobDef = {
     e.data.noGravity = false;
     const b = e.body;
     if (ctx.random() < 1 / 400) imitate(e, ctx);
+    if (shoulderTick(e, ctx)) return;
     if (e.data.sitting) {
       clearPath(e);
       idleLook(e, ctx);
     } else if (!panic(e, ctx, 1.25)) {
       const speed = 0.4 * 0.5;
-      let goal = e.data._fly as [number, number, number] | undefined;
+      let goal = e.data._goal as [number, number, number] | undefined;
       if (isTame(e) && playerDistSq(ctx, e) > 25 && !ctx.player.dead) {
         const pp = ctx.player.body.pos;
         if (playerDistSq(ctx, e) > 144) {
@@ -150,19 +207,19 @@ export const PARROT: MobDef = {
           e.data._pz = b.pos.z;
         }
         goal = [pp.x, pp.y + 1.8, pp.z];
-        e.data._fly = goal;
+        e.data._goal = goal;
       } else if (!goal && ctx.random() < 1 / 120) {
         const x = b.pos.x + (ctx.random() * 2 - 1) * 8, z = b.pos.z + (ctx.random() * 2 - 1) * 8;
         const y = b.pos.y + Math.floor(ctx.random() * 7) - 2;
         if (air(ctx, x, y, z) && air(ctx, x, y + 1, z)) {
           goal = [x, y, z];
-          e.data._fly = goal;
+          e.data._goal = goal;
           sound(ctx, e, "entity.parrot.fly", 0.3);
         }
       }
       if (goal) {
         clearPath(e);
-        if (!flyTo(e, ctx, goal[0], goal[1], goal[2], speed) || ctx.random() < 1 / 200) e.data._fly = undefined;
+        if (!flyTo(e, ctx, goal[0], goal[1], goal[2], speed) || ctx.random() < 1 / 200) e.data._goal = undefined;
       } else if (!wander(e, ctx, 0.2)) idleLook(e, ctx);
     }
     if (!e.data.noGravity && !b.onGround && b.vel.y < 0) b.vel.y *= 0.6;
@@ -182,6 +239,7 @@ export const PARROT: MobDef = {
       return tameTry(e, ctx, 1 / 10);
     }
     if (holds(ctx, SEEDS)) return false;
+    if (typeof e.data.shoulder === "number") return false;
     if (e.body.onGround || e.data.sitting) {
       toggleSit(e);
       return true;

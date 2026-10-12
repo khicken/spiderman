@@ -48,6 +48,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
 
   const mats = createChunkMaterials();
   const uniforms = mats.uniforms;
+  scene.userData.chunkUniforms = uniforms;
   const atlas = createAtlasTexture(renderer.getContext() as WebGL2RenderingContext);
   uniforms.uAtlas.value = atlas;
   const getAtlas = () => atlas;
@@ -201,6 +202,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     fog.far = range.far;
     uniforms.uDaylight.value = day * (1 - fx.darkness * 0.8);
     if (uniforms.uNightVision) uniforms.uNightVision.value = fx.nightVision;
+    uniforms.uDimLight?.value.set(dim === "nether" ? 0.1 : 0, dim === "end" ? 1 : 0);
     uniforms.uSkyTint.value.setRGB(tint3[0], tint3[1], tint3[2], THREE.SRGBColorSpace);
     uniforms.uGamma.value = gamma;
     uniforms.uTime.value = time;

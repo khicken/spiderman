@@ -2,7 +2,7 @@ import { MIN_Y, stateOf } from "../contracts";
 import { OPAQUE } from "../blocks/registry";
 import { BIOMES } from "./biomes";
 import { B } from "./ids";
-import { hash01, hash32 } from "./noise";
+import { hash01, hash32, type Octaves } from "./noise";
 import type { ChunkCtx } from "./overworld";
 import { createRng, idTable, type Writer } from "./rng";
 import { BI, isBadlands, isOcean } from "./surface";
@@ -23,6 +23,7 @@ const CORAL_BLOCKS = [B.tube_coral_block, B.brain_coral_block, B.bubble_coral_bl
 const CORALS = [B.tube_coral, B.brain_coral, B.bubble_coral, B.fire_coral, B.horn_coral, B.tube_coral_fan, B.brain_coral_fan, B.bubble_coral_fan, B.fire_coral_fan, B.horn_coral_fan];
 
 let blocks: Uint16Array;
+let patch: Octaves;
 
 function tall(lx: number, y: number, lz: number, lower: number, upper: number) {
   if (y >= 318 || blocks[at(lx, y + 1, lz)] !== 0) return;
@@ -71,6 +72,7 @@ export function placeVegetation(ctx: ChunkCtx, w: Writer) {
   const { ow, sn, seed } = ctx.g;
   const ox = ctx.cx * 16, oz = ctx.cz * 16;
   const flowerNoise = sn.patch;
+  patch = sn.patch;
   for (let lz = 0; lz < 16; lz++) {
     for (let lx = 0; lx < 16; lx++) {
       const x = ox + lx, z = oz + lz;
@@ -202,9 +204,11 @@ function water(lx: number, y: number, lz: number, x: number, z: number, biome: n
       return;
     }
   }
-  const kelpOk = ocean && !warm && biome !== BI.frozenOcean && biome !== BI.deepFrozen;
-  if (kelpOk && depth >= 4 && r < 0.12) {
-    const h = Math.min(depth - 1, 1 + Math.floor(r2 * Math.min(depth, 22)));
+  // Vanilla kelp_cold / kelp_warm: noise_based_count 120 / 80 tries per chunk at noise scale 80, 2..11 tall.
+  const kelpTries = biome === BI.lukewarm || biome === BI.deepLukewarm ? 80 : biome === BI.ocean || biome === BI.deepOcean || biome === BI.cold || biome === BI.deepCold ? 120 : 0;
+  const kelpN = kelpTries && depth >= 3 ? patch.sample2(x * 0.25 + 4000, z * 0.25 - 4000) / 1.3 : 0;
+  if (kelpN > 0 && r < 1 - Math.exp(-Math.ceil(kelpN * kelpTries) / 256)) {
+    const h = Math.min(depth - 1, 2 + Math.floor(r2 * 10));
     for (let k = 0; k < h; k++) blocks[at(lx, y + k, lz)] = S(k === h - 1 ? B.kelp : B.kelp_plant);
     return;
   }

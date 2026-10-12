@@ -1,9 +1,13 @@
 import * as THREE from "three";
-import type { BlockDef } from "../contracts";
+import type { BlockDef, ChunkUniforms } from "../contracts";
 import { blockByName } from "../blocks/registry";
+import { blockGeometry } from "../mesh/block-geometry";
+import { buffersToGeometry, createHeldMaterial } from "../mesh/materials";
+import { isFlatBlock } from "../textures/items-iso";
+import { hasItemPainter } from "../textures/items";
 import { itemDef } from "../items/registry";
 import { paintBlockTexture } from "../textures/index";
-import { itemSprite, paintItemTexture } from "../textures/icons";
+import { itemSpritePixels } from "../textures/icons";
 import { dialFrame, paintDial } from "../textures/dials";
 import type { ItemStack } from "../contracts";
 import { GLINT_TIME } from "../entities/armor-layer";
@@ -40,27 +44,6 @@ const BOXY = new Set(["cube", "slab", "stairs", "chest", "cactus", "farmland", "
 const SHADE = [0.6, 0.6, 1, 0.5, 0.8, 0.8]; // vanilla face shading: E W U D S N
 
 const lin = (c: number) => Math.pow(c / 255, 2.2);
-
-function rgbaOf(name: string, def: BlockDef | undefined): Uint8ClampedArray | null {
-  const it = itemDef(name);
-  if (it?.texture) {
-    if (typeof document !== "undefined") {
-      try {
-        const c = itemSprite(name);
-        const g = c.getContext("2d");
-        if (g) return g.getImageData(0, 0, 16, 16).data;
-      } catch {
-      }
-    }
-    return paintItemTexture(it.texture);
-  }
-  if (def) {
-    const t = def.textures;
-    const px = paintBlockTexture(t.all ?? t.side ?? t.top ?? def.name);
-    return def.tint ? tinted(px, TINTS[def.tint] ?? 0xffffff) : px;
-  }
-  return null;
-}
 
 function tinted(src: Uint8ClampedArray, c: number): Uint8ClampedArray {
   const out = new Uint8ClampedArray(src);
@@ -136,10 +119,17 @@ function boxSize(def: BlockDef): [number, number, number, number] {
 export interface ItemMeshes {
   model(name: string): ItemModel | null;
   setLight(v: number): void;
+  setLevels(sky: number, block: number): void;
   dispose(): void;
 }
 
-export function createItemMeshes(): ItemMeshes {
+export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined): ItemMeshes {
+  let held: ReturnType<typeof createHeldMaterial> | null = null;
+  const heldMat = () => {
+    const u = getUniforms?.();
+    if (!held && u?.uDimLight) held = createHeldMaterial(u, true);
+    return held;
+  };
   const cache = new Map<string, ItemModel | null>();
   const textures = new Map<string, THREE.DataTexture>();
   const geos: THREE.BufferGeometry[] = [];
@@ -202,7 +192,17 @@ export function createItemMeshes(): ItemMeshes {
     }
     const it = itemDef(name);
     const def = blockByName(it?.block ?? name);
-    if (def && !it?.texture && BOXY.has(def.shape)) {
+    const solid = def && !it?.texture && !isFlatBlock(def) && !hasItemPainter(name);
+    const hm = solid && def.layer !== "translucent" ? heldMat() : null;
+    if (def && hm) {
+      const b = blockGeometry(def.id);
+      if (b.index.length) {
+        const geo = buffersToGeometry(b);
+        geos.push(geo);
+        return { kind: "block", create: () => new THREE.Mesh(geo, hm) };
+      }
+    }
+    if (def && solid && BOXY.has(def.shape)) {
       const [w, h, d, oy] = boxSize(def);
       const geo = new THREE.BoxGeometry(w, h, d);
       geo.translate(0, oy, 0);
@@ -217,9 +217,9 @@ export function createItemMeshes(): ItemMeshes {
       });
       return { kind: "block", create: () => new THREE.Mesh(geo, mats) };
     }
-    const rgba = rgbaOf(name, def);
-    if (!rgba) return null;
-    const geo = extrudeSprite(rgba);
+    if (!it && !def) return null;
+    const rgba = itemSpritePixels(name);
+    const geo = extrudeSprite(solid && def.tint ? tinted(rgba, TINTS[def.tint] ?? 0xffffff) : rgba);
     geos.push(geo);
     return { kind: "flat", create: () => new THREE.Mesh(geo, flatMat) };
   }
@@ -234,11 +234,15 @@ export function createItemMeshes(): ItemMeshes {
     setLight(v) {
       for (const s of shaded) s.mat.color.setScalar(v * s.shade);
     },
+    setLevels(sky, block) {
+      held?.uniforms.uHeldLight.value.set(sky / 15, block / 15);
+    },
     dispose() {
       for (const g of geos) g.dispose();
       for (const t of textures.values()) t.dispose();
       for (const s of shaded) s.mat.dispose();
       glintMat.dispose();
+      held?.dispose();
       shieldTex?.dispose();
       cache.clear();
     },
