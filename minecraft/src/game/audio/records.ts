@@ -1,3 +1,4 @@
+import { pickPackClip, type PackLookup } from "./pack-sounds";
 import { hashString, makeRng, midiHz, type Rng } from "./synth/dsp";
 
 // Generative jukebox tracks. Each disc gets a seeded style, so a disc always plays the same piece.
@@ -71,7 +72,7 @@ interface Playing {
   nodes: Set<AudioScheduledSourceNode>;
 }
 
-export function createRecords(ctx: AudioContext, dest: AudioNode) {
+export function createRecords(ctx: AudioContext, dest: AudioNode, pack: PackLookup) {
   const playing = new Map<string, Playing>();
   let noise: AudioBuffer | null = null;
 
@@ -167,6 +168,7 @@ export function createRecords(ctx: AudioContext, dest: AudioNode) {
         continue;
       }
       const sixteenth = 60 / p.song.style.bpm / 4;
+      if (p.step === Number.MAX_SAFE_INTEGER) continue;
       while (p.start + p.step * sixteenth < now + 0.6) {
         const t = p.start + p.step * sixteenth;
         if (t >= now - 0.05) scheduleStep(p, Math.max(t, now));
@@ -192,7 +194,21 @@ export function createRecords(ctx: AudioContext, dest: AudioNode) {
     } else panner.setPosition(x, y, z);
     out.connect(panner).connect(dest);
     const start = ctx.currentTime + 0.1;
-    playing.set(id, { song: compose(disc), out, panner, start, end: start + seconds, step: 0, nodes: new Set() });
+    const clip = pickPackClip(pack, `music_disc.${disc}`);
+    const p: Playing = { song: compose(disc), out, panner, start, end: start + seconds, step: 0, nodes: new Set() };
+    if (clip) {
+      const src = ctx.createBufferSource();
+      src.buffer = clip.buffer;
+      src.playbackRate.value = clip.pitch;
+      const g = ctx.createGain();
+      g.gain.value = Math.min(1, clip.volume);
+      src.connect(g).connect(out);
+      src.start(start);
+      track(p, src);
+      p.step = Number.MAX_SAFE_INTEGER;
+      p.end = start + clip.buffer.duration / clip.pitch;
+    }
+    playing.set(id, p);
   }
 
   function stop(id: string) {

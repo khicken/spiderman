@@ -1,4 +1,5 @@
 import type { BlockEntityData, ChunkData, Dim, EntitySave, GameMode, Rules } from "../contracts";
+import { markDirty } from "../cloud/dirty";
 
 export interface WorldMeta {
   id: string;
@@ -59,7 +60,7 @@ function openDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-function request<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {
+export function request<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {
   return openDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
@@ -149,6 +150,7 @@ export async function saveChunk(worldId: string, chunk: ChunkData): Promise<void
     caveBiomes: chunk.caveBiomes,
   };
   await request("chunks", "readwrite", (s) => s.put(value, chunkSaveKey(worldId, chunk.dim, chunk.cx, chunk.cz)));
+  markDirty(worldId, `${chunk.dim}/${chunk.cx},${chunk.cz}`);
 }
 
 export async function loadChunk(worldId: string, dim: Dim, cx: number, cz: number): Promise<ChunkData | null> {
@@ -161,6 +163,7 @@ export async function loadChunk(worldId: string, dim: Dim, cx: number, cz: numbe
 export async function saveEntities(worldId: string, dim: Dim, list: EntitySave[]): Promise<void> {
   if (!hasIdb()) return;
   await request("entities", "readwrite", (s) => s.put(list, `${worldId}/${dim}`));
+  markDirty(worldId, `e/${dim}`);
 }
 
 export async function loadEntities(worldId: string, dim: Dim): Promise<EntitySave[]> {

@@ -23,7 +23,8 @@ export function createMeshQueue() {
   let sortX = Infinity, sortY = 0, sortZ = 0;
 
   const distTo = (j: SectionJob) => {
-    const dx = j.cx * CHUNK + 8 - camX, dy = MIN_Y + j.sy * CHUNK + 8 - camY, dz = j.cz * CHUNK + 8 - camZ;
+    // Vertical distance counts a quarter so a column's sky and deep sections do not wait behind the whole horizon.
+    const dx = j.cx * CHUNK + 8 - camX, dy = (MIN_Y + j.sy * CHUNK + 8 - camY) * 0.25, dz = j.cz * CHUNK + 8 - camZ;
     return dx * dx + dy * dy + dz * dz;
   };
 
@@ -104,7 +105,7 @@ export function createMeshQueue() {
     count = 0;
   }
 
-  return { push, pop, setCamera, removeChunk, clear, size: () => count, hasFast: () => fast.some((j) => j.queued && j.fast) };
+  return { push, pop, setCamera, removeChunk, clear, size: () => count, has: (key: number) => !!jobs.get(key)?.queued, hasFast: () => fast.some((j) => j.queued && j.fast) };
 }
 
 export type MeshQueue = ReturnType<typeof createMeshQueue>;

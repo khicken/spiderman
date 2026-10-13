@@ -11,6 +11,7 @@ import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH,
 import { addExhaustion, damageSlot } from "./survival";
 import type { PlayerState } from "./state";
 import { useItem } from "./use";
+import { statMined } from "../systems/features/stats";
 
 const outline: Aabb[] = [];
 const pool: Aabb[] = [];
@@ -126,7 +127,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     if (creative && (tool?.kind === "sword" || held?.item === "trident" || held?.item === "mace")) return;
     const silk = ench(held, "silk_touch") > 0;
     let replace: BlockState = AIR;
-    if (!creative && hasTag(s, "ice") && def.name === "ice" && !silk) {
+    if (!creative && hasTag(s, "ice") && def.name === "ice" && !silk && w.dim !== "nether") {
       const below = w.getBlock(x, y - 1, z);
       if (below !== AIR && (blockDef(below).solid || idOf(below) === blockId("water"))) replace = stateOf(blockId("water"));
     }
@@ -144,6 +145,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
           if (n > 0) ctx.entities.dropXp(n, x + 0.5, y + 0.5, z + 0.5);
         }
       }
+      statMined(def.name);
       if (def.name.startsWith("infested_") && !silk) ctx.entities.spawn("silverfish", x + 0.5, y, z + 0.5);
       if (tool && def.hardness !== 0) damageSlot(ctx, ctx.inventory.selected, tool.kind === "sword" ? 2 : 1);
       addExhaustion(p, 0.005);

@@ -6,7 +6,7 @@ import { brightnessAt } from "./render";
 export interface ExtraView {
   root: THREE.Object3D;
   owned: (THREE.Material | THREE.BufferGeometry | THREE.Texture)[];
-  update(e: Entity, pt: number, x: number, y: number, z: number, day: number): void;
+  update(e: Entity, pt: number, x: number, y: number, z: number): void;
 }
 
 const SEGMENTS = 16;
@@ -63,7 +63,7 @@ function bobberView(ctx: GameCtx): ExtraView {
   return {
     root,
     owned: [tex, mat, geo, lineMat],
-    update(_e, _pt, x, y, z, day) {
+    update(_e, _pt, x, y, z) {
       root.position.set(x, y, z);
       rodTip(ctx, tip);
       const dx = tip.x - x, dy = tip.y - y, dz = tip.z - z;
@@ -74,7 +74,7 @@ function bobberView(ctx: GameCtx): ExtraView {
         pos[i * 3 + 2] = dz * t;
       }
       geo.attributes.position.needsUpdate = true;
-      mat.color.setScalar(brightnessAt(ctx, x, y, z, day));
+      mat.color.setScalar(brightnessAt(ctx, x, y, z));
     },
   };
 }
@@ -86,9 +86,9 @@ function spriteView(ctx: GameCtx, item: string, scale: number, bright: boolean):
   return {
     root: sp,
     owned: [mat],
-    update(_e, _pt, x, y, z, day) {
+    update(_e, _pt, x, y, z) {
       sp.position.set(x, y + 0.125, z);
-      mat.color.setScalar(bright ? 1 : brightnessAt(ctx, x, y, z, day));
+      mat.color.setScalar(bright ? 1 : brightnessAt(ctx, x, y, z));
     },
   };
 }
@@ -136,12 +136,12 @@ function tridentView(ctx: GameCtx): ExtraView {
   return {
     root,
     owned: [mat],
-    update(e, _pt, x, y, z, day) {
+    update(e, _pt, x, y, z) {
       root.position.set(x, y + 0.25, z);
       root.rotation.y = e.yaw;
       root.rotation.x = e.pitch;
       const glint = e.data.item && (e.data.item as { ench?: Record<string, number> }).ench ? 0.15 * Math.sin(e.age * 0.3) + 0.15 : 0;
-      mat.color.setRGB(1, 1, 1).multiplyScalar(brightnessAt(ctx, x, y, z, day)).add(glintCol.setRGB(glint * 0.6, glint * 0.2, glint));
+      mat.color.setRGB(1, 1, 1).multiplyScalar(brightnessAt(ctx, x, y, z)).add(glintCol.setRGB(glint * 0.6, glint * 0.2, glint));
     },
   };
 }

@@ -5,6 +5,8 @@ import { buildMipmaps } from "../textures/mipmaps";
 
 const ANIM_N = ANIM_LAYERS.length;
 const ANIM = { value: ANIM_LAYERS.map((a) => new THREE.Vector4(a[0], a[1], a[2], a[3])) };
+// Vanilla blockLightRedFlicker, a small random walk the renderer steps each tick.
+export const FLICKER = { value: 0 };
 
 const VERT = /* glsl */ `
 attribute vec4 aUv;
@@ -78,6 +80,7 @@ uniform float uNightVision;
 uniform vec3 uFogColor;
 uniform vec3 uSkyTint;
 uniform vec2 uDimLight;
+uniform float uFlicker;
 #ifdef HELD
 uniform vec2 uHeldLight;
 #endif
@@ -129,7 +132,7 @@ void main() {
   float bb = lv.y / (4.0 - 3.0 * lv.y);
   float darken = mix(0.2, 1.0, clamp(uDaylight, 0.0, 1.0));
   float sky = (amb + (1.0 - amb) * sb) * (darken * 0.95 + 0.05);
-  float q = (amb + (1.0 - amb) * bb) * 1.5;
+  float q = (amb + (1.0 - amb) * bb) * (1.5 + uFlicker);
   vec3 light = vec3(q, q * ((q * 0.6 + 0.4) * 0.6 + 0.4), q * (q * q * 0.6 + 0.4));
   if (uDimLight.y > 0.5) {
     light = mix(light, vec3(0.99, 1.12, 1.0), 0.25);
@@ -147,7 +150,7 @@ void main() {
 #ifdef HELD
   float fog = 0.0;
 #else
-  float fog = clamp((vFogDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
+  float fog = vFogDepth <= uFogNear ? 0.0 : smoothstep(uFogNear, max(uFogFar, uFogNear + 0.001), vFogDepth);
 #endif
   vec3 fogCol = uFogColor;
   if (uSkyMix > 0.0 && vDir.y > 0.0 && fog > 0.0) {
@@ -182,7 +185,7 @@ export function createChunkUniforms(): ChunkUniforms {
 
 function make(uniforms: ChunkUniforms, kind: "OPAQUE" | "CUTOUT" | "TRANSLUCENT"): THREE.ShaderMaterial {
   const m = new THREE.ShaderMaterial({
-    uniforms: { ...(uniforms as unknown as Record<string, THREE.IUniform>), uAnim: ANIM },
+    uniforms: { ...(uniforms as unknown as Record<string, THREE.IUniform>), uAnim: ANIM, uFlicker: FLICKER },
     vertexShader: VERT,
     fragmentShader: FRAG,
     defines: { [kind]: "" },
@@ -218,8 +221,9 @@ export function createChunkMaterials(): {
 // three uploads only level 0 of a DataArrayTexture, so onUpdate uploads the smaller levels.
 export function createAtlasTexture(gl: WebGL2RenderingContext): THREE.DataArrayTexture {
   const { data, size, layers } = buildBlockTextureArray();
+  ANIM_LAYERS.forEach((a, i) => ANIM.value[i].set(a[0], a[1], a[2], a[3]));
   const tex = new THREE.DataArrayTexture(data, size, size, layers);
-  const mips = buildMipmaps(data, size, layers, 5);
+  const mips = buildMipmaps(data, size, layers, Math.log2(size) + 1);
   tex.mipmaps = mips as unknown as THREE.DataArrayTexture["mipmaps"];
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;

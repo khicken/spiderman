@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import type { GameCtx } from "../../contracts";
-import { daylight } from "../../entities/ai";
 import { brightnessAt } from "../../entities/render";
 import { noiseTile, pixBoxes, repeatTexture } from "../../entities/decor/pix-box";
 
@@ -146,7 +145,6 @@ export function createBooks(ctx: GameCtx) {
   function frame(c: GameCtx) {
     const pt = Math.min(1, (performance.now() - lastTick) / 50);
     const shade = frameNo++ % 10 === 0;
-    const day = shade ? daylight(c) : 0;
     for (const b of books.values()) {
       const t = b.time + pt;
       b.root.position.set(b.x + 0.5, b.y + 0.75 + 0.1 + Math.sin(t * 0.1) * 0.01, b.z + 0.5);
@@ -169,7 +167,7 @@ export function createBooks(ctx: GameCtx) {
       flip1.position.x = s;
       flip2.position.x = s;
       if (shade) {
-        const br = brightnessAt(c, b.x + 0.5, b.y + 1, b.z + 0.5, day);
+        const br = brightnessAt(c, b.x + 0.5, b.y + 1, b.z + 0.5);
         b.cover.color.setScalar(br);
         b.page.color.setScalar(br);
       }

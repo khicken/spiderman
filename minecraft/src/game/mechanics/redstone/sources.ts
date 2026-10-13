@@ -4,6 +4,7 @@ import {
   breakBlock, DX, DY, DZ, hasTick, id, lookHorizontal, nameOf, notifyDeep, notifyNeighbors, OPP, schedule, setState, sound,
   sturdyFace, supportsCenter, ticked,
 } from "./util";
+import { advLightning } from "../../systems/advancements/hooks";
 
 // Meta bits 0-2: the Face from the support block to the lever (6 floor and 7 ceiling turned along x). Bit 3: powered.
 export const attachFace = (s: BlockState): Face => {
@@ -323,6 +324,7 @@ export function strikeLightningRod(ctx: GameCtx, x: number, y: number, z: number
   const s = ctx.world.getBlock(x, y, z);
   if (nameOf(s) !== "lightning_rod") return;
   setState(ctx, x, y, z, stateOf(idOf(s), metaOf(s) | 8));
+  advLightning(ctx, x + 0.5, y + 1, z + 0.5, true);
   notifyDeep(ctx, x, y, z);
   schedule(ctx, x, y, z, 8);
 }

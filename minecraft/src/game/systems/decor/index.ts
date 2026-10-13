@@ -12,6 +12,7 @@ const posKey = (x: number, y: number, z: number) => ((x + 1048576) * 2097152 + (
 const keyX = (k: number) => Math.floor(Math.floor(k / 512) / 2097152) - 1048576;
 const keyZ = (k: number) => (Math.floor(k / 512) % 2097152) - 1048576;
 const SCAN_RADIUS = 34;
+const SCAN_BUDGET_MS = 2;
 const HOOKED = "__decorHooked";
 
 interface Hooks {
@@ -47,6 +48,7 @@ export function createDecor(): SystemPart {
   let off: (() => void) | null = null;
   let pending = -1;
   let tableId = -1;
+  const scanQ: number[] = [];
 
   function scanChunk(ctx: GameCtx, cx: number, cz: number) {
     const c = (ctx.world as World).chunkAt?.(cx, cz);
@@ -165,12 +167,14 @@ export function createDecor(): SystemPart {
       });
       const p = ctx.player.body.pos;
       const pcx = Math.floor(p.x) >> 4, pcz = Math.floor(p.z) >> 4;
-      for (let dz = -SCAN_RADIUS; dz <= SCAN_RADIUS; dz++) for (let dx = -SCAN_RADIUS; dx <= SCAN_RADIUS; dx++) scanChunk(ctx, pcx + dx, pcz + dz);
+      scanQ.length = 0;
+      for (let dz = -SCAN_RADIUS; dz <= SCAN_RADIUS; dz++) for (let dx = -SCAN_RADIUS; dx <= SCAN_RADIUS; dx++) if ((ctx.world as World).chunkAt?.(pcx + dx, pcz + dz)) scanQ.push(pcx + dx, pcz + dz);
     },
     unstage() {
       off?.();
       off = null;
       hooks = null;
+      scanQ.length = 0;
       books?.dispose();
       signs?.dispose();
       books = null;
@@ -184,6 +188,8 @@ export function createDecor(): SystemPart {
       books?.tick(ctx);
     },
     frame(ctx) {
+      const t0 = performance.now();
+      while (scanQ.length && performance.now() - t0 < SCAN_BUDGET_MS) scanChunk(ctx, scanQ.shift()!, scanQ.shift()!);
       books?.frame(ctx);
       signs?.frame();
     },

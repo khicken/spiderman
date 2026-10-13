@@ -16,7 +16,7 @@ export function celestialAngle(dayTicks: number): number {
 export const sunHeight = (angle: number) => clamp01(Math.cos(angle * TAU) * 2 + 0.5);
 
 export function daylight(angle: number, rain = 0, thunder = 0): number {
-  let g = 1 - clamp01(1 - (Math.cos(angle * TAU) * 2 + 0.5));
+  let g = 1 - clamp01(1 - (Math.cos(angle * TAU) * 2 + 0.2));
   g *= 1 - (rain * 5) / 16;
   g *= 1 - (thunder * 5) / 16;
   return g * 0.8 + 0.2;

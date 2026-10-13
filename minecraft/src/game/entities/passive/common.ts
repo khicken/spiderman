@@ -2,6 +2,7 @@ import type { Entity, GameCtx, ItemStack, MobDef } from "../../contracts";
 import { panic, moveTo, wander, idleLook, lookAt, clearPath, playerDistSq, distSq, hasPath } from "../ai";
 import { isBaby } from "../geom";
 import { ageUp } from "../living";
+import { advTrigger } from "../../systems/advancements/bus";
 
 export interface AnimalOpts {
   food: string[];
@@ -93,6 +94,7 @@ function makeBaby(a: Entity, b: Entity, ctx: GameCtx, o: AnimalOpts) {
   const baby = ctx.entities.spawn(o.babyOf?.(a, b) ?? a.type, p.x, p.y, p.z, { grow: -24000 });
   if (!baby) return;
   o.breed?.(a, b, baby, ctx);
+  advTrigger({ t: "bred_animals", type: baby.type });
   ctx.emit({ type: "particles", kind: "heart", x: p.x, y: p.y + a.body.height, z: p.z, count: 7 });
   ctx.entities.dropXp(1 + Math.floor(ctx.random() * 7), p.x, p.y, p.z);
 }

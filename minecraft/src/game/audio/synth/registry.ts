@@ -1,11 +1,13 @@
 import type { SoundGroup } from "../../contracts";
 import { BLOCK_ACTIONS, blockRecipe, isSoundGroup, SOUND_GROUPS, type BlockAction } from "./blocks";
-import { finalize, hashString, makeRng, trimTail } from "./dsp";
+import { finalize, hashString, makeRng, normalizeLoudness, trimTail } from "./dsp";
 import { GENERIC_MOB, MOB_SOUNDS } from "./mobs";
 import type { MobSounds } from "./mob-kit";
 import { NOTE_SFX } from "./notes";
 import { PLAYER_SFX } from "./sfx-player";
+import { EXTRA_ALIASES, EXTRA_SFX } from "./sfx-extra";
 import { WORLD_SFX } from "./sfx-world";
+import { NETHER_SFX } from "./sfx-nether";
 import type { Recipe } from "./voice";
 
 export interface Resolved {
@@ -13,7 +15,7 @@ export interface Resolved {
   recipe: Recipe;
 }
 
-const SFX: Record<string, Recipe> = { ...PLAYER_SFX, ...WORLD_SFX, ...NOTE_SFX };
+const SFX: Record<string, Recipe> = { ...PLAYER_SFX, ...WORLD_SFX, ...NOTE_SFX, ...EXTRA_SFX, ...NETHER_SFX };
 
 const ALIASES: Record<string, string> = {
   "item.elytra.flying": "item.trident.throw",
@@ -47,6 +49,7 @@ const ALIASES: Record<string, string> = {
   "entity.player.attack.sweep_air": "entity.player.attack.sweep",
   "block.glass.shatter": "block.glass.break",
   "block.ladder.climb": "block.ladder.step",
+  ...EXTRA_ALIASES,
 };
 
 const BLOCK_KEYWORDS: [string, SoundGroup][] = [
@@ -145,6 +148,7 @@ export function renderVariant(key: string, recipe: Recipe, variant: number, sr: 
   const r = makeRng(hashString(key) ^ Math.imul(variant + 1, 0x9e3779b1));
   const d = trimTail(recipe.render(r, sr), sr);
   finalize(d, sr);
+  normalizeLoudness(d, sr);
   return d;
 }
 

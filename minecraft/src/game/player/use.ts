@@ -12,6 +12,10 @@ import { damageSlot, eat } from "./survival";
 import type { PlayerState, UseState } from "./state";
 import { boostRocket, canRiptide, crossbowCharge, findAmmo, loadCrossbow, releaseBow, releaseTrident, shootCrossbow, useFishingRod } from "./ranged";
 import { collectBreath } from "../systems/brewing/effects";
+import { advTrigger } from "../systems/advancements/bus";
+import { advEntityUse } from "../systems/advancements/hooks";
+import { tickBrush } from "../systems/features/archaeology";
+import { useEmptyMap } from "../systems/features/maps";
 
 export type Hand = "main" | "off";
 const FACE_DIR: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -159,6 +163,7 @@ export function placeBlock(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemSta
   if (!w.setBlock(x, y, z, st)) return false;
   sound(ctx, `block.${blockDef(st).sound}.place`, x + 0.5, y + 0.5, z + 0.5, 1, 0.8);
   consume(p, ctx, h);
+  advTrigger({ t: "placed_block", block: blockDef(st).name, x, y, z });
   return true;
 }
 
@@ -172,6 +177,7 @@ const cell: [number, number, number] = [0, 0, 0];
 
 function convert(p: PlayerState, ctx: GameCtx, h: Hand, hit: RaycastHit, to: string, snd: string, damage = true): boolean {
   if (!hasBlock(to)) return false;
+  advTrigger({ t: "item_used_on_block", item: stackOf(ctx, h)?.item ?? "", block: blockDef(hit.state).name, to, x: hit.x, y: hit.y, z: hit.z });
   ctx.world.setBlock(hit.x, hit.y, hit.z, stateOf(blockId(to), metaOf(hit.state)));
   sound(ctx, snd, hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
   if (damage) {
@@ -294,6 +300,9 @@ export function shoot(p: PlayerState, ctx: GameCtx, type: string, speed: number,
     e.yaw = p.yaw;
     e.pitch = p.pitch;
     e.data.owner = "player";
+    if (type === "trident") advTrigger({ t: "shot", item: "trident" });
+    else if (data.fromCrossbow || data.shotAtAngle) advTrigger({ t: "shot", item: "crossbow" });
+    else if (type === "arrow" || type === "spectral_arrow") advTrigger({ t: "shot", item: "bow" });
   }
   return e;
 }
@@ -417,6 +426,11 @@ function useInAir(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bool
     start(p, h, name, "shield", 72000);
     return true;
   }
+  if (name === "brush") {
+    if (!p.target) return false;
+    start(p, h, name, "brush", 200);
+    return true;
+  }
   if (name === "spyglass") {
     start(p, h, name, "spyglass", 1200);
     sound(ctx, "item.spyglass.use", p.body.pos.x, p.body.pos.y, p.body.pos.z);
@@ -443,6 +457,7 @@ function useInAir(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bool
     if (!creative(p)) damageSlot(ctx, slotOf(ctx, h), name === "carrot_on_a_stick" ? 7 : 1);
     return true;
   }
+  if (name === "map") return useEmptyMap(ctx, slotOf(ctx, h));
   if (name === "goat_horn") {
     sound(ctx, `item.goat_horn.sound.${Number(stack.data?.instrument ?? 0)}`, p.body.pos.x, p.body.pos.y, p.body.pos.z, 16);
     p.itemCooldowns[name] = 140;
@@ -459,6 +474,7 @@ export function useItem(p: PlayerState, ctx: GameCtx, h: Hand): boolean {
   const stack = stackOf(ctx, h);
   if (p.targetEntity) {
     if (ctx.entities.interact(p.targetEntity.id, stack)) {
+      advEntityUse(ctx, ctx.entities.get(p.targetEntity.id), stack, slotOf(ctx, h));
       p.swing();
       return true;
     }
@@ -467,6 +483,7 @@ export function useItem(p: PlayerState, ctx: GameCtx, h: Hand): boolean {
     const beh = ctx.behaviors[blockDef(hit.state).name];
     const skip = p.sneaking && (!!ctx.inventory.held() || !!ctx.inventory.slots[40]);
     if (!skip && beh?.use && beh.use(ctx, hit.x, hit.y, hit.z, hit.state, stack)) {
+      advTrigger({ t: "item_used_on_block", item: stack?.item ?? "", block: blockDef(hit.state).name, x: hit.x, y: hit.y, z: hit.z });
       p.swing();
       return true;
     }
@@ -506,6 +523,7 @@ function finishUse(p: PlayerState, ctx: GameCtx, u: UseState) {
   if (!stack || stack.item !== u.item) return;
   const def = itemDef(u.item);
   const b = p.body;
+  advTrigger({ t: "consumed_item", item: u.item });
   if (def?.food) {
     eat(p, def.food.hunger, def.food.saturation);
     for (const fx of def.food.effects ?? []) if (ctx.random() < fx.chance) p.addEffect(fx.effect, fx.amplifier, Math.round(fx.seconds * 20));
@@ -529,7 +547,6 @@ function finishUse(p: PlayerState, ctx: GameCtx, u: UseState) {
 function release(p: PlayerState, ctx: GameCtx, u: UseState) {
   const stack = stackOf(ctx, u.hand);
   if (!stack || stack.item !== u.item) return;
-  const b = p.body;
   if (u.kind === "bow") releaseBow(p, ctx, u.hand, stack, u.ticks, shoot);
   else if (u.kind === "trident") releaseTrident(p, ctx, u.hand, stack, u.ticks, shoot);
 }
@@ -572,4 +589,5 @@ export function tickUse(p: PlayerState, ctx: GameCtx, input: InputApi): void {
     if (u.ticks === u.total) loadCrossbow(p, ctx, u.hand, stack);
   } else if (u.kind === "shield") p.blocking = u.ticks >= 5;
   else if (u.kind === "spyglass" && u.ticks >= u.total) p.using = null;
+  else if (u.kind === "brush" && (!tickBrush(ctx, u.ticks, slotOf(ctx, u.hand)) || u.ticks >= u.total)) p.using = null;
 }

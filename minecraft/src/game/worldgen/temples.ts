@@ -1,5 +1,5 @@
 import { blockId as I } from "../blocks/registry";
-import { chest, faceOf, fill, fillFn, frame, hz, insideL, mob, put, rnd, S, stairs, wx, wz, type Frame } from "./build";
+import { brushable, chest, faceOf, fill, fillFn, frame, hz, insideL, mob, put, rnd, S, stairs, wx, wz, type Frame } from "./build";
 import { B } from "./ids";
 import { createRng, idTable, type Writer } from "./rng";
 import type { Start } from "./structure-grid";
@@ -62,7 +62,7 @@ export function desertPyramid(w: Writer, s: Start) {
     fill(f, a, -13, b, a, -12, b, 0);
     chest(f, a, -13, b, (h + 2) & 3, "desert_pyramid", B.chest);
   }
-  for (const [a, b] of [[-3, -3], [3, 3]]) put(f, a, -15, b, S(B.suspicious_sand));
+  for (const [a, b] of [[-3, -3], [3, 3]]) brushable(f, a, -15, b, B.suspicious_sand, "desert_pyramid");
 }
 
 function tower(f: Frame, ta: number, tb: number) {

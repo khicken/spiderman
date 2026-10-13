@@ -29,9 +29,10 @@ export function createQuery(store: Store, behaviors: Record<string, BlockBehavio
     return c.blocks[((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15)];
   };
 
+  const INSET_CUBES = new Set(["soul_sand", "mud", "honey_block"]);
   const shapeBoxes = (s: BlockState, x: number, y: number, z: number): Aabb[] | undefined => {
     const def = BLOCKS[s & 0xfff];
-    if (!def || def.shape === "cube") return undefined;
+    if (!def || (def.shape === "cube" && !INSET_CUBES.has(def.name))) return undefined;
     return behaviors[def.name]?.boxes?.(s, world(), x, y, z);
   };
 

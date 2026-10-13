@@ -18,6 +18,20 @@ export interface PlayerDollProps {
   sneaking?: boolean;
 }
 
+let shared: THREE.WebGLRenderer | null | undefined;
+function dollRenderer() {
+  if (shared === undefined) {
+    try {
+      shared = new THREE.WebGLRenderer({ canvas: document.createElement("canvas"), alpha: true, antialias: false });
+      shared.outputColorSpace = THREE.SRGBColorSpace;
+      shared.setClearColor(0x000000, 0);
+    } catch {
+      shared = null;
+    }
+  }
+  return shared;
+}
+
 export function PlayerDoll({ x, y, w, h, scale = 30, panel, mouse, sneaking }: PlayerDollProps) {
   const { scale: gui } = useGui();
   const ref = useRef<HTMLCanvasElement>(null);
@@ -26,18 +40,13 @@ export function PlayerDoll({ x, y, w, h, scale = 30, panel, mouse, sneaking }: P
 
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas) return;
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false });
-    } catch {
-      return;
-    }
+    const g2d = canvas?.getContext("2d");
+    const renderer = dollRenderer();
+    if (!canvas || !g2d || !renderer) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    renderer.setPixelRatio(dpr);
-    renderer.setSize(w * gui, h * gui, false);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setClearColor(0x000000, 0);
+    canvas.width = Math.round(w * gui * dpr);
+    canvas.height = Math.round(h * gui * dpr);
+    g2d.imageSmoothingEnabled = false;
     const scene = new THREE.Scene();
     scene.add(new THREE.AmbientLight(0xffffff, 0.4 * Math.PI));
     const l1 = new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI);
@@ -64,14 +73,17 @@ export function PlayerDoll({ x, y, w, h, scale = 30, panel, mouse, sneaking }: P
       const g = Math.atan((p.top + y + h / 2 - m.y) / 40);
       const body = -f * 20 * D - Math.PI;
       pm.pose({ bodyYaw: body, headYaw: body - f * 20 * D, pitch: -g * 20 * D, limbSwing: 0, limbAmount: 0, attack: 0, sneaking: !!sn, usingRight: false, flying: false });
+      const out = renderer.domElement;
+      if (out.width !== canvas.width || out.height !== canvas.height) renderer.setSize(canvas.width, canvas.height, false);
       renderer.render(scene, camera);
+      g2d.clearRect(0, 0, canvas.width, canvas.height);
+      g2d.drawImage(out, 0, 0);
     };
     loop();
     return () => {
       cancelAnimationFrame(raf);
       lit.dispose();
       pm.dispose();
-      renderer.dispose();
     };
   }, [w, h, gui, scale, x, y, mouse]);
 

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { syncPackSkin } from "../entities/pack-skins";
 import { boxModel, makeSkin, type BoxModel, type PartSpec } from "../entities/model";
 
 type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -149,6 +150,7 @@ export function createPlayerModel(): PlayerModel {
     material,
     skin,
     setLight(v, hurt) {
+      syncPackSkin("player", model.root, material);
       if (hurt) material.color.setRGB(Math.min(1, v * 1.2 + 0.3), v * 0.45, v * 0.45);
       else material.color.setScalar(v);
     },

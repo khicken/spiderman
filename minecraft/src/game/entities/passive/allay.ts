@@ -5,6 +5,7 @@ import { rig, wrap, setRot, look, type VPart } from "../rig";
 import { skin, shade, type Pix } from "./paint";
 import { num, sound, useItem } from "./common";
 import { flyDrag, flyToward, flyWander } from "./fly";
+import { advTrigger } from "../../systems/advancements/bus";
 
 const BLUE = 0x5fd0f8;
 const near: Entity[] = [];
@@ -108,11 +109,26 @@ function tick(e: Entity, ctx: GameCtx) {
       flyDrag(e);
       return;
     }
+    const nb = e.data.noteBlock as [number, number, number] | undefined;
+    if (b && nb && ctx.time.tick < num(e, "noteUntil") && ctx.world.getBlock(nb[0], nb[1], nb[2]) !== 0) {
+      const d = flyToward(e, nb[0] + 0.5, nb[1] + 1.6, nb[2] + 0.5, accel * 1.4);
+      if (d < 2 && cool <= 0) {
+        vel.set(0, -0.1, 0);
+        ctx.entities.dropItem(b, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z, vel);
+        advTrigger({ t: "allay_drop", item: b.item, noteBlock: true });
+        e.data.bag = undefined;
+        e.data._throwCd = 60;
+        sound(ctx, e, "entity.allay.item_thrown");
+      }
+      flyDrag(e);
+      return;
+    }
     if (b && dist2 < 64 * 64) {
       const d = flyToward(e, pp.x, pp.y + 1.6, pp.z, accel * 1.4);
       if (d < 3 && cool <= 0) {
         vel.set(pp.x - e.body.pos.x, pp.y + 1 - e.body.pos.y, pp.z - e.body.pos.z).normalize().multiplyScalar(0.3);
         ctx.entities.dropItem(b, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z, vel);
+        advTrigger({ t: "allay_drop", item: b.item, noteBlock: false });
         e.data.bag = undefined;
         e.data._throwCd = 60;
         sound(ctx, e, "entity.allay.item_thrown");

@@ -1,7 +1,6 @@
 import { equipMob } from "../armor-layer";
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { applyPhysics, canSee, clearPath, idleLook, lookAt, meleeAttack, moveTo } from "../ai";
-import { blockDef } from "../../blocks/registry";
 import {
   addEffect, avoid, burnInDaylight, chase, diffId, hurtAmount, idle, naturalSpawn, discard, num, shootArrow, sound, strafe,
   targetInfo, updateTarget,
@@ -75,11 +74,7 @@ function skeletonTick(cfg: BowCfg & { burns: boolean; sword?: boolean; witherHit
     if (cfg.type === "skeleton" || cfg.type === "stray" || cfg.type === "bogged") equipMob(e, ctx);
     if (naturalSpawn(e)) {
       const p = e.body.pos;
-      if (cfg.type === "wither_skeleton" || cfg.type === "stray") {
-        const floor = blockDef(ctx.world.getBlock(Math.floor(p.x), Math.floor(p.y) - 1, Math.floor(p.z))).name;
-        if (cfg.type === "wither_skeleton" && floor !== "nether_bricks") return discard(e);
-        if (cfg.type === "stray" && ctx.world.getSkyLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)) < 15) return discard(e);
-      }
+      if (cfg.type === "stray" && ctx.world.getSkyLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)) < 15) return discard(e);
     }
     const hurt = hurtAmount(e);
     const speed = 0.25;

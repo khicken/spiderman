@@ -37,6 +37,7 @@ export function generatePanorama(seed = SEED): PanoramaJob {
     cancelAnimationFrame(raf);
     try {
       renderer?.dispose();
+      renderer?.renderer.forceContextLoss();
       world?.dispose();
     } catch {
       // A half-built stage still must not break the title screen.

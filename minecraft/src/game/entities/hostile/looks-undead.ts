@@ -217,6 +217,10 @@ export function undeadModel(o: UndeadOpts): MobModel {
       if (at > 0) setRot(r.p.right_arm, -Math.sin(at * Math.PI) * 1.6 - (aggressive ? 0.6 : 0), 0, 0);
       else if (aggressive) setRot(r.p.right_arm, -0.6 + Math.cos(a.phase * 0.6662 + Math.PI) * a.walk, 0, 0);
     }
+    if (o.arms === "piglin" && (a.e.data.barter as number) > 0) {
+      setRot(r.p.right_arm, -0.9, -0.5, 0);
+      setRot(r.p.head, 0.5, 0, 0);
+    }
     if (r.p.bogged_shroom) r.p.bogged_shroom.visible = !a.e.data.sheared;
     if (r.p.bogged_shroom2) r.p.bogged_shroom2.visible = !a.e.data.sheared;
     held?.update(a.e);

@@ -2,6 +2,7 @@ import type { BlockBehavior, BlockState, GameCtx, WorldApi } from "../contracts"
 import { AIR, SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { idn, isPlayerBody, sound, st } from "./util";
+import { rememberPortal } from "./portal-link";
 
 const OBSIDIAN = idn("obsidian");
 const PORTAL = idn("nether_portal");
@@ -60,6 +61,7 @@ export function lightPortal(ctx: GameCtx, x: number, y: number, z: number): bool
   for (let h = 0; h < p.height; h++) {
     for (let i = 0; i < p.width; i++) ctx.world.setBlock(p.x + dx * i, p.y + h, p.z + dz * i, s, 0);
   }
+  rememberPortal(ctx.world.dim, p.x, p.y, p.z);
   sound(ctx, "block.portal.trigger", x, y, z, 0.6, 1);
   return true;
 }
@@ -69,6 +71,14 @@ const keepsPortal = (s: BlockState) => idOf(s) === PORTAL || idOf(s) === OBSIDIA
 let portalTicks = 0;
 let lastInside = -10;
 let cooldown = false;
+let cooldownUntil = 0;
+
+// Vanilla portal cooldown: 300 ticks after arrival, renewed while the player stays inside a portal.
+export function portalArrived(tick: number) {
+  cooldownUntil = tick + 300;
+  portalTicks = 0;
+  lastInside = tick;
+}
 
 export const NETHER_PORTAL_BEHAVIOR: BlockBehavior = {
   neighborChanged(ctx, x, y, z, s) {
@@ -91,6 +101,11 @@ export const NETHER_PORTAL_BEHAVIOR: BlockBehavior = {
     if (entity || !isPlayerBody(ctx, body)) return;
     const t = ctx.time.tick;
     if (t === lastInside) return;
+    if (t < cooldownUntil) {
+      cooldownUntil = Math.max(cooldownUntil, t + 20);
+      lastInside = t;
+      return;
+    }
     if (t - lastInside > 1) {
       portalTicks = 0;
       if (t - lastInside > 20) cooldown = false;
@@ -104,6 +119,9 @@ export const NETHER_PORTAL_BEHAVIOR: BlockBehavior = {
     portalTicks = 0;
     cooldown = true;
     const p = body.pos;
+    let by = Math.floor(p.y);
+    while (by > 0 && idOf(ctx.world.getBlock(Math.floor(p.x), by - 1, Math.floor(p.z))) === PORTAL) by--;
+    rememberPortal(ctx.world.dim, Math.floor(p.x), by, Math.floor(p.z));
     if (ctx.world.dim === "nether") ctx.emit({ type: "change_dim", dim: "overworld", x: p.x * 8, y: p.y, z: p.z * 8 });
     else if (ctx.world.dim === "overworld") ctx.emit({ type: "change_dim", dim: "nether", x: p.x / 8, y: p.y, z: p.z / 8 });
   },

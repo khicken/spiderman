@@ -54,7 +54,7 @@ function aquiferLevel(seed: number, ax: number, az: number): number {
 
 export function generateOverworld(seed: number, cx: number, cz: number): ChunkData {
   const g = overworldGen(seed);
-  const { ow, sn } = g;
+  const { ow } = g;
   const blocks = new Uint16Array(16 * 16 * HEIGHT);
   const biomes = new Uint8Array(256);
   const surface = new Int16Array(256);
@@ -176,6 +176,14 @@ function waterloggedCells(blocks: Uint16Array, was: Uint8Array): number[] | unde
   return out;
 }
 
+// Vanilla steep test on the real surface: a rise of 4 over 2 blocks, clamped inside the chunk.
+function steepAt(surface: Int16Array, lx: number, lz: number): boolean {
+  const x0 = Math.max(lx - 1, 0), x1 = Math.min(lx + 1, 15), z0 = Math.max(lz - 1, 0), z1 = Math.min(lz + 1, 15);
+  const dx = Math.abs(surface[(lz << 4) | x1] - surface[(lz << 4) | x0]) / (x1 - x0);
+  const dz = Math.abs(surface[(z1 << 4) | lx] - surface[(z0 << 4) | lx]) / (z1 - z0);
+  return dx >= 2 || dz >= 2;
+}
+
 const SOLID_SURF = new Uint8Array(4096);
 for (const n of [B.stone, B.deepslate]) SOLID_SURF[n] = 1;
 
@@ -189,8 +197,7 @@ function applySurface(ctx: ChunkCtx) {
       const top = surface[col];
       if (top < -60) continue;
       const biome = biomes[col];
-      const h0 = ow.heightAt(x - 2, z), h1 = ow.heightAt(x + 2, z), h2 = ow.heightAt(x, z - 2), h3 = ow.heightAt(x, z + 2);
-      const steep = Math.abs(h1 - h0) > 5.5 || Math.abs(h3 - h2) > 5.5;
+      const steep = steepAt(surface, lx, lz);
       const s = surfaceFor(sn, seed, biome, x, top, z, steep);
       const fillDepth = 3 + Math.floor(sn.surface.sample2(x, z) * 2 + hash01(seed, x, 7, z) * 1.5);
       const bad = isBadlands(biome);
