@@ -19,7 +19,25 @@ const SPAWNER_BEHAVIOR: BlockBehavior = {
   },
 };
 
-export const MISC_BEHAVIORS: Record<string, BlockBehavior> = { spawner: SPAWNER_BEHAVIOR };
+// Vanilla HoneyBlock.isSlidingDown and updateSlideMovement: falling against a side caps the fall at 0.05 blocks per tick.
+const HONEY_BEHAVIOR: BlockBehavior = {
+  entityInside(ctx, x, y, z, _s, body) {
+    const v = body.vel;
+    if (body.onGround || body.pos.y > y + 0.9375 - 1e-7 || v.y >= -0.08) return;
+    const f = 0.4375 + body.width / 2;
+    if (Math.abs(x + 0.5 - body.pos.x) + 1e-7 <= f && Math.abs(z + 0.5 - body.pos.z) + 1e-7 <= f) return;
+    if (v.y < -0.13) {
+      const d = -0.05 / v.y;
+      v.x *= d;
+      v.z *= d;
+    }
+    v.y = -0.05;
+    body.fallDistance = 0;
+    if (ctx.time.tick % 4 === 0) ctx.emit({ type: "sound", name: "block.honey_block.slide", x: body.pos.x, y: body.pos.y, z: body.pos.z, volume: 0.5 });
+  },
+};
+
+export const MISC_BEHAVIORS: Record<string, BlockBehavior> = { spawner: SPAWNER_BEHAVIOR, honey_block: HONEY_BEHAVIOR };
 
 const FRAME = new Set(["prismarine", "prismarine_bricks", "dark_prismarine", "sea_lantern"]);
 const conduits = new Set<string>();

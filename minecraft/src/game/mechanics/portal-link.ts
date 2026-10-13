@@ -97,7 +97,7 @@ export function buildPortal(w: WorldApi, tx: number, ty: number, tz: number, set
     return true;
   };
   for (const depth of [1, 0]) {
-    for (let r = 0; r <= 16 && !found; r++) {
+    for (let r = 0; r <= 16 && r * r < bestD; r++) {
       for (let dx = -r; dx <= r; dx++) {
         for (let dz = -r; dz <= r; dz++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;

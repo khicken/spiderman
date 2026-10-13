@@ -14,10 +14,11 @@ import { clearMapTextures, setMapViewer } from "./map-render";
 import { FENCE_BEHAVIORS, disposeLeads, frameLeads, tickLeads } from "./leads";
 import { MISC_BEHAVIORS, conduitList, loadConduits, tickConduits, trackConduit } from "./misc-blocks";
 import { daylight } from "../../entities/light";
+import { BANNER_BEHAVIORS, clearBanners, frameBanners, tickBanners } from "./banners";
 import { loadRecipes, recipeTrigger, saveRecipes, setRecipeCtx } from "./recipe-book";
 import { addSubtitle, updateSubtitles } from "./subtitles";
 
-registerBehaviors({ ...HIVE_BEHAVIORS, ...FENCE_BEHAVIORS, ...MISC_BEHAVIORS, chiseled_bookshelf: BOOKSHELF_BEHAVIOR });
+registerBehaviors({ ...BANNER_BEHAVIORS, ...HIVE_BEHAVIORS, ...FENCE_BEHAVIORS, ...MISC_BEHAVIORS, chiseled_bookshelf: BOOKSHELF_BEHAVIOR });
 
 const NOTE_RANGE = 16;
 
@@ -45,12 +46,15 @@ export function createFeatures(): SystemPart {
       tickMaps(ctx);
       tickLeads(ctx);
       tickConduits(ctx);
+      tickBanners(ctx);
     },
     frame(ctx) {
       updateSubtitles(ctx);
       const p = ctx.player;
       setMapViewer(p.body.pos.x, p.body.pos.z, p.yaw, ctx.world.dim);
-      frameLeads(ctx, 0.35 + 0.65 * daylight(ctx));
+      const day = daylight(ctx);
+      frameLeads(ctx, 0.35 + 0.65 * day);
+      frameBanners(ctx, day);
     },
     onEvent(ctx, e: GameEvent) {
       if (e.type === "sound") {
@@ -72,6 +76,7 @@ export function createFeatures(): SystemPart {
       clearBrushing();
       clearHives();
       disposeLeads();
+      clearBanners();
     },
     save: () => ({ stats: saveStats(), rods: rodList(), maps: saveMaps(), conduits: conduitList(), recipes: saveRecipes() }),
     load(data) {
@@ -86,6 +91,7 @@ export function createFeatures(): SystemPart {
     dispose() {
       clearMapTextures();
       disposeLeads();
+      clearBanners();
       for (const off of offs.splice(0)) off();
     },
   };
