@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface Kv {
@@ -99,10 +99,6 @@ export function fileKv(dir: string): Kv {
       return Promise.all(keys.map(async (k) => (await read(k))?.v ?? null));
     },
   };
-}
-
-export async function clearDir(dir: string) {
-  for (const f of await readdir(dir).catch(() => [] as string[])) await rm(path.join(dir, f), { recursive: true, force: true });
 }
 
 export const DATA_DIR = path.join(process.cwd(), ".data");

@@ -547,7 +547,6 @@ function finishUse(p: PlayerState, ctx: GameCtx, u: UseState) {
 function release(p: PlayerState, ctx: GameCtx, u: UseState) {
   const stack = stackOf(ctx, u.hand);
   if (!stack || stack.item !== u.item) return;
-  const b = p.body;
   if (u.kind === "bow") releaseBow(p, ctx, u.hand, stack, u.ticks, shoot);
   else if (u.kind === "trident") releaseTrident(p, ctx, u.hand, stack, u.ticks, shoot);
 }

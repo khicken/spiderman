@@ -70,23 +70,26 @@ function hash2(x: number, y: number, seed: number) {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function tileNoise(x: number, y: number, period: number, seed: number) {
-  const x0 = Math.floor(x), y0 = Math.floor(y);
-  const fx = x - x0, fy = y - y0;
-  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-  const m = (v: number) => ((v % period) + period) % period;
-  const a = hash2(m(x0), m(y0), seed), b = hash2(m(x0 + 1), m(y0), seed);
-  const c = hash2(m(x0), m(y0 + 1), seed), d = hash2(m(x0 + 1), m(y0 + 1), seed);
-  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
-}
-
+// Lattice values per octave are precomputed: the map wraps, so each octave has only period^2 of them.
 export function paintCloudMap(): Uint8Array {
   const n = 256, out = new Uint8Array(n * n);
+  const grids = [24, 48, 96].map((p, o) => {
+    const g = new Float64Array(p * p);
+    for (let y = 0; y < p; y++) for (let x = 0; x < p; x++) g[y * p + x] = hash2(x, y, 31 + o);
+    return g;
+  });
   for (let y = 0; y < n; y++)
     for (let x = 0; x < n; x++) {
       let v = 0, amp = 0.55, total = 0;
-      for (let o = 0, period = 24; o < 3; o++, period *= 2) {
-        v += tileNoise((x / n) * period, (y / n) * period, period, 31 + o) * amp;
+      for (let o = 0, p = 24; o < 3; o++, p *= 2) {
+        const g = grids[o];
+        const gx = (x / n) * p, gy = (y / n) * p;
+        const x0 = Math.floor(gx), y0 = Math.floor(gy);
+        const fx = gx - x0, fy = gy - y0;
+        const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+        const x1 = (x0 + 1) % p, r0 = y0 * p, r1 = ((y0 + 1) % p) * p;
+        const a = g[r0 + x0], b = g[r0 + x1], c = g[r1 + x0], d = g[r1 + x1];
+        v += (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * amp;
         total += amp;
         amp *= 0.5;
       }

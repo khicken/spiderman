@@ -5,7 +5,6 @@ import type { AdvTrigger } from "../advancements/bus";
 
 const unlocked = new Set<number>();
 let ctxRef: (() => GameCtx) | null = null;
-let version = 0;
 
 const ingsOf = (r: CraftRecipe) => (r.type === "shaped" ? (r.cells.filter((c) => c) as string[]) : r.ings);
 const fits2 = (r: CraftRecipe) => (r.type === "shaped" ? r.w <= 2 && r.h <= 2 : r.ings.length <= 4);
@@ -15,12 +14,9 @@ export function setRecipeCtx(get: () => GameCtx) {
   ctxRef = get;
 }
 
-export const recipeVersion = () => version;
-
 // Vanilla RecipeUnlockedTrigger via recipe advancements: owning any ingredient unlocks the recipe.
 export function recipeTrigger(t: AdvTrigger) {
   if (t.t === "inventory_changed") {
-    let added = 0;
     for (let i = 0; i < CRAFT_RECIPES.length; i++) {
       if (unlocked.has(i)) continue;
       for (const ing of ingsOf(CRAFT_RECIPES[i])) {
@@ -34,18 +30,13 @@ export function recipeTrigger(t: AdvTrigger) {
         }
         if (hit) {
           unlocked.add(i);
-          added++;
           break;
         }
       }
     }
-    if (added) version++;
   } else if (t.t === "crafted") {
     CRAFT_RECIPES.forEach((r, i) => {
-      if (r.result.item === t.item && !unlocked.has(i)) {
-        unlocked.add(i);
-        version++;
-      }
+      if (r.result.item === t.item) unlocked.add(i);
     });
   }
 }
@@ -135,5 +126,4 @@ export function loadRecipes(data: unknown) {
   unlocked.clear();
   const names = new Set(Array.isArray(data) ? (data as string[]) : []);
   CRAFT_RECIPES.forEach((r, i) => names.has(r.result.item) && unlocked.add(i));
-  version++;
 }

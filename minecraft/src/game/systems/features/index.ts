@@ -13,7 +13,6 @@ import { loadMaps, saveMaps, tickMaps } from "./maps";
 import { clearMapTextures, setMapViewer } from "./map-render";
 import { FENCE_BEHAVIORS, disposeLeads, frameLeads, tickLeads } from "./leads";
 import { MISC_BEHAVIORS, conduitList, loadConduits, tickConduits, trackConduit } from "./misc-blocks";
-import { daylight } from "../../entities/light";
 import { BANNER_BEHAVIORS, clearBanners, frameBanners, tickBanners } from "./banners";
 import { loadRecipes, recipeTrigger, saveRecipes, setRecipeCtx } from "./recipe-book";
 import { addSubtitle, updateSubtitles } from "./subtitles";
@@ -52,9 +51,8 @@ export function createFeatures(): SystemPart {
       updateSubtitles(ctx);
       const p = ctx.player;
       setMapViewer(p.body.pos.x, p.body.pos.z, p.yaw, ctx.world.dim);
-      const day = daylight(ctx);
-      frameLeads(ctx, 0.35 + 0.65 * day);
-      frameBanners(ctx, day);
+      frameLeads(ctx);
+      frameBanners(ctx);
     },
     onEvent(ctx, e: GameEvent) {
       if (e.type === "sound") {

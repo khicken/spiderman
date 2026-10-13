@@ -1,6 +1,6 @@
 import { newImg, type Img } from "./img";
 
-async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
+export async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
   const out = new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(stream));
   return new Uint8Array(await out.arrayBuffer());
 }
@@ -138,7 +138,10 @@ export async function encodePng(img: Img): Promise<Uint8Array> {
   dv.setUint32(4, img.h);
   ihdr[8] = 8;
   ihdr[9] = 6;
-  const parts = [new Uint8Array(SIG), chunk("IHDR", ihdr), chunk("IDAT", await deflate(raw)), chunk("IEND", new Uint8Array(0))];
+  return concatBytes([new Uint8Array(SIG), chunk("IHDR", ihdr), chunk("IDAT", await deflate(raw)), chunk("IEND", new Uint8Array(0))]);
+}
+
+export function concatBytes(parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, c) => n + c.length, 0));
   let o = 0;
   for (const c of parts) {

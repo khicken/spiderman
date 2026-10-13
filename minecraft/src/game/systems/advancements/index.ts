@@ -22,7 +22,6 @@ const shots = new Map<number, { crossbow: boolean; types: string[] }>();
 installVault();
 
 export const advancementDone = (id: string) => !!prog[id]?.done;
-export const advancementCount = () => ADVANCEMENTS.filter((a) => prog[a.id]?.done).length;
 export const advancementPlayer = () => playerName;
 
 // Multiplayer host: triggers caused by a remote player go to that player instead of the host's progress.

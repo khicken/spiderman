@@ -4,7 +4,6 @@ import type { BlockEntityData, BlockState, ClickKind, ContainerKind, ContainerVi
 
 export const PROTOCOL = 1;
 export const MAX_PLAYERS = 8;
-export const TICK_HZ = 20;
 
 export const BIN = { chunk: 1, ents: 2 } as const;
 

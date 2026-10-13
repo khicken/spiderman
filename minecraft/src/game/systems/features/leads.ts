@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { BlockBehavior, Entity, GameCtx, ItemStack } from "../../contracts";
 import { BLOCKS, blockDef } from "../../blocks/registry";
 import { mobDef } from "../../entities/registry";
+import { brightnessAt } from "../../entities/render";
 
 const NOT_LEASHABLE = new Set(["villager", "wandering_trader", "bat", "ender_dragon", "wither", "warden", "elder_guardian", "guardian", "pufferfish", "cod", "salmon", "tropical_fish", "tadpole", "turtle", "panda", "item", "xp_orb"]);
 const HOSTILE_OK = new Set(["hoglin", "zoglin"]);
@@ -138,7 +139,7 @@ function ensureMesh(scene: THREE.Scene) {
 }
 
 // Vanilla LeashRenderer: 24 segments sagging along a parabola, alternating dark and light brown.
-export function frameLeads(ctx: GameCtx, light: number) {
+export function frameLeads(ctx: GameCtx) {
   const scene = ctx.renderer?.scene;
   if (!scene) return;
   let count = 0;
@@ -151,6 +152,7 @@ export function frameLeads(ctx: GameCtx, light: number) {
     if (!leashed(e) || e.dead || n >= MAX || !holderPos(ctx, e, holder)) continue;
     n++;
     from.set(e.body.pos.x, e.body.pos.y + e.body.height * 0.7, e.body.pos.z);
+    const light = brightnessAt(ctx, from.x, from.y, from.z);
     const dx = holder.x - from.x, dy = holder.y - from.y, dz = holder.z - from.z;
     const h = Math.hypot(dx, dz) || 1;
     const sx = (dz / h) * 0.025, sz = (-dx / h) * 0.025;

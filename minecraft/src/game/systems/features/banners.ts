@@ -3,6 +3,7 @@ import type { BlockBehavior, BlockEntityData, Entity, GameCtx, ItemStack } from 
 import { CHUNK, metaOf } from "../../contracts";
 import { BLOCKS, blockDef } from "../../blocks/registry";
 import { BH, BW, bannerPixels, type Layer } from "./banner-art";
+import { brightnessAt } from "../../entities/render";
 
 interface View {
   group: THREE.Group;
@@ -115,7 +116,7 @@ function dropView(k: string) {
   views.delete(k);
 }
 
-export function frameBanners(ctx: GameCtx, day: number) {
+export function frameBanners(ctx: GameCtx) {
   const sc = ctx.renderer?.scene;
   if (!sc) return;
   if (sc !== scene) {
@@ -144,8 +145,7 @@ export function frameBanners(ctx: GameCtx, day: number) {
       sc.add(v.group);
       views.set(k, v);
     }
-    const light = Math.max(ctx.world.getSkyLight(be.x, be.y, be.z) * day, ctx.world.getBlockLight(be.x, be.y, be.z)) / 15;
-    const br = 0.25 + 0.75 * light;
+    const br = brightnessAt(ctx, be.x + 0.5, be.y + 0.5, be.z + 0.5);
     for (const m of v.mats) m.color.setScalar(br);
   }
 }

@@ -21,6 +21,7 @@ import { claudeIcon } from "./claude-icon";
 import { crop, newImg, type Img } from "./img";
 import { encodePng } from "./png";
 import { writeZip } from "./zip";
+import { canEncodeOpus, encodeOgg } from "./ogg";
 import { PACK_FORMAT, withClaudeOnly } from "./index";
 
 const NS = "assets/minecraft/";
@@ -135,8 +136,18 @@ function mobSkins(): Map<string, Img> {
   return out;
 }
 
+const SR = 22050;
+
+// Batches bound memory and yield to the game loop between them.
+async function inBatches<T, R>(items: T[], size: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) out.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
+  return out;
+}
+
+// Fallback when WebCodecs has no Opus encoder.
 function wav(samples: Float32Array, sr: number): Uint8Array {
-  const n = Math.min(samples.length, sr * 4);
+  const n = samples.length;
   const out = new Uint8Array(44 + n * 2);
   const dv = new DataView(out.buffer);
   const str = (o: number, s: string) => { for (let i = 0; i < s.length; i++) out[o + i] = s.charCodeAt(i); };
@@ -224,17 +235,18 @@ export async function exportClaudePack(opts: { sounds?: boolean } = {}): Promise
   files.push(["pack.mcmeta", enc.encode(JSON.stringify({ pack: { pack_format: PACK_FORMAT, description: "Claude Texture Pack: procedural art and sounds" } }, null, 2))]);
   files.push(["pack.png", await encodePng(claudeIcon(64))]);
   for (const [p, t] of text) files.push([p, enc.encode(t)]);
-  for (const [p, img] of images) files.push([p, await encodePng(img)]);
+  files.push(...(await inBatches(images, 64, async ([p, img]) => [p, await encodePng(img)] as [string, Uint8Array])));
   if (opts.sounds !== false) {
     const doc: Record<string, { sounds: string[] }> = {};
-    for (const name of allSoundNames()) {
-      if (name.startsWith("music_disc.") || name.startsWith("music.")) continue;
-      const r = resolveSound(name);
-      if (!r) continue;
+    const names = allSoundNames().filter((n) => !n.startsWith("music_disc.") && !n.startsWith("music.") && resolveSound(n));
+    const opus = await canEncodeOpus(SR);
+    files.push(...(await inBatches(names, 16, async (name) => {
       const file = `claude/${name.replace(/\./g, "/")}`;
       doc[name] = { sounds: [file] };
-      files.push([`${NS}sounds/${file}.ogg`, wav(renderVariant(r.key, r.recipe, 0, 22050), 22050)]);
-    }
+      const r = resolveSound(name)!;
+      const pcm = renderVariant(r.key, r.recipe, 0, SR).subarray(0, SR * 4);
+      return [`${NS}sounds/${file}.ogg`, opus ? await encodeOgg(pcm, SR) : wav(pcm, SR)] as [string, Uint8Array];
+    })));
     files.push([`${NS}sounds.json`, enc.encode(JSON.stringify(doc))]);
   }
   return writeZip(files);

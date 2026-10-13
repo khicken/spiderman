@@ -4,6 +4,7 @@ import { BLOCKS, LIGHT_FILTER, STATE_EMIT } from "../blocks/registry";
 import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE, canHoldWater } from "../blocks/waterlog";
 import { BIOMES } from "../worldgen/biomes";
 import { createGenPool, type GenPool } from "./gen-pool";
+import { createFluidWake } from "./fluid-wake";
 import { createLight } from "./light";
 import { buildMeshInput } from "./mesh-input";
 import { createQuery } from "./query";
@@ -86,6 +87,8 @@ export function createWorld(opts: WorldOpts): World {
   const light = createLight(store, hasSky);
   const ticker = createTicker(store, behaviors);
   const tickable = ticker.tickable;
+  let lastTick = 0;
+  const wakeFluids = createFluidWake(store, dim === "nether", (x, y, z, id, delay) => ticker.schedule(x, y, z, id, lastTick + delay));
   const listeners = new Set<(e: ChunkEvent) => void>();
   const remote = opts.remote;
   const pool: GenPool | null = remote || opts.generate || typeof Worker === "undefined" ? null : createGenPool();
@@ -105,7 +108,6 @@ export function createWorld(opts: WorldOpts): World {
   let wanted = ringOffsets(0);
   let wantIdx = 0;
   let scan = false;
-  let lastTick = 0;
   let depth = 0;
   const notifyQ: number[] = [];
   let disposed = false;
@@ -184,6 +186,7 @@ export function createWorld(opts: WorldOpts): World {
     const c = wrapChunk(data);
     store.add(c);
     light.lightChunk(c, tickable);
+    if (!remote) wakeFluids(c);
     ticker.unpark(key);
     scan = true;
   };

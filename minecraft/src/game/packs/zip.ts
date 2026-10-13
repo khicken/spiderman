@@ -1,4 +1,4 @@
-import { crc32, inflate } from "./png";
+import { concatBytes, crc32, inflate } from "./png";
 
 // Reads the central directory, so data descriptors and jar extras work. Methods: 0 stored, 8 deflate.
 export async function readZip(bytes: Uint8Array, keep: (path: string) => boolean): Promise<Map<string, Uint8Array>> {
@@ -99,11 +99,5 @@ export function writeZip(files: [string, Uint8Array][]): Uint8Array {
   e.setUint16(10, files.length, true);
   e.setUint32(12, cdSize, true);
   e.setUint32(16, offset, true);
-  const out = new Uint8Array(offset + cdSize + 22);
-  let o = 0;
-  for (const part of [...locals, ...centrals, end]) {
-    out.set(part, o);
-    o += part.length;
-  }
-  return out;
+  return concatBytes([...locals, ...centrals, end]);
 }

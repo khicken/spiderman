@@ -1,13 +1,9 @@
 import type { ChunkData, Dim } from "../contracts";
 import { BIN, DIMS } from "./protocol";
+import { pipe } from "../packs/png";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-
-async function pipe(data: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  const out = new Response(new Blob([data as BlobPart]).stream().pipeThrough(stream));
-  return new Uint8Array(await out.arrayBuffer());
-}
 
 // [kind][deflate-raw: u32 header length, header JSON, blocks, biomes, cave biomes]
 export async function packChunk(c: ChunkData): Promise<Uint8Array> {

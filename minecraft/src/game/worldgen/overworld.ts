@@ -54,7 +54,7 @@ function aquiferLevel(seed: number, ax: number, az: number): number {
 
 export function generateOverworld(seed: number, cx: number, cz: number): ChunkData {
   const g = overworldGen(seed);
-  const { ow, sn } = g;
+  const { ow } = g;
   const blocks = new Uint16Array(16 * 16 * HEIGHT);
   const biomes = new Uint8Array(256);
   const surface = new Int16Array(256);

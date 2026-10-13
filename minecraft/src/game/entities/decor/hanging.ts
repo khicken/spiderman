@@ -3,7 +3,6 @@ import type { Entity, GameCtx, ItemStack, MobDef, MobModel } from "../../contrac
 import { Face, idOf } from "../../contracts";
 import { SOLID } from "../../blocks/registry";
 import { paintBlockTexture } from "../../textures/index";
-import { daylight } from "../ai";
 import { brightnessAt, forgetModel } from "../render";
 import { blockCube, blockStateOfItem, isCubeItem, itemSpriteView } from "../block-cube";
 import { PAINTINGS, paintingTexture, paintingVariant, type PaintingVariant } from "./painting-art";
@@ -293,7 +292,7 @@ function orient(e: Entity, root: THREE.Object3D) {
 function lightOf(e: Entity) {
   if (!cur) return 1;
   const n = N[faceOf(e)];
-  return brightnessAt(cur, (e.data.x as number) + 0.5 - n[0] * 0.3, (e.data.y as number) + 0.5 - n[1] * 0.3, (e.data.z as number) + 0.5 - n[2] * 0.3, daylight(cur));
+  return brightnessAt(cur, (e.data.x as number) + 0.5 - n[0] * 0.3, (e.data.y as number) + 0.5 - n[1] * 0.3, (e.data.z as number) + 0.5 - n[2] * 0.3);
 }
 
 function frameModel(glow: boolean): () => MobModel {

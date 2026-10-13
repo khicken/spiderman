@@ -38,7 +38,7 @@ const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055)
 
 // Linear brightness 0..1 at a point from the chunk shader lightmap, so a mob matches the blocks around it.
 // The lightmap color (warm in block light) is kept for the next shadeMaterials call.
-export function brightnessAt(ctx: GameCtx, x: number, y: number, z: number, _day = 0) {
+export function brightnessAt(ctx: GameCtx, x: number, y: number, z: number) {
   const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
   lightmap(ctx.world.getSkyLight(bx, by, bz), ctx.world.getBlockLight(bx, by, bz), RGB);
   RGB[0] = toLinear(RGB[0]);
@@ -52,9 +52,9 @@ const tint = new THREE.Color();
 const warm = new THREE.Color();
 
 // Lambert color carries the lightmap; the renderer's fixed ambient 0.4 + two 0.6 lights give the vanilla entity face shade.
-export function shadeModel(model: MobModel | { root: THREE.Object3D }, ctx: GameCtx, e: Entity, day?: number) {
+export function shadeModel(model: MobModel | { root: THREE.Object3D }, ctx: GameCtx, e: Entity) {
   const b = e.body;
-  const br = brightnessAt(ctx, b.pos.x, b.pos.y + b.height * 0.5, b.pos.z, day);
+  const br = brightnessAt(ctx, b.pos.x, b.pos.y + b.height * 0.5, b.pos.z);
   const hurt = e.hurtTicks > 0 || (e.dead && e.type !== "item");
   shadeMaterials(model.root, br, hurt);
 }

@@ -189,17 +189,6 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
   if (p.health <= 0 && !useTotem(p, ctx)) die(p, ctx, source, attacker);
 }
 
-function knockback(p: PlayerState, ctx: GameCtx, dx: number, dz: number, strength: number): void {
-  strength *= 1 - Math.min(1, armorTotals(ctx).kbRes);
-  if (strength <= 0) return;
-  const len = Math.hypot(dx, dz);
-  if (len < 1e-5) return;
-  const v = p.body.vel;
-  v.x = v.x / 2 - (dx / len) * strength;
-  v.z = v.z / 2 - (dz / len) * strength;
-  if (p.body.onGround) v.y = Math.min(0.4, v.y / 2 + strength);
-}
-
 function thorns(ctx: GameCtx, attacker: Entity): void {
   for (let i = 36; i <= 39; i++) {
     const lvl = ench(ctx.inventory.slots[i], "thorns");

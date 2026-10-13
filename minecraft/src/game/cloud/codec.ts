@@ -1,12 +1,8 @@
 import type { SavedChunk } from "../world/save";
+import { pipe } from "../packs/png";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-
-async function pipe(data: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  const out = new Response(new Blob([data as BlobPart]).stream().pipeThrough(stream));
-  return new Uint8Array(await out.arrayBuffer());
-}
 
 export const gzip = (data: Uint8Array) => pipe(data, new CompressionStream("gzip"));
 export const gunzip = (data: Uint8Array) => pipe(data, new DecompressionStream("gzip"));

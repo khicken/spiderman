@@ -156,14 +156,10 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
     filter.type = "lowpass";
     filter.frequency.value = FILTER_HZ[k];
     filter.connect(out).connect(input);
-    const start = ctx.currentTime + 1.5;
+    const start = ctx.currentTime + 3;
     out.gain.setValueAtTime(0, ctx.currentTime);
     out.gain.linearRampToValueAtTime(1, start + 0.5);
     current = { kind: k, out, filter, events, next: 0, start, end: start + length, nodes: new Set() };
-    for (let i = 0; i < events.length && events[i].t < 6; i++) {
-      const e = events[i];
-      if (e.kind === "piano") piano(e.midi);
-    }
   }
 
   function fadeOut(p: Piece, secs = FADE): void {
@@ -213,12 +209,11 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
         playEvent(p, p.events[p.next]);
         p.next++;
       }
-      for (let i = p.next; i < p.events.length && p.start + p.events[i].t < now + LOOKAHEAD + 10; i++) {
+      // Each note takes 10-25 ms to render: warm the cache ahead under a small budget per tick.
+      const t0 = performance.now();
+      for (let i = p.next; i < p.events.length && p.start + p.events[i].t < now + LOOKAHEAD + 10 && performance.now() - t0 < 8; i++) {
         const e = p.events[i];
-        if (e.kind === "piano" && !pianoCache.has(e.midi)) {
-          piano(e.midi);
-          break;
-        }
+        if (e.kind === "piano" && !pianoCache.has(e.midi)) piano(e.midi);
       }
       if (now > p.end) {
         fadeOut(p, 1);

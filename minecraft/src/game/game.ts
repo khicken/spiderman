@@ -1,6 +1,6 @@
 import type { ContainerView, Dim, EntityApi, GameCtx, GameEvent, HudState, Quality, RendererApi } from "./contracts";
-import { AIR, DAY_TICKS, MIN_Y, SET_NOTIFY, idOf, stateOf } from "./contracts";
-import { BLOCKS, OPAQUE, SOLID, blockDef, blockId } from "./blocks/registry";
+import { AIR, DAY_TICKS, MIN_Y, idOf, stateOf } from "./contracts";
+import { BLOCKS, blockDef, blockId } from "./blocks/registry";
 import { itemDef } from "./items/registry";
 import { isPotionItem, potionItemName, potionOf } from "./items/potions";
 import { createAudio, type GameAudio } from "./audio";

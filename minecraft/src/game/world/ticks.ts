@@ -5,6 +5,9 @@ import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE } from "../blocks/waterlog";
 import { chunkKey, type Store } from "./store";
 
 const MAX_SCHEDULED_PER_TICK = 65536;
+// A large pour after load must not stall the frame; the rest stays due for the next tick.
+const SCHEDULED_BUDGET_MS = 6;
+const clock = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const RANDOM_TICK_CHUNKS = 8;
 
 export interface Ticker {
@@ -98,7 +101,9 @@ export function createTicker(store: Store, behaviors: Record<string, BlockBehavi
   const runScheduled = (ctx: GameCtx) => {
     const now = ctx.time.tick;
     let n = 0;
+    const start = clock();
     while (due.length && due[0] <= now && n < MAX_SCHEDULED_PER_TICK) {
+      if ((n & 63) === 63 && clock() - start > SCHEDULED_BUDGET_MS) break;
       const x = px[0];
       const y = py[0];
       const z = pz[0];

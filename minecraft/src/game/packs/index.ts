@@ -75,7 +75,6 @@ export function onPacksChanged(cb: () => void): () => void {
 
 // Path under assets/minecraft/textures/ without ".png", e.g. "block/stone", "gui/sprites/hud/heart/full".
 export const packImage = (path: string): Img | null => images.get(path) ?? null;
-export const packMeta = (path: string): AnimMeta | null => metas.get(path) ?? null;
 export const hasPackImage = (path: string) => images.has(path);
 export const packImagePaths = () => images.keys();
 
@@ -150,13 +149,6 @@ export async function removePack(id: string): Promise<void> {
   await deletePack(id);
   const sel = selectedPacks();
   if (sel.includes(id)) await setSelectedPacks(sel.filter((x) => x !== id));
-}
-
-// A full vanilla pack (client jar or complete pack) goes above Claude as soon as it is added.
-export async function selectIfVanilla(meta: PackMeta): Promise<boolean> {
-  if (!meta.vanilla) return false;
-  await setSelectedPacks([meta.id, ...selectedPacks().filter((x) => x !== meta.id)]);
-  return true;
 }
 
 async function pool<T>(items: T[], n: number, f: (t: T) => Promise<void>) {

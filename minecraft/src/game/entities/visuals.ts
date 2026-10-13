@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { MOB_SKIN_PATHS, baseMaterial, syncPackSkin } from "./pack-skins";
 import type { Entity, GameCtx, ItemStack, MobModel } from "../contracts";
 import { mobDef } from "./registry";
-import { daylight } from "./ai";
 import { brightnessAt, shadeModel, shadeMaterials, nameTag, forgetModel } from "./render";
 import { blockCube, blockStateOfItem, disposeCaches, isCubeItem, itemSpriteView, itemTexture } from "./block-cube";
 import { orbIcon } from "./items";
@@ -53,7 +52,6 @@ function hash(n: number) {
 export function createViews(getCtx: () => GameCtx) {
   const views = new Map<number, View>();
   let frameNo = 0;
-  let day = 1;
   const camPos = new THREE.Vector3();
   const shadows = createShadows();
 
@@ -90,7 +88,7 @@ export function createViews(getCtx: () => GameCtx) {
       const bob = Math.sin(age / 10 + v.bob) * 0.1 + 0.1;
       v.group.position.set(x, y + bob + (cube ? 0.125 : 0.25), z);
       spin.rotation.y = age / 20 + v.bob;
-      shadeMaterials(spin, brightnessAt(getCtx(), x, y + 0.2, z, day), false);
+      shadeMaterials(spin, brightnessAt(getCtx(), x, y + 0.2, z), false);
       if (glint) {
         const g = 0.12 + 0.1 * Math.sin(age * 0.25);
         for (const m of cubeMats) m.emissive.setRGB(g * 0.8, g * 0.35, g * 1.2);
@@ -123,7 +121,7 @@ export function createViews(getCtx: () => GameCtx) {
       v.group.rotation.x = en.pitch;
       const shake = ((en.data.shake as number) ?? 0) - pt;
       v.group.rotation.z = shake > 0 ? -Math.sin(shake * 3) * shake * 0.05 : 0;
-      shadeMaterials(v.group, brightnessAt(getCtx(), x, y, z, day), false);
+      shadeMaterials(v.group, brightnessAt(getCtx(), x, y, z), false);
     };
   }
 
@@ -137,7 +135,7 @@ export function createViews(getCtx: () => GameCtx) {
     const bright = e.type.includes("fireball");
     v.update = (_en, _pt, x, y, z) => {
       v.group.position.set(x, y + e.body.height / 2, z);
-      const b = bright ? 1 : brightnessAt(getCtx(), x, y, z, day);
+      const b = bright ? 1 : brightnessAt(getCtx(), x, y, z);
       mat.color.setScalar(b);
     };
   }
@@ -152,7 +150,7 @@ export function createViews(getCtx: () => GameCtx) {
     v.group.add(mesh);
     v.update = (en, pt, x, y, z) => {
       v.group.position.set(x, y, z);
-      const br = brightnessAt(getCtx(), x, y + 0.5, z, day);
+      const br = brightnessAt(getCtx(), x, y + 0.5, z);
       shadeMaterials(v.group, br, false);
       if (en.type === "tnt") {
         const fuse = ((en.data.fuse as number) ?? 80) - pt + 1;
@@ -206,7 +204,7 @@ export function createViews(getCtx: () => GameCtx) {
       model.animate(en, pt, walk, phase);
       if (skinMat) syncPackSkin(en.type, model.root, skinMat);
       en.headYaw = hy;
-      shadeModel(model, getCtx(), en, day);
+      shadeModel(model, getCtx(), en);
       const flash = (en.data.flash as number) ?? 0;
       if (flash > 0) model.root.traverse((o) => {
         const m = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
@@ -248,7 +246,7 @@ export function createViews(getCtx: () => GameCtx) {
       if (!x) return null;
       v.group.add(x.root);
       v.owned.push(...(x.owned as (THREE.Material | THREE.BufferGeometry)[]));
-      v.update = (en, pt, px, py, pz) => x.update(en, pt, px, py, pz, day);
+      v.update = (en, pt, px, py, pz) => x.update(en, pt, px, py, pz);
     }
     scene.add(v.group);
     return v;
@@ -271,7 +269,6 @@ export function createViews(getCtx: () => GameCtx) {
       const scene = ctx.renderer?.scene;
       if (!scene) return;
       frameNo++;
-      day = daylight(ctx);
       camPos.copy(ctx.renderer.camera.position);
       shadows.begin(ctx);
       for (const e of list) {

@@ -144,18 +144,6 @@ function resolveUncached(name: string): Resolved | null {
   return null;
 }
 
-// How a name resolved, for the sound audit: exact recipe, alias, or a looser fallback.
-export function resolveTier(name: string): string {
-  const res = resolveSound(name);
-  if (!res) return "unresolved";
-  const n = ALIASES[name] ?? name;
-  if (res.key === n) return ALIASES[name] ? "alias" : "exact";
-  if (res.key.startsWith("entity.generic_mob.")) return "generic";
-  if (n.startsWith("entity.") && res.key.split(".")[1] === n.split(".")[1]) return "mob-near";
-  if (n.startsWith("block.") && res.key.startsWith("block.")) return "block-group";
-  return "fallback";
-}
-
 export function renderVariant(key: string, recipe: Recipe, variant: number, sr: number): Float32Array {
   const r = makeRng(hashString(key) ^ Math.imul(variant + 1, 0x9e3779b1));
   const d = trimTail(recipe.render(r, sr), sr);
