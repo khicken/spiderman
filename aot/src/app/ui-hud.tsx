@@ -355,9 +355,11 @@ function KillPanel({ h }: { h: HudState }) {
           {pad(h.score, 7)}
         </span>
       </div>
-      <div data-keyhint className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] uppercase tracking-[0.25em] text-bone/55">
-        <Key>{HELP.key}</Key> Controls
-      </div>
+      {(h.run.drill || h.wave <= 1) && (
+        <div data-keyhint className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] uppercase tracking-[0.25em] text-bone/55">
+          <Key>{HELP.key}</Key> Controls
+        </div>
+      )}
     </div>
   );
 }

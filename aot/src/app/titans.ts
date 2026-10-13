@@ -187,7 +187,13 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const queued: GameEvent[] = [];
   let nextId = 1;
   let lure: THREE.Vector3 | null = null;
-  let wave = 0, kills = 0, quota = 0, spawned = 0, killedWave = 0, spawnT = 0, breakT = 0, toastT = 0, shallowT = 0;
+  let wave = 0, kills = 0, quota = 0, spawned = 0, killedWave = 0, spawnT = 0, breakT = 0, toastT = 0;
+  const told = new Set<string>();
+  const once = (events: GameEvent[], key: string, text: string, title = key) => {
+    if (told.has(key)) return;
+    told.add(key);
+    events.push({ type: "toast", title, text });
+  };
   let bossPending: BossKind | null = null;
   const rocks = createRocks(scene, world, fx);
   let heldBy: T | null = null;
@@ -413,11 +419,15 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     events.push({ type: "sfx", name: "sever", at: _a.clone() }, { type: "sfx", name: "titanHurt", at: _a.clone(), volume: 0.8 }, { type: "feat", name: k >= 2 ? "tendon" : "sever", kind: ti.kind });
     if (ti.act === "grab" && ti.side === (k as 0 | 1)) startAct(ti, "flinch");
     if (k >= 2 && ti.kind !== "crawler") events.push({ type: "sfx", name: "titanFall", at: ti.pos.clone(), volume: 0.6 });
-    if (ti.kind === "armored" && k >= 2 && ti.sev[5 - k] <= 0) events.push({ type: "toast", title: "Knee cut", text: "Now the other knee" });
-    if (ti.kind === "beast" && k < 2) events.push({ type: "toast", title: "Arm severed", text: ti.sev[1 - k] > 0 ? "No more rocks. Go for the nape" : "He still throws with the other" });
+    if (ti.kind === "armored" && k >= 2 && ti.sev[5 - k] <= 0) once(events, "Knee cut", "Now the other knee");
+    if (ti.kind === "beast" && k < 2) {
+      if (ti.sev[1 - k] > 0) once(events, "Both arms severed", "No more rocks. Go for the nape");
+      else once(events, "Arm severed", "He still throws with the other");
+    }
     if (ti.kind === "female") {
       const n = ti.sev.reduce((a, v) => a + (v > 0 ? 1 : 0), 0);
-      events.push(n >= 2 ? { type: "toast", title: "Hardening broken", text: "Charged cut to the nape, now" } : { type: "toast", title: "One more limb", text: "Her nape is still hardened" });
+      if (n >= 2) once(events, "Hardening broken", "Charged cut to the nape, now");
+      else once(events, "One more limb", "Her nape is still hardened");
     }
   }
 
@@ -447,9 +457,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       { type: "kill", height: H, kind: ti.kind, speed: blade.speed },
       { type: "score", amount: pts, reason: crit ? "Perfect nape cut" : "Nape cut" },
     );
-    if (ti.kind === "female") events.push({ type: "toast", title: "Female Titan down", text: "The shifter is cut out" });
-    if (ti.kind === "armored") events.push({ type: "toast", title: "Armored Titan down", text: "His armor cracks and steams away" });
-    if (ti.kind === "beast") events.push({ type: "toast", title: "Beast Titan down", text: "The barrage stops" });
     if (ti.kind === "beast") rocks.hold(null, 0);
   }
 
@@ -499,10 +506,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     if (w !== "spears" && t.kind === "armored" && part !== "eyes" && !(part === "nape" && !t.hardened) && !armorGap(t, part, blade)) {
       events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
       fx.steam(pt, 1.2, 0.4);
-      if (toastT <= 0) {
-        toastT = 2.5;
-        events.push({ type: "toast", title: "Armor", text: part === "nape" ? "Drop him first. Cut behind both knees" : "Cut behind the knees or under the arms" });
-      }
+      once(events, `Armor${t.id}`, part === "nape" ? "Drop him first. Cut behind both knees" : "Cut behind the knees or under the arms", "Armor");
       return { events, zone: part, titan: t, killed: false };
     }
     t.flash = 1;
@@ -510,7 +514,8 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     if (crit && part !== "body") events.push({ type: "feat", name: "perfect", kind: t.kind });
     if (part === "nape") {
       if (t.hardened && w !== "spears") {
-        events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 }, { type: "toast", title: "Hardened", text: t.kind === "female" ? "Cut two limbs" : "Cut a limb" });
+        events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
+        once(events, `Hardened${t.id}`, t.kind === "female" ? "Cut two limbs" : "Cut a limb", "Hardened");
         fx.steam(pt, 1.5, 0.6);
         return { events, zone: "nape", titan: t, killed: false };
       }
@@ -524,12 +529,8 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         fx.blood(pt, blade.dir, H * 0.08);
         events.push(
           { type: "sfx", name: hitSfx, at: pt }, { type: "sfx", name: "titanHurt", at: pt, volume: 0.7 }, { type: "hitstop", duration: crit ? 0.09 : 0.07 },
-          { type: "impact", kind: crit ? "crit" : "hit" }, { type: "shake", strength: 0.22 }, { type: "score", amount: 10, reason: "Nape hit" },
+          { type: "impact", kind: crit ? "crit" : "hit" }, { type: "shake", strength: 0.22 },
         );
-        if (shallowT <= 0 && w === "blades") {
-          shallowT = 4;
-          events.push({ type: "callout", text: isBoss(t.kind) && blade.charge < 0.7 ? "Too shallow. Charge the cut" : "Too slow. Swing in faster" });
-        }
         if (t.act === "walk") startAct(t, "flinch");
       }
     } else if (part === "eyes") {
@@ -539,7 +540,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       fx.steamFollow(() => (t.blind > 0 && t.alive ? t.eyes : null), H * 0.05, 6);
       events.push(
         { type: "sfx", name: hitSfx, at: pt }, { type: "sfx", name: "titanHurt", at: pt }, { type: "hitstop", duration: 0.07 }, { type: "impact", kind: crit ? "crit" : "hit" },
-        { type: "shake", strength: 0.2 }, { type: "score", amount: 30, reason: "Blinded" },
+        { type: "shake", strength: 0.2 },
       );
       if (t.act !== "hold") startAct(t, "flinch");
     } else if (part !== "body") {
@@ -552,7 +553,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         if (t.act !== "hold") startAct(t, "flinch");
       } else {
         fx.blood(pt, blade.dir, H * 0.06);
-        events.push({ type: "sfx", name: hitSfx, at: pt }, { type: "hitstop", duration: 0.05 }, { type: "impact", kind: "hit" }, { type: "shake", strength: 0.12 }, { type: "score", amount: 5, reason: "Cut" });
+        events.push({ type: "sfx", name: hitSfx, at: pt }, { type: "hitstop", duration: 0.05 }, { type: "impact", kind: "hit" }, { type: "shake", strength: 0.12 });
         if (w === "pistols" && t.act !== "hold" && t.act !== "flinch") startAct(t, "flinch");
       }
     } else {
@@ -1172,7 +1173,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     ti.special -= dt;
     ti.downT -= dt;
     toastT -= dt;
-    shallowT -= dt;
     p.t += dt;
     ti.flash = Math.max(0, ti.flash - dt * 6);
     if (ti.blind > 0) {
@@ -1569,7 +1569,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           }
         } else if (spawned >= quota && killedWave >= quota) {
           breakT = 15;
-          out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared`, text: "Resupply at the green smoke" }, { type: "score", amount: 200 * wave, reason: "Wave cleared" });
+          out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared` }, { type: "score", amount: 200 * wave, reason: "Wave cleared" });
         }
       }
       for (const ti of list) {
@@ -1720,7 +1720,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       show(s, dt) {
         out.length = 0;
         if (s[0] !== wave && s[0] > 0) out.push({ type: "stinger", name: "wave" }, { type: "banner", jp: `第${s[0]}波`, en: `Wave ${s[0]}`, text: "Hold the line together" });
-        else if (s[2] > 0 && breakT <= 0 && wave > 0) out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared`, text: "Resupply at the green smoke" });
+        else if (s[2] > 0 && breakT <= 0 && wave > 0) out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared` });
         wave = s[0];
         quota = s[1];
         killedWave = 0;

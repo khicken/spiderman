@@ -380,11 +380,6 @@ export default function TitanPage() {
             final={runRef.current.deaths >= 3}
             onSkip={() => gameRef.current?.skipIntro()}
           />
-          {!hud.intro && !hud.run.choice && !msgs.banner && (
-            <div className="pointer-events-none absolute left-1/2 top-[74px] -translate-x-1/2 font-display text-[11px] uppercase tracking-[0.2em] text-bone/70 [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]">
-              {hud.fps} fps · {QUALITIES[hud.quality].label}
-            </div>
-          )}
         </div>
       )}
       {touch && screen === "playing" && hud && !hud.intro && !hud.dead && (

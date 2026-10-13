@@ -18,7 +18,7 @@ export type Action =
   | "lock" // Q: lock on, next part, hold to clear
   | "cycle" // mouse wheel: next part on the locked titan
   | "weapon" // R: next weapon slot
-  | "teamAttack" // F: team attack on the lock, else attack or regroup
+  | "teamAttack" // F: team attack on the lock or nearest titan, else attack or regroup
   | "shift"; // T: titan shifting
 
 export type Input = {

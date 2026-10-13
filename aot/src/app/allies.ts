@@ -44,7 +44,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   const kit = createKit(scene);
   const flares = createFlares(scene);
   const out: GameEvent[] = [];
-  const seen = new Set<number>();
   const hook = (): Hook => ({ on: false, p: new THREE.Vector3(), titan: null, part: "nape", age: 0 });
   const squad: Ally[] = Array.from({ length: MAX }, (_, i) => ({
     name: "", s: kit.build(i), pos: new THREE.Vector3(), vel: new THREE.Vector3(), mode: "dead", grounded: false, target: null, part: "nape",
@@ -54,7 +53,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   let size = BASE;
   let lastWave = 0;
   let callT = 0;
-  let spotT = 0;
   let pickT = 0;
   let nameI = 0;
   let time = 0;
@@ -109,13 +107,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     say(`${add} soldier${add > 1 ? "s" : ""} inbound from the wall!`, "Command", true);
   };
 
-  const clock = (p: THREE.Vector3, yaw: number) => {
-    let b = Math.atan2(p.x - lead!.pos.x, p.z - lead!.pos.z) - yaw;
-    b = Math.atan2(Math.sin(b), Math.cos(b));
-    const h = Math.round((-b / (Math.PI * 2)) * 12 + 12) % 12;
-    return h === 0 ? 12 : h;
-  };
-
   const pick = () => {
     const near: TitanView[] = [];
     for (const ti of titans.list()) if (ti.alive && ti.pos.distanceTo(lead!.pos) < 90) near.push(ti);
@@ -162,7 +153,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     if (a.team && r.zone && t === teamTi && t.alive) {
       if (open <= 0) {
         out.push({ type: "callout", text: "Nape open! Cut now" }, { type: "sfx", name: "bell" }, { type: "slowmo", scale: 0.5, duration: 0.6 });
-        say("It's down! Take the nape!", a.name, true);
       }
       open = OPEN;
     }
@@ -384,16 +374,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         lastWave = titans.wave;
         if (lastWave > 0) reinforce(lastWave);
       }
-      spotT -= dt;
-      if (spotT <= 0) {
-        spotT = 1;
-        for (const ti of titans.list()) {
-          if (!ti.alive || seen.has(ti.id) || ti.pos.distanceTo(l.pos) > 90) continue;
-          seen.add(ti.id);
-          if (alive().length) say(`Titan at ${clock(ti.pos, yaw)} o'clock, ${ti.height.toFixed(0)} m class!`, alive()[0].name);
-          break;
-        }
-      }
       pickT -= dt;
       if (pickT <= 0) {
         pickT = 0.5;
@@ -417,8 +397,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     toggle: () => command(order === "attack" ? "regroup" : "attack"),
     team(lock: Lock | null) {
       const t = lock?.titan.alive ? lock.titan : null;
-      if (teamCd > 0) return [{ type: "callout", text: `Squad ready in ${Math.ceil(teamCd)} s` }];
-      if (!t) return [{ type: "callout", text: "Lock a titan first (Q)" }];
+      if (teamCd > 0 || !t) return [];
       const free = squad.filter((a) => a.mode === "fly");
       if (!free.length) return [{ type: "callout", text: "No squad to call" }];
       let sent = 0;
