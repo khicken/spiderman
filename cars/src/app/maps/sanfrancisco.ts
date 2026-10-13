@@ -3534,6 +3534,6 @@ export const MAP: MapData = {
     { name: "Lombard Street", x: -227.7, z: -561.1, kind: "sign" },
     { name: "Ghirardelli Square", x: -597.5, z: -979.3, kind: "sign" },
   ],
-  env: {hour: 18.6,weather: "fog",season: "summer"},
+  env: {hour: 17.6,weather: "fog",season: "summer"},
   credit: "© OpenStreetMap contributors · Terrain: Mapzen Terrain Tiles (SRTM, EU-DEM, USGS 3DEP and others) via AWS Open Data",
 };

@@ -201,11 +201,11 @@ export function createTrees(map: MapData, track: Track, roads: RoadIndex, style:
   const forestTex = forestTexture(map, cover.px, cover.W, cover.H);
   const kinds = [...new Set(Array.from({ length: count }, (_, i) => data[i * F + 5]))];
   const atlas = treeAtlas();
-  const near = new THREE.MeshStandardMaterial({ map: atlas, vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0 });
+  const near = new THREE.MeshStandardMaterial({ map: atlas, vertexColors: true, alphaTest: 0.5, alphaToCoverage: tier.detail >= 2, side: THREE.DoubleSide, roughness: 0.85, metalness: 0 });
   swayPatch(near, false);
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: atlas, alphaTest: 0.5 });
   const imp = impostorAtlas();
-  const farMat = new THREE.MeshStandardMaterial({ map: imp, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, metalness: 0 });
+  const farMat = new THREE.MeshStandardMaterial({ map: imp, alphaTest: 0.5, alphaToCoverage: tier.detail >= 2, side: THREE.DoubleSide, roughness: 0.95, metalness: 0 });
   swayPatch(farMat, true);
   const perKind = new Map<number, number>();
   for (let i = 0; i < count; i++) perKind.set(data[i * F + 5], (perKind.get(data[i * F + 5]) ?? 0) + 1);

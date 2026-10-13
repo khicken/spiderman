@@ -42,9 +42,9 @@ export const musicStyles = (I: Inst, sr: number) => {
     kick: P(Object.assign({ cut: 52, d: 0.22, fd: 0.028, gain: 0.95, drive: 0.7, rev: 0.02 }, o.kick)),
     snare: P(Object.assign({ d: 0.13, gain: 0.5, rev: 0.25, drive: 0.4 }, o.snare)),
     clap: P(Object.assign({ d: 0.14, gain: 0.45, rev: 0.3 }, o.clap)),
-    hat: P(Object.assign({ d: 0.035, gain: 0.16, rev: 0.05, wide: 0.3 }, o.hat)),
-    ohat: P({ d: 0.22, gain: 0.13, rev: 0.1 }),
-    ride: P({ d: 0.5, gain: 0.12, rev: 0.15 }),
+    hat: P(Object.assign({ d: 0.035, gain: 0.13, rev: 0.05, wide: 0.3 }, o.hat)),
+    ohat: P({ d: 0.22, gain: 0.11, rev: 0.1 }),
+    ride: P({ d: 0.5, gain: 0.1, rev: 0.15 }),
     crash: P({ d: 1.4, gain: 0.22, rev: 0.3 }),
     shaker: P({ d: 0.05, gain: 0.1, rev: 0.1 }),
     rim: P({ d: 0.03, gain: 0.25, rev: 0.25 }),
@@ -75,9 +75,9 @@ export const musicStyles = (I: Inst, sr: number) => {
       bpm: 172, root: 53, scale: MIN, swing: 0, sev: false, duck: 0.35, duckRel: 0.12, dly: 3, dlyFb: 0.35,
       progs: [[0, 5, 2, 6], [0, 3, 5, 4], [5, 6, 0, 0], [0, 6, 5, 6]],
       chord: ["pad", P({ a: 0.3, d: 1, s: 0.8, r: 1.2, cut: 3200, env: 0.8, fd: 0.8, det: 26, gain: 0.11, rev: 0.45, wide: 0.7 }), null],
-      bass: ["reese", P({ a: 0.01, d: 0.6, s: 0.9, r: 0.12, cut: 900, env: 1.2, fd: 0.25, q: 1.2, gain: 0.24, drive: 0.9, rev: 0 }), "x-------x--x----", -12],
+      bass: ["reese", P({ a: 0.01, d: 0.6, s: 0.9, r: 0.12, cut: 900, env: 1.2, fd: 0.25, q: 1.2, gain: 0.24, drive: 0.4, rev: 0 }), "x-------x--x----", -12],
       arp: ["pluck", P({ a: 0.002, d: 0.15, s: 0, r: 0.1, cut: 2400, env: 2.5, fd: 0.09, q: 2, det: 10, gain: 0.13, rev: 0.25, dly: 0.3, wide: 0.4 }), "0123012301230123", 12],
-      lead: ["lead", P({ a: 0.01, d: 0.4, s: 0.7, r: 0.25, cut: 3800, env: 1.5, fd: 0.2, q: 1.4, gain: 0.12, rev: 0.35, dly: 0.25, glide: 0.04 }), 12, true],
+      lead: ["lead", P({ a: 0.01, d: 0.4, s: 0.7, r: 0.25, cut: 2800, env: 0.7, fd: 0.2, q: 1.1, gain: 0.12, rev: 0.35, dly: 0.25, glide: 0.04 }), 12, true],
       hook: "b-b-c-b-9---7-9-c---e---c-b-9---b-b-c-b-9---e---d-------c---b---",
       kit: kit({ snare: { d: 0.16, gain: 0.55 }, kick: { d: 0.25 } }),
       drums: [{ hat: "..o...o...o...o." }, { kick: "x.......x.......", snare: BACK, hat: "x.x.x.x.x.x.x.x." }, { kick: "x.........x.....", snare: "....x..g.g..x..g", hat: "xgxgxgxgxgxgxgxg", ohat: "..........o....." }],
@@ -92,7 +92,7 @@ export const musicStyles = (I: Inst, sr: number) => {
       chord2: ["pad", P({ a: 0.6, d: 1, s: 0.7, r: 1, cut: 1100, det: 20, gain: 0.06, rev: 0.4, wide: 0.6 })],
       bass: ["fmbass", P({ a: 0.003, d: 0.18, s: 0.5, r: 0.06, cut: 1800, fd: 0.08, gain: 0.26, drive: 0.5, rev: 0 }), "x..x.ox.x..x.ox.", -12],
       arp: ["ep", P({ a: 0.002, d: 0.5, s: 0.15, r: 0.3, gain: 0.1, rev: 0.3, dly: 0.3, wide: 0.4 }), "..2...1...2...3.", 12],
-      lead: ["lead", P({ a: 0.01, d: 0.5, s: 0.6, r: 0.3, cut: 3000, env: 1.2, fd: 0.25, q: 2, gain: 0.11, rev: 0.35, dly: 0.3, glide: 0.05 }), 12, true],
+      lead: ["lead", P({ a: 0.01, d: 0.5, s: 0.6, r: 0.3, cut: 2600, env: 0.6, fd: 0.25, q: 1.2, gain: 0.11, rev: 0.35, dly: 0.3, glide: 0.05 }), 12, true],
       hook: "..b..b..a.b...9...c..c..b.a...b...d..d..c.b...a.b-------9---7---",
       kit: kit({ kick: { d: 0.22, gain: 0.62 } }),
       drums: [{ hat: OFF }, { kick: FOUR, ohat: OFF, shaker: "gggggggggggggggg" }, { kick: FOUR, clap: BACK, ohat: OFF, hat: "x.x.x.x.x.x.x.x.", shaker: "gggggggggggggggg" }],
@@ -118,9 +118,9 @@ export const musicStyles = (I: Inst, sr: number) => {
       bpm: 132, root: 40, scale: PHR, swing: 0, sev: false, duck: 0.5, duckRel: 0.16, dly: 3, dlyFb: 0.4,
       progs: [[0, 0, 1, 0], [0, 0, 5, 6], [0, 6, 5, 1]],
       chord: ["pad", P({ a: 0.8, d: 2, s: 0.8, r: 1.5, cut: 800, env: 0.8, fd: 1.5, det: 30, gain: 0.1, rev: 0.5, wide: 0.6 }), null],
-      bass: ["fmbass", P({ a: 0.002, d: 0.1, s: 0.3, r: 0.05, cut: 1100, fd: 0.05, gain: 0.2, drive: 0.9, rev: 0.02 }), "..x...x...x...x.", 0],
-      acid: P({ a: 0.002, d: 0.2, s: 0.5, r: 0.06, cut: 380, env: 3.6, fd: 0.13, q: 5, gain: 0.11, drive: 1.2, rev: 0.15, dly: 0.25, glide: 0.035 }),
-      lead: ["brass", P({ a: 0.005, d: 0.25, s: 0.6, r: 0.15, cut: 2200, env: 1.2, fd: 0.1, q: 1.4, det: 18, gain: 0.1, drive: 1.5, rev: 0.25, dly: 0.2 }), 24, false],
+      bass: ["fmbass", P({ a: 0.002, d: 0.14, s: 0.4, r: 0.06, cut: 1100, fd: 0.05, gain: 0.2, drive: 0.5, rev: 0.02 }), "..x...x...x...x.", 0],
+      acid: P({ a: 0.002, d: 0.2, s: 0.5, r: 0.06, cut: 380, env: 3, fd: 0.13, q: 3.6, gain: 0.11, drive: 0.5, rev: 0.15, dly: 0.25, glide: 0.035 }),
+      lead: ["brass", P({ a: 0.005, d: 0.25, s: 0.6, r: 0.15, cut: 2200, env: 0.8, fd: 0.1, q: 1.1, det: 18, gain: 0.1, drive: 0.3, rev: 0.25, dly: 0.2 }), 24, false],
       hook: "7.7.a.7.8.7.b.a.7.7.a.7.c.b.a.8.7.7.a.7.8.7.b.a.e.d.c.b.a---8---",
       kit: kit({ kick: { d: 0.24, gain: 0.7, drive: 1.1 }, clap: { d: 0.2 } }),
       drums: [{ hat: OFF }, { kick: FOUR, ohat: OFF, hat: "gggggggggggggggg" }, { kick: FOUR, clap: BACK, ohat: OFF, hat: "gogogogogogogogo", ride: "o.o.o.o.o.o.o.o." }],
@@ -130,11 +130,11 @@ export const musicStyles = (I: Inst, sr: number) => {
     spa: {
       bpm: 128, root: 38, scale: MIN, swing: 0, sev: false, duck: 0.3, duckRel: 0.15, dly: 3, dlyFb: 0.35,
       progs: [[0, 5, 6, 4], [0, 3, 6, 6], [5, 6, 0, 0], [0, 6, 5, 4]],
-      chord: ["brass", P({ a: 0.004, d: 0.2, s: 0.4, r: 0.1, cut: 1500, env: 1, fd: 0.1, det: 16, gain: 0.08, drive: 2, rev: 0.2, wide: 0.6 }), "x..x..x...x..x.."],
+      chord: ["brass", P({ a: 0.004, d: 0.2, s: 0.4, r: 0.1, cut: 1500, env: 0.8, fd: 0.1, det: 16, gain: 0.08, drive: 0.5, rev: 0.2, wide: 0.6 }), "x..x..x...x..x.."],
       chord2: ["pad", P({ a: 0.6, d: 1, s: 0.8, r: 1.2, cut: 1300, det: 24, gain: 0.08, rev: 0.45, wide: 0.7 })],
-      bass: ["reese", P({ a: 0.003, d: 0.15, s: 0.7, r: 0.05, cut: 1000, env: 1, fd: 0.06, q: 1, gain: 0.18, drive: 0.9, rev: 0 }), "x.x.x.x.x.x.x.x.", 0],
+      bass: ["reese", P({ a: 0.003, d: 0.15, s: 0.7, r: 0.05, cut: 1000, env: 1, fd: 0.06, q: 1, gain: 0.18, drive: 0.4, rev: 0 }), "x.x.x.x.x.x.x.x.", 0],
       arp: ["pluck", P({ a: 0.002, d: 0.14, s: 0, r: 0.1, cut: 2600, env: 2, fd: 0.08, q: 1.6, det: 8, gain: 0.11, rev: 0.3, dly: 0.3, wide: 0.5 }), "0.1.2.1.0.1.2.3.", 24],
-      lead: ["lead", P({ a: 0.01, d: 0.4, s: 0.75, r: 0.25, cut: 3400, env: 1, fd: 0.2, q: 1.2, gain: 0.11, drive: 0.6, rev: 0.35, dly: 0.25, glide: 0.03 }), 24, true],
+      lead: ["lead", P({ a: 0.01, d: 0.4, s: 0.75, r: 0.25, cut: 2600, env: 0.6, fd: 0.2, q: 1.1, gain: 0.11, drive: 0.2, rev: 0.35, dly: 0.25, glide: 0.03 }), 24, true],
       hook: "b---a-9-a---b---c---b-a-9---7---d---c-b-c---e---b-----------8-9-",
       kit: kit({ snare: { d: 0.18, gain: 0.6, drive: 0.8 } }),
       drums: [{ hat: "x.x.x.x.x.x.x.x." }, { kick: "x.......x.x.....", snare: BACK, hat: "x.x.x.x.x.x.x.x." }, { kick: "x...x...x.x.x...", snare: BACK, hat: "xgxgxgxgxgxgxgxg", ride: "o...o...o...o..." }],
@@ -170,6 +170,30 @@ export const musicStyles = (I: Inst, sr: number) => {
       loop: 1,
     },
   };
+
+  // Role trims in dB, set from stem renders: melody about 4 dB under the drums, bass 6, pads and arps 8 to 9.
+  const MIX: Record<string, Partial<Record<"lead" | "bass" | "arp" | "chord" | "drums" | "out", number>>> = {
+    tokyo: { lead: 1.5, bass: 1, arp: -3.5, drums: -1 },
+    monaco: { lead: 4, bass: 7, arp: -1.5, chord: -2.5 },
+    sanfrancisco: { drums: -4, lead: 5, bass: 7, arp: -1, chord: -3 },
+    nordschleife: { lead: 5, bass: 9, chord: 3 },
+    spa: { lead: 3, bass: 6, arp: -1 },
+    stelvio: { lead: 1.5, bass: 6, arp: -2, chord: -3 },
+    results: { bass: 6 },
+  };
+  for (const [name, m] of Object.entries(MIX)) {
+    const st = S[name];
+    const g = (p: Patch | undefined, db = 0) => {
+      if (p) p.gain *= Math.pow(10, db / 20);
+    };
+    g(st.lead?.[1], m.lead);
+    g(st.acid, m.lead);
+    g(st.bass[1], m.bass);
+    g(st.arp?.[1], m.arp);
+    g(st.chord[1], m.chord);
+    g(st.chord2?.[1], m.chord);
+    for (const p of Object.values(st.kit)) g(p, m.drums);
+  }
 
   const VEL: Record<string, number> = { x: 1, o: 0.65, g: 0.32 };
   const SOFT = P({ a: 0.002, d: 1.1, s: 0.2, r: 0.8, gain: 0.12, rev: 0.5, dly: 0.35 });

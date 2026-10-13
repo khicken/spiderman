@@ -67,12 +67,13 @@ export function bodyCorners(b: Body, s: VehicleState, g: GroundHit, spec: CarSpe
   return corner;
 }
 
-const wall = { speed: 0, slide: 0, contact: false, at: new THREE.Vector3() };
+const wall = { speed: 0, slide: 0, contact: false, at: new THREE.Vector3(), normal: new THREE.Vector3() }; // normal: flat, from the wall toward the road
 // Three circles along the body against the track barriers. The barrier moves a point; we turn that into a rigid body impulse.
 export function hitBarriers(b: Body, s: VehicleState, track: Track, hint: number) {
   const [, , z] = b.basis();
   wall.speed = wall.slide = 0;
   wall.contact = false;
+  wall.normal.set(0, 0, 0);
   const r = b.halfW;
   const reach = b.halfL - r * 0.9;
   for (let k = -1; k <= 1; k++) {
@@ -101,6 +102,7 @@ export function hitBarriers(b: Body, s: VehicleState, track: Track, hint: number
     }
     if (push > 1e-5) {
       _n.copy(_d).multiplyScalar(1 / push);
+      wall.normal.set(_n.x, 0, _n.z).normalize();
       const tang = _t.copy(_v0).addScaledVector(_n, -_v0.dot(_n)).length();
       if (tang > wall.slide) {
         wall.slide = tang;

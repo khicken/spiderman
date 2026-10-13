@@ -24,7 +24,7 @@ export const TIER: Record<Quality, TierX> = {
 };
 
 const RADII: number[][] = [[], [45], [26, 190], [14, 60, 260], [10, 36, 130, 520]];
-const COVER: Record<Weather, number> = { clear: 0.5, overcast: 0.9, rain: 0.97, fog: 0.7, snow: 0.93 };
+const COVER: Record<Weather, number> = { clear: 0.36, overcast: 0.9, rain: 0.97, fog: 0.7, snow: 0.93 };
 const HAZE: Record<Weather, number> = { clear: 1, overcast: 2.2, rain: 3, fog: 6, snow: 3 };
 const DENSITY: Record<Weather, number> = { clear: 0.00011, overcast: 0.00035, rain: 0.0011, fog: 0.02, snow: 0.0016 };
 const FALLOFF: Record<Weather, number> = { clear: 0.0035, overcast: 0.003, rain: 0.002, fog: 0.03, snow: 0.002 };
@@ -262,7 +262,7 @@ export function createRender(canvas: HTMLCanvasElement) {
     FOG_A[3] = FALLOFF[w];
     FOG_B[1] = camera.far * 0.72;
     FOG_B[2] = camera.far * 0.98;
-    FOG_B[3] = (w === "fog" ? 1.1 : (1 - cover * 0.8) * 0.9) * smooth(sunDir.y, -0.1, 0.05);
+    FOG_B[3] = (w === "fog" ? 0.45 : (1 - cover * 0.8) * 0.9) * smooth(sunDir.y, -0.1, 0.05);
     FOG_C[0] = w === "fog" ? 1 : w === "rain" || w === "overcast" ? 0.4 : 0;
     fog.density = DENSITY[w];
 

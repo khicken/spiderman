@@ -18,7 +18,7 @@ import { createRender } from "./render";
 import { createScenery } from "./scenery";
 import { createTrack } from "./track";
 import { createTrackMesh } from "./track-mesh";
-import type { MiniCar } from "./ui-hud";
+import type { MiniCar, NameTag } from "./ui-hud";
 import type { Settings } from "./ui-settings";
 import { collideCars, createVehicle, renderPose, setFocus, setWet, type VehicleBody } from "./vehicle";
 
@@ -32,7 +32,7 @@ const IDLE: Controls = { throttle: 0, brake: 0, steer: 0, handbrake: 1, shiftUp:
 export type Session = { map: MapId; mode: Mode; laps: number; car: CarId; paint: string; ai: number; net?: NetPlus; startAt?: number };
 export type GameCallbacks = {
   hud(h: HudState): void;
-  hudRef(): { needle(rpm: number): void; minimap(cars: readonly MiniCar[]): void; event(e: GameEvent): void } | null;
+  hudRef(): { needle(rpm: number): void; minimap(cars: readonly MiniCar[]): void; event(e: GameEvent): void; tags(list: readonly NameTag[]): void; drift(on: boolean): void } | null;
   progress(p: number): void;
   pause(): void;
   finished(): void;
@@ -95,6 +95,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   let finishedSent = false;
   const snapScratch = new Float32Array(64);
   const mini: MiniCar[] = [];
+  const tags: NameTag[] = Array.from({ length: 8 }, () => ({ x: 0, y: 0, name: "", color: "", on: false }));
 
   // Loads run one at a time. A newer showroom or play request skips the older queued ones.
   let req = 0;
@@ -602,6 +603,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       const h = cb.hudRef();
       if (h) {
         h.needle(me.v.state.rpm);
+        h.drift(me.v.drifting);
         mini.length = racers.length;
         for (let i = 0; i < racers.length; i++) {
           const st = racers[i].v.state;
@@ -614,6 +616,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
           m.me = racers[i] === me;
         }
         h.minimap(mini);
+        if (net) nameTags(h);
       }
       hudAcc += dt;
       if (hudAcc > 0.1) {
@@ -621,6 +624,31 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
         pushHud();
       }
     }
+  }
+
+  // Labels over the other players' cars, so a friend in the same car and paint is easy to find.
+  function nameTags(h: { tags(list: readonly NameTag[]): void }) {
+    const cam = view.camera;
+    const w = canvas.clientWidth;
+    const hgt = canvas.clientHeight;
+    let n = 0;
+    for (const r of racers) {
+      if (n >= tags.length) break;
+      if (r.e.me || r.e.ai) continue;
+      const t = tags[n++];
+      const st = r.v.state;
+      v3.copy(st.pos);
+      v3.y += r.v.spec.body.height + 0.6;
+      const dist = v3.distanceTo(cam.position);
+      v3.project(cam);
+      t.on = r.m.group.visible && dist < 300 && v3.z < 1 && Math.abs(v3.x) < 1.1 && Math.abs(v3.y) < 1.1;
+      t.x = (v3.x * 0.5 + 0.5) * w;
+      t.y = (-v3.y * 0.5 + 0.5) * hgt;
+      t.name = r.e.name;
+      t.color = r.e.color;
+    }
+    for (let i = n; i < tags.length; i++) tags[i].on = false;
+    h.tags(tags);
   }
 
   const otherStates: import("./contracts").VehicleState[] = [];

@@ -42,12 +42,13 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
   const tiles = tileTex(n, an);
   tiles.repeat.set(1 / 3, 1 / 3);
   const fence = fenceTex();
+  fence.repeat.set(4, 4);
   const mWall = new THREE.MeshStandardMaterial({ map: grime, roughness: 0.9 });
   const mConc = new THREE.MeshStandardMaterial({ map: clean, roughness: 0.92, color: 0xd8d4cc, side: THREE.DoubleSide });
   const mTile = new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.4, side: THREE.DoubleSide });
   const mSteel = new THREE.MeshStandardMaterial({ color: 0xb4b9bf, metalness: 0.85, roughness: 0.36, side: THREE.DoubleSide });
   const mPost = new THREE.MeshStandardMaterial({ color: 0x8d9298, metalness: 0.7, roughness: 0.5 });
-  const mFence = new THREE.MeshStandardMaterial({ map: fence, alphaTest: 0.5, metalness: 0.6, roughness: 0.5, side: THREE.DoubleSide });
+  const mFence = new THREE.MeshStandardMaterial({ map: fence, alphaTest: 0.3, alphaToCoverage: q === "high" || q === "ultra", color: 0xa4a8ac, metalness: 0.55, roughness: 0.45, side: THREE.DoubleSide });
   const mTire = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.92 });
   const mLight = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3.5, 2.8), side: THREE.DoubleSide });
   disp.push(grime, clean, tiles, fence, mWall, mConc, mTile, mSteel, mPost, mFence, mTire, mLight);

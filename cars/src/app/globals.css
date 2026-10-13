@@ -205,6 +205,9 @@ body {
   opacity: 1;
   animation: blink 0.12s steps(1) infinite;
 }
+.tach[data-shift="1"] .shift-leds {
+  animation: blink 0.1s steps(1) infinite;
+}
 .tach[data-shift="1"] .tach-gear {
   color: var(--color-hot);
 }

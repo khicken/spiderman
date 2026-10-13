@@ -283,11 +283,16 @@ export const LOOKS: Record<CarId, (c: Ctx) => void> = {
     rearBumper(c, 0.44);
     frontLip(c, 0.22);
     skirts(c, 0.1, 0.012);
-    c.lamp(front(c, 0.62, 0.6, 0.15, 0.045, { e: 5, rot: -0.1, depth: 0.006 }), LAMP.none, HOUSING);
-    c.lamp(front(c, 0.58, 0.6, 0.035, 0.03, { off: 0.012 }), LAMP.head, LENS);
-    for (let i = 0; i < 4; i++) c.lamp(front(c, 0.66 + (i % 2) * 0.05, 0.58 + (i >> 1) * 0.04, 0.015, 0.015, { off: 0.012 }), LAMP.drl, WHITE);
-    headAt(c, 0.6, 0.6);
-    c.dec("grille", front(c, 0, 0.3, 0.42, 0.06, { e: 6, tile: 0.05 }), false);
+    // Full width light bar over slim projector clusters, like current EVs.
+    c.lamp(front(c, 0, 0.615, 0.8, 0.016, { e: 10, depth: 0.003, off: 0.004 }), LAMP.none, 0x0c0d0f, false);
+    c.lampStrip(2, 1, [[-0.76, 0.612], [-0.4, 0.618], [0.4, 0.618], [0.76, 0.612]], 0.007, LAMP.drl, WHITE, 0.009, false);
+    c.lamp(front(c, 0.6, 0.565, 0.15, 0.034, { e: 6, rot: -0.05, depth: 0.004, off: 0.005 }), LAMP.none, 0x15171a);
+    c.lamp(front(c, 0.6, 0.565, 0.13, 0.024, { e: 6, rot: -0.05, depth: 0.012, off: 0.007 }), LAMP.bowl, 0x9aa1a8);
+    for (const k of [-0.07, 0.0, 0.07]) c.lamp(front(c, 0.6 + k, 0.566 - k * 0.05, 0.019, 0.017, { off: 0.02, depth: 0.006 }), LAMP.head, LENS);
+    headAt(c, 0.6, 0.57);
+    c.dec("grille", front(c, 0, 0.28, 0.5, 0.06, { e: 8, tile: 0.05, off: 0.012 }), false);
+    c.dec("gloss", front(c, 0, 0.4, 0.3, 0.05, { e: 8, off: 0.006 }), false);
+    c.dec("grille", front(c, 0.66, 0.3, 0.05, 0.1, { e: 6, rot: 0.25, tile: 0.05, off: 0.012 }));
     c.lamp(rear(c, 0, 0.875, 0.86, 0.034, { e: 10, depth: 0.003, off: 0.004 }), LAMP.none, 0x140303, false);
     c.lampStrip(2, -1, [[-0.82, 0.87], [-0.4, 0.88], [0.4, 0.88], [0.82, 0.87]], 0.02, LAMP.tail, RED, 0.007, false);
     c.lampStrip(2, -1, [[-0.8, 0.872], [-0.4, 0.88], [0.4, 0.88], [0.8, 0.872]], 0.004, LAMP.core, CORE, 0.01, false);

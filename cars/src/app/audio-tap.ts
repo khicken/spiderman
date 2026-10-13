@@ -1,4 +1,4 @@
-import { type ProcFn, procNode } from "./audio-worklet";
+import { type ProcFn, audioPath, procNode } from "./audio-worklet";
 
 // Dev capture of the live mix: every input channel is recorded as one mono stem.
 export const tapProc: ProcFn = (Base, register) => {
@@ -53,6 +53,7 @@ export function createTap(ctx: AudioContext, stems: [string, AudioNode, number?]
       s.connect(merge, ch, i);
     }
   });
+  if (audioPath(ctx) === "main") return mainTap(ctx, merge, stems.map(([name]) => name));
   const node = procNode(ctx, "car-tap", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] }) as unknown as AudioWorkletNode;
   merge.connect(node);
   const mute = ctx.createGain();
@@ -82,5 +83,29 @@ export function createTap(ctx: AudioContext, stems: [string, AudioNode, number?]
         done({ sr: ctx.sampleRate, stems: stemsOut });
       };
       node.port.postMessage(true);
+    });
+}
+
+// The main thread fallback has no input-capable processor, so capture with a plain ScriptProcessor.
+function mainTap(ctx: AudioContext, merge: ChannelMergerNode, names: string[]) {
+  const n = names.length;
+  const sp = ctx.createScriptProcessor(4096, n, 1);
+  merge.connect(sp);
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  sp.connect(mute).connect(ctx.destination);
+  return (sec: number) =>
+    new Promise<{ sr: number; stems: Record<string, string> }>((done) => {
+      const want = Math.floor(sec * ctx.sampleRate);
+      const bufs = names.map(() => new Float32Array(want));
+      let got = 0;
+      sp.onaudioprocess = (e) => {
+        const k = Math.min(e.inputBuffer.length, want - got);
+        for (let c = 0; c < n; c++) bufs[c].set(e.inputBuffer.getChannelData(c).subarray(0, k), got);
+        got += k;
+        if (got < want) return;
+        sp.onaudioprocess = null;
+        done({ sr: ctx.sampleRate, stems: Object.fromEntries(names.map((name, i) => [name, b64(bufs[i])])) });
+      };
     });
 }

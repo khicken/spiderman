@@ -2,8 +2,9 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import type { Assists, CamMode, Device, Quality } from "./contracts";
-import { Assist, Back, Bolt, Brake, Camera, Disc, Fwd, Gamepad, Gas, Gears, Handbrake, Keyboard, Monitor, Music, Pause, Rewind, Slider, Speed, Tilt, Touch, Volume, Wheel } from "./ui-icons";
-import { Key, Range, Segmented, Toggle, cx } from "./ui-kit";
+import { ControlsBody } from "./ui-controls";
+import { Assist, Back, Bolt, Camera, Disc, Gamepad, Gears, Monitor, Music, Speed, Volume, Wheel } from "./ui-icons";
+import { Range, Segmented, Toggle, cx } from "./ui-kit";
 import { useNavRoot } from "./ui-nav";
 import type { SteerMode } from "./ui-touch";
 
@@ -14,10 +15,38 @@ export const DEFAULT_SETTINGS: Settings = {
   master: 0.8,
   music: 0.6,
   units: "kmh",
-  assists: { abs: true, tcs: true, stability: true, autoGear: true, steer: true },
+  assists: { abs: true, tcs: true, stability: true, autoGear: true, steer: true, blip: true },
   camera: "chase",
   steer: "slider",
 };
+
+type Preset = "easy" | "normal" | "pro";
+export const ASSIST_PRESETS: Record<Preset, Assists> = {
+  easy: { abs: true, tcs: true, stability: true, autoGear: true, steer: true, blip: true },
+  normal: { abs: true, tcs: true, stability: false, autoGear: true, steer: true, blip: true },
+  pro: { abs: false, tcs: false, stability: false, autoGear: false, steer: false, blip: true },
+};
+export function presetOf(a: Assists): Preset | "custom" {
+  for (const [k, p] of Object.entries(ASSIST_PRESETS) as [Preset, Assists][])
+    if ((["abs", "tcs", "stability", "autoGear", "steer"] as const).every((f) => p[f] === a[f])) return k;
+  return "custom";
+}
+
+export function Transmission({ manual, onChange, className }: { manual: boolean; onChange: (manual: boolean) => void; className?: string }) {
+  return (
+    <div className={className}>
+      <Segmented
+        label="Transmission"
+        value={manual ? "m" : "a"}
+        onChange={(v) => onChange(v === "m")}
+        options={[
+          { v: "a", node: <><Gears /> <span className="ttl text-xl">Auto</span></>, title: "Automatic gears" },
+          { v: "m", node: <><Gears /> <span className="ttl text-xl">Manual</span></>, title: "Manual gears" },
+        ]}
+      />
+    </div>
+  );
+}
 
 type Tab = "gfx" | "audio" | "assist" | "camera" | "controls";
 const TABS: { id: Tab; icon: ReactNode; label: string }[] = [
@@ -110,13 +139,24 @@ export function SettingsPanel({ value, onChange, onClose, device = "keys", tab: 
             </>
           )}
           {tab === "assist" && (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Toggle label="ABS" icon={<Disc />} on={value.assists.abs} onChange={(v) => assist("abs", v)} />
-              <Toggle label="TCS" icon={<Bolt />} on={value.assists.tcs} onChange={(v) => assist("tcs", v)} />
-              <Toggle label="Stability" icon={<Assist />} on={value.assists.stability} onChange={(v) => assist("stability", v)} />
-              <Toggle label="Auto" icon={<Gears />} on={value.assists.autoGear} onChange={(v) => assist("autoGear", v)} />
-              <Toggle label="Steer" icon={<Wheel />} on={value.assists.steer} onChange={(v) => assist("steer", v)} />
-            </div>
+            <>
+              <Segmented
+                label="Preset"
+                value={presetOf(value.assists)}
+                onChange={(p) => p !== "custom" && set({ assists: { ...ASSIST_PRESETS[p], blip: value.assists.blip } })}
+                options={(["easy", "normal", "pro"] as const).map((p) => ({ v: p, node: <span className="ttl text-xl">{p}</span> }))}
+              />
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <Transmission manual={!value.assists.autoGear} onChange={(m) => assist("autoGear", !m)} />
+                <Toggle label="Rev match" icon={<Gears />} on={value.assists.blip !== false} onChange={(v) => assist("blip", v)} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Toggle label="ABS" icon={<Disc />} on={value.assists.abs} onChange={(v) => assist("abs", v)} />
+                <Toggle label="TCS" icon={<Bolt />} on={value.assists.tcs} onChange={(v) => assist("tcs", v)} />
+                <Toggle label="Stability" icon={<Assist />} on={value.assists.stability} onChange={(v) => assist("stability", v)} />
+                <Toggle label="Steer" icon={<Wheel />} on={value.assists.steer} onChange={(v) => assist("steer", v)} />
+              </div>
+            </>
           )}
           {tab === "camera" && (
             <div className="grid grid-cols-5 gap-2">
@@ -135,7 +175,7 @@ export function SettingsPanel({ value, onChange, onClose, device = "keys", tab: 
               ))}
             </div>
           )}
-          {tab === "controls" && <ControlsMap device={device} steer={value.steer} onSteer={(s) => set({ steer: s })} />}
+          {tab === "controls" && <ControlsBody device={device} steer={value.steer} manual={!value.assists.autoGear} onSteer={(s) => set({ steer: s })} />}
         </div>
       </div>
     </div>
@@ -154,101 +194,5 @@ function CamGlyph({ mode }: { mode: CamMode }) {
       <path d={`M${x} ${y}L${x + 14} ${y + 3}M${x} ${y}L${x + 14} ${y - 3}`} stroke="var(--color-hot)" strokeWidth="1" opacity="0.7" />
       <circle cx={x} cy={y} r="2.3" fill="var(--color-hot)" />
     </svg>
-  );
-}
-
-type Bind = { icon: ReactNode; keys: ReactNode; pad: ReactNode };
-export const Pad = ({ b, c }: { b: string; c?: string }) => (
-  <span className="num inline-grid h-8 min-w-8 place-items-center rounded-full border border-line-hi bg-white/5 px-1.5 text-base not-italic" style={{ color: c }}>
-    {b}
-  </span>
-);
-const BINDS: Bind[] = [
-  { icon: <Gas />, keys: <><Key>W</Key><Key>↑</Key></>, pad: <Pad b="RT" /> },
-  { icon: <Brake />, keys: <><Key>S</Key><Key>↓</Key></>, pad: <Pad b="LT" /> },
-  { icon: <Wheel />, keys: <><Key>A</Key><Key>D</Key></>, pad: <Pad b="LS" /> },
-  { icon: <Handbrake />, keys: <Key wide>Space</Key>, pad: <Pad b="A" c="#3ddc84" /> },
-  { icon: <Gears />, keys: <><Key>Q</Key><Key>E</Key></>, pad: <><Pad b="X" c="#4cc9ff" /><Pad b="B" c="#ff4d4d" /></> },
-  { icon: <Camera />, keys: <Key>C</Key>, pad: <Pad b="⧉" /> },
-  { icon: <Rewind />, keys: <Key>R</Key>, pad: <Pad b="Y" c="#ffc53d" /> },
-  { icon: <Pause />, keys: <Key wide>Esc</Key>, pad: <Pad b="≡" /> },
-];
-
-function ControlsMap({ device, steer, onSteer }: { device: Device; steer: SteerMode; onSteer: (s: SteerMode) => void }) {
-  const [d, setD] = useState<Device>(device);
-  return (
-    <>
-      <Segmented
-        label="Device"
-        value={d}
-        onChange={setD}
-        options={[
-          { v: "keys", node: <Keyboard className="text-xl" />, title: "Keyboard" },
-          { v: "pad", node: <Gamepad className="text-xl" />, title: "Gamepad" },
-          { v: "touch", node: <Touch className="text-xl" />, title: "Touch" },
-        ]}
-      />
-      {d === "touch" ? (
-        <>
-          <TouchDiagram steer={steer} />
-          <Segmented
-            label="Steering"
-            value={steer}
-            onChange={onSteer}
-            options={[
-              { v: "slider", node: <Slider className="text-xl" />, title: "Slider" },
-              { v: "tilt", node: <Tilt className="text-xl" />, title: "Tilt" },
-            ]}
-          />
-        </>
-      ) : (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-          {BINDS.map((b, i) => (
-            <div key={i} className="flex h-10 items-center gap-3 border-b border-line">
-              <span className="w-6 text-xl text-mute">{b.icon}</span>
-              <span className="ml-auto flex gap-1.5">{d === "pad" ? b.pad : b.keys}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-export function TouchDiagram({ steer }: { steer: SteerMode }) {
-  return (
-    <div className="relative aspect-[2.2/1] w-full max-w-[30rem] self-center rounded-[10px] border-2 border-line-hi bg-black/30">
-      <div className="absolute left-[8%] top-[60%] flex w-[30%] items-center text-mute">
-        {steer === "slider" ? (
-          <>
-            <Back className="text-lg" />
-            <span className="h-2 flex-1 rounded-full bg-line-hi" />
-            <span className="skew -mx-[40%] h-6 w-4 rounded-[2px] bg-hot" />
-            <span className="h-2 flex-1 rounded-full bg-line-hi" />
-            <Fwd className="text-lg" />
-          </>
-        ) : (
-          <Tilt className="mx-auto text-4xl text-white" />
-        )}
-      </div>
-      <div className="absolute left-1/2 top-[8%] flex -translate-x-1/2 gap-1.5 text-sm text-mute">
-        <Camera />
-        <Rewind />
-        <Pause />
-      </div>
-      <div className="absolute bottom-[10%] right-[6%] flex items-end gap-2">
-        <div className="flex flex-col items-center gap-1.5">
-          <span className="grid h-8 w-8 place-items-center rounded-full border border-line-hi text-base">
-            <Handbrake />
-          </span>
-          <span className="grid h-11 w-12 place-items-center rounded-[4px] border border-line-hi text-xl">
-            <Brake />
-          </span>
-        </div>
-        <span className="grid h-24 w-12 place-items-center rounded-[4px] border border-hot/70 text-xl text-hot">
-          <Gas />
-        </span>
-      </div>
-    </div>
   );
 }

@@ -11,6 +11,8 @@ export type Style = {
   grille: GrilleKind;
   seat: number; // interior main color
   accent: number;
+  metal?: boolean; // metallic flake paint, else solid
+  dirt?: number; // starting dirt 0..1
 };
 
 export const STYLES: Record<CarId, Style> = {
@@ -37,8 +39,8 @@ export const STYLES: Record<CarId, Style> = {
         n: 2.6, fC: 0.6, fG: 0.76, aw: 0.04,
       },
     },
-    wheel: { rim: "y5", inch: 21, face: 0x2a2c30, lip: 0x6a6d72, caliper: 0xd8b02a, lock: true, tread: "street", dish: 0.05 },
-    rearWide: 1.22, carbon: true, grille: "honey", seat: 0x18181a, accent: 0xb3261e,
+    wheel: { rim: "y5", inch: 21, face: 0x2a2c30, lip: 0x6a6d72, caliper: 0xd8b02a, lock: true, tread: "street", dish: 0.05, camber: 0.02 },
+    rearWide: 1.22, carbon: true, grille: "honey", seat: 0x18181a, accent: 0xb3261e, metal: true,
   },
   gt3: {
     shape: {
@@ -50,6 +52,7 @@ export const STYLES: Record<CarId, Style> = {
       valley: [[0, 0.05], [0.06, 0.14], [0.16, 0.14], [0.27, 0.08], [0.35, 0.02], [0.4, 0], [0.7, 0], [0.82, 0.025], [0.93, 0.025], [1, 0.01]],
       vw: 0.46,
       n: 4, m: 3.6, tuck: [[0, 0.3], [0.1, 0.22], [0.2, 0.1], [0.3, 0.08], [0.85, 0.08], [1, 0.16]],
+      blade: { y: [[0.15, 0.6], [0.5, 0.66], [0.85, 0.72]], d: [[0.1, 0], [0.18, 0.012], [0.82, 0.014], [0.93, 0]], w: 0.11 },
       capF: [0.12, 2.6], capR: [0.09, 4],
       arch: 1.08,
       gh: {
@@ -60,7 +63,7 @@ export const STYLES: Record<CarId, Style> = {
         n: 3.4, fC: 0.74, fG: 0.85, aw: 0.035,
       },
     },
-    wheel: { rim: "ten", inch: 20, face: 0x2a2b2e, lip: 0x9a9da2, caliper: 0xd9201a, lock: true, tread: "slick", dish: 0.045 },
+    wheel: { rim: "ten", inch: 20, face: 0x484b50, lip: 0xb4b7bb, caliper: 0xd9201a, lock: true, tread: "slick", dish: 0.045, camber: 0.035 },
     rearWide: 1.15, carbon: true, grille: "mesh", seat: 0x111112, accent: 0xd9201a,
   },
   jdm: {
@@ -72,6 +75,7 @@ export const STYLES: Record<CarId, Style> = {
       yT: [[0, 0.44], [0.12, 0.58], [0.39, 0.65], [0.6, 0.66], [0.82, 0.72], [1, 0.7]],
       valley: [[0, 0], [0.15, 0.025], [0.3, 0.02], [0.4, 0], [1, 0]],
       n: 2.8, m: 2.3, tuck: 0.12,
+      blade: { y: [[0.1, 0.64], [0.9, 0.7]], d: [[0.06, 0], [0.14, 0.012], [0.88, 0.012], [0.96, 0]], w: 0.1 },
       capF: [0.14, 2.6], capR: [0.1, 3.5],
       arch: 1.1,
       gh: {
@@ -106,8 +110,8 @@ export const STYLES: Record<CarId, Style> = {
         n: 5, fC: 0.7, fG: 0.81,
       },
     },
-    wheel: { rim: "five", inch: 20, face: 0x1d1e20, lip: 0x55585c, caliper: 0xc81e1e, tread: "street", dish: 0.05 },
-    rearWide: 1.05, carbon: false, grille: "mesh", seat: 0x161617, accent: 0x5a2020,
+    wheel: { rim: "five", inch: 20, face: 0x2e3034, lip: 0xa8abaf, caliper: 0xc81e1e, tread: "street", dish: 0.05 },
+    rearWide: 1.05, carbon: false, grille: "mesh", seat: 0x161617, accent: 0x5a2020, metal: true,
   },
   rally: {
     shape: {
@@ -130,7 +134,7 @@ export const STYLES: Record<CarId, Style> = {
       },
     },
     wheel: { rim: "six", inch: 17, face: 0xe8e8e6, lip: 0xe8e8e6, caliper: 0x1b4fa8, tread: "rally", dish: 0.02 },
-    rearWide: 1, carbon: false, grille: "honey", seat: 0x18181a, accent: 0x1b4fa8,
+    rearWide: 1, carbon: false, grille: "honey", seat: 0x18181a, accent: 0x1b4fa8, dirt: 0.25,
   },
   v12: {
     shape: {
@@ -142,6 +146,7 @@ export const STYLES: Record<CarId, Style> = {
       valley: [[0, 0], [0.12, 0.04], [0.25, 0.045], [0.4, 0.015], [0.48, 0], [0.7, 0], [0.82, 0.03], [1, 0.02]],
       vw: 0.62,
       n: 3, m: 2.4, tuck: 0.12,
+      blade: { y: [[0.15, 0.3], [0.5, 0.26], [0.8, 0.34]], d: [[0.18, 0], [0.3, 0.012], [0.62, 0.012], [0.74, 0]], w: 0.12 },
       crease: [0.55, 0.014],
       capF: [0.12, 2.8], capR: [0.08, 5],
       arch: 1.1,
@@ -154,7 +159,7 @@ export const STYLES: Record<CarId, Style> = {
       },
     },
     wheel: { rim: "multi", inch: 20, face: 0xb8bbc0, lip: 0xd8dadd, caliper: 0xe0b020, tread: "street", dish: 0.035 },
-    rearWide: 1.12, carbon: false, grille: "mesh", seat: 0x3a1c14, accent: 0xb07a40,
+    rearWide: 1.12, carbon: false, grille: "mesh", seat: 0x3a1c14, accent: 0xb07a40, metal: true,
   },
   ev: {
     shape: {
@@ -165,6 +170,7 @@ export const STYLES: Record<CarId, Style> = {
       yT: [[0, 0.4], [0.08, 0.53], [0.3, 0.62], [0.6, 0.63], [0.88, 0.69], [1, 0.68]],
       valley: [[0, 0], [0.12, 0.02], [0.25, 0.015], [0.3, 0], [1, 0]],
       n: 4, m: 2.6, tuck: 0.1,
+      blade: { y: [[0.1, 0.72], [0.9, 0.76]], d: [[0.06, 0], [0.14, 0.01], [0.88, 0.01], [0.96, 0]], w: 0.09 },
       crease: [0.7, 0.008],
       capF: [0.2, 2.2], capR: [0.09, 4],
       arch: 1.08,
@@ -177,7 +183,7 @@ export const STYLES: Record<CarId, Style> = {
       },
     },
     wheel: { rim: "aero", inch: 21, face: 0x2b2d31, lip: 0x9fa3a8, caliper: 0x9aa0a8, tread: "street", dish: 0.015 },
-    rearWide: 1.08, carbon: false, grille: "bar", seat: 0xe6e1d8, accent: 0x6b6f75,
+    rearWide: 1.08, carbon: false, grille: "bar", seat: 0xe6e1d8, accent: 0x6b6f75, metal: true,
   },
   classic: {
     shape: {
@@ -194,6 +200,6 @@ export const STYLES: Record<CarId, Style> = {
       gh: null,
     },
     wheel: { rim: "wire", inch: 15, face: 0xd4d6d9, lip: 0xe6e8ea, caliper: 0x2a2b2e, tread: "classic", dish: 0 },
-    rearWide: 1, carbon: false, grille: "bar", seat: 0x6b2a1c, accent: 0x7a4a26,
+    rearWide: 1, carbon: false, grille: "bar", seat: 0x6b2a1c, accent: 0x7a4a26, metal: true,
   },
 };

@@ -2,6 +2,99 @@ import type { CarId, Sfx } from "./contracts";
 import { type C, type Rng, ahr, env, filter, gain, hit, hz, noise, osc, rng, shaper, slide } from "./audio-dsp";
 
 type Recipe = (c: C, o: AudioNode, r: Rng, k: number) => void;
+type Gen = (sr: number, r: Rng, k: number) => Float32Array;
+
+// Sample-domain helpers for the crash sounds: a two pole resonator per mode and a state variable band pass.
+function bp(sr: number, f: number, q: number) {
+  const g = Math.tan((Math.PI * Math.min(f, sr * 0.45)) / sr);
+  const k = 1 / q;
+  const a1 = 1 / (1 + g * (g + k));
+  const a2 = g * a1;
+  const a3 = g * a2;
+  let ic1 = 0;
+  let ic2 = 0;
+  return (x: number) => {
+    const v3 = x - ic2;
+    const v1 = a1 * ic1 + a2 * v3;
+    const v2 = ic2 + a2 * ic1 + a3 * v3;
+    ic1 = 2 * v1 - ic1;
+    ic2 = 2 * v2 - ic2;
+    return v1;
+  };
+}
+const lp1 = (sr: number, f: number) => {
+  const k = 1 - Math.exp((-2 * Math.PI * f) / sr);
+  let y = 0;
+  return (x: number) => (y += (x - y) * k);
+};
+
+// Heavy thud from the body, short panel modes, then a crunch of small cracks that thins out.
+const impactGen: Gen = (sr, r, k) => {
+  const heavy = k >= 2;
+  const n = Math.floor(sr * (heavy ? 1.2 : 0.6));
+  const out = new Float32Array(n);
+  const f0 = heavy ? 92 : 120;
+  const tau = heavy ? 0.09 : 0.05;
+  let ph = 0;
+  let ph2 = 0;
+  const modes = [170, 265, 410, 590, 830, 1180].map((f) => ({ f: f * (0.9 + r() * 0.2) * (heavy ? 0.85 : 1), tau: (0.025 + r() * 0.045) * (heavy ? 1.4 : 1), a: 0.5 + r() * 0.5, ph: r() * 6.28 }));
+  const crack = bp(sr, heavy ? 1300 : 1700, 0.9);
+  const crackLp = lp1(sr, 3800);
+  const hitLp = lp1(sr, 900);
+  const crunchDur = heavy ? 0.32 : 0.14;
+  let crackEnv = 0;
+  let next = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const f = f0 * (0.65 + 0.35 * Math.exp(-t / 0.05));
+    ph += f / sr;
+    ph2 += (f * 1.52) / sr;
+    let y = Math.exp(-t / tau) * (Math.sin(2 * Math.PI * ph) + 0.35 * Math.sin(2 * Math.PI * ph2)) * Math.min(1, t / 0.002);
+    y = Math.tanh(1.6 * y);
+    for (const m of modes) y += 0.18 * m.a * Math.exp(-t / m.tau) * Math.sin(2 * Math.PI * m.f * t + m.ph) * Math.min(1, t / 0.001);
+    const nz = r() * 2 - 1;
+    y += hitLp(nz) * 2.2 * Math.exp(-t / 0.012);
+    if (t < crunchDur && t >= next) {
+      crackEnv = (0.4 + r() * 0.6) * (1 - t / crunchDur);
+      next = t + 0.003 + r() * 0.018 * (1 + (2 * t) / crunchDur);
+    }
+    crackEnv *= Math.exp(-1 / (sr * 0.004));
+    y += crackLp(crack(nz) * crackEnv) * (heavy ? 3.2 : 2.2);
+    out[i] = y;
+  }
+  return out;
+};
+
+// Metal grind: noise through low panel modes, chopped by irregular stick-slip, over a low rumble. Loops cleanly.
+const scrapeGen: Gen = (sr, r) => {
+  const n = Math.floor(sr * 2);
+  const out = new Float32Array(n);
+  const modes = [240, 410, 640, 980, 1450, 2150].map((f, i) => ({ fn: bp(sr, f * (0.95 + r() * 0.1), 12 + 2 * i), a: 3 / (1 + i * 0.8) }));
+  const low = lp1(sr, 160);
+  const top = lp1(sr, 2600);
+  let slip = 0;
+  let slipT = 0;
+  let next = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    if (t >= next) {
+      slipT = 0.35 + r() * 0.65;
+      next = t + 0.012 + r() * 0.03;
+    }
+    slip += (slipT - slip) * 0.004;
+    slipT *= 0.9997;
+    const nz = r() * 2 - 1;
+    let y = 0;
+    for (const m of modes) y += m.fn(nz) * m.a;
+    out[i] = top(y * slip * 0.8 + low(nz) * 3.5 * (0.6 + 0.4 * slip));
+  }
+  const fade = Math.floor(sr * 0.08);
+  for (let i = 0; i < fade; i++) {
+    const w = i / fade;
+    out[i] = out[i] * w + out[n - fade + i] * (1 - w);
+  }
+  return out.subarray(0, n - fade);
+};
 
 const bell = (c: C, o: AudioNode, t: number, m: number, v: number, dur = 0.9) => {
   const f = hz(m);
@@ -42,7 +135,7 @@ const chime = (notes: number[], gap: number, v: number, dur: number, shimmer = 0
 const HORNS: Partial<Record<CarId, [number, number, number]>> = { classic: [310, 390, 0.8], muscle: [330, 415, 0.5], hyper: [440, 554, 0.3], v12: [392, 494, 0.35], gt3: [415, 523, 0.25], rally: [415, 523, 0.3], jdm: [466, 587, 0.35], ev: [523, 659, 0.15] };
 export const HORN_CARS = Object.keys(HORNS) as CarId[];
 
-export const SFX: Record<Sfx, { n: number; dur: number; g: number; fn: Recipe }> = {
+export const SFX: Record<Sfx, { n: number; dur: number; g: number; fn: Recipe; gen?: Gen }> = {
   shift: {
     n: 3, dur: 0.25, g: 0.5,
     fn: (c, o, r) => {
@@ -51,29 +144,8 @@ export const SFX: Record<Sfx, { n: number; dur: number; g: number; fn: Recipe }>
       thud(c, o, 0.006, 140, 70, 0.6, 0.03);
     },
   },
-  impact: {
-    n: 4, dur: 1.4, g: 0.9,
-    fn: (c, o, r, k) => {
-      const heavy = k >= 2;
-      thud(c, o, 0, heavy ? 95 : 120, heavy ? 38 : 55, 1, heavy ? 0.16 : 0.08);
-      noise(c, filter(c, env(c, o, (p) => hit(p, 0, heavy ? 0.9 : 0.6, 0.001, heavy ? 0.06 : 0.03)), "lowpass", 1400), 0, 0.4);
-      crunch(c, o, 0.005, r, heavy ? 0.6 : 0.35, heavy ? 0.35 : 0.15);
-      metal(c, gain(c, o, heavy ? 0.6 : 0.3), 0.003, r, 0.5, heavy ? 0.35 : 0.12, 250 + r() * 150);
-      if (heavy) for (let i = 0; i < 9; i++) osc(c, env(c, o, (p) => hit(p, 0.06 + r() * 0.5, 0.06, 0.001, 0.05)), "sine", 3000 + r() * 5000, 0, 1.4);
-    },
-  },
-  scrape: {
-    n: 1, dur: 2, g: 0.45,
-    fn: (c, o, r) => {
-      const g = gain(c, o, 0.5);
-      for (const [f, q] of [[1150, 14], [2630, 18], [4100, 12], [6300, 8]]) noise(c, filter(c, gain(c, g, 0.9), "bandpass", f * (0.95 + r() * 0.1), q), 0, 2);
-      noise(c, filter(c, gain(c, g, 0.3), "highpass", 3000), 0, 2);
-      const sq = osc(c, filter(c, gain(c, g, 0.08), "bandpass", 1800, 3), "sawtooth", 880, 0, 2);
-      osc(c, env(c, sq.frequency, (p) => p.setValueAtTime(60, 0)), "sine", 13, 0, 2);
-      const am = gain(c, g.gain, 0.4);
-      osc(c, am, "square", 23, 0, 2);
-    },
-  },
+  impact: { n: 4, dur: 1.2, g: 0.9, fn: () => {}, gen: impactGen },
+  scrape: { n: 1, dur: 1.92, g: 0.4, fn: () => {}, gen: scrapeGen },
   curb: {
     n: 2, dur: 0.35, g: 0.6,
     fn: (c, o, r) => {
@@ -184,16 +256,24 @@ export const SFX: Record<Sfx, { n: number; dur: number; g: number; fn: Recipe }>
 
 export async function bakeSfx(sr: number, name: Sfx, k: number) {
   const d = SFX[name];
-  const c = new OfflineAudioContext(1, Math.ceil(d.dur * sr), sr);
-  const out = c.createGain();
-  out.connect(c.destination);
-  d.fn(c, out, rng(k * 7919 + name.length * 31 + 1), k);
-  const b = await c.startRendering();
+  const r = rng(k * 7919 + name.length * 31 + 1);
+  let b: AudioBuffer;
+  if (d.gen) {
+    const y = d.gen(sr, r, k);
+    b = new AudioBuffer({ length: y.length, numberOfChannels: 1, sampleRate: sr });
+    b.copyToChannel(y as Float32Array<ArrayBuffer>, 0);
+  } else {
+    const c = new OfflineAudioContext(1, Math.ceil(d.dur * sr), sr);
+    const out = c.createGain();
+    out.connect(c.destination);
+    d.fn(c, out, r, k);
+    b = await c.startRendering();
+  }
   const x = b.getChannelData(0);
   let peak = 0;
   for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
   const g = peak > 1e-6 ? 0.9 / peak : 0;
-  const fade = Math.min(x.length, Math.floor(sr * 0.01));
+  const fade = name === "scrape" ? 0 : Math.min(x.length, Math.floor(sr * 0.01));
   for (let i = 0; i < x.length; i++) x[i] *= x.length - i < fade ? (g * (x.length - i)) / fade : g;
   return b;
 }

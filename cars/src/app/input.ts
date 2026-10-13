@@ -13,19 +13,28 @@ const PRESSES: Press[] = ["camera", "rewind", "reset", "pause", "horn", "lookBac
 const DZ = 0.1;
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+// Stick curve with an inner and an outer deadzone: worn sticks rest off center and rarely reach the rim.
 function stick(v: number, dz: number) {
   const a = Math.abs(v);
   if (a < dz) return 0;
-  const t = (a - dz) / (1 - dz);
+  const t = Math.min(1, (a - dz) / (1 - dz - 0.05));
   return Math.sign(v) * (0.45 * t + 0.55 * t * t);
 }
 
-// Key steering ramp: slower and shorter at speed, quick return to center.
+// Key steering ramp, progressive like a racing game on keys: a tap gives a small correction, a hold reaches full lock
+// in about 0.25 s at a crawl and 0.45 s at top speed, where the lock is also lower. Release snaps back to center.
 export function keySteerStep(cur: number, want: number, dt: number, v: number): number {
   const goal = want * (1 - 0.3 * clamp(v / 70, 0, 1));
-  const back = goal === 0 || Math.sign(goal) !== Math.sign(cur);
-  const rate = back ? 7 : 4.2 - 2.6 * clamp(v / 60, 0, 1);
-  return cur + clamp(goal - cur, -rate * dt, rate * dt);
+  if (cur !== 0 && Math.sign(goal) !== Math.sign(cur)) {
+    // Back to center first, then the progressive ramp to the other side starts from zero.
+    const next = cur - Math.sign(cur) * 7 * dt;
+    return Math.sign(next) !== Math.sign(cur) ? 0 : next;
+  }
+  const g = Math.abs(goal);
+  const c = Math.abs(cur);
+  if (c > g) return Math.sign(cur) * Math.max(g, c - 7 * dt);
+  const k = 4.4 - 2 * clamp(v / 55, 0, 1);
+  return Math.sign(goal) * Math.min(g, c + k * (0.5 * g + c) * dt);
 }
 
 export function createInput(canvas: HTMLCanvasElement): Input {

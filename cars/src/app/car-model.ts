@@ -23,7 +23,7 @@ type Kit = {
 const TIER: Record<Quality, number> = { low: 0, medium: 1, high: 1, ultra: 2 };
 const RES = [
   { na: 56, nv: 14, ng: 18 },
-  { na: 130, nv: 40, ng: 34 },
+  { na: 150, nv: 52, ng: 38 },
   { na: 240, nv: 64, ng: 56 },
 ];
 const kits = new Map<string, Kit>();
@@ -40,7 +40,7 @@ function kitFor(spec: CarSpec, tier: number): Kit {
   const parts = buildParts(spec.id, S, P, st, tier, body.proxy);
   const all = (gs: THREE.BufferGeometry[], hex: number, r: number, m: number, cc: number, kind: number) => gs.map((g) => finish(prep(g), hex, r, m, cc, kind));
   const glass = [...(body.glass ? [body.glass] : []), ...parts.glass];
-  const clear = tier === 2;
+  const clear = tier > 0;
   k = {
     d,
     body: mergeAll([
@@ -51,7 +51,7 @@ function kitFor(spec: CarSpec, tier: number): Kit {
       ...all(parts.lamp, 0xffffff, 0.06, 0.3, 1, KIND.plain),
       ...(clear ? [] : all(glass, 0x020304, 0.02, 0.1, 1, KIND.plain)),
     ]),
-    glass: clear && glass.length ? mergeAll(glass.map((g) => prep(g))) : null,
+    glass: clear ? mergeAll([...glass.map((g) => prep(g)), blob(d)]) : null,
     flare: tier > 0 && parts.heads.length ? flares(parts.heads, d) : null,
     wheel: buildWheel(d.R, d.tireF, st.wheel, tier),
     panel: panelTex(parts.panel, S.aOf),
@@ -62,28 +62,31 @@ function kitFor(spec: CarSpec, tier: number): Kit {
   return k;
 }
 
-// One glint quad per headlight plus one road pool quad, see flareMat.
+// Soft contact shadow under the body, drawn by the glass material (uv1.x = 1).
+function blob(d: Dims) {
+  const x = d.W / 2 + 0.12, z0 = d.zR - 0.22, z1 = d.zF + 0.22, y = 0.035;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute([-x, y, z0, x, y, z0, x, y, z1, -x, y, z1], 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute([-1, -1, 1, -1, 1, 1, -1, 1], 2));
+  g.setAttribute("uv1", new THREE.Float32BufferAttribute([1, 0, 1, 0, 1, 0, 1, 0], 2));
+  g.setIndex([0, 2, 1, 0, 3, 2]);
+  return g;
+}
+
+// One glint quad per headlight, see flareMat.
 function flares(heads: THREE.Vector3[], d: Dims) {
-  const pos: number[] = [], uv: number[] = [], kind: number[] = [], idx: number[] = [];
-  const quad = (k: number) => {
-    const b = pos.length / 3 - 4;
-    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
-    kind.push(k, k, k, k);
-  };
+  const pos: number[] = [], uv: number[] = [], idx: number[] = [];
   for (const h of heads) {
+    const b = pos.length / 3;
     for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) pos.push(h.x, h.y, h.z), uv.push(u, v);
-    quad(0);
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
   }
-  const z0 = d.zF + 0.3, z1 = d.zF + 16, w0 = d.W * 0.55, w1 = d.W * 1.6;
-  pos.push(-w0, 0.03, z0, w0, 0.03, z0, w1, 0.03, z1, -w1, 0.03, z1);
-  uv.push(-1, 0, 1, 0, 1, 1, -1, 1);
-  quad(1);
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-  g.setAttribute("kind", new THREE.Float32BufferAttribute(kind, 1));
   g.setIndex(idx);
-  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, d.zF + 8), 12);
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.6, d.zF), d.W);
   return g;
 }
 
@@ -118,15 +121,21 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
   const wpos = [0, 1, 2, 3].map((i) => new THREE.Vector3(((i % 2 ? -1 : 1) * (i < 2 ? d.tf : d.tr)) / 2, d.R, i < 2 ? d.axF : d.axR));
   const sx = d.tireR / d.tireF;
   let heat = 0;
+  let dirt = st.dirt ?? 0;
+  const camber = st.wheel.camber ?? 0;
+  const cq = [0, 1, 2, 3].map((i) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), i % 2 ? -camber : camber));
 
   const build = () => {
     for (const c of [...shell.children, ...group.children]) if (c !== pivot) c.removeFromParent();
     bodyM?.dispose();
     wheelM?.dispose();
+    wheel?.geometry.dispose();
     const old = bodyM?.lamp;
-    bodyM = bodyMat(hex, kit.panel, st.grille, q);
+    bodyM = bodyMat(hex, kit.panel, st.grille, q, st.metal ? 1 : 0);
+    bodyM.dirt.value = dirt;
     if (old) bodyM.lamp.set(old);
     wheelM = wheelMat(st.wheel.tread);
+    wheelM.dirt.value = dirt;
     mats.length = 0;
     const add = (geo: THREE.BufferGeometry, m: THREE.Material, shadow: boolean) => {
       const mesh = new THREE.Mesh(geo, m);
@@ -163,7 +172,7 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
       const right = i % 2 === 1;
       v0.copy(wpos[i]);
       v0.y += dy;
-      q0.setFromAxisAngle(UP, w ? w.steer : 0);
+      q0.setFromAxisAngle(UP, w ? w.steer : 0).multiply(cq[i]);
       if (right) q0.multiply(RIGHT);
       s0.set(i < 2 ? 1 : sx, 1, 1);
       m0.compose(v0, q0, s0);
@@ -194,7 +203,6 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
         spots.push(sp);
       }
     if (flare) flare.visible = lights;
-    flareM.uniforms.uPool.value = real ? 0 : 1;
   };
 
   let braking = false, reversing = false;
@@ -204,9 +212,9 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
     const L = bodyM.lamp;
     L[LAMP.head] = lights ? 4 : 0;
     L[LAMP.drl] = lights ? 4 : 2.5;
-    L[LAMP.tail] = lights ? 0.22 : 0;
-    L[LAMP.brake] = brakeOn ? (lights ? 0.55 : 1.6) : lights ? 0.22 : 0;
-    L[LAMP.core] = brakeOn ? (lights ? 1.6 : 4) : lights ? 0.7 : 0;
+    L[LAMP.tail] = lights ? 0.8 : 0;
+    L[LAMP.brake] = brakeOn ? (lights ? 1.4 : 1.6) : lights ? 0.8 : 0;
+    L[LAMP.core] = brakeOn ? (lights ? 2.4 : 4) : lights ? 1.1 : 0;
     L[LAMP.reverse] = rev ? 4 : 0;
     L[LAMP.amber] = 0;
     L[LAMP.aux] = lights ? 6 : 0;
@@ -231,6 +239,13 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
       const sp = Math.abs(s.speed);
       heat = Math.max(0, Math.min(1.5, heat + (s.brake * sp * 0.012 - 0.12 - heat * 0.1) * dt));
       wheelM.emissiveIntensity = Math.max(0, heat - 0.25) * 3;
+      // Driving on loose ground slowly dirties the lower body.
+      let loose = 0;
+      for (const w of s.wheels) if (w.contact && (w.surface === "dirt" || w.surface === "gravel" || w.surface === "grass")) loose++;
+      if (loose) {
+        dirt = Math.min(1, dirt + loose * sp * dt * 0.0004);
+        bodyM.dirt.value = wheelM.dirt.value = dirt;
+      }
     },
     setLights(on) {
       if (on === lights) return;
@@ -252,6 +267,7 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
       bodyM.dispose();
       wheelM.dispose();
       flareM.dispose();
+      wheel.geometry.dispose();
       wheel.dispose();
       group.removeFromParent();
     },

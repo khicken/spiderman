@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Controls, Driver, Track, TrackFrame, Vehicle, VehicleState } from "./contracts";
+import { trackTables } from "./track";
 
 const G = 9.81;
 const GAP = 1.2; // m of air beside another car
@@ -54,7 +55,7 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
   let lastSteer = 0;
   let lastTryS = -1e9;
   const out: Controls = { throttle: 0, brake: 0, steer: 0, handbrake: 0, shiftUp: false, shiftDown: false };
-  car.assists = { abs: true, tcs: true, stability: true, autoGear: true, steer: false };
+  car.assists = { abs: true, tcs: true, stability: true, autoGear: true, steer: false, drift: false };
 
   // per 20 m: speed scale learned from running wide or sliding, so each car finds its own limit
   const nb = Math.ceil(L / 20);
@@ -63,7 +64,9 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
   function learnFrom(dt: number, v: number, lineLat: number) {
     if (v < 12) return;
     const slip = Math.abs(Math.atan2(st.vel.dot(_left), Math.max(1, v)));
-    const wide = Math.abs(st.lateral - lineLat) > 2.2 || !st.onRoad;
+    // Touching the wall counts as running wide, so the car brakes earlier there next lap.
+    const wall = Math.abs(st.lateral) > _f.width / 2 + _f.runoff - halfW - 0.25;
+    const wide = Math.abs(st.lateral - lineLat) > 2.2 || !st.onRoad || wall;
     const b = bucket(st.s);
     if (!wide && slip < 0.12) {
       if (Math.abs(st.lateral - lineLat) < 1) learn[b] = Math.min(TUNE.CEIL * (0.86 + 0.14 * sk), learn[b] + dt * 0.01);
@@ -85,10 +88,14 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
   };
 
   const height = heights(track);
+  const { curv, h: tbH } = trackTables(track);
   function targetSpeed(v: number) {
     const u = use();
     const gripK = Math.sqrt((Math.min(1.6, muLat) / 1.2) * u * TUNE.GRIP);
-    const decel = G * spec.tire.mu * (0.55 + 0.4 * u) * TUNE.DECEL;
+    // Braking in a bend shares the tires with cornering, so a car already turning hard has less left to slow down.
+    const k = Math.abs(curv[Math.min(curv.length - 1, Math.round(track.wrap(st.s) / tbH))]);
+    const turn = Math.min(0.9, (v * v * k) / (G * Math.min(1.6, muLat)));
+    const decel = G * spec.tire.mu * (0.55 + 0.4 * u) * TUNE.DECEL * Math.sqrt(1 - turn * turn);
     const horizon = Math.min(400, (v * v) / (2 * decel) + 25);
     const h0 = height[idx(st.s)];
     let vt = Infinity;
@@ -174,13 +181,14 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
       out.throttle = 0;
       out.brake = v > -4 ? 0.7 : 0;
       out.steer = Math.sign(toward) || 1;
-      if ((revT > 1.0 && heading > 0.6) || revT > 2.5) mode = "race";
-      // Still pointing the wrong way, or the third try in a row: put the car back on the road.
-      if (revT > 2.5 && (heading < 0.3 || tries >= 3)) {
+      // Still pointing the wrong way, or the third try in a row at one spot: put the car back on the road.
+      if ((revT > 2.5 && heading < 0.3) || (tries >= 3 && revT > 0.5)) {
         car.resetToTrack();
         mode = "race";
         tries = 0;
+        return out;
       }
+      if ((revT > 1.0 && heading > 0.6) || revT > 2.5) mode = "race";
       return out;
     }
     if (Math.abs(st.lateral) > edge + _f.runoff + 12) {

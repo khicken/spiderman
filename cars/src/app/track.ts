@@ -125,7 +125,13 @@ function unfold(kx: Float64Array, kz: Float64Array, kw: Float64Array, closed: bo
   }
 }
 
-export function createTrack(map: MapData): Track {
+// Real roads are tight for racing, so each map is widened about the centerline. Narrow roads get more, so 2 to 3 cars fit side by side.
+// Barriers keep their runoff from the new edge. track.map carries the widened widths, so scenery follows.
+export const WIDEN: Record<MapData["id"], number> = { monaco: 1.5, nordschleife: 1.4, tokyo: 1.6, sanfrancisco: 1.4, stelvio: 1.6, spa: 1.3 };
+
+export function createTrack(raw: MapData): Track {
+  const k = WIDEN[raw.id] ?? 1;
+  const map: MapData = { ...raw, width: raw.width.map((w) => w * k) };
   const closed = map.closed;
   const style = trackStyle(map);
   const K = map.center.length / 3;
@@ -148,7 +154,8 @@ export function createTrack(map: MapData): Track {
   mark(map.elevated, F_ELEV);
   smoothArr(ky, 2, closed, 2);
   smoothArr(kw, 3, closed);
-  unfold(kx, kz, kw, closed);
+  // Unfold with the real widths, so widening never moves the centerline.
+  unfold(kx, kz, kw.map((w) => w / k), closed);
   for (let i = 0; i < K; i++) if (kf[i] & (F_TUNNEL | F_ELEV)) kr[i] = 0;
   smoothArr(kr, 4, closed);
 
@@ -276,6 +283,16 @@ export function createTrack(map: MapData): Track {
       bank[i] = t - Math.max(-0.03, Math.min(0.03, curv[i] * 6));
     }
   smoothArr(bank, 12, closed, 2);
+  // Climbing through a tight bend, the inside edge covers less ground for the same rise, so it is far steeper than the centerline.
+  // Warp the cross slope: the inside starts a little high and ends a little low, which takes up part of that extra grade.
+  {
+    const G = new Float64Array(M);
+    for (let i = 1; i < M; i++) G[i] = G[i - 1] + ((py[idx(i + 1)] - py[idx(i - 1)]) / (2 * h)) * curv[i] * h;
+    if (closed) for (let i = 0; i < M; i++) G[i] -= (G[M - 1] * i) / (M - 1);
+    const avg = Float64Array.from(G);
+    smoothArr(avg, 40, closed);
+    for (let i = 0; i < M; i++) if (!(flag[i] & F_TUNNEL)) bank[i] += Math.atan(Math.max(-0.18, Math.min(0.18, -1.0 * (G[i] - avg[i]))));
+  }
   for (let i = 0; i < M; i++) {
     const cb = Math.cos(bank[i]), sb = Math.sin(bank[i]);
     const l0x = lx[i], l0z = lz[i];
@@ -418,7 +435,7 @@ export function createTrack(map: MapData): Track {
     const n = pcN;
     for (let k = 0; k < n; k++) {
       const j = pcI[k];
-      if (Math.sqrt(pcD[k]) - hw[j] > VERGE + Math.max(dL[j], dR[j]) + 3) continue;
+      if (Math.sqrt(pcD[k]) - hw[j] > Math.max(VERGE, run[j]) + Math.max(dL[j], dR[j]) + 3) continue;
       project(j * h, x, z);
       const d = Math.abs(pl) - qhw;
       const i = qi;
@@ -426,15 +443,19 @@ export function createTrack(map: MapData): Track {
         if (d < 8) cap = Math.min(cap, qpy + pl * qly - 3 + Math.max(0, d));
         continue;
       }
+      const tun = (flag[i] & F_TUNNEL) !== 0;
+      // The runoff up to the barrier stays drivable: at most a 4% grade from the edge, then the blend to the terrain.
+      const F = tun ? VERGE : Math.max(VERGE, run[i]);
       const D = pl > 0 ? dL[i] : dR[i];
-      if (d > VERGE + D) continue;
-      const a = d <= VERGE ? 1 + (VERGE - d) : 1 - smooth01((d - VERGE) / D);
+      if (d > F + D) continue;
+      const a = d <= VERGE ? 1 + (VERGE - d) : d <= F ? 1 : 1 - smooth01((d - F) / D);
       if (a <= best) continue;
       best = a;
-      const tun = (flag[i] & F_TUNNEL) !== 0;
       const edge = tun ? qpy + TUNNEL_COVER : qpy + Math.sign(pl) * Math.min(Math.abs(pl), qhw) * qly;
-      y = d <= VERGE ? edge : edge + (raw - edge) * smooth01((d - VERGE) / D);
-      if (sink && !tun) y -= SINK * (1 - smooth01((d - VERGE - D * 0.5) / (D * 0.5)));
+      const lim = 0.04 * Math.max(0, Math.min(d, F) - VERGE);
+      const base = edge + Math.max(-lim, Math.min(lim, raw - edge));
+      y = d <= F ? base : base + (raw - base) * smooth01((d - F) / D);
+      if (sink && !tun) y -= SINK * (1 - smooth01((d - F - D * 0.5) / (D * 0.5)));
     }
     if (best <= 1 && inWater(x, z)) y = Math.min(y, waterY - 1.5);
     return Math.min(y, cap);

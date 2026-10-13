@@ -201,5 +201,19 @@ diffuseColor.rgb *= mix(1.0, 0.7, uWet * (1.0 - snowW));`,
 export function gravelMaterial(q: Quality) {
   const t = gravelTex(TEX[q].ground, TEX[q].aniso);
   t.repeat.set(1 / 2.5, 1 / 2.5);
-  return { mat: new THREE.MeshStandardMaterial({ map: t, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), tex: t };
+  // Vertex color red is the position across the trap, 0 at the road side, so the edges break up into the grass.
+  const m = new THREE.MeshStandardMaterial({ map: t, vertexColors: true, alphaTest: 0.5, alphaToCoverage: q === "high" || q === "ultra", roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  m.customProgramCacheKey = () => "tk-gravel";
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec2 vGW;").replace("#include <uv_vertex>", "#include <uv_vertex>\nvGW = uv;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", `#include <common>\nvarying vec2 vGW;\n${NOISE}`)
+      .replace(
+        "#include <color_fragment>",
+        `float ge = min(vColor.r, 1.0 - vColor.r) * 4.0 + (tkFbm(mod(vGW, 2048.0) * 0.45) - 0.5) * 1.6;
+diffuseColor.a = smoothstep(0.15, 0.6, ge);
+diffuseColor.rgb *= mix(0.82, 1.0, smoothstep(0.3, 1.2, ge));`,
+      );
+  };
+  return { mat: m, tex: t };
 }
