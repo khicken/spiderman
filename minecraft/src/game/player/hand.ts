@@ -3,8 +3,11 @@ import type { ItemStack } from "../contracts";
 import { itemKey, type ItemMeshes, type ItemKind } from "./item-mesh";
 import type { PlayerModel } from "./model";
 import type { UseState } from "./state";
+import { mapTexture } from "../systems/features/map-render";
 
 const D = Math.PI / 180;
+const MAP_SIZE = (0.38 * 142) / 128;
+const look = new THREE.Vector3();
 const m = new THREE.Matrix4();
 const t = new THREE.Matrix4();
 const e = new THREE.Euler();
@@ -139,6 +142,13 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       armTransform(equip, i);
       T(i * -0.32, 0.3, 0.05);
       RY(i * -8);
+    } else if (u && u.kind === "brush") {
+      armTransform(equip, i);
+      const h = 1 - ((f.useTicks % 10) + 1) / 10;
+      T(i * -0.25, 0.22, 0.35);
+      RX(-80);
+      RY(i * 90);
+      RX(-15 + 75 * Math.cos(h * Math.PI * 2));
     } else if (u && u.kind === "spyglass") {
       armTransform(equip, i);
       T(i * -0.3, 0.2, 0.3);
@@ -175,6 +185,52 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     }
   };
 
+  const mapGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE);
+  const mapMesh = (): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> => {
+    const mesh = new THREE.Mesh(mapGeo, new THREE.MeshBasicMaterial({ fog: false }));
+    mesh.matrixAutoUpdate = false;
+    mesh.visible = false;
+    root.add(mesh);
+    return mesh;
+  };
+  const mapMain = mapMesh(), mapOff = mapMesh();
+
+  // Vanilla ItemInHandRenderer.calculateMapTilt: looking down raises the map flat in both hands.
+  function twoHandedMap(f: HandFrame) {
+    f.camera.getWorldDirection(look);
+    const pitch = (-Math.asin(Math.max(-1, Math.min(1, look.y))) * 180) / Math.PI;
+    const tilt = -Math.cos(Math.max(0, Math.min(1, 1 - pitch / 45 + 0.1)) * Math.PI) * 0.5 + 0.5;
+    const g = Math.sqrt(f.swing);
+    m.copy(f.bob);
+    T(0, (0.2 * Math.sin(f.swing * Math.PI)) / 2, -0.4 * Math.sin(g * Math.PI));
+    T(0, 0.04 - f.equip * 1.2 - tilt * 0.5, -0.72);
+    RX(tilt * -85);
+    RX(Math.sin(g * Math.PI) * 20);
+    S(2, 2, 2);
+    mapMain.matrix.copy(m);
+  }
+
+  function oneHandedMap(f: HandFrame, i: number, swing: number, equip: number, mesh: THREE.Object3D) {
+    const g = Math.sqrt(swing), h = Math.sin(g * Math.PI);
+    m.copy(f.bob);
+    T(i * 0.125, -0.125, 0);
+    T(i * 0.51, -0.08 - equip * 1.2, -0.75);
+    T(i * -0.5 * h, 0.4 * Math.sin(g * Math.PI * 2) - 0.3 * h, -0.3 * Math.sin(swing * Math.PI));
+    RX(h * -45);
+    RY(i * h * -30);
+    mesh.matrix.copy(m);
+  }
+
+  function showMap(mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>, tex: THREE.Texture | null, light: number) {
+    mesh.visible = !!tex;
+    if (!tex) return;
+    if (mesh.material.map !== tex) {
+      mesh.material.map = tex;
+      mesh.material.needsUpdate = true;
+    }
+    mesh.material.color.setScalar(Math.max(0.25, Math.min(1, light)));
+  }
+
   return {
     root,
     update(f) {
@@ -182,9 +238,12 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       root.matrix.copy(f.camera.matrixWorld);
       root.matrixWorldNeedsUpdate = true;
       if (!f.visible) {
-        armHolder.visible = itemHolder.visible = offHolder.visible = false;
+        armHolder.visible = itemHolder.visible = offHolder.visible = mapMain.visible = mapOff.visible = false;
         return;
       }
+      const mainTex = mapTexture(f.stack), offTex = mapTexture(f.off);
+      showMap(mapMain, mainTex, f.light);
+      showMap(mapOff, offTex, f.light);
       model.setLight(f.light, false);
       items.setLight(f.light);
       setItem(itemKey(f.stack));
@@ -192,11 +251,16 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       armHolder.visible = empty;
       itemHolder.visible = !empty;
       const mainUse = f.use && f.use.hand === "main" ? f.use : null;
-      if (empty) armMatrix(f);
+      if (mainTex) {
+        armHolder.visible = itemHolder.visible = false;
+        if (f.off) oneHandedMap(f, 1, f.swing, f.equip, mapMain);
+        else twoHandedMap(f);
+      } else if (empty) armMatrix(f);
       else itemMatrix(f, 1, mainUse, mainUse ? 0 : f.swing, f.equip, shownKind, itemHolder);
       setOff(itemKey(f.off ?? null));
-      offHolder.visible = !!offShown;
-      if (offShown) itemMatrix(f, -1, f.use && f.use.hand === "off" ? f.use : null, 0, 0, offKind, offHolder);
+      offHolder.visible = !!offShown && !offTex && !(mainTex && !f.off);
+      if (offTex) oneHandedMap(f, -1, 0, 0, mapOff);
+      else if (offHolder.visible) itemMatrix(f, -1, f.use && f.use.hand === "off" ? f.use : null, 0, 0, offKind, offHolder);
     },
     setThirdPerson(arm, stack) {
       const name = itemKey(stack);
@@ -220,6 +284,9 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       }
     },
     dispose() {
+      mapGeo.dispose();
+      mapMain.material.dispose();
+      mapOff.material.dispose();
       root.clear();
       tpHolder.removeFromParent();
     },

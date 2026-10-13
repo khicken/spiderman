@@ -3,7 +3,10 @@ import { hasItem, itemDef, ITEMS } from "../items/registry";
 import { BLOCKS, blockByName } from "../blocks/registry";
 import { SET_NOTIFY, stateOf } from "../contracts";
 import { findNear, STRUCTS } from "../worldgen/structure-grid";
+import { biomeAtXZ } from "../worldgen";
+import { BIOMES } from "../worldgen/biomes";
 import { EFFECTS, ENCHANTS, enchantName, enchantsConflict, titleCase, type EnchantTarget } from "./data";
+import { advancementCommand, advancementComplete } from "../systems/advancements/command";
 
 let playerName = "Player";
 export const setPlayerName = (n: string) => {
@@ -522,10 +525,18 @@ const COMMANDS: Cmd[] = [
     complete: (_c, a) => (a.length <= 1 ? ["@s"] : ITEMS.map((i) => i.name)),
   },
   {
+    name: "advancement",
+    cheat: true,
+    usage: ["/advancement (grant|revoke) <targets> (everything|only|from|through|until) <advancement>"],
+    run: (ctx, a) => advancementCommand(ctx, a),
+    complete: (_c, a) => advancementComplete(a),
+  },
+  {
     name: "locate",
     cheat: true,
-    usage: ["/locate structure <structure>"],
+    usage: ["/locate structure <structure>", "/locate biome <biome>"],
     run: (ctx, a) => {
+      if (a[0] === "biome") return locateBiome(ctx, id(a[1] ?? ""));
       if (a[0] !== "structure") return fail("Unknown or incomplete command, see below for error");
       const name = id(a[1] ?? "");
       const def = STRUCTS.find((d) => d.name === name);
@@ -537,9 +548,30 @@ const COMMANDS: Cmd[] = [
       const dist = Math.floor(Math.hypot(s.x - p.x, s.z - p.z));
       return [`The nearest minecraft:${name} is at [${s.x}, ${def.dim === "overworld" && s.y >= 50 ? "~" : s.y}, ${s.z}] (${dist} blocks away)`];
     },
-    complete: (_c, a) => (a.length <= 1 ? ["structure"] : STRUCTS.map((d) => d.name)),
+    complete: (_c, a) => (a.length <= 1 ? ["biome", "structure"] : a[0] === "biome" ? BIOMES.map((b) => b.name) : STRUCTS.map((d) => d.name)),
   },
 ];
+
+// Vanilla /locate biome: spiral out to 6400 blocks in 32-block steps.
+function locateBiome(ctx: GameCtx, name: string): Out {
+  const b = BIOMES.find((d) => d.name === name);
+  if (!b) return fail(`There is no biome with type "${name}"`);
+  const p = ctx.player.body.pos;
+  const ox = Math.floor(p.x), oz = Math.floor(p.z);
+  const at = (x: number, z: number) => biomeAtXZ(ctx.world.seed, ctx.world.dim, x, z) === b.id;
+  for (let r = 0; r <= 200; r++) {
+    for (let i = -r; i <= r; i++) {
+      for (const [dx, dz] of [[i, -r], [i, r], [-r, i], [r, i]]) {
+        if (r > 0 && Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
+        const x = ox + dx * 32, z = oz + dz * 32;
+        if (!at(x, z)) continue;
+        const dist = Math.floor(Math.hypot(x - p.x, z - p.z));
+        return [`The nearest minecraft:${name} is at [${x}, ~, ${z}] (${dist} blocks away)`];
+      }
+    }
+  }
+  return fail(`Could not find a biome of type "${name}" within reasonable distance`);
+}
 
 const find = (name: string) => COMMANDS.find((c) => c.name === name || c.aliases?.includes(name));
 const allowed = (ctx: GameCtx) => COMMANDS.filter((c) => !c.cheat || ctx.rules.cheats);

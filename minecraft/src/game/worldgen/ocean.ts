@@ -1,5 +1,5 @@
 import { blockId as I } from "../blocks/registry";
-import { chest, fill, fillFn, frame, logA, logB, mob, put, rnd, S, stairs, type Frame } from "./build";
+import { brushable, chest, fill, fillFn, frame, logA, logB, mob, put, rnd, S, stairs, type Frame } from "./build";
 import { B } from "./ids";
 import { overworldGen } from "./overworld";
 import { createRng, idTable, type Rng, type Writer } from "./rng";
@@ -100,9 +100,10 @@ function ruin(f: Frame, r: Rng, warm: boolean, big: boolean) {
   if (big) {
     mob(f, -hw + 2, 1, 2, "drowned");
     put(f, -1, 1, -1, S(B.magma_block));
-    put(f, 1, 1, 1, S(I("suspicious_gravel")));
+    brushable(f, 1, 1, 1, warm ? B.suspicious_sand : I("suspicious_gravel"), warm ? "ocean_ruin_warm" : "ocean_ruin_cold");
   }
   if (r.chance(0.5)) put(f, -hw + 1, 1, -hw + 1, S(B.sea_pickle, 2));
+  for (let k = big ? 3 : 1; k > 0; k--) if (r.chance(0.7)) brushable(f, r.int(hw * 2 - 1) - hw + 1, 0, r.int(hw * 2 - 1) - hw + 1, warm ? B.suspicious_sand : I("suspicious_gravel"), warm ? "ocean_ruin_warm" : "ocean_ruin_cold");
 }
 
 const BEACH_KEEP = idTable(B.sand, B.sandstone, B.gravel, B.stone);

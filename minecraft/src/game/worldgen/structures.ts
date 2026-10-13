@@ -4,6 +4,7 @@ import { bastion } from "./bastion";
 import { chest, frame } from "./build";
 import { endCity } from "./end-city";
 import { fortress } from "./fortress";
+import { ruinedPortalNether } from "./nether-ruins";
 import { B } from "./ids";
 import { mansion } from "./mansion";
 import { mineshaft } from "./mineshaft";
@@ -16,6 +17,7 @@ import { stronghold } from "./stronghold";
 import { BI } from "./surface";
 import { desertPyramid, igloo, jungleTemple, outpost, swampHut } from "./temples";
 import { trialChamber } from "./trial";
+import { trailRuins } from "./trail-ruins";
 import { village, villageRects } from "./village";
 
 const S = stateOf;
@@ -42,14 +44,16 @@ const GENS: Record<string, Gen> = {
   stronghold: (_c, w, s) => stronghold(w, s),
   fortress: (_c, w, s) => fortress(w, s),
   bastion_remnant: (_c, w, s) => bastion(w, s),
+  ruined_portal_nether: (_c, w, s) => ruinedPortalNether(w, s),
   end_city: (_c, w, s) => endCity(w, s),
+  trail_ruins: (_c, w, s) => trailRuins(w, s),
 };
 
 // Underground pieces first so surface structures and their foundations win where they overlap.
 const ORDER: Record<Dim, string[]> = {
-  overworld: ["mineshaft", "stronghold", "trial_chambers", "ancient_city", "buried_treasure", "ocean_ruin", "shipwreck", "ocean_monument",
+  overworld: ["mineshaft", "stronghold", "trial_chambers", "ancient_city", "buried_treasure", "trail_ruins", "ocean_ruin", "shipwreck", "ocean_monument",
     "ruined_portal", "desert_pyramid", "jungle_temple", "igloo", "swamp_hut", "pillager_outpost", "woodland_mansion", "village"],
-  nether: ["fortress", "bastion_remnant"],
+  nether: ["ruined_portal_nether", "fortress", "bastion_remnant"],
   end: ["end_city"],
 };
 
@@ -88,6 +92,7 @@ function desertWell(w: Writer, x: number, y: number, z: number) {
   }
   for (let dy = -2; dy <= 0; dy++) w.set(x, y + dy, z, WATER);
   w.set(x, y - 3, z, S(B.suspicious_sand));
+  if (w.inside(x, z)) w.blockEntities.push({ x, y: y - 3, z, type: "brushable", data: { loot: "desert_well" } });
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) w.set(x + dx, y, z + dz, WATER);
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
     if (dx === 0 && dz === 0) continue;

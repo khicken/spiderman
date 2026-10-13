@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CHUNK, MIN_Y, SECTIONS } from "../contracts";
 import type { ChunkEvent, MeshBuffers, MeshInput, MeshOutput, WorldApi } from "../contracts";
-import { meshSection } from "../mesh";
+import { GFX, meshSection } from "../mesh";
 import { ALL_VIS } from "../mesh/vis";
 import { createCaveCull } from "./cave-cull";
 import { createSectionBatches } from "./section-batch";
@@ -54,8 +54,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
 
   const queue = createMeshQueue();
   const ready = new Set<number>();
+  const starved = new Set<number>();
   const sections = new Map<number, Section>();
   const versions = new Map<number, number>();
+  const meshedOnce = new Set<number>();
   const inFlight = new Map<number, Pending>();
   const results: { p: Pending; out: MeshOutput }[] = [];
   const drawList: Section[] = [];
@@ -124,6 +126,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
 
   function tryReady(cx: number, cz: number) {
     const k = chunkKey(cx, cz);
+    if (starved.has(k) && neighborsLoaded(cx, cz)) {
+      starved.delete(k);
+      queueChunk(cx, cz, false);
+    }
     if (ready.has(k) || !neighborsLoaded(cx, cz)) return;
     ready.add(k);
     cave.touch();
@@ -140,11 +146,13 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
 
   function unloadChunk(cx: number, cz: number) {
     ready.delete(chunkKey(cx, cz));
+    starved.delete(chunkKey(cx, cz));
     cave.clearChunk(cx, cz);
     queue.removeChunk(cx, cz, SECTIONS);
     for (let sy = 0; sy < SECTIONS; sy++) {
       const key = sectionKey(cx, sy, cz);
       versions.delete(key);
+      meshedOnce.delete(key);
       const s = sections.get(key);
       if (s) disposeSection(s);
     }
@@ -158,8 +166,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     } else if (ready.has(chunkKey(e.cx, e.cz))) {
       if (e.sy === undefined) queueChunk(e.cx, e.cz, false);
       else if (e.sy >= 0 && e.sy < SECTIONS) {
-        bump(sectionKey(e.cx, e.sy, e.cz));
-        queue.push(e.cx, e.sy, e.cz, true);
+        const key = sectionKey(e.cx, e.sy, e.cz);
+        bump(key);
+        // Only shown sections jump the queue. A light spill into a never-meshed section must not starve the spawn area.
+        queue.push(e.cx, e.sy, e.cz, meshedOnce.has(key));
       }
     }
   });
@@ -177,6 +187,7 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
   function apply(p: Pending, out: MeshOutput | null) {
     if (!ready.has(chunkKey(p.cx, p.cz))) return;
     if (versions.get(p.key) !== p.version) return;
+    meshedOnce.add(p.key);
     let s = sections.get(p.key);
     cave.setVis(p.key, out?.vis ?? ALL_VIS);
     if (!out || (!out.opaque && !out.cutout && !out.translucent)) {
@@ -196,10 +207,14 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     if (!s.opaque && !s.cutout && !s.translucent) sections.delete(p.key);
   }
 
-  // meshInput is null for an empty section and for missing neighbors. Only the first clears the mesh.
+  // meshInput is null for an empty section and for missing neighbors. Only the first clears the mesh;
+  // the second marks the chunk so the neighbor's next "loaded" event meshes it again.
   function input(p: Pending): MeshInput | null {
     const inp = world.meshInput(p.cx, p.sy, p.cz);
-    if (!inp && neighborsLoaded(p.cx, p.cz)) apply(p, null);
+    if (!inp) {
+      if (neighborsLoaded(p.cx, p.cz)) apply(p, null);
+      else if (ready.has(chunkKey(p.cx, p.cz))) starved.add(chunkKey(p.cx, p.cz));
+    }
     return inp;
   }
 
@@ -239,7 +254,7 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
         p.w = w;
         inFlight.set(id, p);
         w.busy++;
-        w.w.postMessage({ id, input: inp });
+        w.w.postMessage({ id, input: inp, fancyLeaves: GFX.fancyLeaves });
       } else {
         const p = popPending();
         if (!p) break;
@@ -293,12 +308,25 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     group,
     update,
     pending: () => queue.size() + inFlight.size + results.length,
+    chunkMeshed(cx: number, cz: number) {
+      if (!ready.has(chunkKey(cx, cz))) return false;
+      for (let sy = 0; sy < SECTIONS; sy++) {
+        const key = sectionKey(cx, sy, cz);
+        if (queue.has(key)) return false;
+        for (const p of inFlight.values()) if (p.key === key) return false;
+        for (const r of results) if (r.p.key === key) return false;
+      }
+      return true;
+    },
     sectionCount: () => sections.size,
     counts: () => ({
       pages: batches.opaque.pageCount() + batches.cutout.pageCount() + batches.translucent.pageCount(),
       verts: batches.opaque.usedVerts() + batches.cutout.usedVerts() + batches.translucent.usedVerts(),
       sections: sections.size, visible, queued: queue.size(), inFlight: inFlight.size, results: results.length, workers: workers.length }),
     setRenderDistance(n: number) { renderDistance = n; },
+    remeshAll() {
+      for (const k of ready) queueChunk(Math.floor(k / 65536) - 32768, (k % 65536) - 32768, false);
+    },
     setUploadBudget(ms: number) { uploadMs = ms; },
     dispose() {
       off();
@@ -311,6 +339,8 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
       inFlight.clear();
       results.length = 0;
       ready.clear();
+      starved.clear();
+      meshedOnce.clear();
       cave.clear();
     },
   };

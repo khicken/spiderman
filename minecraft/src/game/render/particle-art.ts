@@ -161,3 +161,21 @@ export function paintParticleSheet(): Uint8Array {
   rows(p, SPRITE.pixel, ["ww", "ww"], { w: [255, 255, 255] });
   return p;
 }
+
+// Vanilla particle/ texture per sheet layer. Vanilla generic_0 is the largest, our generic layer 0 the smallest.
+export const PARTICLE_PATHS: [number, string][] = [
+  ...Array.from({ length: 8 }, (_, k) => [SPRITE.generic + k, `particle/generic_${7 - k}`] as [number, string]),
+  [SPRITE.flame, "particle/flame"],
+  [SPRITE.heart, "particle/heart"],
+  [SPRITE.angry, "particle/angry"],
+  [SPRITE.crit, "particle/critical_hit"],
+  [SPRITE.note, "particle/note"],
+  [SPRITE.bubble, "particle/bubble"],
+  ...Array.from({ length: 4 }, (_, k) => [SPRITE.splash + k, `particle/splash_${k}`] as [number, string]),
+  [SPRITE.dripHang, "particle/drip_hang"],
+  [SPRITE.dripFall, "particle/drip_fall"],
+  [SPRITE.dripLand, "particle/drip_land"],
+  ...Array.from({ length: 16 }, (_, k) => [SPRITE.explosion + k, `particle/explosion_${k}`] as [number, string]),
+  ...Array.from({ length: 12 }, (_, k) => [SPRITE.gust + k, `particle/gust_${k}`] as [number, string]),
+  [SPRITE.spark, "particle/spark_0"],
+];

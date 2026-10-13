@@ -11,16 +11,21 @@ const pop: Gen = (r, sr) => {
 
 const orb: Gen = (r, sr) => {
   const d = alloc(0.6, sr);
-  const f = rand(r, 1700, 1900);
-  addPartials(d, sr, 0, f, [[1, 1, 0.12], [2.01, 0.3, 0.06], [3.02, 0.12, 0.04]]);
+  const f = rand(r, 2050, 2150);
+  addPartials(d, sr, 0, f, [[1, 1, 0.16], [2.0, 0.22, 0.08], [2.76, 0.12, 0.05], [5.4, 0.05, 0.02]], 1, 0.0015);
+  addPartials(d, sr, 0, f * 1.003, [[1, 0.4, 0.14]], 1, 0.0015);
+  addGrain(d, sr, r, { start: 0, amp: 0.25, dur: 0.003, freq: 7000, q: 1 });
   return d;
 };
 
 const levelup: Gen = (r, sr) => {
   const d = alloc(2.2, sr);
-  const base = rand(r, 520, 540);
-  for (const [t0, ratio] of [[0, 1], [0.0, 1.5], [0.12, 2], [0.12, 2.5]] as const) {
-    addPartials(d, sr, t0, base * ratio, [[1, 0.6, 0.5], [2.0, 0.25, 0.3], [3.0, 0.12, 0.2], [4.2, 0.06, 0.12]], 1, 0.004);
+  const base = rand(r, 520, 530);
+  const notes: [number, number, number, number][] = [[0, 1, 0.5, 0.18], [0.07, 1.26, 0.55, 0.18], [0.14, 1.5, 0.6, 0.2], [0.21, 2, 0.8, 0.9], [0.21, 1.5, 0.35, 0.8], [0.21, 1, 0.3, 0.7]];
+  for (const [t0, ratio, amp, dec] of notes) {
+    const f = base * ratio;
+    addPartials(d, sr, t0, f, [[1, 0.7, dec], [2.0, 0.3, dec * 0.6], [3.0, 0.14, dec * 0.4], [4.07, 0.08, dec * 0.25]], amp, 0.003);
+    addPartials(d, sr, t0, f * 1.0025, [[1, 0.25, dec]], amp, 0.003);
   }
   return d;
 };
@@ -127,10 +132,11 @@ const jingle = (f: number, n: number): Gen => (r, sr) => {
 const equip = (f: number, ring: number, n: number, cloth = 0.5): Gen => seq([[rustle(0.25, 600, 3000, 14), 0, cloth], [jingle(f, n), 0.04, ring]]);
 
 const uiClick: Gen = (r, sr) => {
-  const d = alloc(0.08, sr);
-  addTone(d, sr, { dur: 0.05, freq: 1100, amp: 0.6, decay: 0.008, wave: "square" });
-  addGrain(d, sr, r, { start: 0, amp: 0.8, dur: 0.006, freq: 3500, q: 1 });
-  filter(d, "lowpass", 5000, 0.7, sr);
+  const d = alloc(0.1, sr);
+  addGrain(d, sr, r, { start: 0, amp: 1, dur: 0.004, freq: 4200, q: 0.9 });
+  addPartials(d, sr, 0.0005, 1650, [[1, 0.45, 0.012], [1.83, 0.3, 0.008], [2.9, 0.15, 0.005]], 1, 0.0003);
+  addTone(d, sr, { dur: 0.04, freq: (t) => 420 * (1 + Math.exp(-t / 0.003)), amp: 0.25, decay: 0.007 });
+  filter(d, "lowpass", 7000, 0.7, sr);
   return d;
 };
 
@@ -159,9 +165,9 @@ const totem: Gen = (r, sr) => {
 const R2 = (g: Gen, gain: number, variants = 4, pv = 0.1): Recipe => R(g, gain, variants, pv);
 
 export const PLAYER_SFX: Record<string, Recipe> = {
-  "random.pop": R2(pop, 0.35, 3, 0.4),
-  "entity.item.pickup": R2(pop, 0.35, 3, 0.4),
-  "entity.experience_orb.pickup": R2(orb, 0.3, 3, 0.35),
+  "random.pop": R2(pop, 0.9, 3, 0.4),
+  "entity.item.pickup": R2(pop, 0.9, 3, 0.4),
+  "entity.experience_orb.pickup": R2(orb, 0.9, 3, 0.35),
   "entity.player.levelup": R2(levelup, 0.7, 1, 0),
   "entity.player.hurt": R2(hurtGrunt, 0.8, 3, 0.1),
   "entity.player.hurt_on_fire": R2(seq([[hurtGrunt, 0], [fizz(0.3), 0, 0.3]]), 0.8, 2),
@@ -237,7 +243,7 @@ export const PLAYER_SFX: Record<string, Recipe> = {
   "item.armor.equip_wolf": R2(equip(700, 0.4, 2), 0.5, 3),
   "item.book.page_turn": R2(pageTurn, 0.5, 3),
   "item.book.put": R2(hit(200, 0.3, 0.02), 0.5, 2),
-  "ui.button.click": R2(uiClick, 0.25, 1, 0),
+  "ui.button.click": R2(uiClick, 0.8, 1, 0),
   "ui.toast.in": R2(whoosh(0.4, 800, 2400), 0.3, 1, 0),
   "ui.toast.out": R2(whoosh(0.4, 2400, 800), 0.3, 1, 0),
   "ui.toast.challenge_complete": R2(levelup, 0.6, 1, 0),

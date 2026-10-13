@@ -7,6 +7,7 @@ import { dialFrame, dialIconUrl } from "../textures/dials";
 import { isPotionItem, potionItemName, potionOf, potionTooltip, stackPotionColor } from "../items/potions";
 import { textWidth } from "./font";
 import { Text } from "./gui";
+import { packUrl } from "./sprites";
 import { ENCHANTS, enchantName, titleCase } from "./data";
 import { DISCS, discLabel } from "../systems/blocks-a/discs";
 
@@ -34,7 +35,10 @@ export function ItemIcon({ stack, x, y, count = true }: { stack: ItemStack; x: n
             style={{
               position: "absolute",
               inset: 0,
-              backgroundImage: "repeating-linear-gradient(135deg, rgba(160,80,255,0) 0px, rgba(160,80,255,0.55) 8px, rgba(160,80,255,0) 16px)",
+              backgroundImage: packUrl("misc/enchanted_glint_item")
+                ? `url(${packUrl("misc/enchanted_glint_item")})`
+                : "repeating-linear-gradient(135deg, rgba(160,80,255,0) 0px, rgba(160,80,255,0.55) 8px, rgba(160,80,255,0) 16px)",
+              backgroundSize: packUrl("misc/enchanted_glint_item") ? "64px 64px" : undefined,
               animation: "mc-glint 3s linear infinite",
               maskImage: `url(${url})`,
               WebkitMaskImage: `url(${url})`,

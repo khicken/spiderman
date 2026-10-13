@@ -5,7 +5,11 @@ import { blockDef, IS_FLUID, OPAQUE, SOLID } from "../blocks/registry";
 
 const NX = [1, -1, 0, 0, 0, 0], NY = [0, 0, 1, -1, 0, 0], NZ = [0, 0, 0, 0, 1, -1];
 import { textureLayer } from "../textures";
-import { paintParticleSheet, SPRITE, SPRITE_LAYERS } from "./particle-art";
+import { PARTICLE_PATHS, paintParticleSheet, SPRITE, SPRITE_LAYERS } from "./particle-art";
+import { tileOr } from "./pack-art";
+import { lightmap } from "../mesh/lightmap";
+
+const LM: [number, number, number] = [1, 1, 1];
 
 type ParticleEvent = Extract<GameEvent, { type: "particles" }>;
 
@@ -69,11 +73,20 @@ function touch(a: THREE.BufferAttribute, n: number) {
 }
 
 export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () => THREE.DataArrayTexture | null) {
-  const sheet = new THREE.DataArrayTexture(paintParticleSheet(), 16, 16, SPRITE_LAYERS);
-  sheet.magFilter = sheet.minFilter = THREE.NearestFilter;
-  sheet.generateMipmaps = false;
-  sheet.colorSpace = THREE.SRGBColorSpace;
-  sheet.needsUpdate = true;
+  const makeSheet = () => {
+    const data = paintParticleSheet();
+    for (const [layer, path] of PARTICLE_PATHS) {
+      const art = tileOr(path, 16, 16);
+      if (art) data.set(art.data, layer * 1024);
+    }
+    const t = new THREE.DataArrayTexture(data, 16, 16, SPRITE_LAYERS);
+    t.magFilter = t.minFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.needsUpdate = true;
+    return t;
+  };
+  let sheet = makeSheet();
 
   const mat = new THREE.ShaderMaterial({
     uniforms: { uSheet: { value: sheet }, uAtlas: { value: null } },
@@ -95,8 +108,6 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
   let count = 0;
   let acc = 0;
   let tickNo = 0;
-  let daylight = 1;
-  let gamma = 0.5;
   const rand = Math.random;
 
   function setBudget(n: number) {
@@ -125,17 +136,16 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
 
   function brightness(x: number, y: number, z: number) {
     const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
-    let l = Math.max(world.getBlockLight(bx, by, bz), world.getSkyLight(bx, by, bz) * daylight);
-    if (l === 0 && OPAQUE[idOf(world.getBlock(bx, by, bz))]) {
+    let sky = world.getSkyLight(bx, by, bz), blk = world.getBlockLight(bx, by, bz);
+    if (sky === 0 && blk === 0 && OPAQUE[idOf(world.getBlock(bx, by, bz))]) {
       for (let k = 0; k < 6; k++) {
         const nx = bx + NX[k], ny = by + NY[k], nz = bz + NZ[k];
-        l = Math.max(l, world.getBlockLight(nx, ny, nz), world.getSkyLight(nx, ny, nz) * daylight);
+        sky = Math.max(sky, world.getSkyLight(nx, ny, nz));
+        blk = Math.max(blk, world.getBlockLight(nx, ny, nz));
       }
     }
-    const f = l / 15;
-    const b = f / (4 - 3 * f);
-    const lifted = 1 - Math.pow(1 - b, 4);
-    return Math.max(0.04, b + (lifted - b) * gamma);
+    lightmap(sky, blk, LM);
+    return (LM[0] + LM[1] + LM[2]) / 3;
   }
 
   function add(x: number, y: number, z: number, vx: number, vy: number, vz: number, spread: boolean): number {
@@ -530,14 +540,50 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
     mesh.visible = n > 0;
   }
 
+  // Biome ambient particles: 0 white ash, 1 ash, 2 crimson spore, 3 warped spore (vanilla BaseAshSmoke and Suspended particles).
+  function ambient(kind: number, x: number, y: number, z: number) {
+    if (count > cap * 0.6) return;
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.flags[i] = 0;
+    if (kind <= 1) {
+      const white = kind === 0;
+      p.vx[i] = white ? rand() * -1.9 * rand() * 0.1 : 0;
+      p.vy[i] = white ? rand() * -0.5 * rand() * 0.1 * 5 : 0;
+      p.vz[i] = white ? rand() * -1.9 * rand() * 0.1 : 0;
+      p.vx[i] += (rand() * 2 - 1) * 0.01; p.vy[i] -= rand() * 0.01; p.vz[i] += (rand() * 2 - 1) * 0.01;
+      if (white) { p.r[i] = 0.73 + rand() * 0.05; p.g[i] = 0.69 + rand() * 0.05; p.b[i] = 0.76 + rand() * 0.05; } else { const c = rand() * 0.5; p.r[i] = p.g[i] = p.b[i] = c; }
+      p.size[i] *= 0.75 * (white ? 1 : 0.5);
+      p.life[i] = Math.max(1, Math.floor((20 / (rand() * 0.8 + 0.2)) * (white ? 1 : 0.5)));
+      p.grav[i] = white ? 0.0125 : 0.1;
+      p.drag[i] = 0.96;
+      sprite(i, SPRITE.generic, 4, Anim.Rev);
+      return;
+    }
+    p.vx[i] = 0; p.vz[i] = 0;
+    p.vy[i] = kind === 3 ? rand() * -1.9 * rand() * 0.01 : 0;
+    if (kind === 2) color(i, 0xe66680); else color(i, 0x1a8ca8);
+    p.size[i] *= rand() * 0.6 + 0.2;
+    p.life[i] = Math.floor(16 / (rand() * 0.8 + 0.2));
+    p.grav[i] = 0;
+    p.drag[i] = 1;
+    sprite(i, SPRITE.generic + 1, 1, Anim.Fixed);
+  }
+
   return {
     addParticles,
+    ambient,
     rainSplash: (x: number, y: number, z: number) => rainSplash(x, y, z, false),
     update,
     setBudget,
-    setLighting(day: number, g: number) { daylight = day; gamma = g; },
+    setLighting(_day: number, _g: number) {},
     count: () => count,
     clear() { count = 0; },
+    reloadArt() {
+      sheet.dispose();
+      sheet = makeSheet();
+      mat.uniforms.uSheet.value = sheet;
+    },
     dispose() {
       scene.remove(mesh);
       geo.dispose(); base.dispose(); mat.dispose(); sheet.dispose();

@@ -32,9 +32,11 @@ export interface PauseScreenProps {
   onQuit: () => void;
   onAdvancements?: () => void;
   onStatistics?: () => void;
+  onLan?: () => void;
+  quitLabel?: string;
 }
 
-export function PauseScreen({ onResume, onOptions, onQuit, onAdvancements, onStatistics }: PauseScreenProps) {
+export function PauseScreen({ onResume, onOptions, onQuit, onAdvancements, onStatistics, onLan, quitLabel = "Save and Quit to Title" }: PauseScreenProps) {
   const { width, height } = useGui();
   useKeyDown((e) => e.key === "Escape" && onResume());
   const x = Math.floor(width / 2 - 102);
@@ -48,8 +50,8 @@ export function PauseScreen({ onResume, onOptions, onQuit, onAdvancements, onSta
       <Button x={x} y={y + 48} width={98} label="Give Feedback" disabled />
       <Button x={x + 106} y={y + 48} width={98} label="Report Bugs" disabled />
       <Button x={x} y={y + 72} width={98} label="Options..." onClick={onOptions} />
-      <Button x={x + 106} y={y + 72} width={98} label="Open to LAN" disabled />
-      <Button x={x} y={y + 96} width={204} label="Save and Quit to Title" onClick={onQuit} />
+      <Button x={x + 106} y={y + 72} width={98} label="Open to LAN" disabled={!onLan} onClick={onLan} />
+      <Button x={x} y={y + 96} width={204} label={quitLabel} onClick={onQuit} />
     </Screen>
   );
 }

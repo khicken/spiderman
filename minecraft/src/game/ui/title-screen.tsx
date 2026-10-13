@@ -113,11 +113,13 @@ export const SPLASHES = [
 export interface TitleScreenProps {
   onSingleplayer: () => void;
   onOptions: () => void;
+  account?: { label: string; onClick: () => void };
+  onMultiplayer?: () => void;
   version?: string;
   splash?: string;
 }
 
-export function TitleScreen({ onSingleplayer, onOptions, version = "Minecraft 1.21", splash }: TitleScreenProps) {
+export function TitleScreen({ onSingleplayer, onOptions, account, onMultiplayer, version = "Minecraft 1.21", splash }: TitleScreenProps) {
   const { width, height } = useGui();
   const [text] = useState(() => splash ?? SPLASHES[Math.floor(Math.random() * SPLASHES.length)]);
   const splashRef = useRef<HTMLDivElement>(null);
@@ -148,12 +150,13 @@ export function TitleScreen({ onSingleplayer, onOptions, version = "Minecraft 1.
         <Text text={text} color={0xffff00} x={0} y={-8} align="center" />
       </div>
       <Button x={bx} y={by} label="Singleplayer" onClick={onSingleplayer} />
-      <Button x={bx} y={by + 24} label="Multiplayer" disabled />
+      <Button x={bx} y={by + 24} label="Multiplayer" disabled={!onMultiplayer} onClick={onMultiplayer} />
       <Button x={bx} y={by + 48} label="Minecraft Realms" disabled />
       <IconButton x={bx - 24} y={by + 84} icon="language" />
       <Button x={bx} y={by + 84} width={98} label="Options..." onClick={onOptions} />
       <Button x={bx + 102} y={by + 84} width={98} label="Quit Game" disabled />
       <IconButton x={bx + 204} y={by + 84} icon="accessibility" />
+      {account && <Button x={width - 104} y={4} width={100} label={account.label} onClick={account.onClick} />}
       <Text text={version} x={2} y={height - 10} />
       <Text text="Not affiliated with Mojang or Microsoft" x={width - 2} y={height - 10} align="right" />
     </Screen>

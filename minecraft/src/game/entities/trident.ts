@@ -3,6 +3,8 @@ import type { Entity, GameCtx, ItemStack } from "../contracts";
 import { bodiesTouch, segmentBody } from "./geom";
 import { isMob } from "./registry";
 import { findNear } from "../worldgen/structure-grid";
+import { advTrigger } from "../systems/advancements/bus";
+import { advLightning, markProjectile } from "../systems/advancements/hooks";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -103,11 +105,14 @@ function hitMob(e: Entity, ctx: GameCtx, t: Entity, stack: ItemStack): void {
   const imp = ench(stack, "impaling");
   if (imp > 0 && AQUATIC.has(t.type)) dmg += 2.5 * imp;
   const owner = e.data.owner === "player" ? "player" : typeof e.data.owner === "number" ? ctx.entities.get(e.data.owner) : undefined;
+  markProjectile(t, e, ctx.time.tick);
+  if (owner === "player") advTrigger({ t: "projectile_hit", projectile: "trident", target: t.type });
   ctx.entities.damage(t.id, dmg, "trident", owner);
   if (ench(stack, "channeling") > 0 && ctx.time.thunder > 0.5) {
     const bx = Math.floor(t.body.pos.x), by = Math.floor(t.body.pos.y + t.body.height), bz = Math.floor(t.body.pos.z);
     if (ctx.world.getSkyLight(bx, by, bz) >= 15) {
       ctx.entities.spawn("lightning_bolt", t.body.pos.x, t.body.pos.y, t.body.pos.z, { owner: "player" });
+      if (owner === "player") advLightning(ctx, t.body.pos.x, t.body.pos.y, t.body.pos.z, false);
       ctx.emit({ type: "sound", name: "item.trident.thunder", x: t.body.pos.x, y: t.body.pos.y, z: t.body.pos.z, volume: 5, pitch: 1 });
       ctx.entities.damage(t.id, 5, "lightning", owner);
     }

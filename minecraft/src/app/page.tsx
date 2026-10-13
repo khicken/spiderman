@@ -5,21 +5,29 @@ import type { ContainerView, HudState } from "../game/contracts";
 import type { GameHandle } from "../game/game";
 import { createAudio, type GameAudio } from "../game/audio";
 import {
-  Chat, LeaveBedButton, ContainerScreen, CreateWorldScreen, Crosshair, DEFAULT_SETTINGS, DeathScreen, DebugOverlay, GuiRoot, Hud, LoadingScreen,
+  Chat, LeaveBedButton, ContainerScreen, CreateWorldScreen, Crosshair, Text, DEFAULT_SETTINGS, DeathScreen, DebugOverlay, GuiRoot, Hud, LoadingScreen,
   OptionsScreen, PauseScreen, SelectWorldScreen, TitleScreen, completeCommand, computeGuiScale, setUiClickSound,
   type ChatMessage, type NewWorldOptions, type Settings, type TimedText, type WorldListEntry,
 } from "../game/ui";
 import { Panorama } from "../game/ui/panorama";
 import { StatisticsScreen } from "../game/ui/menus-extra";
+import { Subtitles } from "../game/ui/subtitles";
+import { setSubtitles } from "../game/systems/features/subtitles";
+import { generalRows, itemRows, mobRows } from "../game/systems/features/stats";
 import { AdvancementsScreen } from "../game/ui/advancements-screen";
 import { CreditsScreen } from "../game/ui/credits-screen";
 import { TOAST_MS, Toasts, type ToastEntry } from "../game/ui/toasts";
 import { mergeSettings, setActiveKeys } from "../game/ui/settings";
-import { createWorldMeta, deleteWorld, listWorlds, loadMeta, saveMeta, type WorldMeta } from "../game/world/save";
+import { createWorldMeta, listWorlds, loadMeta, saveMeta, type WorldMeta } from "../game/world/save";
 import { HideWhileSigning, SignEditScreen } from "../game/ui/sign-screen";
+import { ConnectingScreen, DirectConnectScreen, DisconnectedScreen, MultiplayerScreen, OpenToLanScreen, PlayerListOverlay } from "../game/ui/multiplayer";
+import { forgetServer, playerName, rememberServer, servers as savedServers, setPlayerNameStored, type ServerEntry } from "../game/net/profile";
+import type { ClientLink } from "../game/net/client";
+import type { PlayerListEntry } from "../game/net/protocol";
+import { useCloud } from "../game/cloud/use-cloud";
 
-type Screen = "title" | "select" | "create" | "options" | "game";
-type Overlay = null | "pause" | "options" | "chat" | "bed" | "advancements" | "statistics";
+type Screen = "title" | "select" | "create" | "options" | "game" | "multiplayer" | "direct" | "connecting" | "disconnected";
+type Overlay = null | "pause" | "options" | "chat" | "bed" | "advancements" | "statistics" | "lan";
 
 const SETTINGS_KEY = "mc-settings";
 
@@ -52,6 +60,7 @@ function useWindowSize() {
 export default function Page() {
   const [screen, setScreen] = useState<Screen>("title");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  useEffect(() => setSubtitles(!!settings.showSubtitles), [settings.showSubtitles]);
   const [worlds, setWorlds] = useState<WorldMeta[]>([]);
   const [meta, setMeta] = useState<WorldMeta | null>(null);
   const [loading, setLoading] = useState<number | null>(0);
@@ -67,9 +76,17 @@ export default function Page() {
   const advFromPause = useRef(false);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const [credits, setCredits] = useState(false);
+  const [lockHint, setLockHint] = useState(false);
   const [death, setDeath] = useState<string | null>(null);
   const [debug, setDebug] = useState(false);
   const [hideGui, setHideGui] = useState(false);
+  const [mpName, setMpName] = useState("");
+  const [serverList, setServerList] = useState<ServerEntry[]>([]);
+  const [connectStatus, setConnectStatus] = useState("Connecting to the server...");
+  const [disconnect, setDisconnect] = useState({ title: "Connection Lost", reason: "" });
+  const [tabList, setTabList] = useState<PlayerListEntry[] | null>(null);
+  const clientRef = useRef<ClientLink | null>(null);
+  const cancelJoin = useRef<(() => void) | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
   const audioRef = useRef<GameAudio | null>(null);
@@ -156,6 +173,7 @@ export default function Page() {
         meta,
         settings,
         audio: audio(),
+        net: clientRef.current ?? undefined,
         ui: {
           hud: setHud,
           phase: (p, progress) => {
@@ -163,7 +181,7 @@ export default function Page() {
             if (p === "playing") setFreshWorld(false);
           },
           container: (v) => setView(v),
-          chat: (text) => addChat(text),
+          chat: (text, color) => addChat(color === "#ffff55" ? `§e${text}` : text),
           title: (text, subtitle) => setTitle({ text, subtitle, at: performance.now() }),
           actionBar: (text) => setActionBar({ text, at: performance.now() }),
           hurt: () => setHurtAt(performance.now()),
@@ -173,8 +191,10 @@ export default function Page() {
             setToasts((l) => [...l, { ...t, id }]);
             setTimeout(() => setToasts((l) => l.filter((x) => x.id !== id)), TOAST_MS);
           },
+          lockHint: setLockHint,
           credits: () => {
             game?.setPaused(true);
+            audioRef.current?.setMusic("credits");
             document.exitPointerLock?.();
             setCredits(true);
           },
@@ -182,6 +202,7 @@ export default function Page() {
             if (a === "pause") {
               if (overlayRef.current) return;
               game?.setPaused(true);
+              document.exitPointerLock?.();
               setOverlay("pause");
             } else if (a === "chat" || a === "command") {
               setChatInit(a === "command" ? "/" : "");
@@ -244,12 +265,80 @@ export default function Page() {
     gameRef.current = null;
     if (g) await g.quit();
     if (document.pointerLockElement) document.exitPointerLock();
+    const wasClient = !!clientRef.current;
+    clientRef.current = null;
     setOverlay(null);
     setMeta(null);
-    setScreen("title");
+    if (wasClient) {
+      setServerList(savedServers());
+      setScreen("multiplayer");
+    } else setScreen("title");
     refreshWorlds();
     audioRef.current?.setMusic("menu");
   }, [refreshWorlds]);
+
+  const openMultiplayer = useCallback(() => {
+    audio();
+    setMpName(playerName());
+    setServerList(savedServers());
+    setScreen("multiplayer");
+  }, [audio]);
+
+  const join = useCallback((raw: string) => {
+    const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^([A-Z]{4})([0-9]{4})$/, "$1-$2");
+    rememberServer(code, savedServers().find((s) => s.code === code)?.name ?? "Minecraft Server");
+    setConnectStatus("Connecting to the server...");
+    setScreen("connecting");
+    void import("../game/net/client").then(({ connectClient }) => {
+      const c = connectClient(code, playerName(), Math.min(8, settings.renderDistance), (st) =>
+        setConnectStatus(st === "connecting" ? "Connecting to the server..." : st === "joining" ? "Logging in..." : "Loading terrain..."),
+      );
+      cancelJoin.current = c.cancel;
+      c.done.then(
+        (link) => {
+          cancelJoin.current = null;
+          clientRef.current = link;
+          rememberServer(code, link.welcome.worldName);
+          link.onClose = (reason) => {
+            const g = gameRef.current;
+            gameRef.current = null;
+            g?.dispose();
+            clientRef.current = null;
+            if (document.pointerLockElement) document.exitPointerLock();
+            setOverlay(null);
+            setMeta(null);
+            setDisconnect({ title: "Connection Lost", reason });
+            setScreen("disconnected");
+            audioRef.current?.setMusic("menu");
+          };
+          play(link.makeMeta());
+        },
+        (err: Error) => {
+          cancelJoin.current = null;
+          setDisconnect({ title: "Failed to connect to the server", reason: err?.message || "Connection Lost" });
+          setScreen("disconnected");
+        },
+      );
+    });
+  }, [play, settings.renderDistance]);
+
+  useEffect(() => {
+    if (screen !== "game") return;
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Tab" || !gameRef.current?.net) return;
+      e.preventDefault();
+      setTabList(gameRef.current.net.players());
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === "Tab") setTabList(null);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, [screen]);
 
   const resume = useCallback(() => {
     setOverlay(null);
@@ -258,6 +347,17 @@ export default function Page() {
   }, []);
 
   const entries: WorldListEntry[] = worlds.map((m) => ({ id: m.id, name: m.name, lastPlayed: m.lastPlayed, gameMode: m.gameMode, hardcore: m.hardcore, cheats: m.cheats, icon: m.icon }));
+  const cloud = useCloud({
+    worlds,
+    refreshWorlds,
+    playingId: screen === "game" ? meta?.id ?? null : null,
+    onSettings: () => {
+      const s = readSettings();
+      setSettings(s);
+      gameRef.current?.setSettings(s);
+      setMpName(playerName());
+    },
+  });
   const g = gameRef.current;
   const inv = g?.ctx.inventory;
 
@@ -267,6 +367,7 @@ export default function Page() {
       <>
       <Panorama blur={screen !== "title"} />
       <GuiRoot guiScale={settings.guiScale} style={{ pointerEvents: "auto" }}>
+        {cloud.overlay((id) => void onPlayWorld(id)) ?? (<>
         {screen === "title" && (
           <TitleScreen
             onSingleplayer={() => {
@@ -275,19 +376,53 @@ export default function Page() {
               setScreen("select");
             }}
             onOptions={() => setScreen("options")}
+            onMultiplayer={openMultiplayer}
+            account={cloud.accountButton}
           />
         )}
+        {screen === "multiplayer" && (
+          <MultiplayerScreen
+            servers={serverList}
+            name={mpName}
+            onName={(n) => {
+              setMpName(n);
+              setPlayerNameStored(n);
+            }}
+            onJoin={join}
+            onDirect={() => setScreen("direct")}
+            onDelete={(code) => {
+              forgetServer(code);
+              setServerList(savedServers());
+            }}
+            onBack={() => setScreen("title")}
+          />
+        )}
+        {screen === "direct" && <DirectConnectScreen onJoin={join} onCancel={() => setScreen("multiplayer")} />}
+        {screen === "connecting" && (
+          <ConnectingScreen
+            status={connectStatus}
+            onCancel={() => {
+              cancelJoin.current?.();
+              cancelJoin.current = null;
+              setScreen("multiplayer");
+            }}
+          />
+        )}
+        {screen === "disconnected" && <DisconnectedScreen title={disconnect.title} reason={disconnect.reason} onBack={openMultiplayer} />}
         {screen === "select" && (
           <SelectWorldScreen
-            worlds={entries}
-            onPlay={(id) => void onPlayWorld(id)}
+            worlds={cloud.entries(entries)}
+            onPlay={(id) => void cloud.play(id, () => void onPlayWorld(id))}
+            onDownload={cloud.download}
+            note={cloud.note}
             onCreate={() => setScreen("create")}
-            onDelete={(id) => void deleteWorld(id).then(refreshWorlds)}
+            onDelete={(id) => void cloud.remove(id).then(refreshWorlds)}
             onCancel={() => setScreen("title")}
           />
         )}
         {screen === "create" && <CreateWorldScreen onCreate={(o) => void onCreate(o)} onCancel={() => setScreen("select")} />}
         {screen === "options" && <OptionsScreen settings={settings} onChange={updateSettings} onDone={() => setScreen("title")} />}
+        </>)}
       </GuiRoot>
       </>
     );
@@ -298,7 +433,8 @@ export default function Page() {
     <>
       <canvas
         ref={canvasRef}
-        style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", display: "block", cursor: "none" }}
+        tabIndex={-1}
+        style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", display: "block", cursor: "none", outline: "none" }}
         onClick={() => {
           if (playing && !overlay && !view && !death) gameRef.current?.lock();
         }}
@@ -306,6 +442,7 @@ export default function Page() {
       {playing && !hideGui && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
       <GuiRoot guiScale={settings.guiScale}>
         {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics === "fancy"} />}
+        {playing && !hideGui && settings.showSubtitles && <Subtitles />}
         {playing && !hideGui && <Toasts toasts={toasts} />}
         {credits && (
           <CreditsScreen
@@ -316,6 +453,7 @@ export default function Page() {
             }}
           />
         )}
+        {playing && lockHint && !overlay && !view && !death && !credits && <Text text="Click to play" x={Math.floor(w / guiScale / 2)} y={Math.floor(h / guiScale / 2) + 16} align="center" />}
         {playing && debug && hud?.debug && <DebugOverlay lines={hud.debug} width={Math.ceil(w / guiScale)} />}
         {playing && !death && (
           <div style={{ pointerEvents: overlay === "chat" || overlay === "bed" ? "auto" : "none" }}>
@@ -333,7 +471,7 @@ export default function Page() {
                 const t = line.trim();
                 if (!t) return;
                 if (t.startsWith("/")) for (const out of gameRef.current?.command(t) ?? []) addChat(out);
-                else addChat(`<Player> ${t}`);
+                else gameRef.current?.chat(t);
               }}
               onClose={() => {
                 if (overlayRef.current === "bed") {
@@ -396,9 +534,25 @@ export default function Page() {
             <PauseScreen onResume={resume} onOptions={() => setOverlay("options")} onQuit={() => void quit()} onAdvancements={() => {
               advFromPause.current = true;
               setOverlay("advancements");
-            }} onStatistics={() => setOverlay("statistics")} />
+            }} onStatistics={() => setOverlay("statistics")} onLan={g && !g.net ? () => setOverlay("lan") : undefined} quitLabel={g?.net?.role === "client" ? "Disconnect" : undefined} />
           </div>
         )}
+        {playing && overlay === "lan" && (
+          <div style={{ pointerEvents: "auto" }}>
+            <OpenToLanScreen
+              initialMode={g?.ctx.player.gameMode ?? "survival"}
+              onCancel={() => setOverlay("pause")}
+              onStart={(o) => {
+                resume();
+                void gameRef.current?.openToLan(o).then(
+                  (code) => addChat(`Local game hosted on code ${code}`),
+                  () => addChat("§cUnable to host local game"),
+                );
+              }}
+            />
+          </div>
+        )}
+        {playing && tabList && !overlay && <PlayerListOverlay players={tabList} />}
         {playing && overlay === "advancements" && (
           <div style={{ pointerEvents: "auto" }}>
             <AdvancementsScreen done={(g?.systems.parts.find((p) => p.name === "advancements")?.save?.() as Record<string, number> | undefined) ?? {}} onDone={() => (advFromPause.current ? setOverlay("pause") : resume())} />
@@ -406,7 +560,7 @@ export default function Page() {
         )}
         {playing && overlay === "statistics" && (
           <div style={{ pointerEvents: "auto" }}>
-            <StatisticsScreen general={statsRows(g)} onDone={() => setOverlay("pause")} />
+            <StatisticsScreen general={generalRows()} items={itemRows()} mobs={mobRows()} onDone={() => setOverlay("pause")} />
           </div>
         )}
         {playing && overlay === "options" && (
@@ -432,23 +586,4 @@ export default function Page() {
       </GuiRoot>
     </>
   );
-}
-
-function fmtTime(ticks: number): string {
-  const s = ticks / 20;
-  if (s < 60) return `${s.toFixed(2)} s`;
-  if (s < 3600) return `${(s / 60).toFixed(2)} m`;
-  if (s < 86400) return `${(s / 3600).toFixed(2)} h`;
-  return `${(s / 86400).toFixed(2)} d`;
-}
-
-function statsRows(g: GameHandle | null): [string, string][] {
-  if (!g) return [];
-  const c = g.ctx;
-  return [
-    ["Time Played", fmtTime(c.time.tick)],
-    ["Days Played", String(c.time.day)],
-    ["Experience Level", String(c.player.xpLevel)],
-    ["Total Experience", String(c.player.xpTotal)],
-  ];
 }

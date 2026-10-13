@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Dim } from "../contracts";
 import type { Rgb, Rgba } from "./celestial";
 import { buildStars, paintEndSky, paintMoonPhases, paintSun } from "./sky-art";
+import { artOr } from "./pack-art";
 
 export interface SkyState {
   sky: Rgb;
@@ -162,8 +163,11 @@ export function createSky() {
   starMesh.renderOrder = 1;
   celestial.add(starMesh);
 
-  const sunArt = paintSun();
-  const sunTex = dataTex(sunArt.data, sunArt.size, sunArt.size);
+  const sunOf = () => artOr("environment/sun", () => { const a = paintSun(); return { data: a.data, w: a.size, h: a.size }; });
+  const moonOf = () => artOr("environment/moon_phases", () => { const a = paintMoonPhases(); return { data: a.data, w: a.width, h: a.height }; });
+  const endOf = () => artOr("environment/end_sky", () => { const a = paintEndSky(); return { data: a.data, w: a.size, h: a.size }; });
+  const sunArt = sunOf();
+  let sunTex = dataTex(sunArt.data, sunArt.w, sunArt.h);
   const sunMat = spriteMaterial(sunTex, true);
   const quad = new THREE.PlaneGeometry(1, 1);
   const sun = new THREE.Mesh(quad, sunMat);
@@ -173,8 +177,8 @@ export function createSky() {
   sun.renderOrder = 2;
   celestial.add(sun);
 
-  const moonArt = paintMoonPhases();
-  const moonTex = dataTex(moonArt.data, moonArt.width, moonArt.height);
+  const moonArt = moonOf();
+  let moonTex = dataTex(moonArt.data, moonArt.w, moonArt.h);
   const moonMat = spriteMaterial(moonTex, true);
   const moon = new THREE.Mesh(quad, moonMat);
   moon.scale.setScalar(40);
@@ -183,8 +187,8 @@ export function createSky() {
   moon.renderOrder = 2;
   celestial.add(moon);
 
-  const endArt = paintEndSky();
-  const endTex = dataTex(endArt.data, endArt.size, endArt.size, true);
+  const endArt = endOf();
+  let endTex = dataTex(endArt.data, endArt.w, endArt.h, true);
   const endMat = spriteMaterial(endTex, false, 16);
   endMat.side = THREE.BackSide;
   (endMat.uniforms.uColor.value as THREE.Vector3).setScalar(1);
@@ -232,7 +236,18 @@ export function createSky() {
     endGeo.dispose(); endMat.dispose(); endTex.dispose();
   }
 
-  return { scene, camera, setDim, update, dispose };
+  function reloadArt() {
+    const s = sunOf(), m = moonOf(), e = endOf();
+    sunTex.dispose(); moonTex.dispose(); endTex.dispose();
+    sunTex = dataTex(s.data, s.w, s.h);
+    moonTex = dataTex(m.data, m.w, m.h);
+    endTex = dataTex(e.data, e.w, e.h, true);
+    sunMat.uniforms.uMap.value = sunTex;
+    moonMat.uniforms.uMap.value = moonTex;
+    endMat.uniforms.uMap.value = endTex;
+  }
+
+  return { scene, camera, setDim, update, reloadArt, dispose };
 }
 
 export type Sky = ReturnType<typeof createSky>;

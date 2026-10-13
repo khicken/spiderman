@@ -150,7 +150,11 @@ function hurtEntities(ctx: GameCtx, x: number, y: number, z: number, power: numb
     b.vel.z += dz * k;
     if (kbMul !== 1) b.fallDistance = 0;
   }
-  const p = ctx.player;
+  const everyone = (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player];
+  for (const p of everyone) hurtPlayer(ctx, p, x, y, z, reach, doDamage, kbMul, source);
+}
+
+function hurtPlayer(ctx: GameCtx, p: GameCtx["player"], x: number, y: number, z: number, reach: number, doDamage: boolean, kbMul: number, source: Entity | "player" | undefined) {
   if (p.dead || p.gameMode === "spectator" || (p.gameMode === "creative" && p.flying)) return;
   const pb = p.body;
   const dist = Math.hypot(pb.pos.x - x, pb.pos.y - y, pb.pos.z - z) / reach;
@@ -169,7 +173,7 @@ function hurtEntities(ctx: GameCtx, x: number, y: number, z: number, power: numb
       p.damage(dmg, "explosion", source && source !== "player" ? source : undefined);
     }
   }
-  const blastProt = blastProtection(ctx);
+  const blastProt = blastProtection((p as { inv?: GameCtx["inventory"] }).inv ?? ctx.inventory);
   const k = impact * kbMul * (1 - blastProt);
   pb.vel.x += dx * k;
   pb.vel.y += dy * k;
@@ -181,9 +185,9 @@ function wind(e: Entity) {
   return e.type === "wind_charge";
 }
 
-function blastProtection(ctx: GameCtx) {
+function blastProtection(inv: GameCtx["inventory"]) {
   let lvl = 0;
-  for (let i = 36; i < 40; i++) lvl = Math.max(lvl, ctx.inventory.slots[i]?.ench?.blast_protection ?? 0);
+  for (let i = 36; i < 40; i++) lvl = Math.max(lvl, inv.slots[i]?.ench?.blast_protection ?? 0);
   return Math.min(1, lvl * 0.15);
 }
 

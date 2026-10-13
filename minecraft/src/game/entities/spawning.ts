@@ -67,7 +67,7 @@ function passable(ctx: GameCtx, x: number, y: number, z: number, h: number, wate
 export function darkEnough(ctx: GameCtx, x: number, y: number, z: number, darken: number) {
   const w = ctx.world;
   if (w.dim === "overworld" && w.getSkyLight(x, y, z) > Math.floor(ctx.random() * 32)) return false;
-  const blockLimit = w.dim === "nether" ? 11 : 0;
+  const blockLimit = w.dim === "nether" ? 7 : 0;
   if (w.getBlockLight(x, y, z) > blockLimit) return false;
   if (w.dim !== "overworld") return true;
   const k = lightAt(ctx, x, y, z, ctx.time.thunder > 0.5 ? 10 : darken);
@@ -99,6 +99,11 @@ export function canSpawnAt(ctx: GameCtx, def: MobDef, x: number, y: number, z: n
     if (y >= SEA_LEVEL) return false;
     return lightAt(ctx, x, y, z, darken) <= Math.floor(ctx.random() * 4);
   }
+  if (w.dim === "nether" && cat === "hostile") {
+    if (NO_WART.has(def.type) && bdef.name === "nether_wart_block") return false;
+    if (def.type === "ghast" && ctx.random() >= 1 / 20) return false;
+    return ANY_LIGHT.has(def.type) || darkEnough(ctx, x, y, z, darken);
+  }
   if (sp.light === "dark") return darkEnough(ctx, x, y, z, darken);
   if (sp.light === "grass") {
     const f = floorsFor(def.type);
@@ -116,14 +121,35 @@ function structureSpawnOk(ctx: GameCtx, over: StructureSpawn, def: MobDef, x: nu
   return over.anyLight || darkEnough(ctx, x, y, z, darken);
 }
 
-type Pool = { def: MobDef; weight: number }[];
+type Pool = { def: MobDef; weight: number; group?: [number, number] }[];
 const pools = new Map<string, Pool>();
+
+// Vanilla 1.21 nether biome monster lists: [mob, weight, min group, max group].
+const NETHER_MONSTERS: Record<string, [string, number, number, number][]> = {
+  nether_wastes: [["ghast", 50, 4, 4], ["zombified_piglin", 100, 4, 4], ["magma_cube", 2, 4, 4], ["enderman", 1, 4, 4], ["piglin", 15, 4, 4]],
+  soul_sand_valley: [["skeleton", 20, 5, 5], ["ghast", 50, 4, 4], ["enderman", 1, 4, 4]],
+  basalt_deltas: [["ghast", 40, 1, 1], ["magma_cube", 100, 2, 5]],
+  crimson_forest: [["zombified_piglin", 1, 2, 4], ["hoglin", 9, 3, 4], ["piglin", 5, 3, 4]],
+  warped_forest: [["enderman", 1, 4, 4]],
+};
+// Nether mobs that spawn at any light level. The rest need block light 7 or less, like the nether dimension type.
+const ANY_LIGHT = new Set(["ghast", "zombified_piglin", "piglin", "hoglin", "magma_cube", "blaze", "strider"]);
+const NO_WART = new Set(["zombified_piglin", "piglin", "hoglin"]);
 
 function pool(ctx: GameCtx, cat: SpawnCat, biome: string): Pool {
   const key = `${ctx.world.dim}|${cat}|${biome}`;
   let p = pools.get(key);
   if (p) return p;
   p = [];
+  const nether = ctx.world.dim === "nether" && cat === "hostile" ? NETHER_MONSTERS[biome] : undefined;
+  if (nether) {
+    for (const [type, weight, a, b] of nether) {
+      const def = mobDef(type);
+      if (def) p.push({ def, weight, group: [a, b] });
+    }
+    pools.set(key, p);
+    return p;
+  }
   for (const d of allMobs()) {
     if (!d.spawn || spawnCat(d) !== cat || !d.spawn.dims.includes(ctx.world.dim)) continue;
     if (d.spawn.biomes && !d.spawn.biomes.includes(biome)) continue;
@@ -133,12 +159,19 @@ function pool(ctx: GameCtx, cat: SpawnCat, biome: string): Pool {
   return p;
 }
 
+let pickedGroup: [number, number] | undefined;
 function pick(ctx: GameCtx, p: Pool): MobDef | null {
   let total = 0;
   for (const e of p) total += e.weight;
   if (total <= 0) return null;
   let r = ctx.random() * total;
-  for (const e of p) if ((r -= e.weight) < 0) return e.def;
+  for (const e of p) {
+    if ((r -= e.weight) < 0) {
+      pickedGroup = e.group;
+      return e.def;
+    }
+  }
+  pickedGroup = p[p.length - 1].group;
   return p[p.length - 1].def;
 }
 
@@ -173,9 +206,10 @@ export function createSpawner() {
         if (d2 < 24 * 24 || d2 > 128 * 128 || !w.isLoaded(sx, sz)) continue;
         if (!def) {
           over = cat === "hostile" ? structureSpawn(ctx, sx, y, sz) : null;
+          pickedGroup = undefined;
           def = over ? mobDef(over.mob) ?? null : pick(ctx, pool(ctx, cat, (w.getBiomeAt?.(sx, y, sz) ?? w.getBiome(sx, sz)).name));
           if (!def) return;
-          const [a, b] = over ? over.group : def.spawn!.group;
+          const [a, b] = over ? over.group : pickedGroup ?? def.spawn!.group;
           left = a + ri(ctx, b - a + 1);
         }
         if (over ? !structureSpawnOk(ctx, over, def, sx, y, sz, darken) : !canSpawnAt(ctx, def, sx, y, sz, darken)) continue;
@@ -236,7 +270,7 @@ export function createSpawner() {
   return {
     counts,
     visited,
-    tick(ctx: GameCtx, mobs: Iterable<Entity>) {
+    tick(ctx: GameCtx, mobs: Iterable<Entity>, capMul = 1) {
       if (ctx.time.tick % 20 === 0) scanNewChunks(ctx);
       for (const k in counts) counts[k as SpawnCat] = 0;
       for (const e of mobs) {
@@ -248,7 +282,7 @@ export function createSpawner() {
       const scale = Math.max(0.25, Math.min(1, ctx.world.loadedChunks() / 289));
       const darken = skyDarken(ctx);
       const run = (cat: SpawnCat, tries: number) => {
-        const cap = Math.floor(CAPS[cat] * scale);
+        const cap = Math.floor(CAPS[cat] * scale * capMul);
         for (let i = 0; i < tries && counts[cat] < cap; i++) attempt(ctx, cat, cap, darken);
       };
       if (ctx.rules.difficulty !== "peaceful") run("hostile", 6);

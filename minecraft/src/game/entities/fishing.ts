@@ -4,6 +4,7 @@ import { IS_FLUID, blockByName, blockDef } from "../blocks/registry";
 import { idOf, metaOf } from "../contracts";
 import { segmentBody } from "./geom";
 import { isMob } from "./registry";
+import { advTrigger } from "../systems/advancements/bus";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -227,6 +228,7 @@ export function reelBobber(e: Entity, ctx: GameCtx): number {
     const dx = p.body.pos.x - b.pos.x, dy = p.body.pos.y - b.pos.y, dz = p.body.pos.z - b.pos.z;
     const d = Math.hypot(dx, dy, dz);
     const item = ctx.entities.spawn("item", b.pos.x, b.pos.y, b.pos.z, { stack: loot.stack, pickupDelay: 0 });
+    advTrigger({ t: "fished", item: loot.stack.item });
     item?.body.vel.set(dx * 0.1, dy * 0.1 + Math.sqrt(d) * 0.08, dz * 0.1);
     ctx.entities.dropXp(loot.xp, p.body.pos.x, p.body.pos.y + 0.5, p.body.pos.z + 0.5);
     return 1;

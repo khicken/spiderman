@@ -209,6 +209,6 @@ export function genericMob(f: number, shift = 1): MobSounds {
     ambient: R(say({ dur: 0.6, f: [f, f * 1.1, f * 0.9], vowels: ["uh", "o", "u"], rough: 0.3, breath: 0.1, shift }), 0.6),
     hurt: R(grunt(f * 1.3, shift), 0.8),
     death: R(say({ dur: 0.8, f: [f * 1.3, f, f * 0.6], vowels: ["a", "uh", "u"], rough: 0.4, breath: 0.15, shift }), 0.8),
-    step: R(step("mid"), 0.15, 4, 0.1),
+    step: R(step("mid"), 0.75, 4, 0.1),
   };
 }

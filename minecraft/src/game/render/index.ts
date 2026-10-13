@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Aabb, Dim, GameEvent, Quality, RaycastHit, RendererApi, RenderStats, WorldApi } from "../contracts";
 import { MIN_Y } from "../contracts";
-import { createAtlasTexture, createChunkMaterials } from "../mesh";
+import { createAtlasTexture, createChunkMaterials, GFX } from "../mesh";
 import {
   celestialAngle, cloudColor, daylight, fogRange, hexToRgb, moonPhase, overworldFog, skyColor, skyLightTint,
   starBrightness, sunriseColor, sunSide, voidFactor,
@@ -11,10 +11,17 @@ import { createChunkMeshes } from "./chunks";
 import { createClouds } from "./clouds";
 import { createOverlays } from "./overlays";
 import { createParticles } from "./particles";
+import { blendedFog, netherAmbient } from "./nether-ambient";
 import { QUALITY } from "./quality";
 import { createSky } from "./sky";
 import type { SkyState } from "./sky";
 import { createWeather } from "./weather";
+import { createWaterFog } from "./water-fog";
+import { FLICKER } from "../mesh/materials";
+import { syncLightmap } from "../mesh/lightmap";
+import { onPacksChanged } from "../packs";
+import { applyColormaps } from "./colormap";
+import { resetTints } from "../world/mesh-input";
 
 export { QUALITY } from "./quality";
 
@@ -49,7 +56,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   const mats = createChunkMaterials();
   const uniforms = mats.uniforms;
   scene.userData.chunkUniforms = uniforms;
-  const atlas = createAtlasTexture(renderer.getContext() as WebGL2RenderingContext);
+  let atlas = createAtlasTexture(renderer.getContext() as WebGL2RenderingContext);
   uniforms.uAtlas.value = atlas;
   const getAtlas = () => atlas;
 
@@ -60,6 +67,21 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   const particles = createParticles(scene, world, getAtlas);
   const weather = createWeather(scene, world, particles.rainSplash);
   const overlays = createOverlays(scene, getAtlas);
+  const offPacks = onPacksChanged(() => {
+    const old = atlas;
+    atlas = createAtlasTexture(renderer.getContext() as WebGL2RenderingContext);
+    uniforms.uAtlas.value = atlas;
+    old.dispose();
+    sky.reloadArt();
+    clouds.reloadArt();
+    weather.reloadArt();
+    particles.reloadArt();
+    if (applyColormaps()) {
+      resetTints();
+      chunks.remeshAll();
+    }
+  });
+  if (applyColormaps()) resetTints();
 
   let dim: Dim = world.dim;
   let dayTicks = 6000, lastDayTicks = 6000, days = 0;
@@ -71,6 +93,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   let submersion: Submersion = "none";
   let visionFar = 0;
   let submergedFor = 0;
+  const waterFog = createWaterFog();
+  let flickerT = 0;
   let time = 0;
   let width = 1, height = 1;
   const stats: RenderStats = { atmosphere: 0, upload: 0, draw: 0, sections: 0, visible: 0, queued: 0, inFlight: 0, results: 0, workers: 0, pages: 0, verts: 0 };
@@ -131,7 +155,6 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     const blocks = renderDistance * 16;
     const r = dim === "overworld" ? rain : 0, th = dim === "overworld" ? thunder : 0;
 
-    if (th > 0 && Math.random() < dt * th * 0.08) flash = 1;
     flash = Math.max(0, flash - dt * 3);
 
     fogRange(dim, blocks, range);
@@ -145,7 +168,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       day = flash > 0 ? Math.max(daylight(angle, r, th), flash) : daylight(angle, r, th);
       skyLightTint(angle, r, th, tint3);
     } else if (dim === "nether") {
-      hexToRgb(biome.fogColor, fog3);
+      blendedFog(world, cam.x, cam.z, fog3);
       sky3[0] = fog3[0]; sky3[1] = fog3[1]; sky3[2] = fog3[2];
       sunrise[3] = 0;
       tint3[0] = 1; tint3[1] = 0.72; tint3[2] = 0.62;
@@ -158,12 +181,17 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     }
 
     submergedFor += dt;
+    waterFog.step(dt, submersion === "water");
+    flickerT += dt;
+    while (flickerT > 0.05) {
+      flickerT -= 0.05;
+      FLICKER.value = (FLICKER.value + (Math.random() - Math.random()) * Math.random() * Math.random() * 0.1) * 0.9;
+    }
     if (submersion === "water") {
       hexToRgb(biome.waterColor, tmp3);
-      const k = dim === "overworld" ? 0.15 + 0.15 * ((day - 0.2) / 0.8) : 0.2;
-      fog3[0] = tmp3[0] * k; fog3[1] = tmp3[1] * k; fog3[2] = tmp3[2] * k;
+      waterFog.color(biome.name, dt, fog3);
       range.near = -8;
-      range.far = 96 * Math.max(0.25, Math.min(1, submergedFor / 30));
+      range.far = waterFog.far(biome.name, blocks);
       overlays.setTint(tmp3[0] * 0.5, tmp3[1] * 0.5, tmp3[2] * 0.6, 0.12, 0.1);
     } else if (submersion === "lava") {
       fog3[0] = 0.6; fog3[1] = 0.1; fog3[2] = 0;
@@ -200,7 +228,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     uniforms.uFogFar.value = range.far;
     fog.near = Math.max(0, range.near);
     fog.far = range.far;
-    uniforms.uDaylight.value = day * (1 - fx.darkness * 0.8);
+    uniforms.uDaylight.value = (dim === "overworld" ? (day - 0.2) / 0.8 : day) * (1 - fx.darkness * 0.8);
     if (uniforms.uNightVision) uniforms.uNightVision.value = fx.nightVision;
     uniforms.uDimLight?.value.set(dim === "nether" ? 0.1 : 0, dim === "end" ? 1 : 0);
     uniforms.uSkyTint.value.setRGB(tint3[0], tint3[1], tint3[2], THREE.SRGBColorSpace);
@@ -213,11 +241,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       uniforms.uSkyMix.value = dim === "overworld" && submersion === "none" && !(visionFar > 0 && visionFar < renderDistance * 16) && fx.blindness <= 0 && fx.darkness <= 0 ? 1 : 0;
     }
 
-    const lightK = dim === "overworld" ? day : dim === "nether" ? 0.8 : 0.7;
-    for (const l of lights) {
-      l.ambient.intensity = 0.4 * Math.PI * lightK;
-      l.a.intensity = l.b.intensity = 0.6 * Math.PI * lightK;
-    }
+    syncLightmap(uniforms);
     particles.setLighting(day, gamma);
 
     if (dim === "overworld") {
@@ -258,6 +282,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     const t1 = performance.now();
     chunks.update(camera);
     const t2 = performance.now();
+    if (dim === "nether") netherAmbient(world, camera.position.x, camera.position.y, camera.position.z, step, particles.ambient);
     particles.update(step);
 
     renderer.info.reset();
@@ -285,11 +310,17 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     camera.updateProjectionMatrix();
     quality = o.quality;
     cloudsOn = o.clouds;
+    const fancy = quality === "high";
+    if (fancy !== GFX.fancyLeaves) {
+      GFX.fancyLeaves = fancy;
+      chunks.remeshAll();
+    }
     gamma = Math.max(0, Math.min(1, o.brightness));
     applyQuality();
   }
 
   function dispose() {
+    offPacks();
     chunks.dispose();
     sky.dispose();
     clouds.dispose();
@@ -317,6 +348,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     renderer,
     setDim,
     setTime,
+    flash() { flash = 1; },
     setWeather(r: number, t: number) { rain = Math.max(0, Math.min(1, r)); thunder = Math.max(0, Math.min(1, t)); },
     setRenderDistance,
     setOptions,
@@ -333,6 +365,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     },
     addParticles: (e: Extract<GameEvent, { type: "particles" }>) => particles.addParticles(e),
     meshQueue: () => chunks.pending(),
+    chunkMeshed: (cx: number, cz: number) => chunks.chunkMeshed(cx, cz),
     stats: () => Object.assign(stats, chunks.counts()),
     render,
     resize,

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { MOB_SKIN_PATHS, baseMaterial, syncPackSkin } from "./pack-skins";
 import type { Entity, GameCtx, ItemStack, MobModel } from "../contracts";
 import { mobDef } from "./registry";
 import { daylight } from "./ai";
@@ -7,6 +8,7 @@ import { blockCube, blockStateOfItem, disposeCaches, isCubeItem, itemSpriteView,
 import { orbIcon } from "./items";
 import { extraView } from "./visuals-extra";
 import { arrowGeometry, arrowMaterial, orbTextures, disposeMisc } from "./misc-art";
+import { createShadows, shadowRadius } from "./shadows";
 
 interface View {
   group: THREE.Group;
@@ -32,6 +34,11 @@ function lerpAngle(a: number, b: number, t: number) {
   return a + d * t;
 }
 
+function invisible(e: Entity) {
+  for (const f of e.effects) if (f.id === "invisibility") return true;
+  return false;
+}
+
 function renderCount(n: number) {
   return n > 48 ? 5 : n > 32 ? 4 : n > 16 ? 3 : n > 1 ? 2 : 1;
 }
@@ -48,6 +55,7 @@ export function createViews(getCtx: () => GameCtx) {
   let frameNo = 0;
   let day = 1;
   const camPos = new THREE.Vector3();
+  const shadows = createShadows();
 
   function itemView(e: Entity, v: View) {
     const s = e.data.stack as ItemStack;
@@ -76,12 +84,18 @@ export function createViews(getCtx: () => GameCtx) {
       spin.add(m);
     }
     v.key = `${s.item}:${n}`;
+    const glint = !!s.ench && Object.keys(s.ench).length > 0;
     v.update = (en, pt, x, y, z) => {
       const age = en.age + pt;
       const bob = Math.sin(age / 10 + v.bob) * 0.1 + 0.1;
       v.group.position.set(x, y + bob + (cube ? 0.125 : 0.25), z);
       spin.rotation.y = age / 20 + v.bob;
       shadeMaterials(spin, brightnessAt(getCtx(), x, y + 0.2, z, day), false);
+      if (glint) {
+        const g = 0.12 + 0.1 * Math.sin(age * 0.25);
+        for (const m of cubeMats) m.emissive.setRGB(g * 0.8, g * 0.35, g * 1.2);
+        if (spriteMat && "emissive" in spriteMat) (spriteMat as THREE.MeshLambertMaterial).emissive.setRGB(g * 0.8, g * 0.35, g * 1.2);
+      }
     };
   }
 
@@ -168,6 +182,7 @@ export function createViews(getCtx: () => GameCtx) {
       return false;
     }
     v.model = model;
+    const skinMat = MOB_SKIN_PATHS[e.type] ? baseMaterial(model.root) : null;
     const inner = new THREE.Group();
     inner.rotation.order = "YXZ";
     inner.add(model.root);
@@ -189,6 +204,7 @@ export function createViews(getCtx: () => GameCtx) {
       const hy = en.headYaw;
       en.headYaw = lerpAngle((en.data._phy as number) ?? hy, hy, pt) - yaw + en.yaw;
       model.animate(en, pt, walk, phase);
+      if (skinMat) syncPackSkin(en.type, model.root, skinMat);
       en.headYaw = hy;
       shadeModel(model, getCtx(), en, day);
       const flash = (en.data.flash as number) ?? 0;
@@ -257,6 +273,7 @@ export function createViews(getCtx: () => GameCtx) {
       frameNo++;
       day = daylight(ctx);
       camPos.copy(ctx.renderer.camera.position);
+      shadows.begin(ctx);
       for (const e of list) {
         if (e.data._remove) continue;
         const px = (e.data._px as number) ?? e.body.pos.x;
@@ -297,7 +314,13 @@ export function createViews(getCtx: () => GameCtx) {
         v.seen = frameNo;
         v.group.visible = true;
         v.update(e, pt, x, y, z);
+        const d2 = dx * dx + dz * dz + (y - camPos.y) * (y - camPos.y);
+        if (d2 < 256 && !e.dead && !invisible(e)) {
+          const r = shadowRadius(e.type, e.body.width) * (v.baby ? 0.5 : 1);
+          shadows.add(ctx, x, y, z, r, e.type === "item" || e.type === "xp_orb" ? 0.75 : 1, d2);
+        }
       }
+      shadows.end();
       for (const [id, v] of views) if (v.seen !== frameNo) destroy(id, v);
     },
     clear() {
@@ -305,6 +328,7 @@ export function createViews(getCtx: () => GameCtx) {
     },
     dispose() {
       for (const [id, v] of views) destroy(id, v);
+      shadows.dispose();
       disposeCaches();
       disposeMisc();
     },

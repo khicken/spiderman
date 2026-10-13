@@ -90,6 +90,8 @@ const STAGES: Record<string, number[]> = {
   sweet_berry_bush: [0, 1, 2, 3],
   cocoa: [0, 1, 2],
   respawn_anchor: [0, 1, 2, 3, 4],
+  suspicious_sand: [0, 1, 2, 3],
+  suspicious_gravel: [0, 1, 2, 3],
 };
 
 function stageKey(name: string, key: string, meta: number): string {
@@ -135,6 +137,7 @@ function fillTex(d: BlockDef) {
       if (d.name === "farmland" && meta === 7 && cf === 2 && hasLayer("farmland_moist")) key = "farmland_moist";
       if (d.name === "chiseled_bookshelf" && meta & 8 && cf === 5) key = "chiseled_bookshelf_occupied";
       if (d.name === "respawn_anchor" && meta > 0 && cf === 2) key = "respawn_anchor_top";
+      if ((d.name === "beehive" || d.name === "bee_nest") && meta & 8 && cf === 5) key = `${d.name}_front_honey`;
       TEX[(d.id * 16 + meta) * 6 + wf] = layerOf(key);
     }
   }

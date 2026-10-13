@@ -139,12 +139,19 @@ const useBed: UseFn = (ctx, x, y, z, s) => {
 
 let sleepTick = 0;
 
+// Multiplayer: the night passes only when every player sleeps (playersSleepingPercentage 100).
+export const SLEEP_RULE = { othersAsleep: (_ctx: GameCtx) => true };
+
 export const bedScheduledTick: NonNullable<BlockBehavior["scheduledTick"]> = (ctx, x, y, z) => {
   const p = ctx.player;
   if (!p.sleeping) return;
   const left = 100 - (ctx.time.tick - sleepTick);
   if (left > 1) {
     ctx.world.scheduleTick(x, y, z, left);
+    return;
+  }
+  if (!SLEEP_RULE.othersAsleep(ctx)) {
+    ctx.world.scheduleTick(x, y, z, 10);
     return;
   }
   const t = ctx.time;

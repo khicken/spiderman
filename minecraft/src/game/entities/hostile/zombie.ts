@@ -9,6 +9,7 @@ import {
 } from "./brain";
 import { paintDrowned, paintHusk, paintZombie, paintZombieVillager, undeadModel } from "./looks-undead";
 import { DESERT, MONSTER_BIOMES, OCEANS, RIVERS } from "./spawns";
+import { advTrigger } from "../../systems/advancements/bus";
 
 interface ZombieCfg {
   type: "zombie" | "husk" | "drowned" | "zombie_villager";
@@ -267,6 +268,7 @@ function cureTick(e: Entity, ctx: GameCtx): void {
     const v = (e.data.villager as Record<string, unknown> | undefined) ?? { profession: e.data.profession };
     const n = replaceWith(ctx, e, "villager", { ...v, cured: true, persistent: true, ...(e.data.baby ? { grow: -24000 } : {}) });
     if (n) n.effects.push({ id: "nausea", amplifier: 0, ticks: 200 });
+    if (n) advTrigger({ t: "cured_zombie_villager" });
   }
 }
 

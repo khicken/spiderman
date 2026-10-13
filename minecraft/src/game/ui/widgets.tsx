@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { textWidth } from "./font";
 import { Text, useGui } from "./gui";
-import { buttonUrl, dirtUrl, sliderTrackUrl } from "./sprites";
+import { buttonUrl, dirtUrl, sliderHandleUrl, sliderTrackUrl } from "./sprites";
 
 let clickSound: (() => void) | null = null;
 // The integration layer sets this to play "ui.button.click".
@@ -114,7 +114,7 @@ export function Slider({ x, y, width = 150, height = 20, value, label, onChange 
       }}
       style={{ ...abs(x, y, width, height), backgroundImage: `url(${sliderTrackUrl(width, height)})`, pointerEvents: "auto", cursor: "pointer", outline: "none" }}
     >
-      <div style={{ ...abs(Math.round(value * (width - 8)), 0, 8, height), backgroundImage: `url(${buttonUrl(8, height, hover || drag ? "hover" : "normal")})` }} />
+      <div style={{ ...abs(Math.round(value * (width - 8)), 0, 8, height), backgroundImage: `url(${sliderHandleUrl(8, height, hover || drag)})` }} />
       <Label text={label} color={0xffffff} width={width} height={height} />
     </div>
   );
@@ -136,10 +136,11 @@ export interface TextFieldProps {
   textColor?: number;
   amp?: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
+  password?: boolean;
 }
 
 // A hidden native input keeps paste, selection and IME; the visible text is drawn with the pixel font.
-export function TextField({ x, y, width = 200, height = 20, value, onChange, onEnter, onKey, hint, maxLength = 32, autoFocus, bordered = true, textColor = 0xe0e0e0, amp, inputRef }: TextFieldProps) {
+export function TextField({ x, y, width = 200, height = 20, value, onChange, onEnter, onKey, hint, maxLength = 32, autoFocus, bordered = true, textColor = 0xe0e0e0, amp, inputRef, password }: TextFieldProps) {
   const own = useRef<HTMLInputElement | null>(null);
   const ref = inputRef ?? own;
   const [focus, setFocus] = useState(false);
@@ -159,13 +160,14 @@ export function TextField({ x, y, width = 200, height = 20, value, onChange, onE
   };
   const pad = bordered ? 4 : 0;
   const inner = width - pad * 2;
-  const cur = Math.min(sel[0], value.length);
+  const text = password ? "*".repeat(value.length) : value;
+  const cur = Math.min(sel[0], text.length);
   let start = 0;
-  while (start < cur && textWidth(value.slice(start, cur)) > inner - 6) start++;
-  let end = value.length;
-  while (end > cur && textWidth(value.slice(start, end)) > inner) end--;
-  const shown = value.slice(start, end);
-  const caretX = pad + textWidth(value.slice(start, cur));
+  while (start < cur && textWidth(text.slice(start, cur)) > inner - 6) start++;
+  let end = text.length;
+  while (end > cur && textWidth(text.slice(start, end)) > inner) end--;
+  const shown = text.slice(start, end);
+  const caretX = pad + textWidth(text.slice(start, cur));
   const selA = Math.max(start, Math.min(sel[0], sel[1]));
   const selB = Math.min(end, Math.max(sel[0], sel[1]));
   const ty = Math.floor((height - 8) / 2);
@@ -173,11 +175,12 @@ export function TextField({ x, y, width = 200, height = 20, value, onChange, onE
     <div style={{ ...abs(x, y, width, height), background: bordered ? "#000" : undefined, boxShadow: bordered ? `inset 0 0 0 1px ${focus ? "#fff" : "#a0a0a0"}` : undefined, pointerEvents: "auto" }}>
       {shown ? <Text text={shown} color={textColor} x={pad} y={ty} amp={amp} /> : !focus && hint ? <Text text={hint} color={0x808080} x={pad} y={ty} /> : null}
       {focus && selB > selA && (
-        <div style={{ ...abs(pad + textWidth(value.slice(start, selA)), ty - 1, textWidth(value.slice(selA, selB)), 10), background: "rgba(0,0,255,0.6)" }} />
+        <div style={{ ...abs(pad + textWidth(text.slice(start, selA)), ty - 1, textWidth(text.slice(selA, selB)), 10), background: "rgba(0,0,255,0.6)" }} />
       )}
-      {focus && blink && (cur < value.length ? <div style={{ ...abs(caretX - 1, ty - 1, 1, 10), background: "#d0d0d0" }} /> : <Text text="_" color={textColor} x={caretX} y={ty} />)}
+      {focus && blink && (cur < text.length ? <div style={{ ...abs(caretX - 1, ty - 1, 1, 10), background: "#d0d0d0" }} /> : <Text text="_" color={textColor} x={caretX} y={ty} />)}
       <input
         ref={ref}
+        type={password ? "password" : "text"}
         value={value}
         maxLength={maxLength}
         spellCheck={false}

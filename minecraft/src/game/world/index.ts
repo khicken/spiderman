@@ -19,6 +19,22 @@ export interface WorldOpts {
   getCtx: () => GameCtx;
   // Synchronous generator for node tests or a worker-free fallback.
   generate?: (seed: number, dim: Dim, cx: number, cz: number) => ChunkData;
+  // Multiplayer client: chunks come from the host and local edits go to it.
+  remote?: RemoteLink;
+}
+
+export interface RemoteLink {
+  request(cx: number, cz: number): void;
+  center(cx: number, cz: number, r: number): void;
+  setBlock(x: number, y: number, z: number, s: BlockState, flags: number): void;
+  setBlockEntity(be: BlockEntityData | null, x: number, y: number, z: number): void;
+  setWaterlogged(x: number, y: number, z: number, on: boolean): void;
+}
+
+export interface KeepCenter {
+  cx: number;
+  cz: number;
+  r: number;
 }
 
 export interface World extends WorldApi {
@@ -26,6 +42,17 @@ export interface World extends WorldApi {
   takeEntities(cx: number, cz: number): EntitySave[] | undefined;
   // Live chunk arrays for renderers that scan loaded chunks (enchanting books, sign text).
   chunkAt(cx: number, cz: number): { blocks: Uint16Array; be: Map<number, BlockEntityData> } | undefined;
+  // Full chunk data for a loaded chunk whose 8 neighbors are loaded too.
+  readyChunk(cx: number, cz: number): ChunkData | undefined;
+  // Host: also keep chunks around these centers loaded (other players).
+  keep(centers: KeepCenter[]): void;
+  // Emit "loaded" again for every chunk, for a renderer that subscribes late.
+  reannounce(): void;
+  // Remote mode: data and edits from the host.
+  receiveChunk(data: ChunkData): void;
+  dropRequest(cx: number, cz: number): void;
+  applyBlock(x: number, y: number, z: number, s: BlockState): void;
+  applyBlockEntity(be: BlockEntityData | null, x: number, y: number, z: number): void;
 }
 
 const MAX_DEPTH = 64;
@@ -60,9 +87,15 @@ export function createWorld(opts: WorldOpts): World {
   const ticker = createTicker(store, behaviors);
   const tickable = ticker.tickable;
   const listeners = new Set<(e: ChunkEvent) => void>();
-  const pool: GenPool | null = opts.generate || typeof Worker === "undefined" ? null : createGenPool();
+  const remote = opts.remote;
+  const pool: GenPool | null = remote || opts.generate || typeof Worker === "undefined" ? null : createGenPool();
   const generate = opts.generate;
-  const useIdb = typeof indexedDB !== "undefined";
+  const useIdb = !remote && typeof indexedDB !== "undefined";
+  let applying = false;
+  let extra: KeepCenter[] = [];
+  let extraWanted: number[] = [];
+  let extraIdx = 0;
+  let retryAt = 0;
   const pending = new Set<number>();
   const arrivals: ChunkData[] = [];
   const saving = new Map<number, ChunkData>();
@@ -136,8 +169,13 @@ export function createWorld(opts: WorldOpts): World {
     scan = true;
   };
 
-  const inRange = (cx: number, cz: number, extra: number) =>
-    Math.abs(cx - centerCx) <= radius + extra && Math.abs(cz - centerCz) <= radius + extra;
+  const inExtra = (cx: number, cz: number, add: number) => {
+    for (const e of extra) if (Math.abs(cx - e.cx) <= e.r + add && Math.abs(cz - e.cz) <= e.r + add) return true;
+    return false;
+  };
+
+  const inRange = (cx: number, cz: number, add: number) =>
+    (Math.abs(cx - centerCx) <= radius + add && Math.abs(cz - centerCz) <= radius + add) || inExtra(cx, cz, add);
 
   const arrive = (data: ChunkData) => {
     const key = chunkKey(data.cx, data.cz);
@@ -158,6 +196,10 @@ export function createWorld(opts: WorldOpts): World {
   const request = (cx: number, cz: number) => {
     const key = chunkKey(cx, cz);
     pending.add(key);
+    if (remote) {
+      remote.request(cx, cz);
+      return;
+    }
     const cached = saving.get(key);
     if (cached) {
       arrivals.push(cached);
@@ -196,13 +238,16 @@ export function createWorld(opts: WorldOpts): World {
     const drop: Chunk[] = [];
     for (const c of store.chunks.values()) {
       const d = Math.max(Math.abs(c.cx - cx), Math.abs(c.cz - cz));
-      if (d > r + 2) drop.push(c);
-      else if (d > r + 1) unannounce(c);
+      if (d > r + 2) {
+        if (!inExtra(c.cx, c.cz, 2)) drop.push(c);
+        unannounce(c);
+      } else if (d > r + 1) unannounce(c);
     }
     for (const c of drop) unload(c);
     wanted = ringOffsets(r + 1);
     wantIdx = 0;
     scan = true;
+    remote?.center(cx, cz, r);
   };
 
   const callNeighbor = (ctx: GameCtx, nx: number, ny: number, nz: number, fx: number, fy: number, fz: number) => {
@@ -248,6 +293,7 @@ export function createWorld(opts: WorldOpts): World {
     const wasWet = c.wl.has(i) || IMPLICIT_WATER[old & 0xfff] === 1;
     if (s === 0 && wasWet) s = WATER_SOURCE;
     if (old === s) return false;
+    if (remote && !applying) remote.setBlock(x, y, z, s, flags);
     const holds = canHoldWater(s) && (wasWet || old === WATER_SOURCE) && !IMPLICIT_WATER[s & 0xfff];
     if (holds) c.wl.add(i);
     else c.wl.delete(i);
@@ -282,7 +328,7 @@ export function createWorld(opts: WorldOpts): World {
     }
     flush();
 
-    const ctx = safeCtx();
+    const ctx = remote ? null : safeCtx();
     if (!ctx) return true;
     ctx.emit({ type: "block_changed", x, y, z, from: old, to: s });
     if (lostBe?.items && !(flags & SET_NO_DROP)) {
@@ -343,6 +389,7 @@ export function createWorld(opts: WorldOpts): World {
     raycast: query.raycast,
     collide: query.collide,
     scheduleTick(x, y, z, delay) {
+      if (remote) return;
       const id = query.getBlock(x, y, z) & 0xfff;
       ticker.schedule(x, y, z, id, lastTick + Math.max(1, delay | 0));
     },
@@ -358,6 +405,7 @@ export function createWorld(opts: WorldOpts): World {
       const c = store.get(x >> 4, z >> 4);
       if (!c) return;
       const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
+      if (remote && !applying) remote.setBlockEntity(be, x, y, z);
       if (be) {
         be.x = x;
         be.y = y;
@@ -380,12 +428,13 @@ export function createWorld(opts: WorldOpts): World {
       const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
       const s = c.blocks[i];
       if (IMPLICIT_WATER[s & 0xfff] || (on && !canHoldWater(s)) || on === c.wl.has(i)) return false;
+      if (remote && !applying) remote.setWaterlogged(x, y, z, on);
       if (on) c.wl.add(i);
       else c.wl.delete(i);
       c.modified = true;
       store.markDirty(c, x & 15, y, z & 15);
       flush();
-      const ctx = safeCtx();
+      const ctx = remote ? null : safeCtx();
       if (!ctx) return true;
       ctx.emit({ type: "block_changed", x, y, z, from: s, to: s });
       depth++;
@@ -416,12 +465,28 @@ export function createWorld(opts: WorldOpts): World {
         n++;
       }
 
-      const cap = pool ? pool.size * 3 : 2;
+      const cap = remote ? 32 : pool ? pool.size * 3 : 2;
       let issued = 0;
+      if (remote && wantIdx >= wanted.length) {
+        const t = now();
+        if (t > retryAt) {
+          retryAt = t + 1000;
+          wantIdx = 0;
+        }
+      }
       while (wantIdx < wanted.length && pending.size - arrivals.length < cap && issued < cap) {
         const ox = centerCx + wanted[wantIdx];
         const oz = centerCz + wanted[wantIdx + 1];
         wantIdx += 2;
+        const key = chunkKey(ox, oz);
+        if (store.chunks.has(key) || pending.has(key)) continue;
+        request(ox, oz);
+        issued++;
+      }
+      while (extraIdx < extraWanted.length && pending.size - arrivals.length < cap && issued < cap) {
+        const ox = extraWanted[extraIdx];
+        const oz = extraWanted[extraIdx + 1];
+        extraIdx += 2;
         const key = chunkKey(ox, oz);
         if (store.chunks.has(key) || pending.has(key)) continue;
         request(ox, oz);
@@ -435,9 +500,10 @@ export function createWorld(opts: WorldOpts): World {
       flush();
     },
     tick(ctx) {
+      if (remote) return;
       lastTick = ctx.time.tick;
       const p = ctx.player?.body?.pos;
-      ticker.run(ctx, p ? Math.floor(p.x) : centerCx << 4, p ? Math.floor(p.z) : centerCz << 4);
+      ticker.run(ctx, p ? Math.floor(p.x) : centerCx << 4, p ? Math.floor(p.z) : centerCz << 4, extra.length ? extra : undefined);
       flush();
     },
     loadedChunks: () => store.chunks.size,
@@ -452,6 +518,62 @@ export function createWorld(opts: WorldOpts): World {
       await Promise.all(jobs);
     },
     chunkAt: (cx, cz) => store.get(cx, cz),
+    readyChunk(cx, cz) {
+      const c = store.get(cx, cz);
+      if (!c || !isReady(c)) return undefined;
+      c.data.blockEntities = [...c.be.values()];
+      c.data.waterlogged = c.wl.size ? [...c.wl] : undefined;
+      return c.data;
+    },
+    keep(centers) {
+      const same = centers.length === extra.length && centers.every((c, i) => c.cx === extra[i].cx && c.cz === extra[i].cz && c.r === extra[i].r);
+      if (same) return;
+      extra = centers.map((c) => ({ ...c }));
+      extraWanted = [];
+      const seen = new Set<number>();
+      for (const e of extra) {
+        const o = ringOffsets(e.r + 1);
+        for (let i = 0; i < o.length; i += 2) {
+          const k = chunkKey(e.cx + o[i], e.cz + o[i + 1]);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          extraWanted.push(e.cx + o[i], e.cz + o[i + 1]);
+        }
+      }
+      extraIdx = 0;
+      if (radius >= 0) recompute(centerCx, centerCz, radius);
+    },
+    reannounce() {
+      for (const c of store.chunks.values()) c.announced = false;
+      scan = true;
+    },
+    receiveChunk(data) {
+      arrivals.push(data);
+    },
+    dropRequest(cx, cz) {
+      pending.delete(chunkKey(cx, cz));
+    },
+    applyBlock(x, y, z, s) {
+      applying = true;
+      try {
+        setBlock(x, y, z, s, SET_NO_DROP);
+      } finally {
+        applying = false;
+      }
+    },
+    applyBlockEntity(be, x, y, z) {
+      applying = true;
+      try {
+        api.setBlockEntity(be, x, y, z);
+        const c = store.get(x >> 4, z >> 4);
+        if (c) {
+          store.markDirty(c, x & 15, y, z & 15);
+          flush();
+        }
+      } finally {
+        applying = false;
+      }
+    },
     takeEntities(cx, cz) {
       const c = store.get(cx, cz);
       const list = c?.data.entities;

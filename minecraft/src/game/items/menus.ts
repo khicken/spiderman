@@ -4,6 +4,7 @@ import { arraySlot, shiftOutput, shiftTo, type Menu, type MenuEnv, type Slot } f
 import { craftRemainder, matchCrafting, type CraftMatch } from "./recipes";
 import { enchLevel } from "./enchant";
 import { ensureItems } from "./furnace";
+import { advTrigger } from "../systems/advancements/bus";
 
 export interface MenuDeps {
   inv: (ItemStack | null)[];
@@ -67,6 +68,7 @@ function craftResult(d: MenuDeps, grid: (ItemStack | null)[], width: 2 | 3, stat
     onTake: () => {
       const m = state.m;
       if (!m) return;
+      advTrigger({ t: "crafted", item: m.result.item, station: width === 3 ? "crafting_table" : "inventory", ingredients: grid.filter((s): s is ItemStack => !!s).map((s) => s.item) });
       for (let i = 0; i < grid.length; i++) {
         const s = grid[i];
         if (!s || !m.consume[i]) continue;
@@ -94,7 +96,7 @@ export function inventoryMenu(d: MenuDeps, kind: "inventory" | "creative" = "inv
   ];
   const menu: Menu = {
     kind,
-    title: "",
+    title: kind === "inventory" ? "Crafting" : "",
     slots,
     groups: [
       { name: "craft_output", from: 0, to: 1 },
