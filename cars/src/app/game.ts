@@ -587,7 +587,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       const st = me.v.state;
       if (state === "menu") rig.showroom(dt, st.pos, t);
       else rig.update(dt, rewinding ? st : renderPose(me.v, acc / DT), me.v.spec, input.look(), input.held("lookBack"));
-      view.frame(dt, st.pos, state === "menu" ? 0 : Math.abs(st.speed));
+      view.frame(dt, st.pos, state === "menu" ? 0 : Math.max(1, Math.abs(st.speed))); // speed < 1 turns on the showroom depth of field
     }
     setFocus(view.camera.position);
     if (audio) {
