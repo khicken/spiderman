@@ -11,7 +11,7 @@ const roots: Root[] = [];
 let byKey = false;
 let listeners = 0;
 
-const FOCUSABLE = "button:not(:disabled), a[href], input:not(:disabled), [data-nav]";
+const FOCUSABLE = "button:not(:disabled), a[href]:not([data-nonav]), input:not(:disabled), [data-nav]";
 
 export function focusByKey() {
   return byKey;

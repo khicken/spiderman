@@ -19,6 +19,7 @@ export type Driveline = {
   iw: number; // wheel inertia
   tPeak: number;
   electric: boolean;
+  center: number; // AWD center diff lock scale, 1 = normal
 };
 
 export function createDriveline(spec: CarSpec): Driveline {
@@ -31,7 +32,7 @@ export function createDriveline(spec: CarSpec): Driveline {
   const r = spec.body.wheelR / 0.33;
   return {
     we: spec.engine.idle / RPM, gear: 1, next: 1, shiftT: 0, since: 9, boost: 0, cut: false, revT: 0, fwdT: 0, te: 0, clutchT: 0, lastThr: 0,
-    share, iw: 1.15 * r * r, tPeak, electric: spec.engine.layout === "electric",
+    share, iw: 1.15 * r * r, tPeak, electric: spec.engine.layout === "electric", center: 1,
   };
 }
 
@@ -146,7 +147,7 @@ export function stepDriveline(
     const f = (omega[0] + omega[1]) / 2;
     const r = (omega[2] + omega[3]) / 2;
     let j = ((f - r) * iw) / 2;
-    const lim = (60 + 0.25 * axle) * h;
+    const lim = (60 + 0.25 * axle) * h * d.center;
     if (j > lim) j = lim;
     else if (j < -lim) j = -lim;
     omega[0] -= j / iw;
@@ -197,7 +198,8 @@ export function selectGear(
   }
   if (up && d.gear < n) return begin(d, spec, d.gear + 1, spec.shiftTime);
   if (down) {
-    if (d.gear > 1) return begin(d, spec, d.gear - 1, spec.shiftTime);
+    // Downshift protection: refuse a gear that would spin the engine past the limiter.
+    if (d.gear > 1) return Math.abs(wd) * gearRatio(spec, d.gear - 1) * RPM > e.limiter ? 0 : begin(d, spec, d.gear - 1, spec.shiftTime);
     if (Math.abs(fwd) < 1.5) return begin(d, spec, -1, 0);
   }
   if (d.gear === 0) return begin(d, spec, 1, 0);

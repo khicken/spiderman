@@ -23,7 +23,7 @@ const CITY: MapId[] = ["tokyo", "sanfrancisco", "monaco"];
 // Bus levels measured from the live mix: engine about 7 dB over music while racing, AI and ambience under both.
 const ENGINE = 0.75;
 const AI = 0.85;
-const MUSIC = 2.6;
+const MUSIC = 3.3;
 const SFX_ORDER: Sfx[] = ["click", "hover", "beep", "go", "shift", "impact", "scrape", "curb", "backfire", "blowoff", "land", "checkpoint", "lap", "best", "finish", "horn", "rewind", "splash", "join", "leave"];
 
 export function createAudio(): Audio {
@@ -98,7 +98,7 @@ export function createAudio(): Audio {
     void ready.then(() => {
       dev.path = audioPath(ctx);
       dev.ms = Math.round(performance.now() - t0);
-      if (dev.path === "worklet") dev.record = createTap(ctx, [["L", m.vol, 0], ["R", m.vol, 1], ["player", playerBus], ["ai", aiBus], ["music", musicVol], ["sfx", sfxBus], ["amb", ambBus], ["env", envAGain], ["tunnel", tunnelGain]]);
+      if (dev.path !== "none") dev.record = createTap(ctx, [["L", m.vol, 0], ["R", m.vol, 1], ["player", playerBus], ["ai", aiBus], ["music", musicVol], ["sfx", sfxBus], ["amb", ambBus], ["env", envAGain], ["tunnel", tunnelGain]]);
     });
   }
 

@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CarId, CarSpec, MapId, Mode } from "./contracts";
-import { Back, Bolt, Clock, Cog, Disc, Flag, Fwd, Globe, Laps, Pin, Play, Road, Ruler, Speed, Wheel, WeatherIcon } from "./ui-icons";
+import { Back, Bolt, Clock, Cog, Disc, Flag, Fwd, Gamepad, Globe, Laps, Pin, Play, Road, Ruler, Speed, Wheel, WeatherIcon } from "./ui-icons";
 import { ClassBadge, CLASS_COLOR, IconBtn, Stepper, TrackLine, carStats, cx, fmtLength, type MapCard } from "./ui-kit";
 import { focusByKey, useNavRoot } from "./ui-nav";
+import { Transmission } from "./ui-settings";
 
 export type MenuPick = { mode: Mode; map: MapId; car: CarId; paint: string; laps: number };
 export type MenuStep = "home" | "maps" | "cars";
@@ -17,12 +18,15 @@ type Props = {
   onGo: (p: MenuPick) => void;
   onOnline: () => void;
   onSettings: () => void;
+  onControls: () => void;
+  manual: boolean;
+  onManual: (manual: boolean) => void;
   step?: MenuStep;
   onStep?: (s: MenuStep) => void;
   mph?: boolean;
 };
 
-export function Menu({ cars, maps, pick, onPick, onGo, onOnline, onSettings, step: initial = "home", onStep, mph = false }: Props) {
+export function Menu({ cars, maps, pick, onPick, onGo, onOnline, onSettings, onControls, manual, onManual, step: initial = "home", onStep, mph = false }: Props) {
   const [step, setStepRaw] = useState<MenuStep>(initial);
   const setStep = (s: MenuStep) => {
     setStepRaw(s);
@@ -39,10 +43,11 @@ export function Menu({ cars, maps, pick, onPick, onGo, onOnline, onSettings, ste
         }}
         onOnline={onOnline}
         onSettings={onSettings}
+        onControls={onControls}
       />
     );
   if (step === "maps") return <MapPicker maps={maps} pick={pick} onPick={onPick} onBack={() => setStep("home")} onNext={() => setStep("cars")} mph={mph} />;
-  return <CarPicker cars={cars} pick={pick} onPick={onPick} onBack={() => setStep("maps")} onGo={() => onGo(pick)} />;
+  return <CarPicker cars={cars} pick={pick} onPick={onPick} onBack={() => setStep("maps")} onGo={() => onGo(pick)} manual={manual} onManual={onManual} />;
 }
 
 export function Logo({ className }: { className?: string }) {
@@ -65,16 +70,21 @@ export function Logo({ className }: { className?: string }) {
   );
 }
 
-function Home({ onMode, onOnline, onSettings }: { onMode: (m: Mode) => void; onOnline: () => void; onSettings: () => void }) {
+function Home({ onMode, onOnline, onSettings, onControls }: { onMode: (m: Mode) => void; onOnline: () => void; onSettings: () => void; onControls: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useNavRoot(ref);
   return (
     <div ref={ref} className="safe fade absolute inset-0 flex flex-col bg-gradient-to-r from-black/70 via-black/10 to-transparent">
       <div className="flex items-start justify-between">
         <Logo className="ml-[0.08em] text-[clamp(4.5rem,15vh,9rem)]" />
-        <IconBtn label="Settings" onClick={onSettings} className="text-2xl">
-          <Cog />
-        </IconBtn>
+        <div className="flex gap-2">
+          <IconBtn label="Controls" onClick={onControls} className="text-2xl">
+            <Gamepad />
+          </IconBtn>
+          <IconBtn label="Settings" onClick={onSettings} className="text-2xl">
+            <Cog />
+          </IconBtn>
+        </div>
       </div>
       <div className="flex-1" />
       <div className="flex items-end justify-between gap-4">
@@ -84,7 +94,7 @@ function Home({ onMode, onOnline, onSettings }: { onMode: (m: Mode) => void; onO
           <Tile icon={<Road />} label="Free" onClick={() => onMode("free")} />
           <Tile icon={<Globe />} label="Online" onClick={onOnline} />
         </div>
-        <a href="https://kalebkim.com" className="nav mb-1 shrink-0 rounded-[2px] [@media(max-height:500px)]:hidden border border-transparent px-1 text-xs text-dim hover:text-white">
+        <a href="https://kalebkim.com" data-nonav tabIndex={-1} className="nav mb-1 shrink-0 rounded-[2px] [@media(max-height:500px)]:hidden border border-transparent px-1 text-xs text-dim hover:text-white">
           kalebkim.com
         </a>
       </div>
@@ -205,7 +215,7 @@ function GoButton({ onClick, label, children, tall }: { onClick: () => void; lab
 
 const STAT_ICONS = { speed: Speed, handling: Wheel, accel: Bolt, braking: Disc } as const;
 
-export function CarPicker({ cars, pick, onPick, onBack, onGo, goIcon }: { cars: readonly CarSpec[]; pick: MenuPick; onPick: (p: MenuPick) => void; onBack: () => void; onGo: () => void; goIcon?: ReactNode }) {
+export function CarPicker({ cars, pick, onPick, onBack, onGo, goIcon, manual, onManual }: { cars: readonly CarSpec[]; pick: MenuPick; onPick: (p: MenuPick) => void; onBack: () => void; onGo: () => void; goIcon?: ReactNode; manual: boolean; onManual: (manual: boolean) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
   useNavRoot(ref, onBack);
@@ -260,6 +270,7 @@ export function CarPicker({ cars, pick, onPick, onBack, onGo, goIcon }: { cars: 
               </button>
             ))}
           </div>
+          <Transmission manual={manual} onChange={onManual} className="mt-[clamp(0.5rem,1.8vh,1rem)]" />
         </div>
       </div>
       <div className="flex items-end gap-3">

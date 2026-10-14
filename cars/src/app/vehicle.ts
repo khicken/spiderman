@@ -16,6 +16,10 @@ const focus = new THREE.Vector3(0, -1e9, 0);
 const RPM = 30 / Math.PI;
 const SNAP = 29 + 4 * 7;
 const HB_SLIP = 0.3;
+// Drift angle the assists hold, rad. u: steer into the turn +1 .. against it -1.
+const driftAim = (u: number) => 0.45 + 0.25 * u;
+// Drift steering gains. wide, wideF: side grip the rear and front give up at full counter-steer, which widens the line.
+export const DRIFT = { base: 0.75, into: 0.9, counter: 0.8, damp: 1.6, wide: 1, wideF: 0.7 };
 const ROLL: Record<Surface, number> = { asphalt: 0.012, curb: 0.014, cobble: 0.018, grass: 0.06, gravel: 0.05, dirt: 0.04, snow: 0.035 };
 
 const _h = new THREE.Vector3();
@@ -34,7 +38,7 @@ function newHit(): GroundHit {
   return { y: 0, normal: new THREE.Vector3(0, 1, 0), surface: "asphalt", grip: 1, s: 0, lateral: 0, onRoad: true, tunnel: false };
 }
 
-export type VehicleBody = Vehicle & Body & { pose(alpha: number): VehicleState };
+export type VehicleBody = Vehicle & Body & { pose(alpha: number): VehicleState; readonly drifting: boolean; readonly walled: boolean };
 
 // Render pose between the last two physics steps. alpha = leftover accumulator / step, 0..1.
 // Cars farther than 150 m from this point (the camera) run fewer tire substeps. Call once per frame.
@@ -127,6 +131,17 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
   let lastThr = 0;
   let impactT = 0;
   let scrapeT = 0;
+  let drift = false;
+  let calmWall = 0;
+  let wallMem = 0; // time left of the scrape penalty after the last wall contact
+  let driftV = 0; // speed when the drift started
+  let walled = false;
+  let shiftQ = 0; // queued shift presses, + up
+  let shiftQT = 0;
+  let askT = 9;
+  let askThr = 9; // time since the throttle was last above half
+  let lastBeta = NaN; // NaN after a teleport, so the first step has no swing rate
+  let calmT = 0;
   const events: GameEvent[] = [];
   let assists: Assists = { abs: true, tcs: true, stability: true, autoGear: true, steer: true };
 
@@ -187,7 +202,14 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     for (let i = 0; i < 4; i++) wd += d.share[i] * omega[i];
     // Auto shifting reads ground speed too, so wheelspin does not climb through the gears.
     const wdGear = Math.sign(wd) * Math.min(Math.abs(wd), v / R * 1.25 + 4);
-    const dir = selectGear(d, spec, assists.autoGear, c.throttle, c.brake, c.shiftUp, c.shiftDown, fwdSpeed, wdGear, dt);
+    // Shift presses queue up, so a quick double tap during a shift still counts. Stale presses drop after half a second.
+    if (c.shiftUp) shiftQ = Math.min(3, Math.max(0, shiftQ) + 1);
+    if (c.shiftDown) shiftQ = Math.max(-3, Math.min(0, shiftQ) - 1);
+    shiftQT = c.shiftUp || c.shiftDown ? 0 : shiftQT + dt;
+    if (shiftQT > 0.5) shiftQ = 0;
+    const busy = d.shiftT > 0;
+    const dir = selectGear(d, spec, assists.autoGear, c.throttle, c.brake, !busy && shiftQ > 0, !busy && shiftQ < 0, fwdSpeed, wdGear, dt);
+    if (!busy) shiftQ -= Math.sign(shiftQ);
     if (dir) {
       emit({ type: "shift", car: index, up: dir > 0 });
       if (dir > 0 && pops > 0.6 && d.we * RPM > spec.engine.redline * 0.8) emit({ type: "backfire", car: index });
@@ -196,6 +218,42 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     let thr = rev ? c.brake * Math.min(1, Math.max(0, (11 + fwdSpeed) / 3)) : c.throttle;
     let brk = rev ? c.throttle : c.brake;
     if (d.gear > 0 && fwdSpeed < -1 && c.throttle > 0.1) brk = Math.max(brk, c.throttle);
+    // Trail braking: brake and steer together and the bias moves rearward, so the light rear steps out and rotates the car.
+    const helps = assists.drift !== false;
+    const trail = helps && brk > 0.1 && v > 8 ? Math.min(1, Math.abs(c.steer) * 1.5) * Math.min(1, brk * 3) : 0;
+
+    // Drift latch: a slide the driver holds with throttle. Stability and traction control then let it run.
+    const yr = state.angVel.dot(y);
+    const beta = Math.atan2(latSpeed, Math.max(1, Math.abs(fwdSpeed)));
+    const brA = Math.atan2(latSpeed - yr * rr, Math.max(1, fwdSpeed));
+    const tailOut = brA * yr < 0;
+    const dBeta = Number.isNaN(lastBeta) ? 0 : (beta - lastBeta) / dt;
+    lastBeta = beta;
+    // The driver asks for rotation with the handbrake, a trail brake, a lift with steer, or full power with TCS off.
+    const steering = Math.abs(c.steer) > 0.3;
+    if (hbT === 0 || trail > 0.3 || (steering && askThr < 0.4 && c.throttle < 0.15) || (!assists.tcs && steering && c.throttle > 0.8 && tailOut)) askT = 0;
+    else askT += dt;
+    askThr = c.throttle > 0.5 ? 0 : askThr + dt;
+    const asked = helps && askT < 1.2;
+    if (!drift) {
+      if (asked && fwdSpeed > 7 && tailOut && Math.abs(beta) > 0.1 && c.throttle > 0.3 && c.brake < 0.2) {
+        drift = true;
+        driftV = Math.max(v, 12);
+      }
+      calmT = 0;
+    } else {
+      // A short lift keeps the drift; a straight car or a long lift ends it.
+      calmT = Math.abs(beta) < 0.08 ? calmT + dt : c.throttle < 0.12 ? calmT + dt * 0.4 : 0;
+      if (fwdSpeed < 4 || c.brake > 0.4 || calmT > 0.35 || Math.abs(beta) > 1.25) drift = false;
+    }
+
+    // AWD cars send most torque to the rear in a held drift, like an active center diff.
+    if (spec.drive === "awd") {
+      const f = drift ? Math.min(spec.awdFront, 0.1) : spec.awdFront;
+      d.share[0] = d.share[1] = f / 2;
+      d.share[2] = d.share[3] = (1 - f) / 2;
+      d.center = drift ? 0.15 : 1;
+    }
 
     let target = -c.steer * spec.steerLock;
     let intent = target;
@@ -205,53 +263,93 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       target = intent = -c.steer * lock;
       if (fwdSpeed > 3) {
         // Keys cannot catch a slide, so align the front wheels with the front axle's travel once the rear steps out.
-        const r = state.angVel.dot(y);
-        const br = Math.atan2(latSpeed - r * rr, fwdSpeed);
+        const r = yr;
+        const br = brA;
         const bf = Math.atan2(latSpeed + r * a, fwdSpeed);
         const pa = spec.tire.peakAngle;
-        const slide = br * r < 0 ? Math.min(1, Math.max(0, (Math.abs(br) - pa * 0.7) / pa)) : 0;
-        const calm = intent + 0.3 * Math.atan2(latSpeed, fwdSpeed) * (1 - Math.abs(c.steer));
-        const into = intent * r < 0 ? 0.5 : 0.4 * Math.max(0, 1 - Math.abs(br) / (3.5 * pa));
-        target = calm + (bf + into * intent - calm) * slide;
+        if (drift) {
+          // Holding a drift, the steer sets how hard the fronts bite toward the inside: into the turn adds angle, against it
+          // takes angle off once the slide is past about 17 degrees. A swing-rate term damps the slide, and past 40 degrees
+          // the fronts let go of the inside so the car does not spin.
+          const sr = -Math.sign(beta);
+          const u = Math.max(-1, Math.min(1, (intent * sr) / Math.max(0.05, lock)));
+          const ang = -beta * sr;
+          const corr = DRIFT.base * (1 + 0.6 * Math.min(0, u)) + (u > 0 ? DRIFT.into : DRIFT.counter * Math.min(1, Math.max(0, (ang - 0.3) / 0.3))) * u + DRIFT.damp * dBeta * sr - 8 * Math.max(0, ang - 0.7);
+          target = bf + sr * pa * Math.max(-1.6, Math.min(1.6, corr));
+        } else {
+          const slide = br * r < 0 ? Math.min(1, Math.max(0, (Math.abs(br) - pa * 0.7) / pa)) : 0;
+          const calm = intent + 0.3 * Math.atan2(latSpeed, fwdSpeed) * (1 - Math.abs(c.steer));
+          const into = intent * r < 0 ? 0.5 : 0.4 * Math.max(0, 1 - Math.abs(br) / (3.5 * pa));
+          target = calm + (bf + into * intent - calm) * slide;
+        }
       }
-      target = Math.max(-spec.steerLock, Math.min(spec.steerLock, target));
+      // A held drift gets a little more lock, like a drift car's steering.
+      const max = drift ? spec.steerLock * 1.2 : spec.steerLock;
+      target = Math.max(-max, Math.min(max, target));
     }
     const rate = 4.5 * dt;
     steer += Math.max(-rate, Math.min(rate, target - steer));
+    // In a held drift the steer also picks the line: against the slide the rears give up side grip and the car runs wider,
+    // into the slide they keep it and the line tightens.
+    let rearSide = 1;
+    let frontSide = 1;
+    if (drift) {
+      const u = Math.max(-1, Math.min(1, c.steer * Math.sign(beta)));
+      rearSide = u < 0 ? 1 + DRIFT.wide * u : 1;
+      frontSide = u < 0 ? 1 + DRIFT.wideF * u : 1;
+    }
 
-    // Stability control trims yaw beyond what the driver asks for, and rear slip past the peak. Off right after a handbrake pull.
+    // Stability control trims yaw beyond what the driver asks for, and rear slip well past the peak.
+    // A small slide is allowed, so trail braking and lift-off rotate the car. Off right after a handbrake pull and in a held drift.
     let rearCut = 1;
-    if (assists.stability && fwdSpeed > 6 && hbT > 0.6) {
-      const r = state.angVel.dot(y);
+    if (assists.stability && fwdSpeed > 6 && hbT > 0.6 && !drift) {
+      const r = yr;
       let ref = (fwdSpeed * Math.tan(intent)) / b.wheelbase;
       const cap = (lateralLimit * 1.1) / fwdSpeed;
       ref = Math.max(-cap, Math.min(cap, ref));
       const pa = spec.tire.peakAngle;
-      const br = Math.atan2(latSpeed - r * rr, fwdSpeed);
-      const over = br * r < 0 ? (Math.abs(br) - pa * 1.1) / pa : 0;
-      const ex = Math.max((r - ref) * Math.sign(r) - 0.12, over * 0.5);
-      if (ex > 0 && (over > 0 || Math.abs(Math.atan2(latSpeed, fwdSpeed)) > 0.12)) {
+      const over = tailOut ? (Math.abs(brA) - pa * (asked ? 1.8 : 1.1)) / pa : 0;
+      const ex = Math.max((r - ref) * Math.sign(r) - (asked ? 0.2 : 0.12), over * 0.5);
+      if (ex > 0 && (over > 0 || Math.abs(beta) > (asked ? 0.15 : 0.12))) {
         thr *= 1 - Math.min(over > 0.5 ? 1 : 0.7, ex * 1.5);
         escBrake = Math.sign(r) * Math.min(0.6, ex) * spec.brake;
         rearCut = 1 - Math.min(0.8, ex);
       }
     }
+    // In a held drift the assists ease the throttle past the aimed angle, so it does not become a spin.
+    if (drift && assists.stability) {
+      const sd = -Math.sign(beta);
+      const aim = assists.steer ? driftAim(Math.max(-1, Math.min(1, -c.steer * sd))) : 0.8;
+      thr *= Math.max(0.3, Math.min(1, 1 - 2.5 * (-beta * sd - aim - 0.25)));
+      // A held drift does not gain speed, so a full throttle slide does not run wide of the bend it started in.
+      thr *= Math.max(0.2, Math.min(1, 1 - (v - driftV) / 3));
+    }
 
-    // Traction control from the last step's slip
+    // Traction control from the last step's slip. A held drift may spin the rears.
     if (assists.tcs) {
       let k = 0;
       // Slip ratio means nothing at a crawl: only count it once the patch really slides.
       for (let i = 0; i < 4; i++) if (d.share[i] > 0 && Math.abs(omega[i] * R - vxs[i]) > 0.6) k = Math.max(k, rev ? -tires[i].kappa : tires[i].kappa);
       const p = spec.tire.peakSlip;
-      tcs = thr < 0.05 ? 0 : Math.min(0.85, Math.max(0, tcs + ((k - 1.6 * p) / p) * 4 * dt));
+      // Loose ground keeps its grip at a deeper slip, so traction control lets the wheels dig in.
+      const loose = mus[2] < 0.8 / spec.tire.mu && wheels[2].surface !== "asphalt" && wheels[2].surface !== "curb";
+      tcs = thr < 0.05 ? 0 : Math.min(0.85, Math.max(0, tcs + ((k - (drift ? 8 : loose ? 4 : 1.6) * p) / p) * 4 * dt));
       thr *= 1 - tcs;
     } else tcs = 0;
 
+    if (wallMem > 0 && !rev) thr = Math.min(thr, 0.35);
     spoolTurbo(d, spec, thr, dt); // blow-off sound comes from the engine voice
     if (pops > 0.4 && lastThr > 0.6 && c.throttle < 0.15 && !rev && d.we * RPM > spec.engine.redline * 0.6) emit({ type: "backfire", car: index });
     lastThr = c.throttle;
     let engThr = thr;
-    if (d.shiftT > 0) engThr = d.next < d.gear ? 0.5 : 0;
+    if (d.shiftT > 0) {
+      engThr = 0;
+      // Downshift: the auto blip matches the engine to the lower gear. Manual without it leaves the clutch to catch the revs.
+      if (d.next < d.gear && d.next > 0 && (assists.autoGear || assists.blip !== false)) {
+        const match = Math.min(spec.engine.limiter / RPM, Math.abs(wdGear) * gearRatio(spec, d.next));
+        d.we += (match - d.we) * Math.min(1, dt / Math.max(0.02, d.shiftT));
+      }
+    }
 
     let contacts = 0;
     for (let i = 0; i < 4; i++) {
@@ -320,7 +418,8 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       const px = peakForce(spec, ft[i], fz0[i], mus[i]);
       const ly = Math.abs(t.fy) / Math.max(1, px * (spec.tire.muLat / spec.tire.mu));
       const pk = px * Math.sqrt(Math.max(0.15, 1 - ly * ly)) * R;
-      absCap[i] = pk * 0.97;
+      // While trail braking the rear ABS keeps the brake on past the cornering share, so the rear can slide.
+      absCap[i] = (i >= 2 && trail > 0 ? Math.max(pk, px * R * (1 + 0.6 * trail)) : pk) * 0.97;
       if (d.share[i] > 0 && ft[i] > 0) {
         tract = Math.min(tract, pk / d.share[i]);
         total += pk;
@@ -339,7 +438,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     const ratio = Math.abs(gearRatio(spec, d.gear));
     let cap = clutchCapacity(d, spec, rev ? c.brake : c.throttle, c.handbrake, Math.abs(wd * ratio) * RPM);
     if (assists.tcs && ratio > 0) {
-      const lim = tract / ratio;
+      const lim = (tract * (drift ? 3 : 1)) / ratio;
       if (lim < cap) {
         cap = lim;
         let wd2 = 0;
@@ -354,10 +453,12 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     const h = dt / sub;
     // Assisted handbrake holds the rear at a deep slip instead of a full lock, so a tap rotates without a spin.
     const rearHb = c.handbrake * spec.brake * 1.6;
-    let rearScale = (1 - spec.brakeBias) / spec.brakeBias;
+    let rearScale = ((1 - spec.brakeBias) / spec.brakeBias) * (1 + 2 * trail);
     // ABS includes brake force distribution: the rear never brakes beyond its share of the load.
-    if (assists.abs && fz[0] + fz[1] > 0) rearScale = Math.min(rearScale, (0.95 * (fz[2] + fz[3])) / (fz[0] + fz[1]));
+    if (assists.abs && fz[0] + fz[1] > 0) rearScale = Math.min(rearScale, ((0.95 + 1.2 * trail) * (fz[2] + fz[3])) / (fz[0] + fz[1]));
     rearScale *= rearCut;
+    // Loose ground drags hard at speed but lets a crawling car drive out.
+    const rollK = 0.35 + 0.65 * Math.min(1, v / 12);
     const mEff = d.iw / (R * R);
     fxSum.fill(0);
     fySum.fill(0);
@@ -371,17 +472,17 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
         let bt = brk * spec.brake * (i < 2 ? 1 : rearScale);
         const outer = (escBrake > 0 && i === 1) || (escBrake < 0 && i === 0);
         if (outer) bt += Math.abs(escBrake);
-        if (assists.abs && Math.abs(vxs[i]) > 1.5) bt = Math.min(bt, t.kappa < -1.2 * spec.tire.peakSlip ? absCap[i] * 0.3 : absCap[i]);
+        if (assists.abs && Math.abs(vxs[i]) > 1.5) bt = Math.min(bt, t.kappa < -(i >= 2 ? 1.2 + 3 * trail : 1.2) * spec.tire.peakSlip ? absCap[i] * 0.3 : absCap[i]);
         if (escBrake !== 0 && i < 2 && !outer) bt *= 1 - Math.abs(escBrake) / spec.brake;
         if (i >= 2 && (!assists.steer || t.kappa > -HB_SLIP)) bt += rearHb;
-        brakeT[i] = bt + ROLL[wheels[i].surface] * fz[i] * R;
+        brakeT[i] = bt + ROLL[wheels[i].surface] * rollK * fz[i] * R;
       }
       stepDriveline(d, spec, omega, brakeT, engThr, cap, h);
     }
 
     for (let i = 0; i < 4; i++) {
       if (!wheels[i].contact) continue;
-      _f.copy(tf[i]).multiplyScalar(fxSum[i] / sub).addScaledVector(tl[i], fySum[i] / sub);
+      _f.copy(tf[i]).multiplyScalar(fxSum[i] / sub).addScaledVector(tl[i], (fySum[i] / sub) * (i >= 2 ? rearSide : frontSide));
       addForce(_f, wheels[i].pos);
     }
     const q = 0.5 * RHO;
@@ -420,10 +521,34 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     const gc = track.ground(state.pos.x, state.pos.y, state.pos.z, state.s, center);
     const scrape = bodyCorners(body, state, gc, spec);
     const hit = hitBarriers(body, state, track, gc.s);
+    walled = hit.contact;
+    if (walled) drift = false;
+    // Stability control settles the spin a wall hit kicks in, so a glancing hit does not end in a spin-out.
+    calmWall -= dt;
+    if (calmWall > 0 && assists.stability) state.angVel.addScaledVector(y, -state.angVel.dot(y) * Math.min(1, 4 * dt));
+    // Wall riding is slow: a scrape bleeds speed and cuts the drive for a moment, so grazing the wall again and again costs
+    // as much as leaning on it. The nose turns away from the wall, more the steeper the hit.
+    wallMem = walled ? 0.5 : wallMem - dt;
+    if (wallMem > 0) {
+      let into = 0;
+      if (hit.contact && hit.normal.lengthSq() > 0.5) {
+        const n = hit.normal;
+        const fl = Math.hypot(z.x, z.z) || 1;
+        into = Math.max(0, -(z.x * n.x + z.z * n.z) / fl);
+        const side = Math.sign(n.x * x.x + n.z * x.z) || 1;
+        const away = state.angVel.dot(y) * side;
+        const cap = 0.15 + 0.5 * into;
+        if (away < cap && Math.abs(fwdSpeed) > 2) state.angVel.addScaledVector(y, side * Math.min(cap - away, (1 + 4 * into) * dt));
+      }
+      const keep = Math.max(0, 1 - (0.3 + 1.0 * into) * dt);
+      state.vel.x *= keep;
+      state.vel.z *= keep;
+    }
     if (hit.speed > 2.5 && impactT <= 0) {
       emit({ type: "impact", at: hit.at.clone(), speed: hit.speed, car: index });
       emit({ type: "shake", strength: Math.min(1, hit.speed / 25) });
       impactT = 0.25;
+      calmWall = 0.7;
     } else if ((hit.slide > 2 || scrape.slide > 2) && scrapeT <= 0) {
       const at = hit.slide > 2 ? hit.at : scrape.at;
       const sl = Math.max(hit.slide, scrape.slide);
@@ -496,7 +621,12 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     d.shiftT = 0;
     d.boost = 0;
     d.cut = false;
-    steer = tcs = airT = upsideT = stuckT = 0;
+    steer = tcs = airT = upsideT = stuckT = calmT = 0;
+    lastBeta = NaN;
+    askT = askThr = 9;
+    wallMem = calmWall = 0;
+    shiftQ = 0;
+    drift = false;
     basis();
     keep();
   }
@@ -534,6 +664,8 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     d.we = o[13]; d.gear = o[14]; d.next = o[15]; d.shiftT = o[16]; d.since = o[17]; d.boost = o[18];
     state.s = o[19]; steer = o[20]; tcs = o[21]; d.revT = o[22]; d.fwdT = o[23]; airT = o[24];
     upsideT = o[25]; stuckT = o[26]; d.cut = o[27] > 0.5; hbT = o[28];
+    drift = false;
+    lastBeta = NaN;
     for (let i = 0; i < 4; i++) {
       const k = 29 + i * 7;
       omega[i] = o[k]; comp[i] = compPrev[i] = o[k + 1]; wheels[i].spin = o[k + 2];
@@ -556,6 +688,12 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     },
     set assists(v: Assists) {
       assists = v;
+    },
+    get drifting() {
+      return drift;
+    },
+    get walled() {
+      return walled;
     },
     step,
     pose,

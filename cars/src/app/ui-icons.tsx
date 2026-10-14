@@ -247,6 +247,12 @@ export const Pencil = svg(<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />);
 export const Ruler = svg(<path d="M3 16L16 3l5 5L8 21zM7 12l2 2M10 9l2 2M13 6l2 2" />);
 export const Roam = svg(<path d="M6.5 8.5c-3.5 0-3.5 7 0 7 3 0 4.5-3.5 5.5-3.5s2.5 3.5 5.5 3.5c3.5 0 3.5-7 0-7-3 0-4.5 3.5-5.5 3.5S9.5 8.5 6.5 8.5z" />);
 export const Stopwatch = Clock;
+export const Drift = svg(
+  <>
+    <rect x="9" y="3.5" width="7" height="12" rx="2" transform="rotate(-40 12.5 9.5)" />
+    <path d="M14 17c1.5 1.5 2 3 2 4.5M9.5 18.5c1 1 1.3 2 1.3 3" />
+  </>,
+);
 export const Assist = svg(
   <>
     <path d="M12 2.5l8 3v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10v-6z" />

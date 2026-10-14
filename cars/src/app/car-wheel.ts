@@ -3,7 +3,7 @@ import { prep, paint } from "./car-curve";
 import { mergeAll } from "./car-body";
 
 export type RimKind = "y5" | "ten" | "mesh" | "five" | "six" | "multi" | "aero" | "wire";
-export type WheelLook = { rim: RimKind; inch: number; face: number; lip: number; caliper: number; lock?: boolean; tread: "street" | "slick" | "rally" | "classic"; dish?: number };
+export type WheelLook = { rim: RimKind; inch: number; face: number; lip: number; caliper: number; lock?: boolean; tread: "street" | "slick" | "rally" | "classic"; dish?: number; camber?: number };
 
 // One wheel in one geometry, axle along +x, outer face toward +x, centered on the wheel.
 // pbr: roughness, metalness, kind (0 plain, 1 tire tread, 2 brake disc), fixed (1 = does not spin: caliper).
@@ -11,7 +11,16 @@ export function buildWheel(R: number, width: number, look: WheelLook, lod: numbe
   const rimR = Math.min(R - 0.06, (look.inch * 0.0254) / 2);
   const seg = lod > 1 ? 72 : lod > 0 ? 48 : 20;
   const t = tire(R, rimR, width, seg, lod > 1 ? 36 : lod > 0 ? 28 : 12, look.tread === "slick" ? 0.4 : 1);
-  paint(t, 0x121213);
+  // Worn tread darker than the sidewall, so the tire reads as a shape.
+  {
+    const p = t.attributes.position, col = new Float32Array(p.count * 3), h = width / 2;
+    for (let i = 0; i < p.count; i++) {
+      const k = Math.min(1, Math.max(0, (Math.abs(p.getX(i)) - (h - 0.035)) / 0.02));
+      const v = 0.006 + k * 0.007;
+      col.set([v, v, v * 1.05], i * 3);
+    }
+    t.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  }
   const b = brake(rimR, look.caliper, seg);
   const tag = (g: THREE.BufferGeometry, rough: number, metal: number, kind: number, fixed: number) => {
     const n = g.attributes.position.count;

@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import type { MapData, Track } from "./contracts";
 import { addBuilding, type Blocker } from "./scenery-buildings";
-import { canvasTex, centerAt, Geo, pick, rng, writeInst, type RoadIndex, type Style, type Tier } from "./scenery-kit";
+import { centerAt, Geo, pick, rng, writeInst, type RoadIndex, type Style, type Tier } from "./scenery-kit";
 import { tintGeo, tintMaterial } from "./scenery-props";
+import { trackStyle } from "./track";
+import { fenceTex } from "./track-tex";
 
 function personGeo() {
   const g = new Geo(), t: number[] = [];
@@ -28,24 +30,6 @@ function personGeo() {
   g.box(0.12, 0.62, 0.23, 0.32, 0.08, 0.08);
   mark(0);
   return tintGeo(g, t);
-}
-
-function chainTexture() {
-  const t = canvasTex(128, 128, (g) => {
-    g.clearRect(0, 0, 128, 128);
-    g.strokeStyle = "rgba(170,175,180,1)";
-    g.lineWidth = 2;
-    g.beginPath();
-    for (let k = -128; k <= 128; k += 16) {
-      g.moveTo(k, 0);
-      g.lineTo(k + 128, 128);
-      g.moveTo(k + 128, 0);
-      g.lineTo(k, 128);
-    }
-    g.stroke();
-  });
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
 }
 
 export function createStands(map: MapData, track: Track, roads: RoadIndex, style: Style, blocker: Blocker, tier: Tier, facade: Geo) {
@@ -165,7 +149,7 @@ export function createStands(map: MapData, track: Track, roads: RoadIndex, style
   }
 
   const fenceIdx: number[] = [];
-  if (style.fence)
+  if (style.fence && !trackStyle(map).fence)
     for (let i = 0; i < N - (map.closed ? 0 : 1); i++) {
       if (tunnel[i] || tunnel[wrap(i + 1)]) continue;
       const near = Math.abs(((i - st + N + N / 2) % N) - N / 2) < 90;
@@ -173,9 +157,10 @@ export function createStands(map: MapData, track: Track, roads: RoadIndex, style
     }
   let fenceMat: THREE.MeshStandardMaterial | null = null;
   if (fenceIdx.length && tier.detail >= 1) {
-    const chain = chainTexture();
-    fenceMat = new THREE.MeshStandardMaterial({ map: chain, alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.8, roughness: 0.4, color: "#8a8e92" });
-    const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: chain, alphaTest: 0.5 });
+    const chain = fenceTex();
+    chain.repeat.set(4, 4);
+    fenceMat = new THREE.MeshStandardMaterial({ map: chain, alphaTest: 0.3, alphaToCoverage: tier.detail >= 2, side: THREE.DoubleSide, metalness: 0.55, roughness: 0.45, color: "#a4a8ac" });
+    const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: chain, alphaTest: 0.3 });
     const p: number[] = [], uv: number[] = [], nrm: number[] = [];
     let u = 0;
     for (const i of fenceIdx) {
@@ -188,7 +173,7 @@ export function createStands(map: MapData, track: Track, roads: RoadIndex, style
         const A = [pos.x + left.x * o1 * s, pos.y + 1.0, pos.z + left.z * o1 * s], B = [pos2.x + left2.x * o2 * s, pos2.y + 1.0, pos2.z + left2.z * o2 * s];
         const C = [B[0] - left2.x * 0.7 * s, pos2.y + 4.4, B[2] - left2.z * 0.7 * s], D = [A[0] - left.x * 0.7 * s, pos.y + 4.4, A[2] - left.z * 0.7 * s];
         for (const V of [A, B, C, A, C, D]) p.push(V[0], V[1], V[2]);
-        const U0 = u / 0.9, U1 = (u + seg) / 0.9, V1 = 3.4 / 0.9;
+        const U0 = u, U1 = u + seg, V1 = 3.4;
         uv.push(U0, 0, U1, 0, U1, V1, U0, 0, U1, V1, U0, V1);
         for (let k = 0; k < 6; k++) nrm.push(-left.x * s, 0.2, -left.z * s);
         if (i % 3 === 0) {
@@ -231,6 +216,8 @@ export function createStands(map: MapData, track: Track, roads: RoadIndex, style
     }
   }
 
+  // Sound walls: a low concrete band with clear acrylic above, so the city stays in view.
+  const glass = new Geo();
   if (style.soundWall)
     for (let i = 0; i < N - (map.closed ? 0 : 1); i++) {
       const j = wrap(i + 1);
@@ -241,18 +228,35 @@ export function createStands(map: MapData, track: Track, roads: RoadIndex, style
         const o1 = edgeOff(i) + 0.35, o2 = edgeOff(j) + 0.35;
         const A = [pos.x + left.x * o1 * s, pos.y + 0.9, pos.z + left.z * o1 * s], B = [pos2.x + left2.x * o2 * s, pos2.y + 0.9, pos2.z + left2.z * o2 * s];
         const up = (V: number[], h: number) => [V[0], V[1] + h, V[2]];
-        g.col.set(i % 2 ? "#9da59f" : "#959d97");
-        g.quad(A, B, up(B, 2.2), up(A, 2.2));
-        g.quad(B, A, up(A, 2.2), up(B, 2.2));
-        g.col.set("#6f8a92");
-        g.quad(up(A, 2.2), up(B, 2.2), up(B, 3.1), up(A, 3.1));
-        g.quad(up(B, 2.2), up(A, 2.2), up(A, 3.1), up(B, 3.1));
+        g.col.set(i % 2 ? "#8f948f" : "#878c87");
+        g.quad(A, B, up(B, 0.55), up(A, 0.55));
+        g.quad(B, A, up(A, 0.55), up(B, 0.55));
+        g.col.set("#5f6466");
+        g.quad(up(A, 0.55), up(B, 0.55), up(B, 0.62), up(A, 0.62));
+        g.quad(up(B, 0.55), up(A, 0.55), up(A, 0.62), up(B, 0.62));
+        g.quad(up(A, 2.85), up(B, 2.85), up(B, 2.95), up(A, 2.95));
+        g.quad(up(B, 2.85), up(A, 2.85), up(A, 2.95), up(B, 2.95));
+        glass.col.setScalar(1);
+        glass.quad(up(A, 0.62), up(B, 0.62), up(B, 2.85), up(A, 2.85));
         if (i % 2 === 0) {
-          g.col.set("#5d625f");
-          g.box(A[0], A[1] - 0.1, A[2], 0.2, 3.3, 0.2);
+          g.col.set("#4a4e50");
+          g.box(A[0], A[1] - 0.1, A[2], 0.14, 3.1, 0.14, Math.atan2(left.x, left.z));
         }
       }
     }
+  if (glass.count) {
+    const mat = new THREE.MeshStandardMaterial({ color: "#c9d6dc", roughness: 0.06, metalness: 0, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    mat.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace(
+        "#include <opaque_fragment>",
+        "float fres = pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 4.0);\ndiffuseColor.a = 0.1 + 0.55 * fres;\n#include <opaque_fragment>",
+      );
+    };
+    const m = new THREE.Mesh(glass.build(false), mat);
+    m.renderOrder = 2;
+    group.add(m);
+    disposables.push(m.geometry, mat);
+  }
 
   if (g.count) {
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05, side: THREE.DoubleSide });

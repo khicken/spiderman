@@ -221,19 +221,23 @@ function concreteData(n: number, grime: boolean) {
 }
 
 // Chain-link fence, alpha tested, 1 m tile.
+// Chain link: two diagonal wire families, antialiased coverage in alpha so mips fade to a haze.
 export function fenceTex() {
-  const n = 64;
+  const n = 128, P = 32, W = 1.5;
   const d = new Uint8Array(n * n * 4);
   for (let y = 0; y < n; y++)
     for (let x = 0; x < n; x++) {
-      const a = (x + y) % 16, b = (x - y + 64) % 16;
-      const on = a < 1.6 || b < 1.6;
+      const da = Math.abs((((x + y + 0.5) % P) + P) % P - P / 2), db = Math.abs((((x - y + n + 0.5) % P) + P) % P - P / 2);
+      const ca = THREE.MathUtils.clamp(W - (P / 2 - da) / Math.SQRT2 + 0.5, 0, 1), cb = THREE.MathUtils.clamp(W - (P / 2 - db) / Math.SQRT2 + 0.5, 0, 1);
+      const a = Math.max(ca, cb);
       const o = (y * n + x) * 4;
-      d[o] = d[o + 1] = d[o + 2] = 170;
-      d[o + 3] = on ? 255 : 0;
+      const l = 150 + 60 * a;
+      d[o] = l;
+      d[o + 1] = l + 2;
+      d[o + 2] = l + 4;
+      d[o + 3] = Math.round(a * 255);
     }
-  const t = dataTex(d, n, true, 4);
-  return t;
+  return dataTex(d, n, true, 4);
 }
 
 // Tunnel wall tiles: light ceramic squares with grime at the base.

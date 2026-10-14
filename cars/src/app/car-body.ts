@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { CarSpec } from "./contracts";
 import { curve, type Keys, steps, clamp, mirrorX, finish } from "./car-curve";
+import { orient } from "./car-decal";
 
 // Body shape per car. f runs 0 (front tip) .. 1 (rear tip). Heights in keys are fractions of body height.
 export type Shape = {
@@ -342,10 +343,18 @@ function liner(cz: number, cy: number, r: number, x0: number, x1: number, side: 
   }
   pos.push(x0 * side, cy - r * 0.3, cz);
   for (let i = 0; i < n; i++) idx.push(b + i, b + i + 1, b + n + 1);
+  // Normals face the wheel and the outside, so the well is solid from every view around the arch.
+  const nrm: number[] = [];
+  for (let i = 0; i <= n; i++) {
+    const th = -0.35 + (i / n) * (Math.PI + 0.7);
+    nrm.push(0, -Math.sin(th), -Math.cos(th), 0, -Math.sin(th), -Math.cos(th));
+  }
+  for (let i = 0; i <= n + 1; i++) nrm.push(side, 0, 0);
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
   g.setIndex(idx);
-  g.computeVertexNormals();
+  orient(g);
   g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
   g.setAttribute("uv1", new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
   return g;
@@ -405,6 +414,23 @@ function greenhouse(S: Surface, ng: number, paint: THREE.BufferGeometry[], glass
       else if (sm < sC) c = sB > 0 && Math.abs(sm - sB) < dB ? 2 : 1;
       cls.push(c, c);
     }
+  // Black seals: a glass cell next to a body cell becomes trim, which frames every window.
+  if (ng >= 30) {
+    const at = (i: number, j: number) => (i < 0 || i >= nS - 1 ? 0 : j >= nT - 1 ? -1 : j < 0 ? 0 : cls[(i * (nT - 1) + j) * 2]);
+    const frame: number[] = [];
+    for (let i = 0; i < nS - 1; i++)
+      for (let j = 0; j < nT - 1; j++) {
+        if (at(i, j) !== 1) continue;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const o = at(i + di, j + dj);
+          if (o === 0 || o === 2) {
+            frame.push((i * (nT - 1) + j) * 2);
+            break;
+          }
+        }
+      }
+    for (const k of frame) cls[k] = cls[k + 1] = 2;
+  }
   geo.setIndex(all);
   geo.computeVertexNormals();
   const n = geo.attributes.normal;

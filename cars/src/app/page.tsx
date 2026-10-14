@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CARS } from "./cars";
-import type { Entrant, HudState, Lobby as LobbyState, MapId, Standing } from "./contracts";
+import type { Device, Entrant, HudState, Lobby as LobbyState, MapId, Standing } from "./contracts";
 import { startGame, type Game } from "./game";
 import { MAPS } from "./maps";
 import { cleanRoomCode, createNet, newRoomCode, type NetPlus } from "./net";
+import { MAX_LAPS } from "./net-check";
 import { detectQuality } from "./render";
-import { ControlHint, Hud, Results, type HudHandle } from "./ui-hud";
+import { ControlHint, ControlsScreen } from "./ui-controls";
+import { Hud, Results, type HudHandle } from "./ui-hud";
 import { mapCard, type MapCard } from "./ui-kit";
 import { Loading } from "./ui-loading";
 import { Lobby, type LobbyPlayer } from "./ui-lobby";
@@ -23,6 +25,9 @@ const SETTINGS_KEY = "cars-settings";
 const PICK_KEY = "cars-pick";
 const NAME_KEY = "cars-name";
 const HINT_KEY = "cars-hint";
+const GEAR_HINT_KEY = "cars-hint-gear";
+// Hints cover the 3.5 s countdown, then stay 4 s into the race.
+const HINT_MS = 7500;
 const AI_FIELD = 7;
 
 function load<T>(key: string, fallback: T): T {
@@ -38,7 +43,7 @@ function cleanSettings(raw: Partial<Settings>, base: Settings): Settings {
   const pick = <T,>(v: unknown, ok: readonly T[], d: T) => (ok.includes(v as T) ? (v as T) : d);
   const vol = (v: unknown, d: number) => (typeof v === "number" && v >= 0 && v <= 1 ? v : d);
   const a = (raw.assists ?? {}) as Partial<Settings["assists"]>;
-  const flag = (k: keyof Settings["assists"]) => (typeof a[k] === "boolean" ? a[k] : base.assists[k]);
+  const flag = (k: keyof Settings["assists"]) => (typeof a[k] === "boolean" ? a[k] : base.assists[k] ?? true);
   return {
     quality: pick(raw.quality, ["low", "medium", "high", "ultra"] as const, base.quality),
     master: vol(raw.master, base.master),
@@ -46,7 +51,7 @@ function cleanSettings(raw: Partial<Settings>, base: Settings): Settings {
     units: pick(raw.units, ["kmh", "mph"] as const, base.units),
     camera: pick(raw.camera, ["chase", "far", "hood", "bumper", "cockpit"] as const, base.camera),
     steer: pick(raw.steer, ["slider", "tilt"] as const, base.steer),
-    assists: { abs: flag("abs"), tcs: flag("tcs"), stability: flag("stability"), autoGear: flag("autoGear"), steer: flag("steer") },
+    assists: { abs: flag("abs"), tcs: flag("tcs"), stability: flag("stability"), autoGear: flag("autoGear"), steer: flag("steer"), blip: flag("blip") },
   };
 }
 
@@ -66,6 +71,7 @@ export default function Page() {
   const [screen, setScreen] = useState<Screen>("menu");
   const [step, setStep] = useState<MenuStep>("home");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [pick, setPick] = useState<MenuPick>(DEFAULT_PICK);
   const [maps, setMaps] = useState<MapCard[]>(() => MAPS.map((m) => mapCard(m)));
@@ -79,6 +85,8 @@ export default function Page() {
   const [host, setHost] = useState(false);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState(false);
+  const [gearHint, setGearHint] = useState(false);
+  const padUsed = useRef(false);
   const busyId = useRef(0);
   const touch = useIsTouch();
   const screenRef = useRef(screen);
@@ -87,6 +95,8 @@ export default function Page() {
   pickRef.current = pick;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const lobbyRef = useRef(lobby);
+  lobbyRef.current = lobby;
 
   useEffect(() => {
     const base: Settings = { ...DEFAULT_SETTINGS, quality: isPhone() ? "low" : detectQuality() };
@@ -126,12 +136,16 @@ export default function Page() {
         void m.load().then((d) => !dead && setMaps((l) => l.map((c) => (c.id === m.id ? mapCard(m, d) : c))));
     });
     const gesture = () => g.audioOn();
+    const keyGesture = () => {
+      padUsed.current = false;
+      g.audioOn();
+    };
     window.addEventListener("pointerdown", gesture);
-    window.addEventListener("keydown", gesture);
+    window.addEventListener("keydown", keyGesture);
     return () => {
       dead = true;
       window.removeEventListener("pointerdown", gesture);
-      window.removeEventListener("keydown", gesture);
+      window.removeEventListener("keydown", keyGesture);
       netRef.current?.leave();
       g.dispose();
       game.current = null;
@@ -139,7 +153,7 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useGamepadNav(screen !== "race");
+  useGamepadNav(screen !== "race", padUsed);
 
   useEffect(() => {
     if (!touch || screen !== "race") return;
@@ -196,7 +210,12 @@ export default function Page() {
     if (!load(HINT_KEY, { seen: false }).seen) {
       save(HINT_KEY, { seen: true });
       setHint(true);
-      setTimeout(() => setHint(false), 4000);
+      setTimeout(() => setHint(false), HINT_MS);
+    }
+    if (!settingsRef.current.assists.autoGear && !load(GEAR_HINT_KEY, { seen: false }).seen) {
+      save(GEAR_HINT_KEY, { seen: true });
+      setGearHint(true);
+      setTimeout(() => setGearHint(false), HINT_MS + 2000);
     }
   }, []);
 
@@ -214,7 +233,7 @@ export default function Page() {
     void g?.showroom(p.map, p.car, p.paint);
   }, []);
 
-  function joinRoom(code: string) {
+  function joinRoom(code: string, created = false) {
     const p = pickRef.current;
     const name = load<{ n: string }>(NAME_KEY, { n: `Driver ${Math.floor(Math.random() * 90 + 10)}` }).n;
     const me: Entrant = { id: "", name, color: p.paint, car: p.car, me: true, ai: false };
@@ -232,6 +251,8 @@ export default function Page() {
         return { ...e, host: e.id === net.hostId, ping: l?.ping ?? null, relay: l?.relay ?? false };
       }));
       setHost(net.host);
+      // A new room has no lobby yet: its creator sends one, so guests see the real map and laps.
+      if (created && net.host && !net.lobby && net.id) net.setLobby({ ...lobbyRef.current, startAt: null });
       if (net.lobby) setLobby(net.lobby);
     };
     sync();
@@ -257,7 +278,9 @@ export default function Page() {
   }
 
   const goOnline = () => {
-    joinRoom(newRoomCode());
+    const p = pickRef.current;
+    setLobby((l) => ({ ...l, map: p.map, laps: Math.min(p.laps, MAX_LAPS), startAt: null }));
+    joinRoom(newRoomCode(), true);
   };
 
   const startOnline = () => {
@@ -280,12 +303,16 @@ export default function Page() {
   };
 
   const current = maps.find((m) => m.id === pick.map) ?? maps[0];
+  const manual = !settings.assists.autoGear;
+  const setManual = (m: boolean) => changeSettings({ ...settings, assists: { ...settings.assists, autoGear: !m } });
+  const device: Device = touch ? "touch" : hud && hud.device !== "keys" ? hud.device : padUsed.current ? "pad" : "keys";
+  const overlay = settingsOpen || controlsOpen;
 
   return (
     <main className="fixed inset-0 select-none overflow-hidden bg-night">
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" />
 
-      {screen === "menu" && !settingsOpen && (
+      {screen === "menu" && !overlay && (
         <Menu
           cars={CARS}
           maps={maps}
@@ -296,13 +323,16 @@ export default function Page() {
           onGo={(p) => void begin(p)}
           onOnline={goOnline}
           onSettings={() => setSettingsOpen(true)}
+          onControls={() => setControlsOpen(true)}
+          manual={manual}
+          onManual={setManual}
           mph={settings.units === "mph"}
         />
       )}
 
       {screen === "loading" && <Loading map={current} progress={progress} mph={settings.units === "mph"} />}
 
-      {screen === "lobby" && room && !settingsOpen && (
+      {screen === "lobby" && room && !overlay && (
         <Lobby
           room={room}
           players={players}
@@ -330,14 +360,16 @@ export default function Page() {
           }}
           onBack={() => setScreen("lobby")}
           onGo={() => setScreen("lobby")}
+          manual={manual}
+          onManual={setManual}
         />
       )}
 
       {(screen === "race" || screen === "pause") && hud && (
-        <Hud ref={hudRef} h={hud} units={settings.units} outline={outline} touch={touch} />
+        <Hud ref={hudRef} h={hud} units={settings.units} outline={outline} touch={touch} manual={manual} shiftHint={gearHint && screen === "race" ? device : null} />
       )}
 
-      {screen === "race" && hint && hud && <ControlHint device={touch ? "touch" : hud.device} />}
+      {screen === "race" && hint && hud && <ControlHint device={device} manual={manual} />}
 
       {screen === "menu" && busy && (
         <span className="pointer-events-none absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 [animation:fade_0.2s_0.3s_both]" aria-hidden>
@@ -348,6 +380,7 @@ export default function Page() {
       {screen === "race" && touch && (
         <TouchControls
           steer={settings.steer}
+          manual={manual}
           onControls={(t) => {
             if (t.held?.pause) {
               game.current?.pause(true);
@@ -358,7 +391,7 @@ export default function Page() {
         />
       )}
 
-      {screen === "pause" && !settingsOpen && (
+      {screen === "pause" && !overlay && (
         <Pause
           onResume={() => {
             game.current?.pause(false);
@@ -369,6 +402,7 @@ export default function Page() {
             void begin(pickRef.current);
           }}
           onSettings={() => setSettingsOpen(true)}
+          onControls={() => setControlsOpen(true)}
           onQuit={toMenu}
         />
       )}
@@ -393,7 +427,8 @@ export default function Page() {
         />
       )}
 
-      {settingsOpen && <SettingsPanel value={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} device={hud?.device} />}
+      {settingsOpen && <SettingsPanel value={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} device={device} />}
+      {controlsOpen && <ControlsScreen device={device} steer={settings.steer} manual={manual} onClose={() => setControlsOpen(false)} />}
 
       {touch && <RotateHint />}
     </main>
@@ -401,7 +436,7 @@ export default function Page() {
 }
 
 // D-pad and A/B drive the same focus navigation as the arrow keys, Enter and Esc.
-function useGamepadNav(on: boolean) {
+function useGamepadNav(on: boolean, used: { current: boolean }) {
   useEffect(() => {
     if (!on) return;
     let raf = 0;
@@ -428,6 +463,7 @@ function useGamepadNav(on: boolean) {
       for (const d of Object.keys(want) as NavDir[]) {
         const held = want[d];
         if (held && (!prev[d] || (d !== "ok" && d !== "back" && now > repeatAt))) {
+          used.current = true;
           nav(d);
           repeatAt = now + (prev[d] ? 120 : 380);
         }
@@ -436,5 +472,5 @@ function useGamepadNav(on: boolean) {
     };
     loop();
     return () => cancelAnimationFrame(raf);
-  }, [on]);
+  }, [on, used]);
 }

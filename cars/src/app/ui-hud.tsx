@@ -2,32 +2,73 @@
 
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type { Device, GameEvent, HudState } from "./contracts";
-import { Brake, Clock, Flag, Gas, Handbrake, Laps, Rewind, Trophy, Turn, Wheel } from "./ui-icons";
-import { Key, cx, fmtDelta, fmtTime } from "./ui-kit";
-import { Pad, TouchDiagram } from "./ui-settings";
+import { ShiftKeys } from "./ui-controls";
+import { Clock, Drift, Flag, Gears, Laps, Trophy, Turn } from "./ui-icons";
+import { cx, fmtDelta, fmtTime } from "./ui-kit";
 
 export { Results } from "./ui-results";
+export { ControlHint } from "./ui-controls";
 
 // yaw: rotation about +y. Forward is (sin yaw, cos yaw) in x,z.
 export type MiniCar = { x: number; z: number; yaw: number; color: string; me: boolean };
+
+// x, y: CSS pixels of the label anchor. on: false hides it.
+export type NameTag = { x: number; y: number; name: string; color: string; on: boolean };
 
 export type HudHandle = {
   needle(rpm: number): void;
   minimap(cars: readonly MiniCar[]): void;
   event(e: GameEvent): void;
+  tags(list: readonly NameTag[]): void;
+  drift(on: boolean): void;
 };
+
+const TAGS = 8;
 
 type Pop = { id: number; kind: "split" | "lap" | "toast"; text: string; sub?: string; good?: boolean | null };
 
-export function Hud({ h, units = "kmh", outline, touch, ref }: { h: HudState; units?: "kmh" | "mph"; outline?: ArrayLike<number>; touch?: boolean; ref?: Ref<HudHandle> }) {
+export function Hud({ h, units = "kmh", outline, touch, manual, shiftHint, ref }: { h: HudState; units?: "kmh" | "mph"; outline?: ArrayLike<number>; touch?: boolean; manual?: boolean; shiftHint?: Device | null; ref?: Ref<HudHandle> }) {
   const tach = useRef<TachHandle>(null);
   const mini = useRef<MiniHandle>(null);
+  const tagPos = useRef<[number, number][]>(Array.from({ length: TAGS }, () => [NaN, NaN]));
+  const tagEls = useRef<(HTMLDivElement | null)[]>([]);
+  const driftEl = useRef<HTMLSpanElement>(null);
   const [pops, setPops] = useState<Pop[]>([]);
   const seq = useRef(0);
 
   useImperativeHandle(ref, () => ({
     needle: (rpm) => tach.current?.set(rpm),
     minimap: (cars) => mini.current?.draw(cars),
+    drift: (on) => {
+      const el = driftEl.current;
+      if (el && (el.dataset.on === "1") !== on) el.dataset.on = on ? "1" : "0";
+    },
+    tags: (list) => {
+      for (let i = 0; i < TAGS; i++) {
+        const el = tagEls.current[i];
+        const t = list[i];
+        if (!el) continue;
+        if (!t?.on) {
+          if (el.style.display !== "none") el.style.display = "none";
+          continue;
+        }
+        if (el.style.display) el.style.display = "";
+        const x = Math.round(t.x);
+        const y = Math.round(t.y);
+        const pos = tagPos.current[i];
+        if (pos[0] !== x || pos[1] !== y) {
+          pos[0] = x;
+          pos[1] = y;
+          el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+        }
+        if (el.dataset.name !== t.name || el.dataset.color !== t.color) {
+          el.dataset.name = t.name;
+          el.dataset.color = t.color;
+          el.lastChild!.textContent = t.name;
+          (el.firstChild as HTMLElement).style.background = t.color;
+        }
+      }
+    },
     event: (e) => {
       let p: Pop | null = null;
       const id = ++seq.current;
@@ -114,13 +155,29 @@ export function Hud({ h, units = "kmh", outline, touch, ref }: { h: HudState; un
         </div>
       )}
 
+      {Array.from({ length: TAGS }, (_, i) => (
+        <div key={i} ref={(e) => void (tagEls.current[i] = e)} style={{ display: "none" }} className="absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap rounded-[2px] bg-black/55 px-1.5 py-0.5 text-[clamp(0.75rem,2.2vh,0.95rem)] font-semibold [text-shadow:0_1px_4px_rgb(0_0_0/0.8)]">
+          <span className="h-2 w-2 shrink-0 rounded-full" />
+          <span />
+        </div>
+      ))}
+
       <Countdown n={h.countdown} />
 
       <div className={cx("absolute left-[max(1.5rem,env(safe-area-inset-left))]", touch ? "top-[calc(max(1.25rem,env(safe-area-inset-top))+clamp(4.5rem,14vh,7rem))] [&>*]:w-[clamp(6rem,24vh,9rem)]" : "bottom-[max(1.25rem,env(safe-area-inset-bottom))]")}>
         <Minimap ref={mini} outline={outline} />
       </div>
       <div className={cx("absolute bottom-[max(1rem,env(safe-area-inset-bottom))]", touch ? "left-1/2 -translate-x-1/2 [&>*]:w-[clamp(8rem,30vh,12rem)]" : "right-[max(1.25rem,env(safe-area-inset-right))]")}>
-        <Tach ref={tach} redline={h.redline} limiter={h.limiter} speed={h.speed} gear={h.gear} units={units} />
+        <span ref={driftEl} data-on="0" title="Drift" className="glass absolute -left-3 top-[8%] grid h-11 w-11 -translate-x-full place-items-center rounded-full text-2xl text-volt opacity-0 transition-opacity duration-200 data-[on=1]:opacity-100">
+          <Drift />
+        </span>
+        {manual && shiftHint && (
+          <div className="glass absolute bottom-full right-0 mb-2 flex items-center gap-2 whitespace-nowrap rounded-[3px] px-2.5 py-1.5 [animation:pop_9.5s_var(--ease-out)_both]">
+            <Gears className="text-xl text-hot" />
+            <ShiftKeys device={shiftHint} />
+          </div>
+        )}
+        <Tach ref={tach} redline={h.redline} limiter={h.limiter} speed={h.speed} gear={h.gear} units={units} manual={manual} />
       </div>
     </div>
   );
@@ -159,12 +216,21 @@ function arc(d0: number, d1: number, r: number) {
   return `M${x0} ${y0}A${r} ${r} 0 ${d1 - d0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
 }
 
-export function Tach({ redline, limiter, speed, gear, units, ref }: { redline: number; limiter: number; speed: number; gear: string; units: "kmh" | "mph"; ref?: Ref<TachHandle> }) {
+const LEDS = 9;
+const LED_COLOR = ["var(--color-good)", "var(--color-good)", "var(--color-good)", "var(--color-gold)", "var(--color-gold)", "var(--color-gold)", "var(--color-hot)", "var(--color-hot)", "var(--color-hot)"];
+
+export function Tach({ redline, limiter, speed, gear, units, manual, ref }: { redline: number; limiter: number; speed: number; gear: string; units: "kmh" | "mph"; manual?: boolean; ref?: Ref<TachHandle> }) {
   const root = useRef<HTMLDivElement>(null);
   const needle = useRef<SVGGElement>(null);
   const fill = useRef<SVGPathElement>(null);
+  const leds = useRef<(SVGCircleElement | null)[]>([]);
   const max = Math.ceil((limiter + 400) / 1000) * 1000;
-  const last = useRef({ deg: -1, shift: false });
+  const last = useRef({ deg: -1, shift: false, n: -1 });
+  useEffect(() => {
+    last.current.n = -1;
+    last.current.shift = false;
+    if (root.current) root.current.dataset.shift = "0";
+  }, [manual]);
 
   useImperativeHandle(ref, () => ({
     set(rpm) {
@@ -176,7 +242,15 @@ export function Tach({ redline, limiter, speed, gear, units, ref }: { redline: n
         needle.current!.style.transform = `rotate(${deg}deg)`;
         fill.current!.style.strokeDashoffset = `${1 - f}`;
       }
-      const shift = rpm >= redline * 0.97;
+      // Manual: lights fill from 80% of the limiter, all flash at the limiter.
+      const lo = limiter * 0.8;
+      const hi = limiter * 0.985;
+      const n = manual ? (rpm < lo ? 0 : Math.min(LEDS, 1 + Math.floor(((rpm - lo) / (hi - lo)) * (LEDS - 1)))) : 0;
+      if (n !== l.n) {
+        l.n = n;
+        leds.current.forEach((c, i) => c?.setAttribute("opacity", i < n ? "1" : "0.14"));
+      }
+      const shift = manual ? n === LEDS : rpm >= redline * 0.97;
       if (shift !== l.shift) {
         l.shift = shift;
         root.current!.dataset.shift = shift ? "1" : "0";
@@ -220,18 +294,27 @@ export function Tach({ redline, limiter, speed, gear, units, ref }: { redline: n
         <g ref={needle} style={{ transformOrigin: "100px 100px", transform: "rotate(0deg)" }}>
           <path d={`M${polar(A0, R + 7)[0]} ${polar(A0, R + 7)[1]}L${polar(A0 + 2.2, 50)[0]} ${polar(A0 + 2.2, 50)[1]}L${polar(A0 - 2.2, 50)[0]} ${polar(A0 - 2.2, 50)[1]}Z`} fill="var(--color-hot)" />
         </g>
-        <g className="shift-lamp opacity-0 transition-opacity duration-150">
-          {[-2, -1, 0, 1, 2].map((i) => (
-            <circle key={i} cx={100 + i * 8} cy="58" r="2.6" fill="var(--color-hot)" />
-          ))}
-        </g>
+        {manual ? (
+          <g className="shift-leds">
+            {LED_COLOR.map((c, i) => {
+              const k = i - (LEDS - 1) / 2;
+              return <circle key={i} ref={(e) => void (leds.current[i] = e)} cx={100 + k * 10.5} cy={52 + k * k * 0.5} r="4.4" fill={c} opacity="0.14" />;
+            })}
+          </g>
+        ) : (
+          <g className="shift-lamp opacity-0 transition-opacity duration-150">
+            {[-2, -1, 0, 1, 2].map((i) => (
+              <circle key={i} cx={100 + i * 8} cy="58" r="2.6" fill="var(--color-hot)" />
+            ))}
+          </g>
+        )}
       </svg>
       <div className="absolute inset-x-0 top-[34%] flex flex-col items-center">
         <span className="num text-[clamp(2.4rem,9vh,4.6rem)] leading-[0.9]">{Math.round(Math.abs(speed))}</span>
         <span className="text-[clamp(0.55rem,1.5vh,0.75rem)] font-semibold uppercase tracking-widest text-mute">{units === "mph" ? "mph" : "km/h"}</span>
       </div>
-      <div className="absolute bottom-[4%] left-1/2 grid aspect-square w-[20%] -translate-x-1/2 place-items-center rounded-[4px] border border-line-hi bg-black/70">
-        <span className="tach-gear num text-[clamp(1.4rem,4.6vh,2.4rem)] leading-none transition-colors duration-100">{gear}</span>
+      <div className={cx("absolute left-1/2 grid aspect-square -translate-x-1/2 place-items-center rounded-[4px] border bg-black/70", manual ? "bottom-[1%] w-[29%] border-white/60" : "bottom-[4%] w-[20%] border-line-hi")}>
+        <span className={cx("tach-gear num leading-none transition-colors duration-100", manual ? "text-[clamp(2.1rem,7.4vh,3.8rem)]" : "text-[clamp(1.4rem,4.6vh,2.4rem)]")}>{gear}</span>
       </div>
     </div>
   );
@@ -301,36 +384,6 @@ export function Minimap({ outline, ref }: { outline?: ArrayLike<number>; ref?: R
         <path d="M12 2l8 19-8-5-8 5z" fill="var(--color-hot)" stroke="white" strokeWidth="1.5" strokeLinejoin="round" />
       </svg>
       <span className="absolute inset-0 rounded-full shadow-[inset_0_0_1.5rem_rgb(0_0_0/0.7)]" />
-    </div>
-  );
-}
-
-const HINT = [
-  { icon: <Gas />, keys: <Key>W</Key>, pad: <Pad b="RT" /> },
-  { icon: <Brake />, keys: <Key>S</Key>, pad: <Pad b="LT" /> },
-  { icon: <Wheel />, keys: <><Key>A</Key><Key>D</Key></>, pad: <Pad b="LS" /> },
-  { icon: <Handbrake />, keys: <Key wide>Space</Key>, pad: <Pad b="A" c="#3ddc84" /> },
-  { icon: <Rewind />, keys: <Key>R</Key>, pad: <Pad b="Y" c="#ffc53d" /> },
-];
-
-// First race only: the core controls for the current device, then it fades.
-export function ControlHint({ device }: { device: Device }) {
-  return (
-    <div className={cx("pointer-events-none absolute inset-x-0 flex justify-center [animation:pop_4s_var(--ease-out)_both]", device === "touch" ? "top-[14%]" : "bottom-[max(1.5rem,env(safe-area-inset-bottom))]")}>
-      {device === "touch" ? (
-        <div className="w-[min(10rem,30vw)] opacity-90">
-          <TouchDiagram steer="slider" />
-        </div>
-      ) : (
-        <div className="glass flex gap-6 rounded-[4px] px-5 py-3">
-          {HINT.map((h, i) => (
-            <span key={i} className="flex items-center gap-2">
-              <span className="text-2xl text-white/90">{h.icon}</span>
-              <span className="flex gap-1">{device === "pad" ? h.pad : h.keys}</span>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

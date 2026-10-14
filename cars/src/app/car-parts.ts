@@ -5,8 +5,9 @@ import type { Surface } from "./car-body";
 import { createProjector, decal, strip, type Axis, type DecalOpts, type Projector } from "./car-decal";
 import type { Style } from "./car-styles";
 import type { Pen } from "./car-tex";
-import { finish, lerp, mirrorX, paint, prep } from "./car-curve";
+import { curve, finish, lerp, mirrorX, paint, prep } from "./car-curve";
 import { LOOKS } from "./car-looks";
+import { archLips } from "./car-kit";
 
 export type Parts = {
   paint: THREE.BufferGeometry[];
@@ -120,8 +121,14 @@ export function buildParts(id: CarId, S: Surface, P: Projector, st: Style, lod: 
   const pens: ((p: Pen) => void)[] = [];
   const c = makeCtx(S, P, st, lod, out, pens, proxy);
   cabinFloor(c);
-  if (lod > 1) interior(c);
+  if (lod > 0) interior(c);
   LOOKS[id](c);
+  if (S.sh.arch) archLips(c);
+  // Fuel filler flap over the rear wheel.
+  if (id !== "hyper") {
+    const ff = S.fAt(S.d.axR) - 0.075;
+    pens.push((p) => p.ring(ff, 0.43, 0.028, 0.06));
+  }
   out.panel = (p) => pens.forEach((fn) => fn(p));
   return out;
 }
@@ -166,6 +173,22 @@ function interior(c: Ctx) {
     c.geo("interior", back, false, st.seat);
     c.geo("interior", new RoundedBoxGeometry(0.28, 0.16, 0.1, 2, 0.04).translate(x * sx, belt + 0.12, seatZ - 0.3), false, st.seat);
   }
+  // Driver: suit, arms to the wheel, helmet under the roof line.
+  const fs = S.fAt(seatZ);
+  const roofY = g ? curve(g.roof)(fs) * d.H : belt + 0.75;
+  const hy = Math.min(belt + 0.36, roofY - 0.17);
+  const torso = new RoundedBoxGeometry(0.36, Math.max(0.3, hy - floor - 0.36), 0.22, 2, 0.08);
+  torso.rotateX(-0.22);
+  torso.translate(x, (floor + 0.2 + hy - 0.16) / 2, seatZ - 0.05);
+  c.geo("interior", torso, false, st.accent);
+  const helmet = new THREE.SphereGeometry(0.125, 16, 12);
+  helmet.scale(1, 1.05, 1.12);
+  helmet.translate(x, hy, seatZ - 0.04);
+  c.geo("interior", helmet, false, 0xe9e9e6);
+  const visor = new THREE.SphereGeometry(0.128, 12, 6, Math.PI / 2 - 0.9, 1.8, 1.2, 0.55);
+  visor.scale(1, 1.05, 1.12);
+  visor.translate(x, hy, seatZ - 0.04);
+  c.geo("gloss", visor, false);
   const dz = S.zOf(lerp(fw, f1, 0.55));
   const dy = S.topY(S.fAt(dz), 0) - 0.02;
   c.geo("interior", new RoundedBoxGeometry(d.W * 0.86, 0.2, 0.4, 2, 0.06).translate(0, dy - 0.1, dz), false, 0x141416);
@@ -175,6 +198,12 @@ function interior(c: Ctx) {
   wheel.translate(x, dy - 0.05, dz - 0.32);
   c.geo("interior", wheel, false, S.sh.gh ? 0x111112 : 0x6a3c1c);
   c.geo("interior", new THREE.CylinderGeometry(0.03, 0.04, 0.3, 8).rotateX(Math.PI / 2 - 0.3).translate(x, dy - 0.02, dz - 0.18), false, 0x111112);
+  for (const ax of [-0.13, 0.13]) {
+    const a = new THREE.Vector3(x + ax * 1.3, hy - 0.26, seatZ - 0.02), b = new THREE.Vector3(x + ax, dy - 0.02, dz - 0.34);
+    const arm = new THREE.CylinderGeometry(0.04, 0.045, a.distanceTo(b), 8);
+    arm.applyMatrix4(new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()), new THREE.Vector3(1, 1, 1)));
+    c.geo("interior", arm, false, st.accent);
+  }
 }
 
 // ---- reusable exterior parts
@@ -250,16 +279,18 @@ export function wing(c: Ctx, o: { f: number; y: number; span: number; chord: num
 
 // Plate under the nose that follows the front outline.
 export function splitter(c: Ctx, y: number, reach: number, depth = 0.45, t: Target = "trim") {
+  // A band that follows the nose outline, so no corner sticks out past the rounded bumper.
   const pts: THREE.Vector2[] = [];
   const W = c.S.width(0.04) * 0.92;
-  const n = 16;
+  const n = 20;
   for (let i = 0; i <= n; i++) {
     const x = -W + (2 * W * i) / n;
     const h = c.hit(2, 1, x, y + 0.03);
-    pts.push(new THREE.Vector2(x, (h.ok ? h.p.z : c.d.zF - 0.2) + reach));
+    if (h.ok) pts.push(new THREE.Vector2(x, h.p.z + reach));
   }
-  const back = c.d.zF - depth;
-  const sh = new THREE.Shape([new THREE.Vector2(-W, back), ...pts, new THREE.Vector2(W, back)]);
+  if (pts.length < 3) return;
+  const back = pts.map((p) => new THREE.Vector2(p.x * 0.97, Math.min(p.y - reach - depth * 0.5, c.d.zF - depth))).reverse();
+  const sh = new THREE.Shape([...pts, ...back]);
   const g = new THREE.ExtrudeGeometry(sh, { depth: 0.018, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1 });
   g.rotateX(Math.PI / 2);
   g.translate(0, y + 0.018, 0);

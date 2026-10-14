@@ -77,7 +77,10 @@ if (st > 5.5 && st < 6.5) {
   float on = step(1.0 - uLit * (shop > 0.5 ? 1.2 : 1.0), h21(cell * 1.31 + seed * 5.1 + floor(rnd2 * 3.0)));
   vec3 warm = mix(vec3(1.0, 0.68, 0.36), vec3(1.0, 0.85, 0.62), rnd2);
   vec3 cool = vec3(0.75, 0.88, 1.0);
-  float mull = st > 1.5 && st < 2.5 ? mix(1.0, 0.3, step(fract(f.x * 3.0), 0.07)) : 1.0;
+  float panes = st > 1.5 && st < 2.5 ? 3.0 : st > 0.5 && st < 1.5 ? 2.0 : 0.0;
+  float mull = panes > 0.0 ? mix(1.0, 0.25, step(fract(f.x * panes), 0.06) * (1.0 - farF)) : 1.0;
+  float blind = mix(r.w, r.y, h21(cell * 2.7 + seed) * h21(cell.yx + seed * 3.1));
+  mull *= mix(1.0, 0.35 + 0.15 * step(0.5, fract(f.y * 40.0)), step(blind, f.y) * step(0.45, rnd2) * (1.0 - farF));
   litCol = mix(warm, cool, step(0.6, rnd)) * (0.15 + 0.85 * rnd2 * rnd2) * mix(1.0, 0.75 + 0.25 * f.y, curtain) * (0.5 + 0.5 * smoothstep(0.3, 0.95, f.y)) * mull;
   lit = mix(on * m, uLit * 0.12, far);
   wall *= 1.0 - 0.25 * smoothstep(3.0, 0.0, vFac.y);

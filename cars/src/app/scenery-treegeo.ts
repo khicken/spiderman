@@ -25,11 +25,11 @@ export function treeAtlas() {
       g.lineTo(x1, y1);
       g.stroke();
       const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy), nx = -dy / l, ny = dx / l;
-      for (let i = 0; i < l * 1.6; i++) {
+      for (let i = 0; i < l * 2.4; i++) {
         const t = r(), px = x0 + dx * t, py = y0 + dy * t, s = r() < 0.5 ? -1 : 1, nl = len * (1 - t * 0.5) * (0.6 + r() * 0.5);
-        const k = 0.55 + r() * 0.45;
+        const k = 0.45 + r() * 0.55;
         g.strokeStyle = `rgb(${Math.round(190 * k)},${Math.round(220 * k)},${Math.round(185 * k)})`;
-        g.lineWidth = 1.6 + r() * 1.4;
+        g.lineWidth = 2.6 + r() * 2.4;
         g.beginPath();
         g.moveTo(px, py);
         g.lineTo(px + (nx * s + (dx / l) * 0.5) * nl, py + (ny * s + (dy / l) * 0.5) * nl);
@@ -175,14 +175,14 @@ function conifer(t: TB, kind: TreeKind, r: () => number, detail: number) {
   t.isLeaf = 1;
   t.col.copy(leaf).multiplyScalar(0.22);
   const Rmax = larch ? 3.2 : 4.3;
-  const core = (y: number) => (1 - (y - 1.5) / (H - 1.5)) * Rmax * 0.36;
+  const core = (y: number) => Math.max(0, 1 - (y - 1.5) / (H - 2.5)) * Rmax * 0.55;
   for (let k = 0; k < 7; k++) {
     const y0 = 1.5 + (k / 7) * (H - 1.5), y1 = 1.5 + ((k + 1) / 7) * (H - 1.5);
     for (let s = 0; s < 7; s++) {
       const a0 = (s / 7) * Math.PI * 2, a1 = ((s + 1) / 7) * Math.PI * 2;
       const P = (a: number, y: number) => [Math.cos(a) * core(y), y, Math.sin(a) * core(y)];
       const A = P(a0, y0), B = P(a1, y0), C = P(a1, y1), D = P(a0, y1);
-      t.col.copy(leaf).multiplyScalar(0.36 + r() * 0.16 + (k / 7) * 0.12);
+      t.col.copy(leaf).multiplyScalar(0.5 + r() * 0.16 + (k / 7) * 0.2);
       for (const Q of [A, C, B, A, D, C]) t.v(Q[0], Q[1], Q[2], Q[0], 0.15, Q[2], BARK[0] + 0.01, BARK[1] + 0.01);
     }
   }

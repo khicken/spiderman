@@ -141,6 +141,28 @@ export const treadTex = (k: TreadKind) =>
           groove(i + (j % 2) * 10, yy, 9, 5);
         }
     }
+    // Sidewall lettering: raised word blocks on the outer wall, two per wrap.
+    const lr = rand(11);
+    for (const base of [0, W / 2]) {
+      let u = base + 20;
+      for (let wd = 0; wd < 3; wd++) {
+        const letters = 4 + Math.floor(lr() * 5);
+        for (let l = 0; l < letters; l++) {
+          const lw = 5 + Math.floor(lr() * 4), lh = wd === 0 ? 12 : 7;
+          const y0 = H * 0.86 - lh / 2;
+          x.fillStyle = "rgb(128,160,235)";
+          x.fillRect(u, y0, lw, 2);
+          x.fillStyle = "rgb(150,128,235)";
+          x.fillRect(u, y0, 2, lh);
+          x.fillStyle = "rgb(128,96,235)";
+          x.fillRect(u, y0 + lh - 2, lw, 2);
+          x.fillStyle = "rgb(106,128,235)";
+          x.fillRect(u + lw - 2, y0, 2, lh);
+          u += lw + 3;
+        }
+        u += 26;
+      }
+    }
     // Sidewall: a raised ring band reads as lettering at a distance.
     for (const v of [0.12, 0.88]) {
       x.fillStyle = "rgb(128,150,240)";
@@ -156,6 +178,7 @@ export type Pen = {
   line(f0: number, v0: number, f1: number, v1: number, w?: number): void;
   fill(pts: readonly (readonly [number, number])[], color?: string): void;
   slot(f: number, v: number, lf: number, lv: number): void;
+  ring(f: number, v: number, lf: number, lv: number): void;
 };
 
 // Panel map in body param space (u = length param a, v = half ring). White except the gaps and insets.
@@ -190,6 +213,14 @@ export function panelTex(draw: (p: Pen) => void, aOf: (f: number) => number) {
       x.beginPath();
       x.roundRect(X(f), Y(v + lv), w, h, Math.min(w, h) / 2);
       x.fill();
+    },
+    ring(f, v, lf, lv) {
+      const w = X(f + lf) - X(f), h = Y(v) - Y(v + lv);
+      x.strokeStyle = "#141414";
+      x.lineWidth = 2;
+      x.beginPath();
+      x.roundRect(X(f), Y(v + lv), w, h, Math.min(w, h) * 0.3);
+      x.stroke();
     },
   };
   draw(pen);

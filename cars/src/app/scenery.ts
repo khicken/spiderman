@@ -6,6 +6,7 @@ import { buildBuildings } from "./scenery-buildings";
 import { createFacadeMaterial } from "./scenery-facade";
 import { createRoadIndex, disposeTree, farPatch, Geo, RING_D, STYLES, TIERS, U } from "./scenery-kit";
 import { buildGround } from "./scenery-ground";
+import { createGrass } from "./scenery-grass";
 import { buildLandmarks, buildRing, glowMaterial } from "./scenery-landmarks";
 import { buildNeon } from "./scenery-neon";
 import { createProps } from "./scenery-props";
@@ -31,6 +32,7 @@ export function createScenery(track: Track, quality: Quality): Scenery {
   let chunks: THREE.Mesh[] = [];
   let trees: ReturnType<typeof createTrees> | null = null;
   let props: ReturnType<typeof createProps> | null = null;
+  let grass: ReturnType<typeof createGrass> | null = null;
   let night = 0;
 
   // A generator, so a quality switch can build the new set across frames while the old one stays on screen.
@@ -86,7 +88,8 @@ export function createScenery(track: Track, quality: Quality): Scenery {
     const nextProps = createProps(map, track, roads, style, blocker, t);
     yield;
     const streets = buildStreets(map, track, roads, style);
-    for (const p of [nextTrees, water, nextProps, stands, streets]) out.add(p.group);
+    const nextGrass = createGrass(map, track, roads, blocker, q);
+    for (const p of [nextTrees, water, nextProps, stands, streets, nextGrass]) out.add(p.group);
     nextProps.setNight(night);
     clear();
     group.add(out);
@@ -95,8 +98,9 @@ export function createScenery(track: Track, quality: Quality): Scenery {
     chunks = nextChunks;
     trees = nextTrees;
     props = nextProps;
+    grass = nextGrass;
     parts = [
-      nextTrees, water, nextProps, stands, streets,
+      nextTrees, water, nextProps, stands, streets, nextGrass,
       { dispose: () => (disposeTree(local), ground?.dispose()) },
       { dispose: () => nextChunks.forEach((c) => c.geometry.dispose()) },
     ];
@@ -106,7 +110,7 @@ export function createScenery(track: Track, quality: Quality): Scenery {
     for (const p of parts) p.dispose();
     parts = [];
     group.clear();
-    trees = props = null;
+    trees = props = grass = null;
   }
 
   let job: Generator<void, void> | null = null;
@@ -128,6 +132,7 @@ export function createScenery(track: Track, quality: Quality): Scenery {
       camera.getWorldPosition(camPos);
       if (camera instanceof THREE.PerspectiveCamera) RING_D.value = camera.far * 0.6;
       trees?.update(dt, camPos);
+      grass?.update(camPos);
       updateLamps(camera, night);
       for (const c of chunks) {
         const s = c.geometry.boundingSphere!;

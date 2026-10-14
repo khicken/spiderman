@@ -10,7 +10,7 @@ import { buildTerrain } from "./track-terrain";
 import { concreteTex } from "./track-tex";
 
 const DETAIL: Record<Quality, { row: number; cols: number; blend: number }> = {
-  low: { row: 2, cols: 2, blend: 2 },
+  low: { row: 2, cols: 4, blend: 2 },
   medium: { row: 2, cols: 4, blend: 3 },
   high: { row: 1, cols: 6, blend: 4 },
   ultra: { row: 1, cols: 8, blend: 6 },
@@ -107,6 +107,7 @@ function gravelGeo(tb: TrackTables, rows: number[]) {
         const l = lat(tb, i, side * (tb.hw[i] + d));
         const x = tb.px[i] + tb.lx[i] * l, z = tb.pz[i] + tb.lz[i] * l;
         r.v(x, shoulderY(tb, i, side, d) + 0.03, z, x, z);
+        r.col.push((d - d0) / (d1 - d0), 0, 0);
       }
       r.row();
     }

@@ -1,11 +1,11 @@
 "use client";
 
 import { useRef, type ReactNode } from "react";
-import { Cog, Exit, Pause as PauseIcon, Play, Restart } from "./ui-icons";
+import { Cog, Exit, Gamepad, Pause as PauseIcon, Play, Restart } from "./ui-icons";
 import { cx } from "./ui-kit";
 import { useNavRoot } from "./ui-nav";
 
-export function Pause({ onResume, onRestart, onSettings, onQuit }: { onResume: () => void; onRestart?: () => void; onSettings: () => void; onQuit: () => void }) {
+export function Pause({ onResume, onRestart, onSettings, onControls, onQuit }: { onResume: () => void; onRestart?: () => void; onSettings: () => void; onControls: () => void; onQuit: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useNavRoot(ref, onResume);
   return (
@@ -14,6 +14,7 @@ export function Pause({ onResume, onRestart, onSettings, onQuit }: { onResume: (
       <div className="flex gap-[clamp(0.5rem,1.5vw,1rem)]">
         <Tile icon={<Play />} label="Resume" onClick={onResume} hot autofocus />
         {onRestart && <Tile icon={<Restart />} label="Restart" onClick={onRestart} />}
+        <Tile icon={<Gamepad />} label="Controls" onClick={onControls} />
         <Tile icon={<Cog />} label="Settings" onClick={onSettings} />
         <Tile icon={<Exit />} label="Quit" onClick={onQuit} />
       </div>

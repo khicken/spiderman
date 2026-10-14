@@ -158,7 +158,7 @@ export interface Input {
 }
 
 // ---- vehicle.ts: createVehicle(spec: CarSpec, track: Track): Vehicle
-export type Assists = { abs: boolean; tcs: boolean; stability: boolean; autoGear: boolean; steer: boolean }; // steer: counter-steer and slip help for keys
+export type Assists = { abs: boolean; tcs: boolean; stability: boolean; autoGear: boolean; steer: boolean; drift?: boolean; blip?: boolean }; // steer: counter-steer help for keys, blip: rev match on downshift
 export type WheelState = {
   compress: number; // 0..1 of travel
   spin: number; // wheel rotation angle, rad

@@ -214,3 +214,52 @@ export function fin(c: Ctx, f0: number, f1: number, h: number, t: Target = "pain
 export function shut(c: Ctx, axis: 0 | 1 | 2, sign: number, path: readonly (readonly [number, number])[], sym = true, w = 0.008) {
   c.strip("gloss", axis, sign, path, w, 0.0015, sym, 0x020202);
 }
+
+// Rolled lip around each wheel arch: gives the cut edge thickness and a highlight.
+export function archLips(c: Ctx, t: Target = "paint") {
+  const { d, S } = c;
+  const r = d.R * S.sh.arch;
+  const n = c.lod > 1 ? 44 : c.lod > 0 ? 30 : 14;
+  const prof = [[-0.05, -0.012], [-0.006, -0.015], [0.007, -0.006], [0.009, 0.006], [0.001, 0.02]] as const;
+  for (const az of [d.axF, d.axR]) {
+    let pos: number[] = [], rows = 0;
+    const flush = () => {
+      if (rows > 1) {
+        const idx: number[] = [], m = prof.length;
+        for (let i = 0; i < rows - 1; i++)
+          for (let k = 0; k < m - 1; k++) {
+            const a = i * m + k, b = a + m;
+            idx.push(a, b, a + 1, b, b + 1, a + 1);
+          }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+        g.setIndex(idx);
+        g.computeVertexNormals();
+        const nr = g.attributes.normal;
+        // Face outward and up, whatever the loop order gave.
+        let flip = 0;
+        for (let i = 0; i < nr.count; i++) flip += nr.getX(i);
+        if (flip < 0) {
+          for (let i = 0; i < idx.length; i += 3) [idx[i + 1], idx[i + 2]] = [idx[i + 2], idx[i + 1]];
+          g.setIndex(idx);
+          g.computeVertexNormals();
+        }
+        c.geo(t, g, true);
+      }
+      pos = [];
+      rows = 0;
+    };
+    for (let i = 0; i <= n; i++) {
+      const th = -0.12 + (i / n) * (Math.PI + 0.24);
+      const cs = Math.cos(th), sn = Math.sin(th);
+      const h = c.hit(0, 1, az + cs * (r + 0.025), d.R + sn * (r + 0.025));
+      if (!h.ok || h.p.y < c.S.floor(c.S.fAt(h.p.z)) + 0.02) {
+        flush();
+        continue;
+      }
+      for (const [dx, dr] of prof) pos.push(h.p.x + dx, d.R + sn * (r + dr), az + cs * (r + dr));
+      rows++;
+    }
+    flush();
+  }
+}

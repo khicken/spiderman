@@ -36,12 +36,12 @@ export function useIsTouch() {
   return t;
 }
 
-type Btn = "gas" | "brake" | "hand" | "camera" | "rewind" | "pause";
+type Btn = "gas" | "brake" | "hand" | "camera" | "rewind" | "pause" | "up" | "down";
 const PEDALS: Btn[] = ["gas", "brake", "hand"];
-const SMALL: Btn[] = ["camera", "rewind", "pause"];
+const SMALL: Btn[] = ["camera", "rewind", "pause", "up", "down"];
 const STEER_PX = 0.09;
 
-export function TouchControls({ onControls, steer = "slider", force }: { onControls: (t: TouchInput) => void; steer?: SteerMode; force?: boolean }) {
+export function TouchControls({ onControls, steer = "slider", manual, force }: { onControls: (t: TouchInput) => void; steer?: SteerMode; manual?: boolean; force?: boolean }) {
   const touch = useIsTouch();
   const els = useRef<Partial<Record<Btn, HTMLElement | null>>>({});
   const track = useRef<HTMLDivElement>(null);
@@ -131,6 +131,7 @@ export function TouchControls({ onControls, steer = "slider", force }: { onContr
       }
     }
     ptrs.current.set(e.pointerId, { steer: isSteer, x0: e.clientX, btn });
+    if (btn === "up" || btn === "down") cb.current(btn === "up" ? { shiftUp: true } : { shiftDown: true });
     sync();
   };
 
@@ -216,6 +217,13 @@ export function TouchControls({ onControls, steer = "slider", force }: { onContr
         </div>
       )}
 
+      {manual && (
+        <div className="pointer-events-none absolute bottom-[calc(max(1.25rem,env(safe-area-inset-bottom))+clamp(10rem,44vh,17rem)+0.75rem)] right-[max(1.5rem,env(safe-area-inset-right))] flex gap-3">
+          <Small el={set("down")} icon={<span className="num text-3xl leading-none">−</span>} big />
+          <Small el={set("up")} icon={<span className="num text-3xl leading-none">+</span>} big />
+        </div>
+      )}
+
       <div className="pointer-events-none absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))] flex items-end gap-[clamp(0.75rem,2.5vw,1.5rem)]">
         <div className="flex flex-col items-center gap-[clamp(0.75rem,3vh,1.25rem)]">
           <Pedal el={set("hand")} icon={<Handbrake />} className="h-[clamp(4rem,17vh,6rem)] w-[clamp(4rem,17vh,6rem)] rounded-full" />
@@ -243,9 +251,9 @@ function Pedal({ el, icon, className, hot }: { el: (e: HTMLElement | null) => vo
   );
 }
 
-function Small({ el, icon }: { el: (e: HTMLElement | null) => void; icon: ReactNode }) {
+function Small({ el, icon, big }: { el: (e: HTMLElement | null) => void; icon: ReactNode; big?: boolean }) {
   return (
-    <div ref={el} data-on="0" className="glass grid h-12 w-12 place-items-center rounded-full text-xl text-white/85 transition-colors duration-75 data-[on=1]:bg-white/30">
+    <div ref={el} data-on="0" className={cx("glass grid place-items-center rounded-full text-xl text-white/85 transition-colors duration-75 data-[on=1]:bg-white/30", big ? "h-[clamp(3.5rem,15vh,4.75rem)] w-[clamp(3.5rem,15vh,4.75rem)]" : "h-12 w-12")}>
       {icon}
     </div>
   );

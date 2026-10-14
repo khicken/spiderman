@@ -24,73 +24,77 @@ const hash = (s: string) => {
   };
 };
 
-// Per multiple of half the firing rate. V12 screams in the upper firing harmonics, the flat-six howls on the 1.5 order,
-// the cross-plane V8 burbles on the half orders and roars in the low firing harmonics.
-const HARM: Record<string, number[]> = {
-  i4: [0.05, 0.35, 0.1, 0.6, 0.05, 0.4, 0, 0.25, 0, 0.12],
-  i6: [0.02, 0.3, 0.05, 0.6, 0.04, 0.55, 0, 0.35, 0, 0.2, 0, 0.12],
-  f6: [0.05, 0.3, 0.55, 0.7, 0.3, 0.6, 0.12, 0.4, 0.05, 0.25, 0, 0.15],
-  v8: [0.55, 0.45, 0.4, 0.6, 0.25, 0.45, 0.1, 0.3, 0, 0.15],
-  v8flat: [0.03, 0.35, 0.05, 0.7, 0.05, 0.55, 0, 0.4, 0, 0.25, 0, 0.12],
-  v10: [0.03, 0.25, 0.05, 0.6, 0.05, 0.75, 0, 0.6, 0, 0.4, 0, 0.25],
-  v12: [0.02, 0.2, 0.04, 0.55, 0.04, 0.8, 0, 0.7, 0, 0.5, 0, 0.3],
+// Pipe lengths in ms. Long pipes and a low muffler give depth, short pipes and a high muffler give the howl.
+type Voice = {
+  width: number; minMs: number; maxMs: number; jitter: number; timeJit: number;
+  hdr: [number, number]; hdrR: number; bankB: number; pipe: number; pipeR: number; loopHz: number;
+  muffler: number; body: number; noise: number; noiseHz: number; noiseQ: number; rasp: number;
+  roar: number; roarHz: number; intake: number; intakeHz: number;
+  drive: number; asym: number; tilt: number; hybrid: number; trim: number;
 };
-const FORM: Record<string, [number[], number[]]> = {
-  i4: [[1500, 3100, 5200], [0.7, 0.8, 0.3]],
-  i6: [[1300, 2600, 4400], [0.7, 0.7, 0.35]],
-  f6: [[1100, 2300, 3900], [1, 0.9, 0.45]],
-  v8: [[800, 1600, 3100], [2.2, 1.8, 0.8]],
-  v8flat: [[1200, 2500, 4300], [0.8, 0.8, 0.4]],
-  v10: [[1600, 3200, 5200], [0.6, 1, 0.6]],
-  v12: [[1700, 3300, 5400], [0.6, 1, 0.65]],
+const VOICES: Record<string, Voice> = {
+  hyper: { width: 0.5, minMs: 1.1, maxMs: 3.5, jitter: 0.07, timeJit: 0.03, hdr: [1.6, 1.75], hdrR: -0.35, bankB: 0.9, pipe: 5, pipeR: -0.45, loopHz: 1800, muffler: 2600, body: 0.6, noise: 1.6, noiseHz: 900, noiseQ: 0.8, rasp: 0.25, roar: 0.025, roarHz: 700, intake: 0.02, intakeHz: 350, drive: 4, asym: 0.15, tilt: 6000, hybrid: 0.004, trim: 1.15 },
+  gt3: { width: 0.36, minMs: 0.45, maxMs: 2.5, jitter: 0.05, timeJit: 0.02, hdr: [0.9, 0.95], hdrR: -0.5, bankB: 0.95, pipe: 2.6, pipeR: -0.35, loopHz: 3200, muffler: 5500, body: 0.25, noise: 1.6, noiseHz: 2200, noiseQ: 1.1, rasp: 0.35, roar: 0.02, roarHz: 1400, intake: 0.03, intakeHz: 500, drive: 5, asym: 0.1, tilt: 8000, hybrid: 0, trim: 1.58 },
+  jdm: { width: 0.42, minMs: 0.9, maxMs: 3.5, jitter: 0.05, timeJit: 0.02, hdr: [1.2, 1.25], hdrR: -0.4, bankB: 0.95, pipe: 3.8, pipeR: -0.4, loopHz: 2400, muffler: 3600, body: 0.4, noise: 1.2, noiseHz: 1500, noiseQ: 0.8, rasp: 0.3, roar: 0.02, roarHz: 900, intake: 0.03, intakeHz: 420, drive: 3.5, asym: 0.08, tilt: 6500, hybrid: 0, trim: 1.46 },
+  muscle: { width: 0.45, minMs: 1.4, maxMs: 5, jitter: 0.14, timeJit: 0.05, hdr: [1.7, 3.6], hdrR: -0.45, bankB: 0.6, pipe: 6, pipeR: -0.5, loopHz: 1500, muffler: 2100, body: 0.8, noise: 2, noiseHz: 650, noiseQ: 0.7, rasp: 0.3, roar: 0.035, roarHz: 500, intake: 0.03, intakeHz: 280, drive: 6, asym: 0.25, tilt: 5000, hybrid: 0, trim: 1.6 },
+  rally: { width: 0.36, minMs: 1, maxMs: 3, jitter: 0.1, timeJit: 0.03, hdr: [1.4, 1.4], hdrR: -0.45, bankB: 0.95, pipe: 4.2, pipeR: -0.45, loopHz: 2200, muffler: 3300, body: 0.9, noise: 2.6, noiseHz: 700, noiseQ: 0.7, rasp: 0.6, roar: 0.03, roarHz: 800, intake: 0.03, intakeHz: 400, drive: 6, asym: 0.2, tilt: 6000, hybrid: 0, trim: 1.58 },
+  v12: { width: 0.65, minMs: 0.4, maxMs: 2.5, jitter: 0.03, timeJit: 0.012, hdr: [0.75, 0.8], hdrR: -0.45, bankB: 0.95, pipe: 2.2, pipeR: -0.3, loopHz: 4000, muffler: 4800, body: 0.6, noise: 0.9, noiseHz: 2000, noiseQ: 1.2, rasp: 0.2, roar: 0.015, roarHz: 1500, intake: 0.03, intakeHz: 600, drive: 3, asym: 0.05, tilt: 9000, hybrid: 0, trim: 0.78 },
+  classic: { width: 0.38, minMs: 1, maxMs: 3, jitter: 0.2, timeJit: 0.06, hdr: [1.3, 1.4], hdrR: -0.35, bankB: 0.95, pipe: 2.4, pipeR: -0.4, loopHz: 2600, muffler: 4000, body: 0.25, noise: 2.8, noiseHz: 2000, noiseQ: 1.4, rasp: 0.5, roar: 0.02, roarHz: 1000, intake: 0.04, intakeHz: 450, drive: 3.5, asym: 0.3, tilt: 6500, hybrid: 0, trim: 1.21 },
 };
-const HGAIN: Record<string, number> = { i4: 0.2, i6: 0.18, f6: 0.22, v8: 0.2, v8flat: 0.2, v10: 0.25, v12: 0.25 };
-const FGAIN = 2.2;
-
-// Loudness trims measured with the offline renders, so every car sits at a similar level at full load.
-const TRIM: Record<string, number> = { i4: 1.05, i6: 0.95, f6: 1, v8: 0.95, v8flat: 0.95, v10: 1.1, v12: 1.2, electric: 16 };
+const BY_LAYOUT: Record<string, string> = { v8: "muscle", v8flat: "hyper", f6: "gt3", i6: "jdm", i4: "rally", v10: "v12", v12: "v12" };
+const EV_TRIM = 4.7;
 
 export function engineProfile(spec: CarSpec, sr: number, cheap: boolean): EngineProfile {
   const e = spec.engine;
   const s = spec.sound;
   const lay = LAYOUTS[e.layout] ?? { order: [...Array(Math.max(1, e.cylinders)).keys()], banks: alt(Math.max(1, e.cylinders)) };
-  const n = e.layout === "electric" ? 0 : lay.order.length;
+  const electric = e.layout === "electric";
+  const n = electric ? 0 : lay.order.length;
+  const v = VOICES[spec.id] ?? VOICES[BY_LAYOUT[e.layout] ?? "jdm"];
   const r = hash(spec.id);
   const cross = e.layout === "v8";
-  const old = spec.year < 1990;
-  const unequal = cross || e.layout === "f6" || old;
   const ms = (x: number) => Math.round((x * sr) / 1000);
   return {
     cheap,
-    electric: e.layout === "electric",
+    electric,
     slots: lay.order.slice(0, n).map((i) => i / n),
     bank: lay.banks.slice(0, n),
-    amp: Array.from({ length: n }, () => 1 + (r() - 0.5) * (cross ? 0.3 : old ? 0.25 : 0.1)),
-    hdr: Array.from({ length: n }, (_, i) => ms((lay.banks[i] ? 0.35 : 0) + r() * (unequal ? 0.9 : 0.2))),
-    bankLen: [ms(0.9 + 1.4 * (1 - s.tone)), ms(1.0 + 1.5 * (1 - s.tone) + (unequal ? 0.4 : 0.05))],
-    pipe: ms(5.6 - 3.8 * s.tone),
-    refl: -0.3 - 0.25 * (1 - s.tone),
-    muffler: 900 + 4200 * s.tone + 1200 * s.rasp,
-    body: 80 + 170 * s.tone,
-    width: cross ? 0.15 : n >= 10 ? 0.08 : n <= 4 ? 0.13 : 0.11,
-    jitter: old ? 0.4 : cross ? 0.28 : 0.12,
-    rasp: s.rasp,
+    amp: Array.from({ length: n }, () => 1 + (r() - 0.5) * (cross ? 0.3 : 0.12)),
+    width: v.width,
+    minMs: v.minMs,
+    maxMs: v.maxMs,
+    jitter: v.jitter,
+    timeJit: v.timeJit,
+    hdr: v.hdr.map(ms),
+    hdrR: v.hdrR,
+    bankB: v.bankB,
+    pipe: ms(v.pipe),
+    pipeR: v.pipeR,
+    loopHz: v.loopHz,
+    muffler: v.muffler,
+    body: v.body,
+    noise: v.noise,
+    noiseHz: v.noiseHz,
+    noiseQ: v.noiseQ,
+    rasp: v.rasp,
+    roar: v.roar,
+    roarHz: v.roarHz,
+    intake: v.intake,
+    intakeHz: v.intakeHz,
+    drive: v.drive,
+    asym: v.asym,
+    tilt: Math.min(v.tilt, sr * 0.4),
     pops: s.pops,
-    whine: e.aspiration === "super" ? 0.2 : s.whine,
-    tone: s.tone,
     turbo: e.aspiration === "turbo" ? 1 : e.aspiration === "twin" ? 2 : 0,
     sc: e.aspiration === "super" ? s.whine : 0,
+    hybrid: v.hybrid,
+    whine: s.whine,
     flutter: (e.aspiration === "turbo" || e.aspiration === "twin") && s.pops >= 0.55,
     bang: spec.shiftTime <= 0.1 && s.pops >= 0.45,
     idle: Math.max(e.idle, 1),
     redline: e.redline,
-    gain: 0.25 * (cheap ? 0.75 : 1) * (TRIM[e.layout] ?? 1),
+    gain: (cheap ? 0.75 : 1) * (electric ? EV_TRIM : v.trim),
     stereo: cheap || n < 6 ? 0 : 0.5,
-    harm: (HARM[e.layout] ?? HARM.i6).slice(0, cheap ? 6 : 12),
-    hBase: n % 2 ? n : n / 2,
-    form: n ? (FORM[e.layout] ?? FORM.i6)[0].slice(0, cheap ? 1 : 3) : [],
-    formG: n ? (FORM[e.layout] ?? FORM.i6)[1].map((g) => g * FGAIN * (0.6 + 0.4 * s.tone + 0.4 * s.rasp)) : [],
-    hGain: n ? (HGAIN[e.layout] ?? 0.1) * (0.7 + 0.3 * s.tone + 0.3 * s.rasp) : 0,
   };
 }
 

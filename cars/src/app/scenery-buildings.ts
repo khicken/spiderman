@@ -197,7 +197,16 @@ export type Blocker = { blocked(x: number, z: number): boolean };
 
 export function buildBuildings(map: MapData, track: Track, roads: RoadIndex, style: Style, detail: number, chunk: number) {
   const chunks = new Map<string, Geo>();
-  const B = map.buildings;
+  // Copy, so footprints trimmed back from the widened road never touch the shared map data.
+  const B = map.buildings.slice();
+  const area = (o: number, n: number) => {
+    let a = 0;
+    for (let k = 0; k < n; k++) {
+      const j = (k + 1) % n;
+      a += B[o + k * 2] * B[o + j * 2 + 1] - B[o + j * 2] * B[o + k * 2 + 1];
+    }
+    return Math.abs(a) / 2;
+  };
   const grid = new Map<number, number[]>();
   const G = 50;
   let i = 0, id = 0;
@@ -208,12 +217,23 @@ export function buildBuildings(map: MapData, track: Track, roads: RoadIndex, sty
     if (n < 3 || h <= 0) continue;
     let cx = 0, cz = 0, x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, lo = 1e9, hi = -1e9, ok = true;
     const pts: number[] = [];
+    // Corners inside the road clearance slide out along the distance gradient, which trims the facade back.
+    const a0 = area(o, n);
+    for (let k = 0; k < n; k++)
+      for (let it = 0; it < 4; it++) {
+        const x = B[o + k * 2], z = B[o + k * 2 + 1], d = roads.edge(x, z);
+        if (d >= 1.2) break;
+        const gx = roads.edge(x + 0.5, z) - roads.edge(x - 0.5, z), gz = roads.edge(x, z + 0.5) - roads.edge(x, z - 0.5), gl = Math.hypot(gx, gz) || 1;
+        B[o + k * 2] = x + (gx / gl) * (1.3 - d);
+        B[o + k * 2 + 1] = z + (gz / gl) * (1.3 - d);
+      }
+    if (area(o, n) < a0 * 0.4) continue;
     for (let k = 0; k < n; k++) {
       const x = B[o + k * 2], z = B[o + k * 2 + 1];
       pts.push(x, z);
       cx += x; cz += z;
       x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
-      if (roads.edge(x, z) < 1) ok = false;
+      if (roads.edge(x, z) < 0.8) ok = false;
       const y = track.heightAt(x, z);
       lo = Math.min(lo, y);
       hi = Math.max(hi, y);
@@ -222,7 +242,7 @@ export function buildBuildings(map: MapData, track: Track, roads: RoadIndex, sty
     cz /= n;
     for (let k = 0; k < n && ok; k++) {
       const j = (k + 1) % n;
-      if (roads.edge((pts[k * 2] + pts[j * 2]) / 2, (pts[k * 2 + 1] + pts[j * 2 + 1]) / 2) < 1) ok = false;
+      if (roads.edge((pts[k * 2] + pts[j * 2]) / 2, (pts[k * 2 + 1] + pts[j * 2 + 1]) / 2) < 0.6) ok = false;
     }
     if (!ok || roads.edge(cx, cz) < 1) continue;
     for (let gx = Math.floor(x0 / G); gx <= Math.floor(x1 / G); gx++)
