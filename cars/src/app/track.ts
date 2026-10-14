@@ -624,8 +624,10 @@ export function createTrack(raw: MapData): Track {
       pos.z -= nz * side * pen;
       const vn = (vel.x * nx + vel.z * nz) * side;
       if (vn > 0) {
-        vel.x -= nx * side * vn * 1.2;
-        vel.z -= nz * side * vn * 1.2;
+        // A hard hit bounces back, a car leaning on the wall stays on it and scrapes.
+        const e = 1 + 0.2 * Math.min(1, vn / 6);
+        vel.x -= nx * side * vn * e;
+        vel.z -= nz * side * vn * e;
         const fm = Math.hypot(qfx, qfz), tx = qfx / fm, tz = qfz / fm;
         const vt = vel.x * tx + vel.z * tz;
         const cut = Math.min(Math.abs(vt), vn * 0.3) * Math.sign(vt);

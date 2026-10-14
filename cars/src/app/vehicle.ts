@@ -18,6 +18,8 @@ const SNAP = 29 + 4 * 7;
 const HB_SLIP = 0.3;
 // Drift angle the assists hold, rad. u: steer into the turn +1 .. against it -1.
 const driftAim = (u: number) => 0.45 + 0.25 * u;
+// Drift steering gains. wide, wideF: side grip the rear and front give up at full counter-steer, which widens the line.
+export const DRIFT = { base: 0.75, into: 0.9, counter: 0.8, damp: 1.6, wide: 1, wideF: 0.7 };
 const ROLL: Record<Surface, number> = { asphalt: 0.012, curb: 0.014, cobble: 0.018, grass: 0.06, gravel: 0.05, dirt: 0.04, snow: 0.035 };
 
 const _h = new THREE.Vector3();
@@ -130,6 +132,9 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
   let impactT = 0;
   let scrapeT = 0;
   let drift = false;
+  let calmWall = 0;
+  let wallMem = 0; // time left of the scrape penalty after the last wall contact
+  let driftV = 0; // speed when the drift started
   let walled = false;
   let shiftQ = 0; // queued shift presses, + up
   let shiftQT = 0;
@@ -231,10 +236,14 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     askThr = c.throttle > 0.5 ? 0 : askThr + dt;
     const asked = helps && askT < 1.2;
     if (!drift) {
-      if (asked && fwdSpeed > 7 && tailOut && Math.abs(beta) > 0.1 && c.throttle > 0.3 && c.brake < 0.2) drift = true;
+      if (asked && fwdSpeed > 7 && tailOut && Math.abs(beta) > 0.1 && c.throttle > 0.3 && c.brake < 0.2) {
+        drift = true;
+        driftV = Math.max(v, 12);
+      }
       calmT = 0;
     } else {
-      calmT = Math.abs(beta) < 0.08 || c.throttle < 0.12 ? calmT + dt : 0;
+      // A short lift keeps the drift; a straight car or a long lift ends it.
+      calmT = Math.abs(beta) < 0.08 ? calmT + dt : c.throttle < 0.12 ? calmT + dt * 0.4 : 0;
       if (fwdSpeed < 4 || c.brake > 0.4 || calmT > 0.35 || Math.abs(beta) > 1.25) drift = false;
     }
 
@@ -259,11 +268,13 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
         const bf = Math.atan2(latSpeed + r * a, fwdSpeed);
         const pa = spec.tire.peakAngle;
         if (drift) {
-          // Holding a drift: steer sets the angle to hold, about 30 degrees, more into the turn, less against it.
-          // The fronts point along the front axle's travel plus a correction that also damps the swing.
+          // Holding a drift, the steer sets how hard the fronts bite toward the inside: into the turn adds angle, against it
+          // takes angle off once the slide is past about 17 degrees. A swing-rate term damps the slide, and past 40 degrees
+          // the fronts let go of the inside so the car does not spin.
           const sr = -Math.sign(beta);
           const u = Math.max(-1, Math.min(1, (intent * sr) / Math.max(0.05, lock)));
-          const corr = 0.9 + 2.5 * (driftAim(u) + beta * sr) + 1.2 * dBeta * sr;
+          const ang = -beta * sr;
+          const corr = DRIFT.base * (1 + 0.6 * Math.min(0, u)) + (u > 0 ? DRIFT.into : DRIFT.counter * Math.min(1, Math.max(0, (ang - 0.3) / 0.3))) * u + DRIFT.damp * dBeta * sr - 8 * Math.max(0, ang - 0.7);
           target = bf + sr * pa * Math.max(-1.6, Math.min(1.6, corr));
         } else {
           const slide = br * r < 0 ? Math.min(1, Math.max(0, (Math.abs(br) - pa * 0.7) / pa)) : 0;
@@ -278,6 +289,15 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     }
     const rate = 4.5 * dt;
     steer += Math.max(-rate, Math.min(rate, target - steer));
+    // In a held drift the steer also picks the line: against the slide the rears give up side grip and the car runs wider,
+    // into the slide they keep it and the line tightens.
+    let rearSide = 1;
+    let frontSide = 1;
+    if (drift) {
+      const u = Math.max(-1, Math.min(1, c.steer * Math.sign(beta)));
+      rearSide = u < 0 ? 1 + DRIFT.wide * u : 1;
+      frontSide = u < 0 ? 1 + DRIFT.wideF * u : 1;
+    }
 
     // Stability control trims yaw beyond what the driver asks for, and rear slip well past the peak.
     // A small slide is allowed, so trail braking and lift-off rotate the car. Off right after a handbrake pull and in a held drift.
@@ -301,6 +321,8 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       const sd = -Math.sign(beta);
       const aim = assists.steer ? driftAim(Math.max(-1, Math.min(1, -c.steer * sd))) : 0.8;
       thr *= Math.max(0.3, Math.min(1, 1 - 2.5 * (-beta * sd - aim - 0.25)));
+      // A held drift does not gain speed, so a full throttle slide does not run wide of the bend it started in.
+      thr *= Math.max(0.2, Math.min(1, 1 - (v - driftV) / 3));
     }
 
     // Traction control from the last step's slip. A held drift may spin the rears.
@@ -315,6 +337,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       thr *= 1 - tcs;
     } else tcs = 0;
 
+    if (wallMem > 0 && !rev) thr = Math.min(thr, 0.35);
     spoolTurbo(d, spec, thr, dt); // blow-off sound comes from the engine voice
     if (pops > 0.4 && lastThr > 0.6 && c.throttle < 0.15 && !rev && d.we * RPM > spec.engine.redline * 0.6) emit({ type: "backfire", car: index });
     lastThr = c.throttle;
@@ -459,7 +482,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
 
     for (let i = 0; i < 4; i++) {
       if (!wheels[i].contact) continue;
-      _f.copy(tf[i]).multiplyScalar(fxSum[i] / sub).addScaledVector(tl[i], fySum[i] / sub);
+      _f.copy(tf[i]).multiplyScalar(fxSum[i] / sub).addScaledVector(tl[i], (fySum[i] / sub) * (i >= 2 ? rearSide : frontSide));
       addForce(_f, wheels[i].pos);
     }
     const q = 0.5 * RHO;
@@ -499,22 +522,33 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     const scrape = bodyCorners(body, state, gc, spec);
     const hit = hitBarriers(body, state, track, gc.s);
     walled = hit.contact;
-    if (hit.contact && hit.normal.lengthSq() > 0.5) {
-      // Wall riding is slow: the scrape bleeds speed by the into-wall angle, and the nose turns away from the wall.
-      const n = hit.normal;
-      const fl = Math.hypot(z.x, z.z) || 1;
-      const into = Math.max(0, -(z.x * n.x + z.z * n.z) / fl);
+    if (walled) drift = false;
+    // Stability control settles the spin a wall hit kicks in, so a glancing hit does not end in a spin-out.
+    calmWall -= dt;
+    if (calmWall > 0 && assists.stability) state.angVel.addScaledVector(y, -state.angVel.dot(y) * Math.min(1, 4 * dt));
+    // Wall riding is slow: a scrape bleeds speed and cuts the drive for a moment, so grazing the wall again and again costs
+    // as much as leaning on it. The nose turns away from the wall, more the steeper the hit.
+    wallMem = walled ? 0.5 : wallMem - dt;
+    if (wallMem > 0) {
+      let into = 0;
+      if (hit.contact && hit.normal.lengthSq() > 0.5) {
+        const n = hit.normal;
+        const fl = Math.hypot(z.x, z.z) || 1;
+        into = Math.max(0, -(z.x * n.x + z.z * n.z) / fl);
+        const side = Math.sign(n.x * x.x + n.z * x.z) || 1;
+        const away = state.angVel.dot(y) * side;
+        const cap = 0.15 + 0.5 * into;
+        if (away < cap && Math.abs(fwdSpeed) > 2) state.angVel.addScaledVector(y, side * Math.min(cap - away, (1 + 4 * into) * dt));
+      }
       const keep = Math.max(0, 1 - (0.3 + 1.0 * into) * dt);
       state.vel.x *= keep;
       state.vel.z *= keep;
-      const side = Math.sign(n.x * x.x + n.z * x.z) || 1;
-      const away = state.angVel.dot(y) * side;
-      if (away < 0.5 && Math.abs(fwdSpeed) > 2) state.angVel.addScaledVector(y, side * Math.min(0.5 - away, (1.5 + 4 * into) * dt));
     }
     if (hit.speed > 2.5 && impactT <= 0) {
       emit({ type: "impact", at: hit.at.clone(), speed: hit.speed, car: index });
       emit({ type: "shake", strength: Math.min(1, hit.speed / 25) });
       impactT = 0.25;
+      calmWall = 0.7;
     } else if ((hit.slide > 2 || scrape.slide > 2) && scrapeT <= 0) {
       const at = hit.slide > 2 ? hit.at : scrape.at;
       const sl = Math.max(hit.slide, scrape.slide);
@@ -590,6 +624,7 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     steer = tcs = airT = upsideT = stuckT = calmT = 0;
     lastBeta = NaN;
     askT = askThr = 9;
+    wallMem = calmWall = 0;
     shiftQ = 0;
     drift = false;
     basis();

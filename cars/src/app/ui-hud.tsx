@@ -30,6 +30,7 @@ type Pop = { id: number; kind: "split" | "lap" | "toast"; text: string; sub?: st
 export function Hud({ h, units = "kmh", outline, touch, manual, shiftHint, ref }: { h: HudState; units?: "kmh" | "mph"; outline?: ArrayLike<number>; touch?: boolean; manual?: boolean; shiftHint?: Device | null; ref?: Ref<HudHandle> }) {
   const tach = useRef<TachHandle>(null);
   const mini = useRef<MiniHandle>(null);
+  const tagPos = useRef<[number, number][]>(Array.from({ length: TAGS }, () => [NaN, NaN]));
   const tagEls = useRef<(HTMLDivElement | null)[]>([]);
   const driftEl = useRef<HTMLSpanElement>(null);
   const [pops, setPops] = useState<Pop[]>([]);
@@ -51,13 +52,21 @@ export function Hud({ h, units = "kmh", outline, touch, manual, shiftHint, ref }
           if (el.style.display !== "none") el.style.display = "none";
           continue;
         }
-        el.style.display = "";
-        el.style.transform = `translate(${Math.round(t.x)}px, ${Math.round(t.y)}px) translate(-50%, -100%)`;
-        if (el.dataset.name !== t.name) {
-          el.dataset.name = t.name;
-          el.lastChild!.textContent = t.name;
+        if (el.style.display) el.style.display = "";
+        const x = Math.round(t.x);
+        const y = Math.round(t.y);
+        const pos = tagPos.current[i];
+        if (pos[0] !== x || pos[1] !== y) {
+          pos[0] = x;
+          pos[1] = y;
+          el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
         }
-        (el.firstChild as HTMLElement).style.background = t.color;
+        if (el.dataset.name !== t.name || el.dataset.color !== t.color) {
+          el.dataset.name = t.name;
+          el.dataset.color = t.color;
+          el.lastChild!.textContent = t.name;
+          (el.firstChild as HTMLElement).style.background = t.color;
+        }
       }
     },
     event: (e) => {

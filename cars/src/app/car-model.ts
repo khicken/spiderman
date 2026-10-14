@@ -150,8 +150,9 @@ export function createCarModel(spec: CarSpec, paint: string, quality: Quality, p
     flare = kit.flare ? add(kit.flare, flareM, false) : null;
     if (flare) (flare.visible = false), (flare.renderOrder = 3);
     const wg = new THREE.BufferGeometry();
-    for (const [n, a] of Object.entries(kit.wheel.attributes)) wg.setAttribute(n, a);
-    wg.setIndex(kit.wheel.index);
+    // Own copies: disposing this geometry frees its GL buffers, and other cars share the kit.
+    for (const [n, a] of Object.entries(kit.wheel.attributes)) wg.setAttribute(n, a.clone());
+    if (kit.wheel.index) wg.setIndex(kit.wheel.index.clone());
     wg.setAttribute("spin", spin);
     wheel = new THREE.InstancedMesh(wg, wheelM, 4);
     wheel.castShadow = false;

@@ -91,7 +91,7 @@ export function hitBarriers(b: Body, s: VehicleState, track: Track, hint: number
     const dv = _j.length();
     if (dv > 1e-4) {
       // Applied halfway to the center: a point impulse at the bumper spins the car like a pinball.
-      _az.lerpVectors(s.pos, _p0, 1);
+      _az.lerpVectors(s.pos, _p0, 0.5);
       _n.copy(_j).multiplyScalar(1 / dv);
       _j.copy(_n).multiplyScalar(dv / b.invMass(_az, _n));
       b.impulse(_az, _j);

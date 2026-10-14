@@ -227,7 +227,9 @@ export function ControlsBody({ device, steer, manual, onSteer }: { device: Devic
         <span className="ttl text-lg text-white">Drift</span>
         <span className="h-px flex-1 bg-line" />
       </div>
-      <DriftGuide device={d} />
+      <div data-nav tabIndex={0} aria-label="Drift" className="rounded-[2px] outline-none focus-visible:ring-1 focus-visible:ring-hot">
+        <DriftGuide device={d} />
+      </div>
     </>
   );
 }
