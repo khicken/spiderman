@@ -103,6 +103,16 @@ export const Sun = svg(
     <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
   </>,
 );
+export const Sunrise = svg(
+  <>
+    <path d="M7 17a5 5 0 0 1 10 0M2 21h20M12 3v5M9 6l3-3 3 3M3.5 13l1.5 1M20.5 13L19 14" />
+  </>,
+);
+export const Sunset = svg(
+  <>
+    <path d="M7 17a5 5 0 0 1 10 0M2 21h20M12 3v5M9 5l3 3 3-3M3.5 13l1.5 1M20.5 13L19 14" />
+  </>,
+);
 export const Moon = svg(<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />);
 export const Cloud = svg(<path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 9.5a4.3 4.3 0 0 1-.5 8.5z" />);
 export const Rain = svg(

@@ -19,10 +19,61 @@ export function isPhone() {
 export function enterFullscreen() {
   const el = document.documentElement;
   if (!el.requestFullscreen || document.fullscreenElement) return;
+  // Lock the current landscape side, so a steering tilt never flips the screen to the other side.
+  const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+  const side = o?.type?.startsWith("landscape") ? o.type : "landscape";
   el.requestFullscreen({ navigationUI: "hide" })
-    .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape"))
+    .then(() => o?.lock?.(side))
     .catch(() => {});
 }
+
+// iOS asks for motion access, and only from a tap.
+export function askTilt() {
+  const D = typeof DeviceOrientationEvent === "undefined" ? undefined : (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> });
+  D?.requestPermission?.().catch(() => {});
+}
+
+const D2R = Math.PI / 180;
+const TILT_LOCK = 27; // degrees of tilt for full lock
+const TILT_DZ = 1.5;
+
+function screenAngle() {
+  const a = screen.orientation?.angle ?? (window as { orientation?: number }).orientation ?? 0;
+  return ((a % 360) + 360) % 360;
+}
+
+// Gravity's up direction in the screen plane of the device, from DeviceOrientation beta and gamma.
+// x points to the right edge, y to the top edge, both in the device's natural portrait frame.
+const up = { x: 0, y: 1 };
+function upInPlane(beta: number, gamma: number) {
+  const b = beta * D2R;
+  const g = gamma * D2R;
+  up.x = -Math.cos(b) * Math.sin(g);
+  up.y = Math.sin(b);
+  return up;
+}
+
+// Steer -1..1 from the phone's roll away from ref, the roll angle in radians held at neutral.
+// A turn to the right, clockwise like a wheel, steers right. Near flat the screen y part is floored,
+// so a sideways tilt of a flat phone also steers instead of spinning the angle around.
+export function tiltSteer(beta: number, gamma: number, ref: number) {
+  const u = upInPlane(beta, gamma);
+  const c = Math.cos(ref);
+  const s = Math.sin(ref);
+  const sx = u.x * c - u.y * s;
+  const sy = u.x * s + u.y * c;
+  const deg = -Math.atan2(sx, Math.max(sy, 0.55)) / D2R;
+  const a = Math.abs(deg);
+  return a < TILT_DZ ? 0 : Math.sign(deg) * Math.min(1, (a - TILT_DZ) / (TILT_LOCK - TILT_DZ));
+}
+
+// Roll of the phone in radians, or NaN when it lies too flat to tell.
+export function tiltRoll(beta: number, gamma: number) {
+  const u = upInPlane(beta, gamma);
+  return Math.hypot(u.x, u.y) < 0.35 ? NaN : Math.atan2(u.x, u.y);
+}
+
+let tiltRaces = 0; // mounted tilt controls; the rotate hint stays off while one runs
 
 export function useIsTouch() {
   const [t, setT] = useState(false);
@@ -36,9 +87,9 @@ export function useIsTouch() {
   return t;
 }
 
-type Btn = "gas" | "brake" | "hand" | "camera" | "rewind" | "pause" | "up" | "down";
+type Btn = "gas" | "brake" | "hand" | "camera" | "rewind" | "pause" | "up" | "down" | "center";
 const PEDALS: Btn[] = ["gas", "brake", "hand"];
-const SMALL: Btn[] = ["camera", "rewind", "pause", "up", "down"];
+const SMALL: Btn[] = ["camera", "rewind", "pause", "up", "down", "center"];
 const STEER_PX = 0.09;
 
 export function TouchControls({ onControls, steer = "slider", manual, force }: { onControls: (t: TouchInput) => void; steer?: SteerMode; manual?: boolean; force?: boolean }) {
@@ -57,7 +108,7 @@ export function TouchControls({ onControls, steer = "slider", manual, force }: {
     const s = state.current;
     const on = s.on;
     cb.current({
-      steer: steer === "tilt" ? s.tilt : s.steer,
+      steer: modeRef.current === "tilt" ? s.tilt : s.steer,
       throttle: on.has("gas") ? 1 : 0,
       brake: on.has("brake") ? 1 : 0,
       handbrake: on.has("hand") ? 1 : 0,
@@ -70,22 +121,54 @@ export function TouchControls({ onControls, steer = "slider", manual, force }: {
   };
 
   const showSteer = (v: number) => {
-    if (knob.current) knob.current.style.transform = `translateX(${v * 100}%)`;
+    if (knob.current) knob.current.style.transform = modeRef.current === "tilt" ? `rotate(${v * 90}deg)` : `translateX(${v * 100}%)`;
   };
 
+  // Tilt: the neutral roll is the first reading after the race starts, and stays put if the browser rotates anyway.
+  const tilt = useRef({ ref: NaN, raw: 0, beta: 0, gamma: 0, seen: false });
+  const [noTilt, setNoTilt] = useState(false);
+  const mode: SteerMode = steer === "tilt" && !noTilt ? "tilt" : "slider";
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const dead = useRef(0);
+  // No readings a few seconds after the first tap (no sensor, or iOS access denied): fall back to the slider.
+  const ask = () => {
+    if (steer !== "tilt" || tilt.current.seen) return;
+    askTilt();
+    if (!dead.current) dead.current = window.setTimeout(() => !tilt.current.seen && setNoTilt(true), 5000);
+  };
+  const recenter = () => {
+    const t = tilt.current;
+    const r = tiltRoll(t.beta, t.gamma);
+    t.ref = Number.isNaN(r) ? screenAngle() * D2R : r;
+  };
   useEffect(() => {
     if (steer !== "tilt") return;
+    tiltRaces++;
+    const t = tilt.current;
+    t.ref = NaN;
     const f = (e: DeviceOrientationEvent) => {
-      const a = (screen.orientation?.angle ?? 0) % 360;
-      const raw = a === 90 ? (e.beta ?? 0) : a === 270 ? -(e.beta ?? 0) : (e.gamma ?? 0);
-      const v = Math.max(-1, Math.min(1, raw / 28));
-      state.current.tilt = Math.abs(v) < 0.04 ? 0 : v;
+      if (e.beta === null || e.gamma === null) return;
+      if (!t.seen) setNoTilt(false);
+      t.seen = true;
+      t.beta = e.beta;
+      t.gamma = e.gamma;
+      if (Number.isNaN(t.ref)) recenter();
+      const want = tiltSteer(e.beta, e.gamma, t.ref);
+      // Smoothing that follows a quick turn at once and only filters the small sensor noise.
+      t.raw += (want - t.raw) * Math.min(1, 0.4 + Math.abs(want - t.raw) * 4);
+      state.current.tilt = Math.abs(t.raw) < 0.01 ? 0 : t.raw;
       showSteer(state.current.tilt);
       emit();
     };
     window.addEventListener("deviceorientation", f);
-    return () => window.removeEventListener("deviceorientation", f);
-  });
+    return () => {
+      tiltRaces--;
+      clearTimeout(dead.current);
+      dead.current = 0;
+      window.removeEventListener("deviceorientation", f);
+    };
+  }, [steer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const p = ptrs.current;
@@ -116,10 +199,11 @@ export function TouchControls({ onControls, steer = "slider", manual, force }: {
 
   const onDown = (e: RPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const D = DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> };
-    if (steer === "tilt" && D.requestPermission) D.requestPermission().catch(() => {});
+    ask();
+    if (isPhone()) enterFullscreen();
     const btn = hit(e.clientX, e.clientY);
-    const isSteer = !btn && steer === "slider" && e.clientX < window.innerWidth * 0.45;
+    if (btn === "center") recenter();
+    const isSteer = !btn && mode === "slider" && e.clientX < window.innerWidth * 0.45;
     if (isSteer) {
       for (const [id, t] of ptrs.current) if (t.steer) ptrs.current.delete(id);
       const tr = track.current;
@@ -153,6 +237,8 @@ export function TouchControls({ onControls, steer = "slider", manual, force }: {
   };
 
   const onUp = (e: RPointerEvent<HTMLDivElement>) => {
+    // iOS counts only the end of a tap as a gesture for the motion prompt.
+    ask();
     const t = ptrs.current.get(e.pointerId);
     ptrs.current.delete(e.pointerId);
     if (t?.steer) {
@@ -187,7 +273,7 @@ export function TouchControls({ onControls, steer = "slider", manual, force }: {
         <Small el={set("pause")} icon={<Pause />} />
       </div>
 
-      {steer === "slider" ? (
+      {mode === "slider" ? (
         <div
           ref={track}
           className="pointer-events-none absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-[max(2rem,calc(env(safe-area-inset-left)+1rem))] flex h-20 w-[clamp(11rem,30vw,18rem)] items-center opacity-70 transition-opacity duration-150 data-[on=1]:opacity-100"
@@ -207,13 +293,16 @@ export function TouchControls({ onControls, steer = "slider", manual, force }: {
           </div>
         </div>
       ) : (
-        <div className="pointer-events-none absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-[max(2rem,calc(env(safe-area-inset-left)+1rem))] h-16 w-16 opacity-60">
-          <div ref={knob} className="h-full w-full">
-            <svg viewBox="0 0 24 24" className="h-full w-full text-white" aria-hidden>
-              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
-              <path d="M3.5 10.5l6 1M20.5 10.5l-6 1M12 14.5V21" stroke="currentColor" strokeWidth="2" />
-            </svg>
+        <div className="pointer-events-none absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-[max(2rem,calc(env(safe-area-inset-left)+1rem))] flex items-center gap-4">
+          <div className="h-16 w-16 opacity-70">
+            <div ref={knob} className="h-full w-full">
+              <svg viewBox="0 0 24 24" className="h-full w-full text-white" aria-hidden>
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
+                <path d="M3.5 10.5l6 1M20.5 10.5l-6 1M12 14.5V21" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            </div>
           </div>
+          <Small el={set("center")} label="Recenter" icon={<svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden><path d="M3 12h5M16 12h5M12 3v3M12 18v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="12" cy="12" r="3" fill="currentColor" /></svg>} />
         </div>
       )}
 
@@ -251,15 +340,34 @@ function Pedal({ el, icon, className, hot }: { el: (e: HTMLElement | null) => vo
   );
 }
 
-function Small({ el, icon, big }: { el: (e: HTMLElement | null) => void; icon: ReactNode; big?: boolean }) {
+function Small({ el, icon, big, label }: { el: (e: HTMLElement | null) => void; icon: ReactNode; big?: boolean; label?: string }) {
   return (
-    <div ref={el} data-on="0" className={cx("glass grid place-items-center rounded-full text-xl text-white/85 transition-colors duration-75 data-[on=1]:bg-white/30", big ? "h-[clamp(3.5rem,15vh,4.75rem)] w-[clamp(3.5rem,15vh,4.75rem)]" : "h-12 w-12")}>
+    <div ref={el} data-on="0" aria-label={label} title={label} className={cx("glass grid place-items-center rounded-full text-xl text-white/85 transition-colors duration-75 data-[on=1]:bg-white/30", big ? "h-[clamp(3.5rem,15vh,4.75rem)] w-[clamp(3.5rem,15vh,4.75rem)]" : "h-12 w-12")}>
       {icon}
     </div>
   );
 }
 
+// Shown only when portrait lasts, so a steering tilt that rotates the browser for a moment does not cover the race.
+// Tilt steering works in portrait too, so it stays off while tilt controls run.
 export function RotateHint() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia("(orientation: portrait)");
+    let t = 0;
+    const f = () => {
+      clearTimeout(t);
+      if (!m.matches) setShow(false);
+      else t = window.setTimeout(() => setShow(m.matches && tiltRaces === 0), 1200);
+    };
+    f();
+    m.addEventListener("change", f);
+    return () => {
+      clearTimeout(t);
+      m.removeEventListener("change", f);
+    };
+  }, []);
+  if (!show) return null;
   return (
     <div className="fixed inset-0 z-50 hidden place-items-center bg-night pointer-coarse:portrait:grid">
       <Rotate className="text-[7rem] text-white [animation:rot_2s_var(--ease-out)_infinite]" />

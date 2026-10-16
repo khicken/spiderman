@@ -5,7 +5,7 @@ import type { Device } from "./contracts";
 import { Back, Brake, Camera, Fwd, Gamepad, Gas, Gears, Handbrake, Keyboard, Pause, Rewind, Tilt, Touch, Wheel } from "./ui-icons";
 import { Key, Segmented, cx } from "./ui-kit";
 import { useNavRoot } from "./ui-nav";
-import type { SteerMode } from "./ui-touch";
+import { askTilt, type SteerMode } from "./ui-touch";
 
 export const Pad = ({ b, c }: { b: string; c?: string }) => (
   <span className="num inline-grid h-8 min-w-8 place-items-center rounded-full border border-line-hi bg-white/5 px-1.5 text-base not-italic" style={{ color: c }}>
@@ -44,10 +44,14 @@ export function ShiftKeys({ device }: { device: Device }) {
   );
 }
 
+const Rev = () => <span className="num grid h-6 w-6 place-items-center rounded-[3px] border border-current text-sm not-italic leading-none">R</span>;
+const Note = ({ children }: { children: ReactNode }) => <span className="text-sm text-mute">{children}</span>;
+
 type Bind = { icon: ReactNode; label: string; keys: ReactNode; pad: ReactNode };
 const BINDS: Bind[] = [
   { icon: <Gas />, label: "Gas", keys: <><Key>W</Key><Key>↑</Key></>, pad: <Pad b="RT" /> },
   { icon: <Brake />, label: "Brake", keys: <><Key>S</Key><Key>↓</Key></>, pad: <Pad b="LT" /> },
+  { icon: <Rev />, label: "Reverse", keys: <><Note>hold at a stop</Note><Key>S</Key></>, pad: <><Note>hold at a stop</Note><Pad b="LT" /></> },
   { icon: <Wheel />, label: "Steer", keys: <><Key>A</Key><Key>D</Key></>, pad: <Pad b="LS" /> },
   { icon: <Handbrake />, label: "Handbrake", keys: <Key wide>Space</Key>, pad: <Pad b="A" c={PAD_A} /> },
   { icon: <Gears />, label: "Shift", keys: <ShiftKeys device="keys" />, pad: <ShiftKeys device="pad" /> },
@@ -88,8 +92,9 @@ export function TouchDiagram({ steer, manual }: { steer: SteerMode; manual?: boo
           <span className="grid h-8 w-8 place-items-center rounded-full border border-line-hi text-base">
             <Handbrake />
           </span>
-          <span className="grid h-11 w-12 place-items-center rounded-[4px] border border-line-hi text-xl">
+          <span className="relative grid h-11 w-12 place-items-center rounded-[4px] border border-line-hi text-xl">
             <Brake />
+            <span className="absolute -left-8 top-1/2 -translate-y-1/2 text-mute"><Rev /></span>
           </span>
         </div>
         <span className="grid h-24 w-12 place-items-center rounded-[4px] border border-hot/70 text-xl text-hot">
@@ -201,11 +206,18 @@ export function ControlsBody({ device, steer, manual, onSteer }: { device: Devic
       {d === "touch" ? (
         <>
           <TouchDiagram steer={steer} manual={manual} />
+          <div className="flex flex-col items-center gap-1 text-center text-mute">
+            <span className="flex items-center gap-2"><Rev />Hold brake at a stop to reverse</span>
+            {steer === "tilt" && <span className="flex items-center gap-2"><Tilt className="text-lg" />Tilt the phone like a wheel</span>}
+          </div>
           {onSteer && (
             <Segmented
               label="Steering"
               value={steer}
-              onChange={onSteer}
+              onChange={(v) => {
+                if (v === "tilt") askTilt();
+                onSteer(v);
+              }}
               options={[
                 { v: "slider", node: <span className="ttl">Slider</span>, title: "Slider" },
                 { v: "tilt", node: <><Tilt className="text-xl" /> <span className="ttl">Tilt</span></>, title: "Tilt" },
@@ -262,12 +274,12 @@ const HINT: { icon: ReactNode; keys: ReactNode; pad: ReactNode }[] = [
   { icon: <Handbrake />, keys: <Key wide>Space</Key>, pad: <Pad b="A" c={PAD_A} /> },
 ];
 
-export function ControlHint({ device, manual }: { device: Device; manual?: boolean }) {
+export function ControlHint({ device, manual, steer = "slider" }: { device: Device; manual?: boolean; steer?: SteerMode }) {
   return (
     <div className={cx("pointer-events-none absolute inset-x-0 flex justify-center [animation:pop_7.5s_var(--ease-out)_both]", device === "touch" ? "top-[16%]" : "bottom-[max(1.5rem,env(safe-area-inset-bottom))]")}>
       {device === "touch" ? (
         <div className="w-[min(16rem,36vw)] opacity-95">
-          <TouchDiagram steer="slider" manual={manual} />
+          <TouchDiagram steer={steer} manual={manual} />
         </div>
       ) : (
         <div className="glass flex gap-6 rounded-[4px] px-5 py-3">

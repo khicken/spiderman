@@ -23,7 +23,7 @@ export function createTire(): Tire {
 }
 
 let wet = 0;
-// 0..1 road wetness from render. Wet paved roads lose about a quarter of their grip.
+// 0..1 road wetness from render. Wet paved roads lose a fifth of their grip.
 export function setWet(w: number) {
   wet = Math.min(1, Math.max(0, w));
 }
@@ -35,7 +35,7 @@ export function surfaceMu(spec: CarSpec, surface: Surface, grip: number): number
     const loose = Math.min(1.08, Math.max(0.5, 1.75 - 0.7 * t.mu - 0.8 * (t.width - 0.2)));
     return (grip * loose) / t.mu;
   }
-  return grip * (1 - 0.25 * wet);
+  return grip * (1 - 0.2 * wet);
 }
 
 export function peakForce(spec: CarSpec, fz: number, fz0: number, mu: number): number {

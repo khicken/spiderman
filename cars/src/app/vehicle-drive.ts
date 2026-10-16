@@ -186,12 +186,13 @@ export function selectGear(
   }
   const n = spec.gears.length;
   const e = spec.engine;
-  if (d.gear >= 0 && fwd < 0.8 && brake > 0.5 && thr < 0.1) d.revT += dt;
+  // Brake held below about 5 km/h engages reverse, gas below it engages first, like any racing game.
+  if (d.gear >= 0 && fwd < 1.4 && brake > 0.5 && thr < 0.1) d.revT += dt;
   else d.revT = 0;
-  if (d.gear < 0 && fwd > -0.8 && thr > 0.5 && brake < 0.1) d.fwdT += dt;
+  if (d.gear < 0 && fwd > -1.4 && thr > 0.3 && brake < 0.1) d.fwdT += dt;
   else d.fwdT = 0;
-  if (d.revT > 0.35) return begin(d, spec, -1, 0);
-  if (d.fwdT > 0.2) return begin(d, spec, 1, 0);
+  if (d.revT > 0.25) return begin(d, spec, -1, 0);
+  if (d.fwdT > 0.05) return begin(d, spec, 1, 0);
   if (d.gear < 0) {
     if (up) return begin(d, spec, 1, 0);
     return 0;

@@ -4,7 +4,7 @@ import { cancelJob, runNow, runSoon } from "./render-shared";
 import type { Quality, Track, TrackMesh } from "./contracts";
 import { CURB_W, F_CURBL, F_CURBR, F_ELEV, F_TUNNEL, F_GRAVL, F_GRAVR, VERGE, curbLift, trackTables, type TrackTables } from "./track";
 import { TEX, groundMaterial, gravelMaterial, roadMaterial, type GroundUniforms, type RoadUniforms } from "./track-mat";
-import { buildProps } from "./track-props";
+import { TUBE_OUT, TUBE_TOP, buildProps, propRows, tunnelRows } from "./track-props";
 import { Rib, lat, rowList, shoulderY } from "./track-rib";
 import { buildTerrain } from "./track-terrain";
 import { concreteTex } from "./track-tex";
@@ -31,6 +31,53 @@ function roadGeo(tb: TrackTables, rows: number[], line: Float32Array, cols: numb
     r.row();
   }
   return r.geo();
+}
+
+// A heightfield cannot arch over a tube: drop terrain triangles that dip into a tunnel between its portals.
+function cutTunnels(tb: TrackTables, rows: number[], geos: THREE.BufferGeometry[]) {
+  const C = 16, cells = new Map<number, number[]>();
+  const key = (x: number, z: number) => Math.floor(x / C) * 65536 + Math.floor(z / C);
+  const span = new Int32Array(tb.M * 2).fill(-1);
+  for (const [a, b] of tunnelRows(tb, rows)) {
+    const ia = rows[Math.max(0, a - 1)], ib = rows[Math.min(rows.length - 1, b + 1)];
+    for (let k = ia; k <= ib; k++) {
+      const i = k % tb.M;
+      span[i * 2] = ia;
+      span[i * 2 + 1] = ib;
+      const c = key(tb.px[i], tb.pz[i]);
+      let l = cells.get(c);
+      if (!l) cells.set(c, (l = []));
+      l.push(k);
+    }
+  }
+  if (!cells.size) return geos;
+  const inside = (x: number, y: number, z: number) => {
+    let best = -1, bd = Infinity;
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) {
+        const l = cells.get(key(x + dx * C, z + dz * C));
+        if (l) for (const k of l) {
+          const i = k % tb.M, d = (x - tb.px[i]) ** 2 + (z - tb.pz[i]) ** 2;
+          if (d < bd) { bd = d; best = k; }
+        }
+      }
+    if (best < 0) return false;
+    const i = best % tb.M, ex = x - tb.px[i], ez = z - tb.pz[i];
+    const s = best + (ex * tb.fx[i] + ez * tb.fz[i]) / tb.h;
+    const l = Math.abs(ex * tb.lx[i] + ez * tb.lz[i]);
+    // The margin outside each portal catches the ramp up to the cover height, which would close the opening.
+    const m = 6 / tb.h;
+    return s >= span[i * 2] - m && s <= span[i * 2 + 1] + m && l < tb.hw[i] + TUBE_OUT + 0.3 && y < tb.py[i] + TUBE_TOP + 0.3;
+  };
+  for (const g of geos) {
+    const p = g.getAttribute("position").array as Float32Array, idx = g.index!.array;
+    const flag = new Uint8Array(p.length / 3);
+    for (let v = 0; v < flag.length; v++) flag[v] = inside(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]) ? 1 : 0;
+    const keep: number[] = [];
+    for (let t = 0; t < idx.length; t += 3) if (!flag[idx[t]] && !flag[idx[t + 1]] && !flag[idx[t + 2]]) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+    if (keep.length < idx.length) g.setIndex(keep);
+  }
+  return geos;
 }
 
 // Verge and shoulder down to the terrain on each side, with a skirt under the outer edge.
@@ -202,7 +249,7 @@ export function createTrackMesh(track: Track, quality: Quality): TrackMesh {
       add(sidewalkGeo(tb, rows), m, "sidewalk");
     }
     yield;
-    for (const g of buildTerrain(track, q)) add(g, ground.mat, "terrain");
+    for (const g of cutTunnels(tb, propRows(tb, track.closed, q), buildTerrain(track, q))) add(g, ground.mat, "terrain");
     yield;
     const props = buildProps(track, q, wet);
     out.add(props.group);

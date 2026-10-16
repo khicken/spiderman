@@ -29,7 +29,11 @@ const AI_COLORS = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#bf5af2", "#ff9f
 const AI_NAMES = ["Rossi", "Kato", "Moreau", "Lindqvist", "Okafor", "Silva", "Brandt", "Nakamura", "Vidal", "Petrov", "Hale"];
 const IDLE: Controls = { throttle: 0, brake: 0, steer: 0, handbrake: 1, shiftUp: false, shiftDown: false };
 
-export type Session = { map: MapId; mode: Mode; laps: number; car: CarId; paint: string; ai: number; net?: NetPlus; startAt?: number };
+// skill: base AI skill 0..1. weather, hour: "map" or missing keeps the map's own.
+export type Session = {
+  map: MapId; mode: Mode; laps: number; car: CarId; paint: string; ai: number; net?: NetPlus; startAt?: number;
+  skill?: number; weather?: Weather | "map"; hour?: number | "map";
+};
 export type GameCallbacks = {
   hud(h: HudState): void;
   hudRef(): { needle(rpm: number): void; minimap(cars: readonly MiniCar[]): void; event(e: GameEvent): void; tags(list: readonly NameTag[]): void; drift(on: boolean): void } | null;
@@ -54,6 +58,10 @@ const v3 = new THREE.Vector3();
 const fwd = new THREE.Vector3();
 const up = new THREE.Vector3();
 const dir = new THREE.Vector3();
+const envOf = (weather?: Weather | "map", hour?: number | "map") => ({
+  weather: weather === "map" ? undefined : weather,
+  hour: hour === "map" ? undefined : hour,
+});
 
 export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings: Settings) {
   const view = createRender(canvas);
@@ -79,6 +87,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   let audio: Audio | null = null;
   let state: "menu" | "race" | "paused" | "results" = "menu";
   let envOverride: { weather?: Weather; hour?: number } = {};
+  let menuEnv: { weather?: Weather; hour?: number } = {};
 
   const rewind: VehicleSnap[][] = [];
   let rewindAcc = 0;
@@ -215,10 +224,11 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     state = "menu";
     session = null;
     net = null;
-    envOverride = {};
+    envOverride = menuEnv;
     const my = ++req;
     await loadMap(mapId, my);
     if (my !== req || disposed) return;
+    applyEnv();
     clearRacers();
     addRacer({ id: "me", name: "You", color: paint, car, me: true, ai: false }, 0, false);
     rig?.cut();
@@ -240,12 +250,12 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     const my = ++req;
     session = s;
     net = s.net ?? null;
-    if (net?.lobby) envOverride = { weather: net.lobby.weather === "map" ? undefined : net.lobby.weather, hour: net.lobby.hour === "map" ? undefined : net.lobby.hour };
-    else envOverride = {};
+    envOverride = net?.lobby ? envOf(net.lobby.weather, net.lobby.hour) : envOf(s.weather, s.hour);
     clearTimeout(finishTimer);
     await loadMap(s.map, my);
     if (my !== req || disposed) return;
     applyEnv();
+    if (rig) rig.mode = cur.camera;
     clearRacers();
     const entrants: Entrant[] = [];
     if (net) {
@@ -268,7 +278,8 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       }
       // Solo: the player starts at the back like Forza.
       const order = [...entrants.slice(1), entrants[0]];
-      order.forEach((e, i) => addRacer(e, i, false, 0.86 + 0.12 * (i / Math.max(1, order.length - 1))));
+      const base = s.skill ?? 0.86;
+      order.forEach((e, i) => addRacer(e, i, false, Math.min(1, base + 0.12 * (i / Math.max(1, order.length - 1)))));
     }
     const myId = me?.e.id ?? "me";
     race = createRace(track!, s.mode, s.laps, racers.map((r) => r.e.id), myId);
@@ -685,6 +696,13 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   const api = {
     showroom,
     setCar,
+    // Weather and time shown behind the menu, kept until the next call.
+    preview(weather: Weather | "map", hour: number | "map") {
+      menuEnv = envOf(weather, hour);
+      if (state !== "menu" || session || (menuEnv.weather === envOverride.weather && menuEnv.hour === envOverride.hour)) return;
+      envOverride = menuEnv;
+      applyEnv();
+    },
     play,
     restart,
     loadMap,
