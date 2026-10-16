@@ -177,7 +177,9 @@ export function collideCars(cars: Vehicle[]): GameEvent[] {
       _v.sub(_v0);
       const vn = _v.dot(_n);
       if (vn >= 0) continue;
-      const jn = (-1.25 * vn) / (A.invMass(_p, _n) + B.invMass(_p, _n));
+      // A light touch only stops the closing speed; the bounce grows with the hit.
+      const e = Math.min(0.25, Math.max(0, (-vn - 2) * 0.06));
+      const jn = (-(1 + e) * vn) / (A.invMass(_p, _n) + B.invMass(_p, _n));
       _j.copy(_n).multiplyScalar(jn);
       B.impulse(_p, _j);
       A.impulse(_p, _j.negate());
@@ -190,7 +192,7 @@ export function collideCars(cars: Vehicle[]): GameEvent[] {
         A.impulse(_p, _j);
         B.impulse(_p, _j.negate());
       }
-      if (-vn > 1.5) {
+      if (-vn > 2) {
         out.push({ type: "impact", at: _p.clone(), speed: -vn, car: A.car });
         out.push({ type: "impact", at: _p.clone(), speed: -vn, car: B.car });
       }

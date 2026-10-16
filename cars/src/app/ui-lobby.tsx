@@ -8,7 +8,7 @@ import { CLASS_COLOR, IconBtn, Spinner, Stepper, TrackLine, cx, type MapCard } f
 import { useNavRoot } from "./ui-nav";
 import { MAX_LAPS } from "./net-check";
 
-export type LobbyPlayer = Entrant & { ping?: number | null; host?: boolean; relay?: boolean; ready?: boolean }; // ready undefined: unknown, counts as ready
+export type LobbyPlayer = Entrant & { ping?: number | null; host?: boolean; relay?: boolean; ready?: boolean };
 
 const MAX = 12;
 const WEATHER: readonly (Weather | "map")[] = ["map", "clear", "overcast", "rain", "fog", "snow"];

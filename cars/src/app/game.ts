@@ -575,15 +575,14 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       scenery?.setNight(night);
       wasNight = night;
     }
+    // The player's wheels go first, so AI cars cannot use up the shared per-frame puff budget.
+    if (me) tireFx(racers.indexOf(me), me.v.state, wet);
     for (let i = 0; i < racers.length; i++) {
       const r = racers[i];
       const st = r.v.state;
       r.m.sync(r.remote || rewinding ? st : renderPose(r.v, acc / DT), dt);
       r.m.setLights(night > 0.4 || st.tunnel || (envOverride.weather ?? map?.env.weather) === "fog");
-      for (let w = 0; w < 4; w++) {
-        const wh = st.wheels[w];
-        if (wh.contact && (wh.skid > 0.05 || wet > 0.2 || wh.surface !== "asphalt")) fx.tire(i, w, wh.pos, st.vel, wh.skid, wh.surface, wet);
-      }
+      if (r !== me) tireFx(i, st, wet);
       if (r.voice) {
         let skid = 0;
         for (const wh of st.wheels) skid = Math.max(skid, wh.contact ? wh.skid : 0);
@@ -660,6 +659,13 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     }
     for (let i = n; i < tags.length; i++) tags[i].on = false;
     h.tags(tags);
+  }
+
+  function tireFx(i: number, st: import("./contracts").VehicleState, wet: number) {
+    for (let w = 0; w < 4; w++) {
+      const wh = st.wheels[w];
+      if (wh.contact && (wh.skid > 0.05 || wet > 0.2 || wh.surface !== "asphalt")) fx.tire(i, w, wh.pos, st.vel, wh.skid, wh.surface, wet);
+    }
   }
 
   const otherStates: import("./contracts").VehicleState[] = [];

@@ -20,12 +20,12 @@ import { DEFAULT_SETTINGS, SettingsPanel, type Settings } from "./ui-settings";
 import { RotateHint, TouchControls, isPhone, useIsTouch } from "./ui-touch";
 
 type Screen = "menu" | "loading" | "lobby" | "lobbyKit" | "race" | "pause" | "results";
-// Ready flags ride on the net hello once net.ts supports them. Without that, other players count as ready.
 
 const SETTINGS_KEY = "cars-settings";
 const PICK_KEY = "cars-pick";
 const NAME_KEY = "cars-name";
 const HINT_KEY = "cars-hint";
+const TILT_KEY = "cars-tilt";
 const GEAR_HINT_KEY = "cars-hint-gear";
 // Hints cover the 3.5 s countdown, then stay 4 s into the race.
 const HINT_MS = 7500;
@@ -121,6 +121,12 @@ export default function Page() {
   useEffect(() => {
     const base: Settings = { ...DEFAULT_SETTINGS, quality: isPhone() ? "low" : detectQuality(), steer: isPhone() ? "tilt" : "slider" };
     const s = cleanSettings(load<Partial<Settings>>(SETTINGS_KEY, {}), base);
+    // Phones saved before tilt existed switch to tilt once.
+    if (isPhone() && load<{ v: boolean }>(TILT_KEY, { v: false }).v === false) {
+      s.steer = "tilt";
+      save(TILT_KEY, { v: true });
+      save(SETTINGS_KEY, s);
+    }
     const p = cleanPick(load<Partial<MenuPick>>(PICK_KEY, {}), DEFAULT_PICK);
     setSettings(s);
     setPick(p);
@@ -237,6 +243,7 @@ export default function Page() {
     setHud(null);
     setProgress(0);
     setScreen("loading");
+    if (net) setReady(false);
     await g.play({ map: p.map, mode: p.mode, laps: p.laps, car: p.car, paint: p.paint, ai: p.ai, skill: AI_SKILL[p.skill], weather: p.weather, hour: p.hour, net, startAt });
     setOutline(g.outline);
     setScreen("race");
