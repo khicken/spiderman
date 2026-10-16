@@ -72,6 +72,11 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
   const mWall = new THREE.MeshStandardMaterial({ map: grime, roughness: 0.9 });
   const mConc = new THREE.MeshStandardMaterial({ map: clean, roughness: 0.92, color: 0xd8d4cc, side: THREE.DoubleSide });
   const mTile = new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.4, side: THREE.DoubleSide });
+  // The tube is always under a roof. Past the shadow map's reach the sun would light it, so the tiles skip the sun.
+  mTile.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace("#include <lights_fragment_begin>", THREE.ShaderChunk.lights_fragment_begin.replaceAll("NUM_DIR_LIGHTS", "0"));
+  };
+  mTile.customProgramCacheKey = () => "tube";
   const mSteel = new THREE.MeshStandardMaterial({ color: 0xb4b9bf, metalness: 0.85, roughness: 0.36, side: THREE.DoubleSide });
   const mPost = new THREE.MeshStandardMaterial({ color: 0x8d9298, metalness: 0.7, roughness: 0.5 });
   const mFence = new THREE.MeshStandardMaterial({ map: fence, alphaTest: 0.3, alphaToCoverage: q === "high" || q === "ultra", color: 0xa4a8ac, metalness: 0.55, roughness: 0.45, side: THREE.DoubleSide });
