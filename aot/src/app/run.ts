@@ -18,7 +18,6 @@ const UPGRADES: Omit<Upgrade, "level">[] = [
   { id: "squad", name: "Squad size", jp: "増員", text: "+1 soldier in your squad", max: 2 },
 ];
 
-const PICK_S = 10;
 const DRILL_KEY = "aot-bootcamp";
 const DRILL: Spec[] = [
   { text: "Hook onto a building", hint: "Fire an anchor at a wall or roof", need: 1, count: "hook" },
@@ -294,16 +293,24 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
           if ((finT += real) > 2.5) endDrill();
         } else if (dt > 0 && objs.some((ob) => ob.spec.count === "kill" && ob.state === "on") && !titans.list().some((t) => t.alive)) titans.drill?.(1);
       }
+      choiceT = titans.breakT;
       if (choice) {
-        choiceT -= real;
-        if (choiceT <= 0) out.push(...this.pick(0));
-      } else if (pending > 0 && live && !dead && !titans.held()) {
+        if (choiceT <= 0) {
+          const names = [choice[0].name];
+          out.push(...this.pick(0));
+          for (; pending > 0; pending--) {
+            choice = roll();
+            if (choice.length) names.push(choice[0].name), out.push(...this.pick(0));
+          }
+          choice = null;
+          out.push({ type: "toast", title: "Upgrades", text: names.join(", ") });
+        }
+      } else if (pending > 0 && choiceT > 0 && choiceT < 12 && live && !dead && !titans.held()) {
         pending--;
         const c = roll();
         if (c.length) {
           choice = c;
-          choiceT = PICK_S;
-          out.push({ type: "sfx", name: "bladeDraw" }, { type: "slowmo", scale: 0.35, duration: 0.6 });
+          out.push({ type: "sfx", name: "bladeDraw" });
         }
       }
       return out.splice(0);
@@ -314,7 +321,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
       choice = null;
       lv[u.id]++;
       player.setBoost(boost());
-      const ev: GameEvent[] = [{ type: "sfx", name: "bladeSwap" }, { type: "toast", title: u.name, text: u.text }];
+      const ev: GameEvent[] = [{ type: "sfx", name: "bladeSwap" }];
       if (u.id === "squad") ev.push(...allies.grow());
       return ev;
     },

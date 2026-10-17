@@ -255,7 +255,11 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     route(world.update(dt, t));
     const live = control && dt > 0;
     if (live && inp.pressed.has("shift")) route(shifter.start(player, rig.yaw));
-    if (live && inp.pressed.has("teamAttack") && !shifter.active) route(player.lock?.titan.alive ? allies.team(player.lock) : allies.toggle());
+    if (live && inp.pressed.has("teamAttack") && !shifter.active) {
+      const ti = player.lock?.titan.alive ? player.lock.titan : tv.nearest(player.pos, inp.look, 160);
+      const ev = ti ? allies.team({ titan: ti, part: "nape" }) : [];
+      route(ev.length || player.lock ? ev : allies.toggle());
+    }
     if (opening !== allies.opening > 0) {
       opening = !opening;
       if (baseBoost) player.setBoost(baseBoost);

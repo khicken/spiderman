@@ -70,10 +70,10 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   let comboT = 0;
   const chain = new Set<string>();
   let weapon: Weapon = "blades";
+  const tipped = new Set<Weapon>();
   let spearAmmo = SPEARS;
   let shots = SHOTS;
   let shotCd = 0;
-  let angleT = -10;
   let time = 0;
   let reelT = 0;
   let wallT = 0;
@@ -85,7 +85,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   let grabHint = false;
   let wasHeld = false;
   let flipNext = false;
-  let toastT = -10;
   const act: Act = { name: null, t: 0, dur: 0 };
   const wallN = new THREE.Vector3();
   const facing = new THREE.Vector3(Math.sin(world.spawnYaw), 0, Math.cos(world.spawnYaw));
@@ -93,7 +92,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const slash = { on: false, t: 0, struck: false, charge: 0, side: 1, speed: 0, titan: null as TitanView | null, part: "nape" as TitanPart, dir: new THREE.Vector3() };
   const blade: Blade = { pos: new THREE.Vector3(), dir: new THREE.Vector3(), speed: 0, charge: 0, radius: 2.5 };
 
-  const aim = { kind: "none" as "none" | "world" | "titan", blocked: false, dist: 0, point: new THREE.Vector3(), normal: new THREE.Vector3(), obj: null as THREE.Object3D | null, titan: null as TitanView | null };
+  const aim = { kind: "none" as "none" | "world" | "titan", dist: 0, point: new THREE.Vector3(), normal: new THREE.Vector3(), obj: null as THREE.Object3D | null, titan: null as TitanView | null };
   const frame: ScoutFrame = { anim: "idle", t: 0, k: 0, speed: 0, vel, charge: 0, side: 1, broken: false };
   const pressT = new Map<Action, number>();
   const lastLook = new THREE.Vector3(0, 0, 1);
@@ -123,24 +122,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   };
   const countHint = (input: Input) => {
     if (shown && shown.acts.some((a) => (shown!.rel ? input.released : input.pressed).has(a))) used.set(shown.text, (used.get(shown.text) ?? 0) + 1);
-  };
-  let gasWarn = 0;
-  let dullWarn = false;
-  const warn = () => {
-    if (gas > 0.5) gasWarn = 0;
-    if (gas < 0.2 && gasWarn < 1) {
-      gasWarn = 1;
-      out.push({ type: "toast", title: "Gas low", text: "Land at the green smoke" });
-    }
-    if (gas <= 0 && gasWarn < 2) {
-      gasWarn = 2;
-      out.push({ type: "toast", title: "Out of gas", text: "Refill at the green smoke" });
-    }
-    if (sharp >= 0.5) dullWarn = false;
-    if (sharp <= 0 && blades === 0 && !dullWarn) {
-      dullWarn = true;
-      out.push({ type: "toast", title: "No blades left", text: "Resupply at the green smoke" });
-    }
   };
   const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, comboT: 0, comboBonus: 1, weapon: "blades", ammo: 0, hint: null };
   const lockPoint = new THREE.Vector3();
@@ -175,7 +156,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     combo++;
     comboT = CHAIN_T;
     if (combo < 2) return;
-    out.push({ type: "callout", text: `Chain x${combo}  +${Math.round((bonus() - 1) * 100)}% damage` });
     sfx("lockCycle", Math.min(1, 0.5 + 0.1 * combo));
     if (r.killed) out.push({ type: "score", amount: 50 * (combo - 1), reason: `Chain x${combo}` });
   };
@@ -187,7 +167,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     const muzzle = t2.copy(pos).addScaledVector(d, 0.7).addScaledVector(UP, 0.3);
     if (weapon === "spears") {
       if (spears.armed) return spears.detonate(out, vel.length(), st.damage * bonus());
-      if (spearAmmo <= 0) return say("No spears. Resupply at the green smoke");
+      if (spearAmmo <= 0) return;
       spearAmmo--;
       let goal: Parameters<typeof spears.fire>[2] = null;
       if (aim.titan && aim.obj) {
@@ -205,7 +185,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       return;
     }
     if (shotCd > 0) return;
-    if (shots <= 0) return say("No shots. Resupply at the green smoke");
+    if (shots <= 0) return;
     shots--;
     shotCd = 0.22;
     if (!aim.titan && lock && titans.partPos(lock.titan, lock.part, t3) && t3.distanceTo(pos) < 45) {
@@ -273,11 +253,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     rDir.divideScalar(d);
     return world.raycast(eye, rDir, d - 0.4, rNorm);
   };
-  const say = (title: string) => {
-    if (time - toastT < 1.5) return;
-    toastT = time;
-    out.push({ type: "toast", title, low: true });
-  };
 
   const findAim = (input: Input, assist = false) => {
     const o = input.camPos;
@@ -287,7 +262,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     aim.kind = "none";
     aim.obj = null;
     aim.titan = null;
-    aim.blocked = false;
     let best = world.raycast(o, d, maxT, aim.normal);
     if (best >= 0 && best > ahead) {
       aim.kind = "world";
@@ -352,10 +326,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     }
     if (aim.kind !== "none") {
       const b = reach(aim.point);
-      if (b >= 0 && b < 4) {
-        aim.kind = "none";
-        aim.blocked = true;
-      } else if (b >= 0) {
+      if (b >= 0 && b < 4) aim.kind = "none";
+      else if (b >= 0) {
         aim.kind = "world";
         aim.obj = null;
         aim.titan = null;
@@ -448,9 +420,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (r.killed) {
       if (angleK > 1) out.push({ type: "score", amount: 60, reason: "Clean angle" });
       if (blade.speed >= 40) out.push({ type: "score", amount: 60, reason: "Top speed" });
-    } else if (r.zone === "nape" && angleK < 1 && time - angleT > 4) {
-      angleT = time;
-      out.push({ type: "callout", text: "Bad angle. Cut from behind or above" });
     }
     rightV.crossVectors(slash.dir, UP);
     if (rightV.lengthSq() < 1e-4) rightV.set(1, 0, 0);
@@ -1063,10 +1032,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         const btn: Action = i ? "anchorR" : "anchorL";
         if (!fresh.has(btn)) continue;
         if (aim.kind === "none" && lockHook(i, btn)) continue;
-        if (aim.kind === "none") {
-          fire(i, btn, null, null, null, null, input.look);
-          say(aim.blocked ? "No clear line" : "Out of range");
-        }
+        if (aim.kind === "none") fire(i, btn, null, null, null, null, input.look);
         else fire(i, btn, aim.point, aim.obj, aim.titan, aim.kind === "world" ? aim.normal : null, input.look);
       }
       for (const btn of hookBtns) {
@@ -1087,7 +1053,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         weapon = WEAPONS[(WEAPONS.indexOf(weapon) + 1) % WEAPONS.length];
         charging = false;
         sfx("bladeDraw", 0.6);
-        out.push({ type: "toast", title: WEAPON_TIP[weapon][0], text: WEAPON_TIP[weapon][1] });
+        if (!tipped.has(weapon)) out.push({ type: "toast", title: WEAPON_TIP[weapon][0], text: WEAPON_TIP[weapon][1] });
+        tipped.add(weapon);
       }
       if (weapon !== "blades") {
         if (input.pressed.has("attack")) fireWeapon(input);
@@ -1114,7 +1081,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       pistols.update(dt);
       pickMode();
       supply(dt);
-      warn();
       countHint(input);
       animate(dt, input);
       return out;

@@ -61,7 +61,7 @@ const GROUPS: Group[] = [
     group: "Squad",
     jp: "分隊",
     rows: [
-      { a: "teamAttack", pc: "Team attack on the lock, else attack or regroup", btn: "Squad", tap: "Team attack on the lock, else attack or regroup" },
+      { a: "teamAttack", pc: "Team attack on a near titan, else attack or regroup", btn: "Squad", tap: "Team attack on a near titan, else attack or regroup" },
     ],
   },
 ];
