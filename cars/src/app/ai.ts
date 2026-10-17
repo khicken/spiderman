@@ -5,7 +5,8 @@ import { trackTables } from "./track";
 const G = 9.81;
 const GAP = 1.2; // m of air beside another car
 const LOOK = 60; // m of ahead scan for traffic
-export const TUNE = { LD0: 4, LD_K: 0.4, LD_MAX: 40, YAW_K: 0.08, GRIP: 0.8, DECEL: 0.75, KE: 0.3, START: 0.88, CEIL: 1.05 };
+const FOLLOW_GAP = 6.5; // m between centers when stopped nose to tail
+export const TUNE = { LD0: 4, LD_K: 0.4, LD_MAX: 40, YAW_K: 0.08, GRIP: 0.8, DECEL: 0.75, KE: 0.3, START: 0.88, CEIL: 1.05, FOLLOW_T: 0.4, FOLLOW_B: 0.6, LEAD_B: 1, PUSH: 1.04, PASS_T: 10, HAIRPIN: 15 };
 
 export interface DriverPlus extends Driver {
   band(gap: number): void; // s behind (+) or ahead (-) of the human leader
@@ -54,6 +55,10 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
   let tries = 0;
   let lastSteer = 0;
   let lastTryS = -1e9;
+  // Launch: hold the grid lane until the field spreads out, then merge onto the line.
+  let lane = NaN;
+  let s0 = 0;
+  let launch = true;
   const out: Controls = { throttle: 0, brake: 0, steer: 0, handbrake: 0, shiftUp: false, shiftDown: false };
   car.assists = { abs: true, tcs: true, stability: true, autoGear: true, steer: false, drift: false };
 
@@ -101,7 +106,7 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
     let vt = Infinity;
     for (let d = 0; d <= horizon; d += 4) {
       const i = idx(st.s + d);
-      const lim = track.speed[i] * gripK * learn[bucket(st.s + d)];
+      const lim = track.speed[i] * gripK * learn[bucket(st.s + d)] * (passO ? TUNE.PUSH : 1);
       // Downhill braking zones are longer: gravity adds back the height lost on the way.
       const reach = Math.sqrt(Math.max(0, lim * lim + 2 * decel * Math.max(0, d - v * 0.12) - 2 * G * (h0 - height[i])));
       if (reach < vt) vt = reach;
@@ -109,41 +114,92 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
     return vt;
   }
 
-  const tr = { want: NaN, cap: 0, lo: 0, hi: 0, behind: false };
+  const tr = { cap: 0, lo: 0, hi: 0, behind: false, lead: null as VehicleState | null };
+  const span = halfW * 2 + GAP;
   let followT = 0;
   function traffic(others: readonly VehicleState[], v: number, vt: number, myLat: number, lim: number) {
-    tr.want = NaN;
     tr.behind = false;
+    tr.lead = null;
     tr.cap = vt;
     tr.lo = -lim;
     tr.hi = lim;
-    const span = halfW * 2 + GAP;
+    let leadDs = Infinity;
     for (const o of others) {
       if (o === st) continue;
       const ds = track.delta(st.s, o.s);
-      if (ds < -7 || ds > LOOK) continue;
+      // A faster car coming up behind counts as alongside sooner, so it is not cut off.
+      if (ds < -7 - Math.max(0, o.speed - v) * 1.5 || ds > LOOK) continue;
       const dl = o.lateral - myLat;
-      // Same lane and closing: keep a short time gap, so a braking car ahead is not rear-ended.
-      if (ds > 0 && ds < 35 && Math.abs(dl) < span && o.speed < v) tr.cap = Math.min(tr.cap, o.speed + (ds - 5.5 - Math.max(0, v) * 0.2) * 0.8);
-      if (ds > 5) {
-        const closing = v - o.speed;
-        const t = closing > 0.3 ? (ds - 5) / closing : Infinity;
-        if (Math.abs(dl) < span && ds < 25) tr.behind = true;
-        // Stuck behind for a while: pull out and try a pass even without a speed edge.
-        if (Math.abs(dl) >= span || (t > 2.5 && !(followT > 1.5 && ds < 25))) continue;
-        const goL = o.lateral + span, goR = o.lateral - span;
-        const canL = goL <= lim, canR = goR >= -lim;
-        if (canL || canR) tr.want = canL && canR ? (Math.abs(goL - myLat) < Math.abs(goR - myLat) ? goL : goR) : canL ? goL : goR;
-        if ((!canL && !canR) || ds < 10) tr.cap = Math.min(tr.cap, o.speed + Math.max(0, ds - 6) * 0.5);
-      } else if (Math.abs(dl) < span + 1.5) {
+      // The car being passed only limits speed while the bodies still overlap sideways.
+      const lane = o === passO ? halfW * 2 + 0.3 : span + 0.6;
+      if (ds > 0 && Math.abs(dl) < lane) {
+        // Keep enough room to stop behind the car ahead even if it brakes hard for the next corner.
+        let vl = o.speed;
+        for (let d = 0; d <= 40; d += 8) vl = Math.min(vl, track.speed[idx(o.s + d)] * 0.85);
+        const bf = G * spec.tire.mu * TUNE.FOLLOW_B, ft = TUNE.FOLLOW_T;
+        // The car ahead may brake harder than I plan to, but only for the corner speed drop.
+        const room = ds - FOLLOW_GAP + (vl * vl) / (2 * bf) + (o.speed * o.speed - vl * vl) / (2 * G * spec.tire.mu * TUNE.LEAD_B);
+        const c = Math.max(0, -bf * ft + Math.sqrt(bf * bf * ft * ft + 2 * bf * Math.max(0, room)));
+        tr.cap = Math.min(tr.cap, c);
+        if (ds < leadDs) {
+          leadDs = ds;
+          tr.lead = o;
+          tr.behind = (c < vt - 1 || ds < 15 + Math.max(0, v) * 0.5) && vt > o.speed + 1;
+        }
+      }
+      if (ds <= 5 && Math.abs(dl) < span + 1.5) {
         // alongside: stay on my side of the other car
         if (dl > 0) tr.hi = Math.min(tr.hi, o.lateral - span);
         else tr.lo = Math.max(tr.lo, o.lateral + span);
-        if (ds > 2 && Math.abs(dl) < span) tr.cap = Math.min(tr.cap, o.speed - 1);
+        if (ds > 2 && Math.abs(dl) < halfW * 2 + 0.3) tr.cap = Math.min(tr.cap, o.speed - 1);
       }
     }
     if (tr.lo > tr.hi) tr.lo = tr.hi = (tr.lo + tr.hi) / 2;
     return tr;
+  }
+
+  // Pass: pull out beside the car ahead on a clear side, then hold that lane until ahead of it.
+  let passO: VehicleState | null = null;
+  let passSide = 0;
+  let passT = 0;
+  const passLat = (o: VehicleState) => o.lateral + passSide * span;
+  function tryPass(others: readonly VehicleState[], o: VehicleState, lim: number) {
+    const ds0 = track.delta(st.s, o.s);
+    // The inside of the next real corner is where the racing line sits at its slowest point.
+    let slow = Infinity, apex = 0;
+    for (let d = 0; d <= 200; d += 10) {
+      const i = idx(st.s + d);
+      if (track.speed[i] < slow) {
+        slow = track.speed[i];
+        apex = track.line[i];
+      }
+    }
+    const roomL = lim - (o.lateral + span), roomR = o.lateral - span + lim;
+    const first = slow < o.speed * 0.8 ? (apex >= 0 ? 1 : -1) : roomL >= roomR ? 1 : -1;
+    for (const side of [first, -first]) {
+      const lat = o.lateral + side * span;
+      if (Math.abs(lat) > lim) continue;
+      let clear = true;
+      for (const p of others) {
+        if (p === st || p === o) continue;
+        const ds = track.delta(st.s, p.s);
+        if (ds > -25 && ds < ds0 + 10 && Math.abs(p.lateral - lat) < span) clear = false;
+      }
+      if (!clear) continue;
+      passO = o;
+      passSide = side;
+      passT = 0;
+      return;
+    }
+  }
+
+  function clearAround(others: readonly VehicleState[]) {
+    for (const o of others) {
+      if (o === st) continue;
+      const ds = track.delta(st.s, o.s);
+      if (ds > -10 && ds < 25) return false;
+    }
+    return true;
   }
 
   function drive(dt: number, others: readonly VehicleState[]): Controls {
@@ -200,11 +256,28 @@ export function createDriver(track: Track, car: Vehicle, skill: number): DriverP
     const line = track.line[idx(st.s + 8)];
     traffic(others, v, vt, st.lateral, lim);
     followT = tr.behind ? followT + dt : 0;
-    const off = Math.abs(Math.max(tr.lo, Math.min(tr.hi, line)) - line);
-    vt = Math.min(tr.cap, vt * (1 - Math.min(0.2, off * 0.035)));
-    const busy = !Number.isNaN(tr.want);
-    const goal = busy ? Math.max(-lim, Math.min(lim, tr.want)) - line : 0;
-    const rate = (busy ? 2.4 : 1.2) * dt;
+    // Hairpins are single file: no passing in or just before one.
+    let hairpin = false;
+    for (let d = 0; d <= 40; d += 8) if (track.speed[idx(st.s + d)] < TUNE.HAIRPIN) hairpin = true;
+    if (passO) {
+      passT += dt;
+      const ds = track.delta(st.s, passO.s);
+      // Not alongside when the braking zone arrives: give up and tuck back in.
+      if (ds < -8 || ds > LOOK || passT > TUNE.PASS_T || (ds > 4 && vt < v - 3) || (hairpin && ds > 0)) passO = null;
+    }
+    if (!passO && !launch && !hairpin && tr.lead && followT > 1.5 && vt >= v - 1 && v > tr.lead.speed - 1 && track.delta(st.s, tr.lead.s) < 15 + v * 0.4) tryPass(others, tr.lead, lim);
+    if (launch) {
+      if (Number.isNaN(lane)) {
+        lane = st.lateral;
+        s0 = st.s;
+      }
+      const run = track.delta(s0, st.s);
+      launch = run < 250 && !(run > 40 && clearAround(others));
+    }
+    const off = Math.abs(Math.max(tr.lo, Math.min(tr.hi, launch ? lane : line)) - line);
+    vt = Math.min(tr.cap, passO ? vt : vt * (1 - Math.min(0.2, off * 0.035)));
+    const goal = launch ? Math.max(-lim, Math.min(lim, lane)) - line : passO ? Math.max(-lim, Math.min(lim, passLat(passO))) - line : 0;
+    const rate = (launch ? 8 : passO ? 2.4 : 1.2) * dt;
     offset += Math.max(-rate, Math.min(rate, goal - offset));
 
     const ld = Math.max(6, Math.min(TUNE.LD_MAX, TUNE.LD0 + Math.abs(v) * TUNE.LD_K));

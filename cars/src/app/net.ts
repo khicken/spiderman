@@ -46,6 +46,7 @@ const BINARY = new Set<Kind>([K.car, K.ai]);
 
 export type { LobbyPlus } from "./net-check";
 type PeerInfo = {
+  ready: boolean;
   e: Entrant; joined: number; spec: boolean; seen: number; first: number; buf: InterpBuffer;
   rtts: number[]; rtt: number; delay: number; at: number;
 };
@@ -75,6 +76,8 @@ export interface NetPlus extends Net {
   finish(time: number, id?: string): void; // id: an AI car, host only
   applyFinishes(all: readonly { id: string; finished: boolean; time: number; dnf?: boolean }[]): void; // call each frame in a race
   hostNow(): number;
+  setReady(r: boolean): void;
+  ready(id: string): boolean;
 }
 
 function iceServers() {
@@ -184,8 +187,10 @@ export function createNet(room: string, me: Entrant): NetPlus {
     elect();
   }
 
+  let myReady = false;
+
   function hello(): Hello {
-    return { name: mine.name, color: mine.color, car: mine.car, ago: performance.now() - t0, spec: spectating };
+    return { name: mine.name, color: mine.color, car: mine.car, ago: performance.now() - t0, spec: spectating, ready: myReady };
   }
 
   function decideSpectate() {
@@ -213,7 +218,7 @@ export function createNet(room: string, me: Entrant): NetPlus {
     const first = p?.first ?? now;
     if (first - t0 > ARRIVE_MS) joined = Math.max(joined, first - ARRIVE_MS);
     if (!p) {
-      p = { e: { id: pid, name: h.name, color: h.color, car: h.car, me: false, ai: false }, joined, spec: h.spec, seen: now, first: now, buf: createInterp(), rtts: [], rtt: 0, delay: INTERP_DELAY, at: 0 };
+      p = { e: { id: pid, name: h.name, color: h.color, car: h.car, me: false, ai: false }, joined, spec: h.spec, ready: h.ready, seen: now, first: now, buf: createInterp(), rtts: [], rtt: 0, delay: INTERP_DELAY, at: 0 };
       peers.set(pid, p);
       if (stats.connectMs === null) stats.connectMs = now - t0;
       rebuild();
@@ -225,6 +230,7 @@ export function createNet(room: string, me: Entrant): NetPlus {
       Object.assign(p.e, { name: h.name, color: h.color, car: h.car });
     }
     p.spec = h.spec;
+    p.ready = h.ready;
     elect();
   }
 
@@ -420,6 +426,14 @@ export function createNet(room: string, me: Entrant): NetPlus {
     get relayUp() { return relay?.up ?? 0; },
     stats,
     hostNow,
+    setReady(r: boolean) {
+      if (myReady === r) return;
+      myReady = r;
+      out(K.hi, hello());
+    },
+    ready(pid: string) {
+      return pid === id ? myReady : peers.get(pid)?.ready ?? false;
+    },
     setMe(e: Entrant) {
       mine = { ...e, id: id || e.id, me: true };
       rebuild();

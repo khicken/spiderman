@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CARS } from "./cars";
-import type { Device, Entrant, HudState, Lobby as LobbyState, MapId, Standing } from "./contracts";
+import type { Device, Entrant, HudState, Lobby as LobbyState, MapId, Standing, Weather } from "./contracts";
 import { startGame, type Game } from "./game";
 import { MAPS } from "./maps";
 import { cleanRoomCode, createNet, newRoomCode, type NetPlus } from "./net";
@@ -13,18 +13,19 @@ import { Hud, Results, type HudHandle } from "./ui-hud";
 import { mapCard, type MapCard } from "./ui-kit";
 import { Loading } from "./ui-loading";
 import { Lobby, type LobbyPlayer } from "./ui-lobby";
-import { CarPicker, Menu, type MenuPick, type MenuStep } from "./ui-menu";
+import { AI_MAX_SOLO, AI_SKILL, HOURS, Kit, Menu, WEATHERS, type MenuPick, type MenuStep } from "./ui-menu";
 import { nav, type NavDir } from "./ui-nav";
 import { Pause } from "./ui-pause";
 import { DEFAULT_SETTINGS, SettingsPanel, type Settings } from "./ui-settings";
 import { RotateHint, TouchControls, isPhone, useIsTouch } from "./ui-touch";
 
-type Screen = "menu" | "loading" | "lobby" | "lobbyCar" | "race" | "pause" | "results";
+type Screen = "menu" | "loading" | "lobby" | "lobbyKit" | "race" | "pause" | "results";
 
 const SETTINGS_KEY = "cars-settings";
 const PICK_KEY = "cars-pick";
 const NAME_KEY = "cars-name";
 const HINT_KEY = "cars-hint";
+const TILT_KEY = "cars-tilt";
 const GEAR_HINT_KEY = "cars-hint-gear";
 // Hints cover the 3.5 s countdown, then stay 4 s into the race.
 const HINT_MS = 7500;
@@ -55,13 +56,29 @@ function cleanSettings(raw: Partial<Settings>, base: Settings): Settings {
   };
 }
 
+function cleanPick(raw: Partial<MenuPick>, base: MenuPick): MenuPick {
+  const car = CARS.find((c) => c.id === raw.car) ?? CARS.find((c) => c.id === base.car)!;
+  const int = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : d);
+  return {
+    mode: (["race", "time", "free"] as const).find((m) => m === raw.mode) ?? base.mode,
+    map: (MAPS.find((m) => m.id === raw.map)?.id as MapId | undefined) ?? base.map,
+    car: car.id,
+    paint: car.paints.includes(raw.paint as string) ? (raw.paint as string) : car.paints[0],
+    laps: int(raw.laps, 1, 20, base.laps),
+    ai: int(raw.ai, 0, AI_MAX_SOLO, base.ai),
+    skill: int(raw.skill, 0, AI_SKILL.length - 1, base.skill),
+    weather: raw.weather === "map" || WEATHERS.includes(raw.weather as Weather) ? (raw.weather as Weather | "map") : base.weather,
+    hour: raw.hour === "map" || HOURS.includes(raw.hour as (typeof HOURS)[number]) ? (raw.hour as number | "map") : base.hour,
+  };
+}
+
 function save(key: string, v: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(v));
   } catch {}
 }
 
-const DEFAULT_PICK: MenuPick = { mode: "race", map: "monaco", car: "gt3", paint: CARS.find((c) => c.id === "gt3")!.paints[0], laps: 3 };
+const DEFAULT_PICK: MenuPick = { mode: "race", map: "monaco", car: "gt3", paint: CARS.find((c) => c.id === "gt3")!.paints[0], laps: 3, ai: AI_FIELD, skill: 2, weather: "map", hour: "map" };
 
 export default function Page() {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -86,6 +103,9 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState(false);
   const [gearHint, setGearHint] = useState(false);
+  const [ready, setReadyRaw] = useState(false);
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
   const padUsed = useRef(false);
   const busyId = useRef(0);
   const touch = useIsTouch();
@@ -99,9 +119,15 @@ export default function Page() {
   lobbyRef.current = lobby;
 
   useEffect(() => {
-    const base: Settings = { ...DEFAULT_SETTINGS, quality: isPhone() ? "low" : detectQuality() };
+    const base: Settings = { ...DEFAULT_SETTINGS, quality: isPhone() ? "low" : detectQuality(), steer: isPhone() ? "tilt" : "slider" };
     const s = cleanSettings(load<Partial<Settings>>(SETTINGS_KEY, {}), base);
-    const p = load<MenuPick>(PICK_KEY, DEFAULT_PICK);
+    // Phones saved before tilt existed switch to tilt once.
+    if (isPhone() && load<{ v: boolean }>(TILT_KEY, { v: false }).v === false) {
+      s.steer = "tilt";
+      save(TILT_KEY, { v: true });
+      save(SETTINGS_KEY, s);
+    }
+    const p = cleanPick(load<Partial<MenuPick>>(PICK_KEY, {}), DEFAULT_PICK);
     setSettings(s);
     setPick(p);
     const g = startGame(
@@ -155,17 +181,30 @@ export default function Page() {
 
   useGamepadNav(screen !== "race", padUsed);
 
+  // The kit previews its weather and time on the showroom; the other menus show the map as it is.
+  const kitOpen = screen === "menu" && step === "kit";
   useEffect(() => {
-    if (!touch || screen !== "race") return;
+    game.current?.preview(kitOpen ? pick.weather : "map", kitOpen ? pick.hour : "map");
+  }, [kitOpen, pick.weather, pick.hour]);
+
+  useEffect(() => {
+    if (!touch || screen !== "race" || settings.steer === "tilt") return;
+    let t = 0;
     const check = () => {
-      if (innerHeight > innerWidth) {
-        game.current?.pause(true);
-        setScreen("pause");
-      }
+      clearTimeout(t);
+      if (innerHeight > innerWidth)
+        t = window.setTimeout(() => {
+          if (innerHeight <= innerWidth) return;
+          game.current?.pause(true);
+          setScreen("pause");
+        }, 1500);
     };
     window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, [touch, screen]);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("resize", check);
+    };
+  }, [touch, screen, settings.steer]);
 
   // Cars still racing finish after the results open, so keep the table live.
   useEffect(() => {
@@ -204,7 +243,8 @@ export default function Page() {
     setHud(null);
     setProgress(0);
     setScreen("loading");
-    await g.play({ map: p.map, mode: p.mode, laps: p.laps, car: p.car, paint: p.paint, ai: AI_FIELD, net, startAt });
+    if (net) setReady(false);
+    await g.play({ map: p.map, mode: p.mode, laps: p.laps, car: p.car, paint: p.paint, ai: p.ai, skill: AI_SKILL[p.skill], weather: p.weather, hour: p.hour, net, startAt });
     setOutline(g.outline);
     setScreen("race");
     if (!load(HINT_KEY, { seen: false }).seen) {
@@ -245,10 +285,12 @@ export default function Page() {
     history.replaceState(null, "", `${location.pathname}?${q}`);
     if (process.env.NODE_ENV !== "production") (window as unknown as { __net: NetPlus }).__net = net;
     setScreen("lobby");
+    setReady(false);
     const sync = () => {
       setPlayers(net.peers.map((e) => {
         const l = net.link(e.id);
-        return { ...e, host: e.id === net.hostId, ping: l?.ping ?? null, relay: l?.relay ?? false };
+        const ready = e.me ? readyRef.current : net.ready(e.id);
+        return { ...e, host: e.id === net.hostId, ping: l?.ping ?? null, relay: l?.relay ?? false, ready };
       }));
       setHost(net.host);
       // A new room has no lobby yet: its creator sends one, so guests see the real map and laps.
@@ -289,6 +331,20 @@ export default function Page() {
     net.start(lobby, pickRef.current.car);
   };
 
+  function setReady(r: boolean) {
+    setReadyRaw(r);
+    readyRef.current = r;
+    netRef.current?.setReady(r);
+    setPlayers((l) => l.map((p) => (p.me ? { ...p, ready: r } : p)));
+  }
+
+  const backToLobby = () => {
+    setReady(false);
+    setScreen("lobby");
+    const p = pickRef.current;
+    void game.current?.showroom(lobbyRef.current.map, p.car, p.paint);
+  };
+
   const setLobbyHost = (l: LobbyState) => {
     setLobby(l);
     netRef.current?.setLobby({ ...l, startAt: null });
@@ -304,7 +360,6 @@ export default function Page() {
 
   const current = maps.find((m) => m.id === pick.map) ?? maps[0];
   const manual = !settings.assists.autoGear;
-  const setManual = (m: boolean) => changeSettings({ ...settings, assists: { ...settings.assists, autoGear: !m } });
   const device: Device = touch ? "touch" : hud && hud.device !== "keys" ? hud.device : padUsed.current ? "pad" : "keys";
   const overlay = settingsOpen || controlsOpen;
 
@@ -324,8 +379,9 @@ export default function Page() {
           onOnline={goOnline}
           onSettings={() => setSettingsOpen(true)}
           onControls={() => setControlsOpen(true)}
-          manual={manual}
-          onManual={setManual}
+          settings={settings}
+          onSettingsChange={changeSettings}
+          touch={touch}
           mph={settings.units === "mph"}
         />
       )}
@@ -344,14 +400,21 @@ export default function Page() {
           onLobby={setLobbyHost}
           onStart={startOnline}
           onLeave={toMenu}
-          onCar={() => setScreen("lobbyCar")}
+          onKit={() => setScreen("lobbyKit")}
+          ready={ready}
+          onReady={setReady}
         />
       )}
 
-      {screen === "lobbyCar" && (
-        <CarPicker
+      {screen === "lobbyKit" && !overlay && (
+        <Kit
+          online
           cars={CARS}
           pick={pick}
+          settings={settings}
+          onSettings={changeSettings}
+          touch={touch}
+          place={maps.find((m) => m.id === lobby.map)?.name}
           onPick={(p) => {
             onPick(p);
             const net = netRef.current;
@@ -359,9 +422,10 @@ export default function Page() {
             if (net && mine) net.setMe({ ...mine, car: p.car, color: p.paint });
           }}
           onBack={() => setScreen("lobby")}
-          onGo={() => setScreen("lobby")}
-          manual={manual}
-          onManual={setManual}
+          onGo={() => {
+            setReady(true);
+            setScreen("lobby");
+          }}
         />
       )}
 
@@ -369,7 +433,7 @@ export default function Page() {
         <Hud ref={hudRef} h={hud} units={settings.units} outline={outline} touch={touch} manual={manual} shiftHint={gearHint && screen === "race" ? device : null} />
       )}
 
-      {screen === "race" && hint && hud && <ControlHint device={device} manual={manual} />}
+      {screen === "race" && hint && hud && <ControlHint device={device} manual={manual} steer={settings.steer} />}
 
       {screen === "menu" && busy && (
         <span className="pointer-events-none absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 [animation:fade_0.2s_0.3s_both]" aria-hidden>
@@ -423,7 +487,7 @@ export default function Page() {
                   void begin(next);
                 }
           }
-          onMenu={() => (netRef.current ? setScreen("lobby") : toMenu())}
+          onMenu={() => (netRef.current ? backToLobby() : toMenu())}
         />
       )}
 

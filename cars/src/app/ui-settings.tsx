@@ -20,17 +20,21 @@ export const DEFAULT_SETTINGS: Settings = {
   steer: "slider",
 };
 
-type Preset = "easy" | "normal" | "pro";
-export const ASSIST_PRESETS: Record<Preset, Assists> = {
-  easy: { abs: true, tcs: true, stability: true, autoGear: true, steer: true, blip: true },
-  normal: { abs: true, tcs: true, stability: false, autoGear: true, steer: true, blip: true },
-  pro: { abs: false, tcs: false, stability: false, autoGear: false, steer: false, blip: true },
+// Presets leave the gearbox alone: transmission is its own choice.
+export type Preset = "easy" | "normal" | "pro";
+type Helps = Pick<Assists, "abs" | "tcs" | "stability" | "steer">;
+export const ASSIST_PRESETS: Record<Preset, Helps> = {
+  easy: { abs: true, tcs: true, stability: true, steer: true },
+  normal: { abs: true, tcs: true, stability: false, steer: true },
+  pro: { abs: false, tcs: false, stability: false, steer: false },
 };
 export function presetOf(a: Assists): Preset | "custom" {
-  for (const [k, p] of Object.entries(ASSIST_PRESETS) as [Preset, Assists][])
-    if ((["abs", "tcs", "stability", "autoGear", "steer"] as const).every((f) => p[f] === a[f])) return k;
+  for (const [k, p] of Object.entries(ASSIST_PRESETS) as [Preset, Helps][])
+    if ((["abs", "tcs", "stability", "steer"] as const).every((f) => p[f] === a[f])) return k;
   return "custom";
 }
+export const withPreset = (a: Assists, p: Preset): Assists => ({ ...a, ...ASSIST_PRESETS[p] });
+export const CAMS: readonly CamMode[] = ["chase", "far", "hood", "bumper", "cockpit"];
 
 export function Transmission({ manual, onChange, className }: { manual: boolean; onChange: (manual: boolean) => void; className?: string }) {
   return (
@@ -143,7 +147,7 @@ export function SettingsPanel({ value, onChange, onClose, device = "keys", tab: 
               <Segmented
                 label="Preset"
                 value={presetOf(value.assists)}
-                onChange={(p) => p !== "custom" && set({ assists: { ...ASSIST_PRESETS[p], blip: value.assists.blip } })}
+                onChange={(p) => p !== "custom" && set({ assists: withPreset(value.assists, p) })}
                 options={(["easy", "normal", "pro"] as const).map((p) => ({ v: p, node: <span className="ttl text-xl">{p}</span> }))}
               />
               <div className="grid grid-cols-[1fr_auto] gap-2">
@@ -160,7 +164,7 @@ export function SettingsPanel({ value, onChange, onClose, device = "keys", tab: 
           )}
           {tab === "camera" && (
             <div className="grid grid-cols-5 gap-2">
-              {(["chase", "far", "hood", "bumper", "cockpit"] as CamMode[]).map((m) => (
+              {CAMS.map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -184,10 +188,10 @@ export function SettingsPanel({ value, onChange, onClose, device = "keys", tab: 
 
 const EYE: Record<CamMode, [number, number]> = { chase: [6, 9], far: [2, 4], hood: [27, 15], bumper: [41, 20], cockpit: [22, 14] };
 
-function CamGlyph({ mode }: { mode: CamMode }) {
+export function CamGlyph({ mode, className = "h-[70%] w-[80%]" }: { mode: CamMode; className?: string }) {
   const [x, y] = EYE[mode];
   return (
-    <svg viewBox="0 0 48 28" className="h-[70%] w-[80%]" aria-hidden>
+    <svg viewBox="0 0 48 28" className={className} aria-hidden>
       <path d="M8 22v-4l6-1 7-6h12l7 6 4 1v4z" fill="currentColor" opacity="0.35" />
       <circle cx="15" cy="22.5" r="3" fill="currentColor" opacity="0.6" />
       <circle cx="37" cy="22.5" r="3" fill="currentColor" opacity="0.6" />

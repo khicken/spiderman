@@ -121,15 +121,16 @@ export function IconBtn({ children, className, label, big, ...p }: ButtonHTMLAtt
   );
 }
 
-export function Stepper({ value, min, max, onChange, icon, label }: { value: number; min: number; max: number; onChange: (v: number) => void; icon: ReactNode; label: string }) {
+export function Stepper({ value, min, max, onChange, icon, label, small }: { value: number; min: number; max: number; onChange: (v: number) => void; icon: ReactNode; label: string; small?: boolean }) {
+  const btn = cx("nav grid w-10 place-items-center rounded-[2px] border border-transparent text-lg", small ? "h-8" : "h-11");
   return (
-    <div className="glass flex h-14 items-center justify-between gap-0.5 rounded-[3px] px-1" role="group" aria-label={label}>
+    <div className={cx("glass flex items-center justify-between gap-0.5 rounded-[3px] px-1", small ? "h-10" : "h-14")} role="group" aria-label={label} title={label}>
       <span className="pl-1.5 text-xl text-mute">{icon}</span>
-      <button type="button" aria-label="−" className="nav grid h-11 w-10 place-items-center rounded-[2px] border border-transparent text-lg" disabled={value <= min} onClick={() => onChange(value - 1)}>
+      <button type="button" aria-label="−" className={btn} disabled={value <= min} onClick={() => onChange(value - 1)}>
         <Minus />
       </button>
-      <span className="num w-8 text-center text-3xl">{value}</span>
-      <button type="button" aria-label="+" className="nav grid h-11 w-10 place-items-center rounded-[2px] border border-transparent text-lg" disabled={value >= max} onClick={() => onChange(value + 1)}>
+      <span className={cx("num w-8 text-center", small ? "text-2xl" : "text-3xl")}>{value}</span>
+      <button type="button" aria-label="+" className={btn} disabled={value >= max} onClick={() => onChange(value + 1)}>
         <Plus />
       </button>
     </div>
@@ -175,18 +176,19 @@ export function Range({ value, onChange, icon, label }: { value: number; onChang
   );
 }
 
-export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: readonly { v: T; node: ReactNode; title?: string }[]; onChange: (v: T) => void; label: string }) {
+export function Segmented<T extends string>({ value, options, onChange, label, small, className }: { value: T; options: readonly { v: T; node: ReactNode; title?: string }[]; onChange: (v: T) => void; label: string; small?: boolean; className?: string }) {
   return (
-    <div className="glass flex h-12 rounded-[3px] p-1" role="radiogroup" aria-label={label}>
+    <div className={cx("glass flex rounded-[3px] p-1", small ? "h-10" : "h-12", className)} role="radiogroup" aria-label={label}>
       {options.map((o) => (
         <button
           key={o.v}
           type="button"
           role="radio"
           aria-checked={o.v === value}
+          aria-label={o.title}
           title={o.title}
           onClick={() => onChange(o.v)}
-          className={cx("nav flex flex-1 items-center justify-center gap-1.5 rounded-[2px] border border-transparent px-2 text-lg", o.v === value ? "bg-white text-black hover:bg-white" : "text-mute")}
+          className={cx("nav flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[2px] border border-transparent px-2 text-lg", small && "px-1", o.v === value ? "bg-white text-black hover:bg-white" : "text-mute")}
         >
           {o.node}
         </button>

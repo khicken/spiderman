@@ -14,6 +14,7 @@ attribute vec4 iData;
 varying vec2 vUv;
 varying vec4 vData;
 varying float vZ;
+varying float vSz;
 #include <fog_pars_vertex>
 void main() {
   vec4 mvPosition = viewMatrix * vec4(iPos.xyz, 1.0);
@@ -33,6 +34,9 @@ void main() {
   vUv = q;
   vData = iData;
   vZ = -mvPosition.z;
+  vSz = sz;
+  // Fade sprites that sit on the lens or would fill the screen.
+  vData.w *= smoothstep(0.4, 2.5, vZ) * (1.0 - smoothstep(0.18, 0.45, sz / max(vZ, 0.01)));
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }`;
@@ -43,6 +47,7 @@ uniform vec3 uSunView; uniform vec3 uSunCol; uniform vec3 uAmb; uniform vec3 uFi
 varying vec2 vUv;
 varying vec4 vData;
 varying float vZ;
+varying float vSz;
 #include <fog_pars_fragment>
 float viewZ(float d) { return (uDepth.x * uDepth.y) / ((uDepth.y - uDepth.x) * d - uDepth.y); }
 void main() {
@@ -87,7 +92,7 @@ void main() {
     vec2 nu = vUv * 0.22 + vec2(seed * 7.0, seed * 3.0) + vec2(t * 0.06, -t * 0.1);
     float n = texture2D(tNoise, nu).b * 0.65 + texture2D(tNoise, nu * 2.3).r * 0.35;
     float edge = r + (n - 0.5) * (0.9 + t * 0.6);
-    a = smoothstep(1.0, 0.15, edge);
+    a = smoothstep(1.0, 0.15, edge) * smoothstep(1.0, 0.5, r);
     vec3 nrm = normalize(vec3(vUv * 0.9 + (n - 0.5) * 0.6, sqrt(max(0.0, 1.0 - r * r)) + 0.2));
     float wrap = clamp(dot(nrm, uSunView) * 0.5 + 0.5, 0.0, 1.0);
     float self = mix(1.0, 0.55 + 0.45 * n, a);
@@ -99,7 +104,7 @@ void main() {
 #endif
   if (uSoft > 0.5) {
     float sz = -viewZ(texture2D(tDepth, gl_FragCoord.xy / uDepth.zw).r);
-    a *= clamp((sz - vZ) / 0.6, 0.0, 1.0);
+    a *= clamp((sz - vZ) / max(0.3, vSz * 0.6), 0.0, 1.0);
   }
   if (a < 0.004) discard;
   gl_FragColor = vec4(col, a);
@@ -240,10 +245,17 @@ export function createFx(scene: THREE.Scene): Fx {
     acc[i] -= n;
     return n;
   };
+  // Smoke and dust share one spawn budget per frame, so a full pack cannot fill the screen.
+  let puffs = 0;
+  const take = (n: number) => {
+    const m = Math.min(n, puffs);
+    puffs -= m;
+    return m;
+  };
 
   const dust = (x: number, y: number, z: number, ux: number, uz: number, surface: Surface, a: number, big: number) => {
     const k = surface === "snow" ? 3 : surface === "gravel" ? 9 : surface === "grass" ? 1 : 1;
-    soft.spawn(x + rnd(0.3), y + 0.2, z + rnd(0.3), ux * 0.3 + rnd(1.5), 0.6 + Math.random() * 1.2, uz * 0.3 + rnd(1.5), 0.5 * big, 1.6 * big, 2 + Math.random() * 2.5, k, 1.1, -0.05, a, y + 0.1, 0);
+    soft.spawn(x + rnd(0.3), y + 0.2, z + rnd(0.3), ux * 0.3 + rnd(1.5), 0.5 + Math.random() * 0.9, uz * 0.3 + rnd(1.5), 0.5 * big, 2.2 * big, 1.4 + Math.random() * 1.8, k, 1.3, -0.05, a, y + 0.1, 0);
   };
 
   const fx: Fx = {
@@ -255,12 +267,12 @@ export function createFx(scene: THREE.Scene): Fx {
         const s = Math.max(0, skid - 0.15);
         const dry = 1 - Math.min(1, wet * 1.5);
         if (s > 0 && dry > 0) {
-          const n = emit(k, 0, 70 * Math.pow(s, 1.3) * dry);
+          const n = take(emit(k, 0, 45 * Math.pow(s, 1.3) * dry));
           for (let i = 0; i < n; i++) {
             soft.spawn(
               pos.x + rnd(0.2), pos.y + 0.15, pos.z + rnd(0.2),
               vel.x * 0.2 + rnd(1.2), 0.4 + Math.random() * 0.8, vel.z * 0.2 + rnd(1.2),
-              0.35 + Math.random() * 0.3, 0.7 + s * 0.9, 2.5 + s * 3.5 + Math.random() * 1.5, KIND.smoke, 0.9, -0.12, 0.35 + 0.45 * s, pos.y + 0.1, 0,
+              0.35 + Math.random() * 0.3, 0.9 + s * 1.2, 0.6 + s * 2.2 + Math.random() * 0.6, KIND.smoke, 0.9, -0.12, 0.05 + 0.17 * s, pos.y + 0.1, 0,
             );
           }
         }
@@ -278,8 +290,8 @@ export function createFx(scene: THREE.Scene): Fx {
         }
         skids.add(car, wheel, pos, skid > 0.3 ? Math.min(1, (skid - 0.3) * 2) * 0.9 : 0, 0.3);
       } else {
-        const n = emit(k, 0, (sp * 0.6 + skid * 25) * (surface === "grass" ? 0.25 : 1) * (sp > 2 ? 1 : 0));
-        for (let i = 0; i < n; i++) dust(pos.x, pos.y, pos.z, vel.x, vel.z, surface, 0.35 + skid * 0.3, surface === "snow" ? 0.8 : 1);
+        const n = take(emit(k, 0, (sp * 0.35 + skid * 14) * (surface === "grass" ? 0.25 : 1) * (sp > 2 ? 1 : 0)));
+        for (let i = 0; i < n; i++) dust(pos.x, pos.y, pos.z, vel.x, vel.z, surface, 0.14 + skid * 0.12, surface === "snow" ? 0.8 : 1);
         const m = emit(k, 2, skid * sp * 1.2);
         for (let i = 0; i < m; i++) {
           const kk = surface === "grass" ? KIND.grass : surface === "snow" ? KIND.snow : surface === "gravel" ? KIND.stone : KIND.chunk;
@@ -312,10 +324,11 @@ export function createFx(scene: THREE.Scene): Fx {
       const kk = surface === "grass" ? KIND.grass : surface === "snow" ? KIND.snow : KIND.chunk;
       for (let i = 0; i < n; i++)
         soft.spawn(pos.x, pos.y, pos.z, rnd(4), 2 + Math.random() * 5, rnd(4), 0.015 + Math.random() * 0.035, 0, 1 + Math.random() * 1.2, kk, 0.2, 9.8, 1, pos.y - 0.6, 0);
-      for (let i = 0; i < Math.ceil(n / 5); i++) dust(pos.x, pos.y, pos.z, 0, 0, PAVED[surface] ? "gravel" : surface, 0.45, 1.2);
+      for (let i = 0; i < Math.ceil(n / 5); i++) dust(pos.x, pos.y, pos.z, 0, 0, PAVED[surface] ? "gravel" : surface, 0.25, 1.2);
     },
     update(dt, camera) {
       lastDt = Math.min(dt, 0.1) || 1 / 60;
+      puffs = Math.ceil(6 * rate * Math.min(2, lastDt * 60));
       soft.update(dt);
       add.update(dt);
       skids.update(dt);

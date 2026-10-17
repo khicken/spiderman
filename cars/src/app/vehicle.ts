@@ -16,6 +16,7 @@ const focus = new THREE.Vector3(0, -1e9, 0);
 const RPM = 30 / Math.PI;
 const SNAP = 29 + 4 * 7;
 const HB_SLIP = 0.3;
+const FRONT_SLIP = 1.4; // assisted steering holds the front slip angle under this many peak angles
 // Drift angle the assists hold, rad. u: steer into the turn +1 .. against it -1.
 const driftAim = (u: number) => 0.45 + 0.25 * u;
 // Drift steering gains. wide, wideF: side grip the rear and front give up at full counter-steer, which widens the line.
@@ -215,7 +216,8 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
       if (dir > 0 && pops > 0.6 && d.we * RPM > spec.engine.redline * 0.8) emit({ type: "backfire", car: index });
     }
     const rev = d.gear < 0;
-    let thr = rev ? c.brake * Math.min(1, Math.max(0, (11 + fwdSpeed) / 3)) : c.throttle;
+    // Reverse tops out near 28 km/h, so gas brings the car back to forward quickly.
+    let thr = rev ? c.brake * Math.min(1, Math.max(0, (8 + fwdSpeed) / 2.5)) : c.throttle;
     let brk = rev ? c.throttle : c.brake;
     if (d.gear > 0 && fwdSpeed < -1 && c.throttle > 0.1) brk = Math.max(brk, c.throttle);
     // Trail braking: brake and steer together and the bias moves rearward, so the light rear steps out and rotates the car.
@@ -236,7 +238,8 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
     askThr = c.throttle > 0.5 ? 0 : askThr + dt;
     const asked = helps && askT < 1.2;
     if (!drift) {
-      if (asked && fwdSpeed > 7 && tailOut && Math.abs(beta) > 0.1 && c.throttle > 0.3 && c.brake < 0.2) {
+      // The rear must slide past its peak: a tight low-speed corner has a large body slip angle without any slide.
+      if (asked && fwdSpeed > 7 && tailOut && Math.abs(beta) > 0.1 && Math.abs(brA) > spec.tire.peakAngle && c.throttle > 0.3 && c.brake < 0.2) {
         drift = true;
         driftV = Math.max(v, 12);
       }
@@ -277,10 +280,12 @@ export function createVehicle(spec: CarSpec, track: Track, index = 0): VehicleBo
           const corr = DRIFT.base * (1 + 0.6 * Math.min(0, u)) + (u > 0 ? DRIFT.into : DRIFT.counter * Math.min(1, Math.max(0, (ang - 0.3) / 0.3))) * u + DRIFT.damp * dBeta * sr - 8 * Math.max(0, ang - 0.7);
           target = bf + sr * pa * Math.max(-1.6, Math.min(1.6, corr));
         } else {
-          const slide = br * r < 0 ? Math.min(1, Math.max(0, (Math.abs(br) - pa * 0.7) / pa)) : 0;
+          const slide = br * r < 0 ? Math.min(1, Math.max(0, (Math.abs(br) - pa) / pa)) : 0;
           const calm = intent + 0.3 * Math.atan2(latSpeed, fwdSpeed) * (1 - Math.abs(c.steer));
           const into = intent * r < 0 ? 0.5 : 0.4 * Math.max(0, 1 - Math.abs(br) / (3.5 * pa));
           target = calm + (bf + into * intent - calm) * slide;
+          // Keep the fronts near their peak slip angle: more lock only scrubs speed and pushes the car wide.
+          target = Math.max(bf - FRONT_SLIP * pa, Math.min(bf + FRONT_SLIP * pa, target));
         }
       }
       // A held drift gets a little more lock, like a drift car's steering.

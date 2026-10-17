@@ -13,7 +13,7 @@ const START_AHEAD = 10000; // ms: a start further out is a lie or a broken clock
 const START_BEHIND = 4 * 3600e3; // a running race still needs its start, for late joiners
 
 export type LobbyPlus = Lobby & { ids?: string[]; cars?: CarId[] };
-export type Hello = { name: string; color: string; car: CarId; ago: number; spec: boolean };
+export type Hello = { name: string; color: string; car: CarId; ago: number; spec: boolean; ready: boolean };
 
 export const validId = (s: unknown): s is string => typeof s === "string" && /^[A-Za-z0-9]{1,40}$/.test(s);
 export const aiSlot = (id: string) => (id.startsWith(AI_PREFIX) ? Number(id.slice(AI_PREFIX.length)) : -1);
@@ -46,7 +46,7 @@ export function cleanHello(raw: unknown, maxAgo: number): Hello | null {
   const color = typeof h.color === "string" && /^#[0-9a-fA-F]{6}$/.test(h.color) ? h.color : "#ffffff";
   const car = isCar(h.car) ? h.car : CARS[0].id;
   const ago = typeof h.ago === "number" && Number.isFinite(h.ago) ? Math.max(0, Math.min(maxAgo, h.ago)) : 0;
-  return { name: name || "Driver", color, car, ago, spec: h.spec === true };
+  return { name: name || "Driver", color, car, ago, spec: h.spec === true, ready: h.ready === true };
 }
 
 export const finiteSnap = (a: ArrayLike<number>, n: number) => {

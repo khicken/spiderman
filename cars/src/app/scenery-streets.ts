@@ -141,7 +141,8 @@ export function buildStreets(map: MapData, track: Track, roads: RoadIndex, style
         };
         const A = o(i, li, 0.3), B = o(j, lj, 0.3), C = o(j, lj, 7), D = o(i, li, 7);
         if (roads.edge(C[0], C[2]) < 5 || roads.edge(D[0], D[2]) < 5) continue;
-        if (Math.abs(C[1] - B[1]) > 1.2 || Math.abs(D[1] - A[1]) > 1.2) continue;
+        // Terrain climbs over a tunnel roof next to the portal, so a steep strip is skipped both ways.
+        if (Math.abs(C[1] - B[1]) > 1.2 || Math.abs(D[1] - A[1]) > 1.2 || Math.abs(B[1] - A[1]) > 1.2 || Math.abs(C[1] - D[1]) > 1.2) continue;
         const ny = (B[2] - A[2]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[2] - A[2]);
         for (const V of ny > 0 ? [A, B, C, A, C, D] : [A, C, B, A, D, C]) pave.push(V[0], V[1], V[2]);
       }

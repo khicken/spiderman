@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Quality, Track } from "./contracts";
-import { F_ELEV, F_TUNNEL, trackTables, type TrackTables } from "./track";
+import { F_ELEV, F_TUNNEL, TUNNEL_COVER, trackTables, type TrackTables } from "./track";
 import { TEX } from "./track-mat";
 import { Rib, instanced, lat, rowList, shoulderY } from "./track-rib";
 import { dropLamps, setLamps } from "./render-lamps";
@@ -27,12 +27,38 @@ function wallPoint(tb: TrackTables, i: number, side: number, o: number) {
   return [tb.px[i] + tb.lx[i] * l, tb.pz[i] + tb.lz[i] * l] as const;
 }
 
+const prof = (W: number, H: number) => [[W, -0.4 - H], [W, 4.0], [W * 0.75, 5.0 + H], [W * 0.35, 5.7 + H], [0, 5.9 + H], [-W * 0.35, 5.7 + H], [-W * 0.75, 5.0 + H], [-W, 4.0], [-W, -0.4 - H]] as const;
+// Outer edge of a portal headwall, point for point with prof(W, 0.8).
+const headFrame = (W: number) => {
+  const E = W + 5, T = TUNNEL_COVER + 1;
+  return [[E, -1.2], [E, 4], [E, T], [W * 0.35, T], [0, T], [-W * 0.35, T], [-E, T], [-E, 4], [-E, -1.2]] as const;
+};
+// Shell half width at the outer face, and the height of its crown above the road.
+export const TUBE_OUT = 0.9, TUBE_TOP = 6.7;
+
+// Index ranges into rows with a roof. The portals sit at rows[a - 1] and rows[b + 1].
+export function tunnelRows(tb: TrackTables, rows: number[]) {
+  const runs: [number, number][] = [];
+  for (let a = 0; a < rows.length; a++) {
+    if (!(tb.flag[rows[a] % tb.M] & F_TUNNEL)) continue;
+    let b = a;
+    while (b + 1 < rows.length && tb.flag[rows[b + 1] % tb.M] & F_TUNNEL) b++;
+    runs.push([a, b]);
+    a = b;
+  }
+  return runs;
+}
+
+export function propRows(tb: TrackTables, closed: boolean, q: Quality) {
+  return rowList(tb, closed, q === "low" ? 4 : 2);
+}
+
 export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
   const tb = trackTables(track);
   const group = new THREE.Group();
   const disp: { dispose(): void }[] = [];
   const n = TEX[q].ground, an = TEX[q].aniso;
-  const rows = rowList(tb, track.closed, q === "low" ? 4 : 2);
+  const rows = propRows(tb, track.closed, q);
   const postStep = q === "low" ? 4 : 2;
 
   const grime = concreteTex(n, an, true);
@@ -46,6 +72,11 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
   const mWall = new THREE.MeshStandardMaterial({ map: grime, roughness: 0.9 });
   const mConc = new THREE.MeshStandardMaterial({ map: clean, roughness: 0.92, color: 0xd8d4cc, side: THREE.DoubleSide });
   const mTile = new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.4, side: THREE.DoubleSide });
+  // The tube is always under a roof. Past the shadow map's reach the sun would light it, so the tiles skip the sun.
+  mTile.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace("#include <lights_fragment_begin>", THREE.ShaderChunk.lights_fragment_begin.replaceAll("NUM_DIR_LIGHTS", "0"));
+  };
+  mTile.customProgramCacheKey = () => "tube";
   const mSteel = new THREE.MeshStandardMaterial({ color: 0xb4b9bf, metalness: 0.85, roughness: 0.36, side: THREE.DoubleSide });
   const mPost = new THREE.MeshStandardMaterial({ color: 0x8d9298, metalness: 0.7, roughness: 0.5 });
   const mFence = new THREE.MeshStandardMaterial({ map: fence, alphaTest: 0.3, alphaToCoverage: q === "high" || q === "ultra", color: 0xa4a8ac, metalness: 0.55, roughness: 0.45, side: THREE.DoubleSide });
@@ -136,17 +167,9 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
     if (tires.length) group.add(instanced(tg, mTire, tires));
   }
 
-  // Tunnels: tiled tube, concrete shell, portals, ceiling light strips.
-  const tunnelRuns: [number, number][] = [];
-  for (let a = 0; a < rows.length; a++) {
-    if (!(tb.flag[rows[a] % tb.M] & F_TUNNEL)) continue;
-    let b = a;
-    while (b + 1 < rows.length && tb.flag[rows[b + 1] % tb.M] & F_TUNNEL) b++;
-    tunnelRuns.push([a, b]);
-    a = b;
-  }
-  const prof = (W: number, H: number) => [[W, -0.4 - H], [W, 4.0], [W * 0.75, 5.0 + H], [W * 0.35, 5.7 + H], [0, 5.9 + H], [-W * 0.35, 5.7 + H], [-W * 0.75, 5.0 + H], [-W, 4.0], [-W, -0.4 - H]] as const;
-  const tubeIn = new Rib(9), tubeOut = new Rib(9), portal = new Rib(2), lights = new Rib(2);
+  // Tunnels: tiled tube, concrete shell, portals with a headwall, ceiling light strips.
+  const tunnelRuns = tunnelRows(tb, rows);
+  const tubeIn = new Rib(9), tubeOut = new Rib(9), portal = new Rib(2), lights = new Rib(2), head = new Rib(2), cap = new Rib(2);
   const pt = (i: number, l: number, y: number) => [tb.px[i] + tb.lx[i] * l, tb.py[i] + y, tb.pz[i] + tb.lz[i] * l] as const;
   const tl: number[] = [];
   const tcol = track.map.id === "tokyo" ? [1, 0.6, 0.28] : [1, 0.88, 0.72];
@@ -181,12 +204,22 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
       }
       if (r === Math.max(0, a - 1) || r === Math.min(rows.length - 1, b + 1)) {
         portal.brk();
-        const pi = prof(W, 0), po = prof(W + 0.8, 0.8);
+        head.brk();
+        cap.brk();
+        const pi = prof(W, 0), po = prof(W + 0.8, 0.8), fr = headFrame(W + 0.8);
+        // The headwall hides the terrain cut and gets 0.6 m of depth from a cap along its outline.
+        const dir = r < a ? 0.6 : -0.6;
         for (let k = 0; k < pi.length; k++) {
-          const p0 = pt(i, pi[k][0], pi[k][1]), p1 = pt(i, po[k][0], po[k][1]);
+          const p0 = pt(i, pi[k][0], pi[k][1]), p1 = pt(i, po[k][0], po[k][1]), p2 = pt(i, fr[k][0], fr[k][1]);
           portal.v(p0[0], p0[1], p0[2], 0, 0);
           portal.v(p1[0], p1[1], p1[2], 1, 0);
           portal.row();
+          head.v(p1[0], p1[1], p1[2], 0, 0);
+          head.v(p2[0], p2[1], p2[2], (p2[1] - p1[1]) / 3, 0);
+          head.row();
+          cap.v(p2[0], p2[1], p2[2], k, 0);
+          cap.v(p2[0] + tb.fx[i] * dir, p2[1] + tb.fy[i] * dir, p2[2] + tb.fz[i] * dir, k, 0.2);
+          cap.row();
         }
       }
     }
@@ -197,6 +230,8 @@ export function buildProps(track: Track, q: Quality, _wet: { value: number }) {
   add(tubeIn.geo(), mTile);
   add(tubeOut.geo(), mConc);
   add(portal.geo(), mConc);
+  add(head.geo(), mConc);
+  add(cap.geo(), mConc);
   add(lights.geo(false), mLight, false);
 
   // Viaducts: deck slab and hammerhead piers.
