@@ -30,6 +30,7 @@ export interface Settings {
   toggleSneak: boolean;
   toggleSprint: boolean;
   keys: Record<string, string>; // bind id -> KeyboardEvent.code
+  showSubtitles?: boolean;
 }
 
 export const SOUND_CATEGORIES: [SoundCategory, string][] = [

@@ -1,6 +1,8 @@
 import type { ItemStack } from "../contracts";
 import { paintItemTexture } from "./items";
 import { rgb } from "./items-paint";
+import { activePacks, packTile, packVersion } from "../packs";
+import { resize } from "../packs/img";
 
 // World state the compass and clock read. The player writes it every tick.
 export const DIAL_STATE = { dayTime: 6000, dim: "overworld", yaw: 0, x: 0, z: 0, spawnX: 0, spawnZ: 0, deathX: NaN, deathZ: NaN, spin: 0 };
@@ -45,11 +47,31 @@ const pixel = (p: Uint8ClampedArray, x: number, y: number, hex: string) => {
 };
 
 const CACHE = new Map<string, Uint8ClampedArray>();
+const URLS = new Map<string, string>();
+let cacheV = 0;
+
+// Vanilla compass_16 points straight ahead and clock_00 is noon.
+function packDial(item: string, frame: number): Uint8ClampedArray | null {
+  if (!activePacks().length) return null;
+  const i = item === "clock" ? frame % 64 : (16 + frame) % 32;
+  const t = packTile(`item/${item}_${String(i).padStart(2, "0")}`);
+  return t ? resize(t, 16, 16).data : null;
+}
 
 export function paintDial(item: string, frame: number): Uint8ClampedArray {
+  if (cacheV !== packVersion()) {
+    cacheV = packVersion();
+    CACHE.clear();
+    URLS.clear();
+  }
   const key = `${item}@${frame}`;
   let p = CACHE.get(key);
   if (p) return p;
+  const packed = packDial(item, frame);
+  if (packed) {
+    CACHE.set(key, packed);
+    return packed;
+  }
   p = new Uint8ClampedArray(paintItemTexture(item));
   if (item === "clock") paintClock(p, frame);
   else paintNeedle(p, item, frame);
@@ -89,10 +111,9 @@ function paintClock(p: Uint8ClampedArray, frame: number) {
   }
 }
 
-const URLS = new Map<string, string>();
-
 export function dialIconUrl(item: string, frame: number, size = 64): string {
   const key = `${item}@${frame}`;
+  paintDial(item, frame);
   let u = URLS.get(key);
   if (u) return u;
   const src = paintDial(item, frame);

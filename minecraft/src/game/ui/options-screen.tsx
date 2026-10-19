@@ -3,8 +3,10 @@
 import { useState } from "react";
 import type { Rules } from "../contracts";
 import { Text, useGui } from "./gui";
-import { Button, ListArea, Screen, Slider, onOff, useKeyDown } from "./widgets";
+import { Button, ListArea, Screen, Slider, TextField, onOff, useKeyDown } from "./widgets";
+import { playerName, setPlayerNameStored } from "../net/profile";
 import { KeyBinds } from "./key-binds";
+import { PacksScreen } from "./packs-screen";
 import {
   SOUND_CATEGORIES, brightnessLabel, fovEffectsLabel, fovLabel, fpsLabel, guiScaleLabel, pctLabel, sensitivityLabel, volumeLabel,
   type Settings, type SoundCategory,
@@ -25,7 +27,7 @@ export interface OptionsScreenProps {
   difficultyLocked?: boolean;
 }
 
-type Page = "main" | "video" | "sound" | "controls" | "mouse" | "keys" | "chat";
+type Page = "main" | "video" | "sound" | "controls" | "mouse" | "keys" | "chat" | "packs" | "skin";
 const TITLES: Record<Page, string> = {
   main: "Options",
   video: "Video Settings",
@@ -34,6 +36,8 @@ const TITLES: Record<Page, string> = {
   mouse: "Mouse Settings",
   keys: "Key Binds",
   chat: "Chat Settings",
+  packs: "Select Resource Packs",
+  skin: "Skin Customization",
 };
 const DIFFS: Rules["difficulty"][] = ["peaceful", "easy", "normal", "hard"];
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
@@ -62,13 +66,13 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
     const y0 = Math.floor(height / 6 - 12);
     const g = Math.floor(height / 6 + 42);
     const grid: [string, Page | null][] = [
-      ["Skin Customization...", null],
+      ["Skin Customization...", "skin"],
       ["Music & Sounds...", "sound"],
       ["Video Settings...", "video"],
       ["Controls...", "controls"],
       ["Language...", null],
       ["Chat Settings...", "chat"],
-      ["Resource Packs...", null],
+      ["Resource Packs...", "packs"],
       ["Accessibility Settings...", null],
       ["Telemetry Data...", null],
       ["Credits & Attribution...", null],
@@ -97,6 +101,8 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
     );
   }
 
+  if (page === "packs") return <PacksScreen onDone={back} background={bg} />;
+  if (page === "skin") return <SkinPage background={bg} onDone={back} />;
   if (page === "keys") return <KeyBinds settings={s} onChange={onChange} onDone={back} background={bg} />;
 
   const vol = (c: SoundCategory, name: string): Item => ({
@@ -145,7 +151,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
     vol("music", "Music"),
     ...SOUND_CATEGORIES.slice(1).map(([c, name]) => vol(c, name)),
     null,
-    { kind: "button", label: "Show Subtitles: OFF", disabled: true },
+    { kind: "button", label: `Show Subtitles: ${onOff(!!s.showSubtitles)}`, onClick: () => onChange({ showSubtitles: !s.showSubtitles }) },
     { kind: "button", label: "Directional Audio: OFF", disabled: true },
   ];
 
@@ -208,7 +214,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
           })
         }
       </ScrollList>
-      <Button x={cx - 100} y={height - 27} label="Done" onClick={done} />
+      <Button x={cx - 100} y={height - 27} label="Done" onClick={onDone} />
     </Screen>
   );
 }
@@ -233,5 +239,26 @@ export function ScrollList({ top, bottom, content, children }: { top: number; bo
         </>
       )}
     </ListArea>
+  );
+}
+
+function SkinPage({ background, onDone }: { background: "menu" | "ingame"; onDone: () => void }) {
+  const { width, height } = useGui();
+  const [name, setName] = useState(playerName);
+  const cx = Math.floor(width / 2);
+  const ok = name.length >= 3;
+  const edit = (v: string) => {
+    const n = v.replace(/[^A-Za-z0-9_]/g, "");
+    setName(n);
+    if (n.length >= 3) setPlayerNameStored(n);
+  };
+  return (
+    <Screen background={background}>
+      <Text text={TITLES.skin} x={cx} y={15} align="center" />
+      <Text text="Multiplayer Name" x={cx - 100} y={Math.floor(height / 6) + 4} color={0xa0a0a0} />
+      <TextField x={cx - 100} y={Math.floor(height / 6) + 16} width={200} value={name} onChange={edit} onEnter={onDone} maxLength={16} hint="Player name" autoFocus />
+      <Text text={ok ? "Other players see this name." : "Use 3 to 16 letters, digits or _."} x={cx} y={Math.floor(height / 6) + 44} color={ok ? 0x808080 : 0xff5555} align="center" />
+      <Button x={cx - 100} y={height - 27} label="Done" onClick={onDone} />
+    </Screen>
   );
 }

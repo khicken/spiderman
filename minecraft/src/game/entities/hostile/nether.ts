@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { blockDef } from "../../blocks/registry";
 import type { Entity, GameCtx, ItemStack, MobDef } from "../../contracts";
 import { applyPhysics, canSee, canSeeSky, idleLook, lookAt, meleeAttack, moveTo, playerTargetable, rotlerp, yawTo } from "../ai";
 import {
@@ -119,8 +118,25 @@ function piglinTick(e: Entity, ctx: GameCtx): void {
       return;
     }
   }
+  if (hurt > 0 && attackerOf(e) === "player") {
+    e.data._angerT = 600;
+    for (const o of nearby(ctx, e, 16)) {
+      if (o === e || o.dead || (o.type !== "piglin" && o.type !== "piglin_brute")) continue;
+      o.data._target = "player";
+      o.data._angerT = 600;
+    }
+  }
+  const angerT = num(e, "_angerT");
+  if (angerT > 0) {
+    e.data._angerT = angerT - 1;
+    if (playerTargetable(ctx)) e.data._target = "player";
+  }
   const t = updateTarget(e, ctx, { range: 16, when: () => !playerHasGoldArmor(ctx) }, hurt);
-  if (t === "player" && playerHasGoldArmor(ctx) && hurt === 0 && attackerOf(e) !== "player") e.data._target = undefined;
+  if (t === "player" && angerT <= 0 && playerHasGoldArmor(ctx) && hurt === 0 && attackerOf(e) !== "player") e.data._target = undefined;
+  if (e.data._target === undefined && seekGold(e, ctx)) {
+    applyPhysics(e, ctx);
+    return;
+  }
   if (e.data._target !== undefined) {
     if (e.data.held === "crossbow") crossbowAttack(e, ctx, e.data._target as "player" | number, 0.35);
     else {
@@ -137,6 +153,43 @@ function piglinTick(e: Entity, ctx: GameCtx): void {
 }
 
 const want = new THREE.Vector3();
+
+// Vanilla piglins walk to dropped gold ingots within 9 blocks, pick one up and admire it for 6 s.
+function seekGold(e: Entity, ctx: GameCtx): boolean {
+  if ((e.age + e.id) % 10 !== 0 && e.data._goldId === undefined) return false;
+  let item = e.data._goldId !== undefined ? ctx.entities.get(e.data._goldId as number) : undefined;
+  if (!item || item.dead || (item.data.stack as ItemStack | undefined)?.item !== "gold_ingot") {
+    item = undefined;
+    e.data._goldId = undefined;
+    for (const o of nearby(ctx, e, 9)) {
+      if (o.type === "item" && !o.dead && (o.data.stack as ItemStack | undefined)?.item === "gold_ingot") {
+        item = o;
+        e.data._goldId = o.id;
+        break;
+      }
+    }
+    if (!item) return false;
+  }
+  const d2 = item.body.pos.distanceToSquared(e.body.pos);
+  if (d2 > 2.25) {
+    moveTo(e, ctx, item.body.pos.x, item.body.pos.y, item.body.pos.z, 0.35);
+    return true;
+  }
+  const st = item.data.stack as ItemStack;
+  if (st.count <= 1) item.data._remove = true;
+  else item.data.stack = { ...st, count: st.count - 1 };
+  e.data._goldId = undefined;
+  startBarter(e, ctx);
+  return true;
+}
+
+function startBarter(e: Entity, ctx: GameCtx) {
+  e.data.weapon = e.data.held;
+  e.data.held = "gold_ingot";
+  e.data.barter = 120;
+  e.data.persistent = true;
+  sound(ctx, e, "entity.piglin.admiring_item");
+}
 
 function ghastTick(e: Entity, ctx: GameCtx): void {
   e.data.noGravity = true;
@@ -304,10 +357,7 @@ export const NETHER_MOBS: MobDef[] = [
     onInteract(e, ctx, held) {
       if (held?.item !== "gold_ingot" || num(e, "barter") > 0 || e.data._target !== undefined) return false;
       if (ctx.player.gameMode !== "creative") ctx.inventory.removeHeld(1);
-      e.data.weapon = e.data.held;
-      e.data.held = "gold_ingot";
-      e.data.barter = 120;
-      sound(ctx, e, "entity.piglin.admiring_item");
+      startBarter(e, ctx);
       return true;
     },
   },
@@ -340,20 +390,6 @@ export const NETHER_MOBS: MobDef[] = [
     sounds: { ambient: "entity.blaze.ambient", hurt: "entity.blaze.hurt", death: "entity.blaze.death" },
     spawn: { dims: ["nether"], biomes: NETHER_FORTRESS, light: "dark", group: [2, 3], weight: 10 },
     createModel: blazeModel,
-    tick: (e, ctx) => {
-      if (!e.data.checked) {
-        e.data.checked = true;
-        if (e.data.natural === true && !onFortressFloor(e, ctx)) {
-          e.data._remove = true;
-          return;
-        }
-      }
-      blazeTick(e, ctx);
-    },
+    tick: blazeTick,
   },
 ];
-
-function onFortressFloor(e: Entity, ctx: GameCtx): boolean {
-  const p = e.body.pos;
-  return blockDef(ctx.world.getBlock(Math.floor(p.x), Math.floor(p.y) - 1, Math.floor(p.z))).name === "nether_bricks";
-}

@@ -676,8 +676,10 @@ export interface RendererApi {
   setUnderwater(kind: "none" | "water" | "lava" | "powder_snow"): void;
   setEffects?(v: { nightVision: number; blindness: number; darkness: number }): void; // status effect fog and light, each 0..1
   setVisionFog?(far: number): void; // blindness / darkness fog end in blocks, 0 for none
+  flash?(): void; // lightning sky flash
   addParticles(e: Extract<GameEvent, { type: "particles" }>): void;
   meshQueue(): number; // sections waiting
+  chunkMeshed?(cx: number, cz: number): boolean; // chunk is ready and none of its sections wait for a mesh
   stats?(): RenderStats;
   render(dt: number): void;
   resize(w: number, h: number): void;

@@ -1,15 +1,13 @@
 import * as THREE from "three";
 import type { GameCtx, ItemStack } from "../contracts";
 import { createArmorLayer, glintMaterial } from "../entities/armor-layer";
-import { itemKey, type ItemMeshes } from "./item-mesh";
+import { createHeldSlot } from "./hand";
+import type { ItemMeshes } from "./item-mesh";
 import type { PlayerModel } from "./model";
 import type { PlayerState } from "./state";
 
 const PX = 1 / 16;
 const D = Math.PI / 180;
-const m4 = new THREE.Matrix4();
-const t4 = new THREE.Matrix4();
-const e3 = new THREE.Euler();
 
 function elytraTexture(): THREE.DataTexture {
   const w = 64, h = 32;
@@ -102,34 +100,9 @@ export function createPlayerExtras(model: PlayerModel, items: ItemMeshes): Playe
   const P = model.model.parts;
   const armor = createArmorLayer(P, true);
   const wings = createWings(P.body);
-  const offHolder = new THREE.Group();
-  offHolder.matrixAutoUpdate = false;
-  P.left_arm.add(offHolder);
-  let offShown: string | null = null;
+  const off = createHeldSlot(items, -1);
   let glideTilt = 0;
   const root = model.model.root;
-
-  function setOffhand(s: ItemStack | null) {
-    const name = itemKey(s);
-    if (name === offShown) return;
-    offShown = name;
-    offHolder.clear();
-    const md = name ? items.model(name) : null;
-    if (!md) return;
-    offHolder.add(md.create());
-    m4.identity();
-    m4.multiply(t4.makeTranslation(-1 * PX, -10 * PX, -1 * PX));
-    m4.multiply(t4.makeRotationX(-90 * D));
-    if (md.kind === "shield") {
-      m4.multiply(t4.makeRotationFromEuler(e3.set(0, 90 * D, 0)));
-      m4.multiply(t4.makeTranslation(3 * PX, 4 * PX, -5 * PX));
-    } else if (md.kind === "block") {
-      m4.multiply(t4.makeTranslation(0, 2.5 * PX, 0)).multiply(t4.makeRotationFromEuler(e3.set(75 * D, 45 * D, 0))).multiply(t4.makeScale(0.375, 0.375, 0.375));
-    } else {
-      m4.multiply(t4.makeTranslation(0, 4 * PX, 0.5 * PX)).multiply(t4.makeRotationFromEuler(e3.set(0, 90 * D, -55 * D))).multiply(t4.makeScale(0.85, 0.85, 0.85));
-    }
-    offHolder.matrix.copy(m4);
-  }
 
   return {
     update(p, ctx, pt, light, hurt) {
@@ -142,7 +115,7 @@ export function createPlayerExtras(model: PlayerModel, items: ItemMeshes): Playe
         wings.update(p, enchanted(inv[37]));
         wings.mat.color.setScalar(light);
       }
-      setOffhand(inv[40] ?? null);
+      off.set(P.left_arm, inv[40] ?? null, p.using?.hand === "off" ? p.using : null, p.using ? p.using.ticks + pt : 0);
       const u = p.using;
       const mainShield = u?.kind === "shield" && u.hand === "main";
       const offShield = u?.kind === "shield" && u.hand === "off";
@@ -183,7 +156,7 @@ export function createPlayerExtras(model: PlayerModel, items: ItemMeshes): Playe
     dispose() {
       armor.dispose();
       wings.dispose();
-      offHolder.removeFromParent();
+      off.dispose();
     },
   };
 }

@@ -7,6 +7,8 @@ import { createEnd } from "./end";
 import { createAdvancements } from "./advancements";
 import { createDecor } from "./decor";
 import { createSpawners } from "../loot/spawners";
+import { createFeatures } from "./features";
+import { createNether } from "./nether";
 
 // One game-wide system. It outlives dimension changes: stage() runs after each new world, renderer and entities exist.
 export interface SystemPart {
@@ -24,7 +26,7 @@ export interface SystemPart {
 }
 
 export function createSystems(getCtx: () => GameCtx) {
-  const parts: SystemPart[] = [createBlocksA(), createBlocksB(), createVillagers(), createBrewing(), createEnd(), createAdvancements(), createDecor(), createSpawners()];
+  const parts: SystemPart[] = [createBlocksA(), createBlocksB(), createVillagers(), createBrewing(), createEnd(), createAdvancements(), createDecor(), createSpawners(), createNether(), createFeatures()];
   const run = (f: (p: SystemPart) => void) => {
     for (const p of parts) {
       try {

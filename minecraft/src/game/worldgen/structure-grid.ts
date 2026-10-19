@@ -1,5 +1,6 @@
 import type { Dim } from "../contracts";
 import { endTopAt } from "./end";
+import { rockAt } from "./nether-features";
 import { netherGen, NB } from "./nether-gen";
 import { hash32 } from "./noise";
 import { overworldGen } from "./overworld";
@@ -39,6 +40,7 @@ const JUNGLE = new Set([BI.jungle, BI.bamboo]);
 const SNOWY = new Set([BI.snowyPlains, BI.snowyTaiga, BI.snowySlopes]);
 const SWAMP = new Set([BI.swamp]);
 const DARK = new Set([BI.darkForest]);
+const TRAIL = new Set([BI.taiga, BI.snowyTaiga, BI.ogPine, BI.ogSpruce, BI.ogBirch, BI.jungle]);
 const DEEP = new Set([BI.deepOcean, BI.deepCold, BI.deepFrozen, BI.deepLukewarm]);
 
 function land(seed: number, x: number, z: number, out: Start, biomes: Set<number>, lo = 63, hi = 140): boolean {
@@ -128,15 +130,28 @@ export const STRUCTS: StructDef[] = [
   { name: "stronghold", dim: "overworld", salt: 0, spacing: 0, sep: 0, reach: 4, check: () => true },
   {
     name: "fortress", dim: "nether", salt: 30084232, spacing: 27, sep: 4, reach: 6, pick: fortressPick,
-    check: (s, x, z, o) => ((o.y = 48 + (hash32(s, x, z, 0xf048) % 16)), (o.biome = netherGen(s).biomeAt(x, z)), true),
+    check: (s, x, z, o) => ((o.y = 48 + (hash32(s, x, z, 0xf048) % 23)), (o.biome = netherGen(s).biomeAt(x, z)), true),
   },
   {
-    name: "bastion_remnant", dim: "nether", salt: 30084232, spacing: 27, sep: 4, reach: 2, pick: (s, rx, rz) => !fortressPick(s, rx, rz),
+    name: "bastion_remnant", dim: "nether", salt: 30084232, spacing: 27, sep: 4, reach: 4, pick: (s, rx, rz) => !fortressPick(s, rx, rz),
     check: (s, x, z, o) => {
       const b = netherGen(s).biomeAt(x, z);
       if (b === NB.basalt) return false;
       o.biome = b;
       o.y = 33;
+      return true;
+    },
+  },
+  {
+    name: "ruined_portal_nether", dim: "nether", salt: 34222645, spacing: 40, sep: 15, reach: 1,
+    check: (s, x, z, o) => {
+      const g = netherGen(s);
+      const h = hash32(s, x, z, 0x2e7a);
+      const pocket = (h & 1) === 0;
+      let y = pocket ? 32 + ((h >>> 1) % 69) : ((h >>> 1) & 1) === 0 ? 27 + ((h >>> 2) % 3) : 29 + ((h >>> 2) % 72);
+      if (!pocket) while (y > 28 && !rockAt(g, x, y - 1, z)) y--;
+      o.y = y;
+      o.biome = g.biomeAt(x, z);
       return true;
     },
   },
@@ -155,6 +170,7 @@ export const STRUCTS: StructDef[] = [
       return true;
     },
   },
+  { name: "trail_ruins", dim: "overworld", salt: 83469867, spacing: 34, sep: 8, reach: 2, check: (s, x, z, o) => land(s, x, z, o, TRAIL, 63, 160) },
 ];
 
 export const STRUCT = Object.fromEntries(STRUCTS.map((d) => [d.name, d])) as Record<string, StructDef>;

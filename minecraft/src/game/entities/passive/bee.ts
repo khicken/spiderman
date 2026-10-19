@@ -1,5 +1,5 @@
 import type { Entity, GameCtx, MobDef } from "../../contracts";
-import { metaOf } from "../../contracts";
+import { idOf, metaOf, stateOf } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
 import { lookAt, playerTargetable } from "../ai";
 import { isBaby } from "../geom";
@@ -8,6 +8,7 @@ import { addEffect, diffId } from "../hostile/brain";
 import { skin, shade, type Pix } from "./paint";
 import { feed, num, sound, type AnimalOpts } from "./common";
 import { flyDrag, flyToward, flyWander } from "./fly";
+import { enterHive, nearestHive } from "../../systems/features/hives";
 
 const YEL = 0xedc343;
 const BRN = 0x43241b;
@@ -93,7 +94,26 @@ function flowerNear(ctx: GameCtx, e: Entity): [number, number, number] | null {
   return null;
 }
 
-const HOME_DIR: [number, number][] = [[0, 1], [-1, 0], [0, -1], [1, 0]];
+const FACE_DIR: [number, number][] = [[1, 0], [-1, 0], [0, 0], [0, 0], [0, 1], [0, -1]];
+const CROPS: Record<string, number> = { wheat: 7, carrots: 7, potatoes: 7, beetroots: 3, melon_stem: 7, pumpkin_stem: 7, sweet_berry_bush: 3, torchflower_crop: 1, pitcher_crop: 4 };
+
+// Vanilla BeeGrowCropGoal: a bee carrying nectar ages one crop below it, 1 in 30 ticks, up to 10 per trip.
+function pollinate(e: Entity, ctx: GameCtx) {
+  if (!e.data.nectar || ctx.random() >= 1 / 30 || num(e, "_grown") >= 10) return;
+  const x = Math.floor(e.body.pos.x), z = Math.floor(e.body.pos.z);
+  for (let dy = 1; dy <= 2; dy++) {
+    const y = Math.floor(e.body.pos.y) - dy;
+    const s = ctx.world.getBlock(x, y, z);
+    const max = CROPS[blockDef(s).name];
+    if (max === undefined) continue;
+    const age = metaOf(s) & 7;
+    if (age >= max) return;
+    ctx.world.setBlock(x, y, z, stateOf(idOf(s), (metaOf(s) & 8) | (age + 1)));
+    ctx.emit({ type: "particles", kind: "dust", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 6, color: 0x80e040 });
+    e.data._grown = num(e, "_grown") + 1;
+    return;
+  }
+}
 
 function homeTick(e: Entity, ctx: GameCtx, accel: number): boolean {
   const hive = e.data.hive as [number, number, number] | undefined;
@@ -105,11 +125,11 @@ function homeTick(e: Entity, ctx: GameCtx, accel: number): boolean {
     e.data.hive = undefined;
     return false;
   }
-  const [fx, fz] = HOME_DIR[metaOf(s) & 3];
+  const [fx, fz] = FACE_DIR[metaOf(s) & 7] ?? [0, 0];
   const d = flyToward(e, hive[0] + 0.5 + fx * 1.2, hive[1] + 0.4, hive[2] + 0.5 + fz * 1.2, accel);
-  if (d < 1 && e.data.nectar) {
-    e.data.nectar = false;
-    sound(ctx, e, "block.beehive.enter", 0.6);
+  if (d < 1.2 && enterHive(ctx, e, hive[0], hive[1], hive[2])) {
+    e.data._grown = 0;
+    return true;
   }
   flyDrag(e);
   return true;
@@ -154,6 +174,11 @@ function tick(e: Entity, ctx: GameCtx) {
     }
     flyDrag(e);
     return;
+  }
+  pollinate(e, ctx);
+  if (!e.data.hive && e.age % 100 === 0) {
+    const h = nearestHive(ctx, e.body.pos.x, e.body.pos.y, e.body.pos.z);
+    if (h) e.data.hive = h;
   }
   if (homeTick(e, ctx, accel)) return;
   const love = num(e, "_love") > 0;

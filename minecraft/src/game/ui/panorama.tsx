@@ -127,6 +127,7 @@ export function Panorama({ blur }: { blur: boolean }) {
         m.dispose();
       }
       renderer.dispose();
+      renderer.forceContextLoss();
     };
   }, [faces]);
 

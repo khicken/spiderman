@@ -9,6 +9,7 @@ import { arraySlot, shiftOutput, shiftTo, type Menu, type Slot } from "./menu";
 import { moveWithinPlayer, playerSlots, type BoundBE, type MenuDeps } from "./menus";
 import { isFuel, smeltResult, smithingResult, stonecutterOptions } from "./recipes";
 import { itemDef } from "./registry";
+import { advTrigger } from "../systems/advancements/bus";
 
 type Pos = { x: number; y: number; z: number };
 
@@ -68,7 +69,9 @@ export function furnaceMenu(d: MenuDeps, kind: FurnaceKind, p: BoundBE): Menu {
 export function brewingMenu(d: MenuDeps, p: BoundBE): Menu {
   const items = ensureItems(p.be, 5);
   const slots: Slot[] = [
-    ...[0, 1, 2].map((i) => arraySlot(items, i, "special", { max: 1, mayPlace: isBottle })),
+    ...[0, 1, 2].map((i) => arraySlot(items, i, "special", { max: 1, mayPlace: isBottle, onTake: (t) => {
+      if (t.item.endsWith("potion") && t.data?.potion && t.data.potion !== "water") advTrigger({ t: "brewed", item: t.item });
+    } })),
     arraySlot(items, 3, "special", { mayPlace: (s) => BREW_INGREDIENTS.has(s.item) }),
     arraySlot(items, 4, "fuel", { mayPlace: (s) => s.item === "blaze_powder" }),
     ...playerSlots(d),
@@ -340,6 +343,8 @@ export function smithingMenu(d: MenuDeps, pos: Pos | undefined): Menu {
     get: () => smithingResult(inputs[0], inputs[1], inputs[2]),
     set: () => {},
     onTake: () => {
+      const made = smithingResult(inputs[0], inputs[1], inputs[2]);
+      if (made && inputs[0]) advTrigger({ t: "smithing", item: made.item, template: inputs[0].item });
       for (let i = 0; i < 3; i++) {
         const s = inputs[i];
         if (s) inputs[i] = s.count > 1 ? { ...s, count: s.count - 1 } : null;

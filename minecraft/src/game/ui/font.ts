@@ -1,4 +1,7 @@
 // Vanilla-like bitmap font: 8 rows per glyph (rows 0-6 above the baseline, row 7 descender), advance = width + 1.
+import { activePacks, packImage, packVersion, type Img } from "../packs";
+
+const URLS = new Map<string, { url: string; width: number; height: number }>();
 
 const G: Record<string, string[]> = {
   "!": ["#", "#", "#", "#", "#", "", "#"],
@@ -118,7 +121,41 @@ for (const [ch, src] of Object.entries(G)) {
 }
 GLYPHS[" "] = { width: 3, rows: new Uint8Array(GLYPH_ROWS * 3) };
 
-export const glyphOf = (ch: string): Glyph => GLYPHS[ch] ?? GLYPHS["?"];
+const CLAUDE_GLYPHS: Record<string, Glyph> = { ...GLYPHS };
+let packGlyphs: Record<string, Glyph> | null = null;
+let fontV = 0;
+
+// Vanilla textures/font/ascii.png: 16x16 cells, char code = row * 16 + column, width = last inked column + 1.
+function loadPackFont() {
+  fontV = packVersion();
+  URLS.clear();
+  const img = activePacks().length ? packImage("font/ascii") : null;
+  packGlyphs = img ? glyphsFromSheet(img) : null;
+}
+
+export function glyphsFromSheet(img: Img): Record<string, Glyph> {
+  const out: Record<string, Glyph> = {};
+  const cw = img.w / 16, ch = img.h / 16, k = cw / 8;
+  const ink = (x: number, y: number) => img.data[(Math.floor(y) * img.w + Math.floor(x)) * 4 + 3] > 127;
+  for (let code = 33; code < 127; code++) {
+    const ox = (code % 16) * cw, oy = Math.floor(code / 16) * ch;
+    let last = -1;
+    for (let x = 0; x < cw; x++) for (let y = 0; y < ch; y++) if (ink(ox + x, oy + y)) last = Math.max(last, x);
+    if (last < 0) continue;
+    const width = Math.max(1, Math.ceil((last + 1) / k));
+    const rows = new Uint8Array(GLYPH_ROWS * width);
+    for (let gy = 0; gy < GLYPH_ROWS; gy++)
+      for (let gx = 0; gx < width; gx++) if (ink(ox + gx * k + k / 2, oy + gy * k + k / 2)) rows[gy * width + gx] = 1;
+    out[String.fromCharCode(code)] = { width, rows };
+  }
+  out[" "] = CLAUDE_GLYPHS[" "];
+  return out;
+}
+
+export function glyphOf(ch: string): Glyph {
+  if (fontV !== packVersion()) loadPackFont();
+  return packGlyphs?.[ch] ?? CLAUDE_GLYPHS[ch] ?? CLAUDE_GLYPHS["?"];
+}
 
 
 export const COLOR_CODES: Record<string, number> = {
@@ -255,9 +292,8 @@ export function rasterText(text: string, color = 0xffffff, shadow = true, amp = 
 }
 
 
-const URLS = new Map<string, { url: string; width: number; height: number }>();
-
 export function textImage(text: string, color = 0xffffff, shadow = true, amp = false) {
+  if (fontV !== packVersion()) loadPackFont();
   const key = `${color}|${shadow ? 1 : 0}|${amp ? 1 : 0}|${text}`;
   const hit = URLS.get(key);
   if (hit) return hit;

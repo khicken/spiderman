@@ -42,6 +42,15 @@ export function segmentBody(ox: number, oy: number, oz: number, dx: number, dy: 
   return segmentBox(ox, oy, oz, dx, dy, dz, b.pos.x - hw, b.pos.y - inflate, b.pos.z - hw, b.pos.x + hw, b.pos.y + b.height + inflate, b.pos.z + hw);
 }
 
+// Squared distance from a point to the nearest point of a body box (vanilla AABB.distanceToSqr).
+export function boxDistSq(x: number, y: number, z: number, b: Body) {
+  const hw = b.width / 2;
+  const dx = Math.max(b.pos.x - hw - x, 0, x - b.pos.x - hw);
+  const dy = Math.max(b.pos.y - y, 0, y - b.pos.y - b.height);
+  const dz = Math.max(b.pos.z - hw - z, 0, z - b.pos.z - hw);
+  return dx * dx + dy * dy + dz * dz;
+}
+
 // Boxes touch when inflated by (ix, iy, iz) on the first one.
 export function bodiesTouch(a: Body, b: Body, ix: number, iy: number, iz: number) {
   const aw = a.width / 2 + ix;

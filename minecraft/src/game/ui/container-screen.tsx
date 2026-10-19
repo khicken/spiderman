@@ -6,15 +6,26 @@ import { Text, useGui } from "./gui";
 import { tooltipLines } from "./item-icon";
 import { LAYOUTS, placeSlots } from "./container-layouts";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
-import { arrowUrl, flameUrl, panelUrl } from "./sprites";
+import { arrowUrl, containerBg, flameUrl, panelUrl } from "./sprites";
 import { useKeyDown } from "./widgets";
-import { PlayerDoll } from "./player-doll";
+import { PlayerDoll, type DollInventory } from "./player-doll";
 import { keyFor } from "./settings";
 import { canStack } from "../items/stack";
 import { maxStack } from "../items/registry";
 import type { EmptySlotKind } from "./sprites";
 import { ContainerExtras } from "./container-extras";
 import { CreativeScreen, type CreativeProps } from "./creative-screen";
+import { RecipeBookPanel, recipeButtonUrl } from "./recipe-book";
+
+const BOOK_KEY = "mc-recipe-book";
+const BOOK_BUTTON: Partial<Record<string, [number, number]>> = { inventory: [104, 61], crafting_table: [5, 34] };
+function bookStored(): boolean {
+  try {
+    return localStorage.getItem(BOOK_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export const OUTSIDE = -999;
 
@@ -26,6 +37,7 @@ export interface ContainerScreenProps {
   onRename?: (name: string) => void; // anvil; falls back to onOption("rename:<name>")
   creative?: CreativeProps; // required when view.kind is "creative"
   advanced?: boolean; // F3+H tooltips
+  inventory?: DollInventory; // the player preview shows its armor and held items
 }
 
 const EMPTY_ICON: Partial<Record<SlotRole, EmptySlotKind>> = {
@@ -47,7 +59,7 @@ export function ContainerScreen(props: ContainerScreenProps) {
   return <SurvivalContainer {...props} />;
 }
 
-function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advanced }: ContainerScreenProps) {
+function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advanced, inventory }: ContainerScreenProps) {
   const { width, height } = useGui();
   const L = LAYOUTS[view.kind];
   const placed = useMemo(() => placeSlots(view.kind, view.groups), [view.kind, view.groups]);
@@ -63,8 +75,17 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
   dragRef.current = drag;
   const cursorRef = useRef(view.cursor);
   cursorRef.current = view.cursor;
-  const left = Math.floor((width - L.w) / 2);
+  const [book, setBook] = useState(bookStored);
+  const bookAt = BOOK_BUTTON[view.kind];
+  const bookOpen = book && !!bookAt;
+  const left = Math.floor((width - L.w) / 2) + (bookOpen && width >= 379 ? 77 : 0);
   const top = Math.floor((height - L.h) / 2);
+  const toggleBook = () => {
+    setBook(!book);
+    try {
+      localStorage.setItem(BOOK_KEY, book ? "0" : "1");
+    } catch {}
+  };
 
   useKeyDown((e) => {
     if (typing.current) return;
@@ -150,6 +171,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
     click(index, kind);
   };
 
+  const bg = containerBg(view.kind, L.w, L.h);
   const cook = view.progress?.cook ?? 0;
   const burn = view.progress?.burn ?? 0;
   const title = L.title === "center" ? <Text text={view.title} color={0x404040} shadow={false} x={L.w / 2} y={6} align="center" /> : <Text text={view.title} color={0x404040} shadow={false} x={L.title[0]} y={L.title[1]} />;
@@ -169,19 +191,31 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
       style={{ position: "absolute", left: 0, top: 0, width, height, background: "linear-gradient(rgba(16,16,16,0.75), rgba(16,16,16,0.82))", pointerEvents: "auto" }}
     >
       <div style={{ position: "absolute", left, top, width: L.w, height: L.h }}>
-        <Img src={panelUrl(L.w, L.h)} x={0} y={0} w={L.w} h={L.h} />
-        {view.kind === "inventory" && <div style={{ position: "absolute", left: 26, top: 8, width: 49, height: 70, background: "#000", boxShadow: "inset 1px 1px 0 #373737, inset -1px -1px 0 #fff" }} />}
-        {view.kind === "inventory" && <PlayerDoll x={26} y={8} w={49} h={70} panel={{ left, top }} mouse={mouse} />}
-        {view.kind === "inventory" && <Img src={arrowUrl(0, 16, 13)} x={135} y={29} w={16} h={13} />}
-        {view.kind === "crafting_table" && <Img src={arrowUrl(0)} x={90} y={35} w={22} h={15} />}
+        {bg ? (
+          <>
+            <Img src={bg.url} x={0} y={0} w={L.w} h={bg.split ?? L.h} />
+            {bg.bottomUrl && <Img src={bg.bottomUrl} x={0} y={bg.split ?? 0} w={L.w} h={L.h - (bg.split ?? 0)} />}
+          </>
+        ) : (
+          <Img src={panelUrl(L.w, L.h)} x={0} y={0} w={L.w} h={L.h} />
+        )}
+        {view.kind === "inventory" && !bg && <div style={{ position: "absolute", left: 26, top: 8, width: 49, height: 70, background: "#000", boxShadow: "inset 1px 1px 0 #373737, inset -1px -1px 0 #fff" }} />}
+        {view.kind === "inventory" && <PlayerDoll x={26} y={8} w={49} h={70} panel={{ left, top }} mouse={mouse} inventory={inventory} />}
+        {view.kind === "inventory" && !bg && <Img src={arrowUrl(0, 16, 13)} x={135} y={29} w={16} h={13} />}
+        {view.kind === "crafting_table" && !bg && <Img src={arrowUrl(0)} x={90} y={35} w={22} h={15} />}
         {(view.kind === "furnace" || view.kind === "blast_furnace" || view.kind === "smoker") && (
           <>
             <Img src={flameUrl(burn)} x={56} y={36} w={14} h={14} />
-            <Img src={arrowUrl(cook, 24, 17)} x={79} y={34} w={24} h={17} />
+            <Img src={arrowUrl(cook, 24, bg ? 16 : 17)} x={79} y={34} w={24} h={bg ? 16 : 17} />
           </>
         )}
         {title}
         {L.invLabel && <Text text="Inventory" color={0x404040} shadow={false} x={L.invLabel[0]} y={L.invLabel[1]} />}
+        {bookAt && (
+          <div style={{ position: "absolute", left: bookAt[0], top: bookAt[1], width: 20, height: 18, cursor: "pointer" }} onMouseDown={(e) => e.stopPropagation()} onClick={toggleBook}>
+            <Img src={recipeButtonUrl()} x={0} y={0} w={20} h={18} />
+          </div>
+        )}
         <ContainerExtras view={view} placed={placed} onOption={onOption} onRename={onRename} setTip={setExtraTip} setTyping={(t) => (typing.current = t)} />
         {placed.map((p) => (
           <SlotBox
@@ -189,6 +223,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
             x={p.x}
             y={p.y}
             big={p.big}
+            frame={!bg}
             stack={preview?.stacks.get(p.slot.index) ?? p.slot.stack}
             disabled={p.slot.disabled}
             empty={EMPTY_ICON[p.slot.role]}
@@ -200,6 +235,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
           />
         ))}
       </div>
+      {bookOpen && <RecipeBookPanel view={view} x={left - 149} y={Math.floor((height - 166) / 2)} setTip={setExtraTip} />}
       <PointerLayer cursor={preview ? preview.cursor : view.cursor} tip={drag ? [] : tip} setCursor={setCursor} setTip={setTip} />
     </div>
   );

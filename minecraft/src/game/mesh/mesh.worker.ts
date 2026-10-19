@@ -1,13 +1,14 @@
 import type { MeshInput, MeshOutput } from "../contracts";
-import { meshSection } from "./mesher";
+import { GFX, meshSection } from "./mesher";
 
 const scope = self as unknown as {
-  onmessage: ((e: MessageEvent<{ id: number; input: MeshInput }>) => void) | null;
+  onmessage: ((e: MessageEvent<{ id: number; input: MeshInput; fancyLeaves?: boolean }>) => void) | null;
   postMessage(msg: unknown, transfer: Transferable[]): void;
 };
 
 scope.onmessage = (e) => {
   const { id, input } = e.data;
+  GFX.fancyLeaves = e.data.fancyLeaves ?? true;
   const out: MeshOutput = meshSection(input);
   const transfer: Transferable[] = [];
   for (const b of [out.opaque, out.cutout, out.translucent]) {

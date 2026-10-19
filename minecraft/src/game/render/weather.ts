@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { WorldApi } from "../contracts";
 import { snowsAt } from "./celestial";
 import { rng } from "./sky-art";
+import { artOr } from "./pack-art";
 
 const VERT = /* glsl */ `
 attribute vec4 aCol;
@@ -52,7 +53,7 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
-function paint(kind: "rain" | "snow") {
+export function paintWeather(kind: "rain" | "snow"): Uint8Array {
   const w = 64, h = 256, px = new Uint8Array(w * h * 4);
   const rand = rng(kind === "rain" ? 5 : 9);
   const n = kind === "rain" ? 70 : 90;
@@ -73,7 +74,12 @@ function paint(kind: "rain" | "snow") {
         }
     }
   }
-  const t = new THREE.DataTexture(px, w, h, THREE.RGBAFormat);
+  return px;
+}
+
+function paint(kind: "rain" | "snow") {
+  const a = artOr(`environment/${kind}`, () => ({ data: paintWeather(kind), w: 64, h: 256 }));
+  const t = new THREE.DataTexture(a.data, a.w, a.h, THREE.RGBAFormat);
   t.magFilter = t.minFilter = THREE.NearestFilter;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.generateMipmaps = false;
@@ -85,8 +91,8 @@ const MAX_R = 10;
 const MAX_COLS = (MAX_R * 2 + 1) ** 2;
 
 export function createWeather(scene: THREE.Scene, world: WorldApi, splash: (x: number, y: number, z: number) => void) {
-  const rainTex = paint("rain");
-  const snowTex = paint("snow");
+  let rainTex = paint("rain");
+  let snowTex = paint("snow");
   const geo = new THREE.InstancedBufferGeometry();
   const base = new THREE.PlaneGeometry(1, 1);
   base.translate(0, 0.5, 0);
@@ -178,6 +184,13 @@ export function createWeather(scene: THREE.Scene, world: WorldApi, splash: (x: n
   return {
     update,
     setRadius(r: number) { radius = Math.min(MAX_R, Math.max(3, r)); lastX = NaN; },
+    reloadArt() {
+      rainTex.dispose(); snowTex.dispose();
+      rainTex = paint("rain");
+      snowTex = paint("snow");
+      uniforms.uRain.value = rainTex;
+      uniforms.uSnow.value = snowTex;
+    },
     dispose() {
       scene.remove(mesh);
       geo.dispose(); base.dispose(); mat.dispose(); rainTex.dispose(); snowTex.dispose();

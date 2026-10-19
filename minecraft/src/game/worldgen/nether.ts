@@ -21,7 +21,7 @@ const NETHER_ORES: OreDef[] = [
   { ore: B.magma_block, deep: 0, count: 4, size: 33, h: ["u", 27, 36], air: 0, replace: NETHERRACK },
   { ore: B.gravel, deep: 0, count: 2, size: 33, h: ["u", 5, 41], air: 0, replace: NETHERRACK },
   { ore: B.blackstone, deep: 0, count: 2, size: 33, h: ["u", 5, 31], air: 0, replace: NETHERRACK },
-  { ore: B.soul_sand, deep: 0, count: 0.3, size: 33, h: ["u", 5, 41], air: 0, replace: NETHERRACK },
+  { ore: B.soul_sand, deep: 0, count: 12, size: 12, h: ["u", 0, 31], air: 0, replace: NETHERRACK, only: (b) => b === NB.soul },
 ];
 
 const prof = new Float32Array(N_LEVELS);
@@ -85,8 +85,7 @@ function netherSurface(g: NetherGen, blocks: Uint16Array, col: number, x: number
       blocks[i] = S(soil ? B.soul_soil : B.soul_sand);
       if (floor && y > 2) blocks[i - 256] = S(soil ? B.soul_soil : B.soul_sand);
     } else if (biome === NB.basalt) {
-      blocks[i] = S(n > 0.1 ? B.blackstone : B.basalt, 0);
-      if (floor && hash01(seed, x, y + 1, z) < 0.04) blocks[i] = S(B.magma_block);
+      blocks[i] = S(ceil || n <= 0.1 ? B.basalt : B.blackstone, 0);
     } else if (biome === NB.wastes && floor && y >= 30 && y <= 35) {
       if (n > 0.25) blocks[i] = S(B.gravel);
       else if (n < -0.3) blocks[i] = S(B.soul_sand);

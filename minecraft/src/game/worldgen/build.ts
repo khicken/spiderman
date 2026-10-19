@@ -124,6 +124,13 @@ export function chest(f: Frame, a: number, y: number, b: number, h: number, tabl
   f.w.blockEntities.push({ x, y: f.y + y, z, type, items: new Array(27).fill(null), data: { lootTable: table, lootSeed: hash32(f.seed, x, f.y + y, z) } });
 }
 
+export function brushable(f: Frame, a: number, y: number, b: number, block: number, loot: string) {
+  const x = wx(f, a, b), z = wz(f, a, b);
+  if (!f.w.inside(x, z)) return;
+  f.w.set(x, f.y + y, z, S(block));
+  f.w.blockEntities.push({ x, y: f.y + y, z, type: "brushable", data: { loot } });
+}
+
 export function spawner(f: Frame, a: number, y: number, b: number, mob: string, block: number) {
   const x = wx(f, a, b), z = wz(f, a, b);
   if (!f.w.inside(x, z)) return;

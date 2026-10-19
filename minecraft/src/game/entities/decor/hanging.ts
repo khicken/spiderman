@@ -3,10 +3,10 @@ import type { Entity, GameCtx, ItemStack, MobDef, MobModel } from "../../contrac
 import { Face, idOf } from "../../contracts";
 import { SOLID } from "../../blocks/registry";
 import { paintBlockTexture } from "../../textures/index";
-import { daylight } from "../ai";
 import { brightnessAt, forgetModel } from "../render";
 import { blockCube, blockStateOfItem, isCubeItem, itemSpriteView } from "../block-cube";
 import { PAINTINGS, paintingTexture, paintingVariant, type PaintingVariant } from "./painting-art";
+import { mapTexture } from "../../systems/features/map-render";
 import { noiseTile, pixBoxes, repeatTexture } from "./pix-box";
 
 const N: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -292,7 +292,7 @@ function orient(e: Entity, root: THREE.Object3D) {
 function lightOf(e: Entity) {
   if (!cur) return 1;
   const n = N[faceOf(e)];
-  return brightnessAt(cur, (e.data.x as number) + 0.5 - n[0] * 0.3, (e.data.y as number) + 0.5 - n[1] * 0.3, (e.data.z as number) + 0.5 - n[2] * 0.3, daylight(cur));
+  return brightnessAt(cur, (e.data.x as number) + 0.5 - n[0] * 0.3, (e.data.y as number) + 0.5 - n[1] * 0.3, (e.data.z as number) + 0.5 - n[2] * 0.3);
 }
 
 function frameModel(glow: boolean): () => MobModel {
@@ -307,12 +307,20 @@ function frameModel(glow: boolean): () => MobModel {
     let itemMats: THREE.Material[] = [];
     const clearItem = () => {
       forgetModel(root);
+      for (const c of holder.children) if (c.userData.ownGeometry) (c as THREE.Mesh).geometry.dispose();
       holder.clear();
       for (const m of itemMats) m.dispose();
       itemMats = [];
     };
     const build = (s: ItemStack) => {
-      if (isCubeItem(s.item)) {
+      const mapTex = mapTexture(s);
+      if (mapTex) {
+        itemMats = [lit(mapTex)];
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), itemMats[0]);
+        m.position.z = 0.5 * PX + 0.004;
+        m.userData.ownGeometry = true;
+        holder.add(m);
+      } else if (isCubeItem(s.item)) {
         const cube = blockCube(blockStateOfItem(s.item));
         itemMats = cube.materials.map(cloneLit);
         const m = new THREE.Mesh(cube.geometry, itemMats);
@@ -333,13 +341,15 @@ function frameModel(glow: boolean): () => MobModel {
       animate(e) {
         orient(e, root);
         const s = e.data.item as ItemStack | undefined;
-        const k = s ? s.item : "";
+        const k = s ? `${s.item}:${s.data?.map ?? ""}` : "";
         if (k !== key) {
           key = k;
           clearItem();
           if (s) build(s);
         }
-        holder.rotation.z = -((e.data.rot as number) ?? 0) * (Math.PI / 4);
+        if (s?.item === "filled_map") mapTexture(s);
+        const rot = (e.data.rot as number) ?? 0;
+        holder.rotation.z = s?.item === "filled_map" ? -(rot % 4) * (Math.PI / 2) : -rot * (Math.PI / 4);
         const br = lightOf(e);
         setBright(frameMats, br);
         setBright(itemMats, glow ? 1 : br);

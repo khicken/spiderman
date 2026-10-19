@@ -5,6 +5,8 @@ import { ensureItems } from "./furnace";
 import { maxStack } from "./registry";
 import { craftRemainder, matchCrafting } from "./recipes";
 import { canStack } from "./stack";
+import { advTrigger } from "../systems/advancements/bus";
+import { advNearPlayer } from "../systems/advancements/hooks";
 
 const FACE_DIR: [number, number, number][] = [
   [1, 0, 0],
@@ -72,5 +74,6 @@ export function crafterCraft(ctx: GameCtx, x: number, y: number, z: number): boo
   }
   ctx.world.setBlockEntity(be, x, y, z);
   ctx.emit({ type: "sound", name: "block.crafter.craft", ...at });
+  if (advNearPlayer(ctx, at.x, at.y, at.z, 5)) advTrigger({ t: "crafter_crafted", item: m.result.item });
   return true;
 }

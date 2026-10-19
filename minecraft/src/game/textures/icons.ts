@@ -1,7 +1,9 @@
 import { itemDef } from "../items/registry";
 import { blockByName } from "../blocks/registry";
 import { paintBlockTexture } from "./index";
-import { paintItemTexture, paintTintedItem, hasItemPainter } from "./items";
+import { packItemTile, paintItemTexture, paintTintedItem, hasItemPainter } from "./items";
+import { packVersion } from "../packs";
+import { resize } from "../packs/img";
 import { blockIconPixels, flatBlockSprite, glintPixels, isFlatBlock, scaleSprite } from "./items-iso";
 
 export { paintItemTexture, paintTintedItem, ITEM_TEXTURE_KEYS, DEFAULT_GLINT } from "./items";
@@ -24,6 +26,8 @@ export function itemIconPixels(name: string, size = ICON_SIZE): Uint8ClampedArra
   const def = itemDef(name);
   const block = !def?.texture ? blockByName(def?.block ?? name) : undefined;
   if (block && !isFlatBlock(block) && !hasItemPainter(name)) return blockIconPixels(block, size);
+  const hd = packItemTile(def?.texture ?? name);
+  if (hd && hd.w > 16) return resize(hd, size, size).data;
   return scaleSprite(itemSpritePixels(name), size);
 }
 
@@ -43,8 +47,18 @@ function toCanvas(rgba: Uint8ClampedArray, size: number): HTMLCanvasElement {
 const URLS = new Map<string, string>();
 const SPRITES = new Map<string, HTMLCanvasElement>();
 let glint = "";
+let cacheV = 0;
+
+function checkPacks() {
+  if (cacheV === packVersion()) return;
+  cacheV = packVersion();
+  URLS.clear();
+  SPRITES.clear();
+  glint = "";
+}
 
 export function itemIconUrl(itemName: string): string {
+  checkPacks();
   let u = URLS.get(itemName);
   if (!u) {
     u = toCanvas(itemIconPixels(itemName), ICON_SIZE).toDataURL();
@@ -54,6 +68,7 @@ export function itemIconUrl(itemName: string): string {
 }
 
 export function tintedIconUrl(itemName: string, color: number): string {
+  checkPacks();
   const k = `${itemName}#${color}`;
   let u = URLS.get(k);
   if (!u) {
@@ -65,6 +80,7 @@ export function tintedIconUrl(itemName: string, color: number): string {
 
 // Shared canvas per item. Callers must not draw on it.
 export function itemSprite(itemName: string): HTMLCanvasElement {
+  checkPacks();
   let c = SPRITES.get(itemName);
   if (!c) {
     c = toCanvas(itemSpritePixels(itemName), 16);
@@ -74,6 +90,7 @@ export function itemSprite(itemName: string): HTMLCanvasElement {
 }
 
 export function enchantGlint(): string {
+  checkPacks();
   if (!glint) glint = toCanvas(glintPixels(64), 64).toDataURL();
   return glint;
 }

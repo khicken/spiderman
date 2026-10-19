@@ -1,6 +1,7 @@
 import type { BlockBehavior, GameCtx, ItemStack } from "../../contracts";
 import { BEHAVIORS } from "../../mechanics";
 import { rollLoot as rollTable } from "../../loot";
+import { advTrigger } from "./bus";
 
 const VAULT_LOOT: [string, number, number][] = [
   ["emerald", 2, 4], ["arrow", 2, 8], ["iron_ingot", 1, 2], ["wind_charge", 1, 3], ["honey_bottle", 1, 2], ["ominous_bottle", 1, 1],
@@ -38,7 +39,7 @@ const useVault: NonNullable<BlockBehavior["use"]> = (ctx, x, y, z, _s, held) => 
   const items = stored.length ? stored : table ? rollTable(table, Math.floor(ctx.random() * 0x7fffffff)) : rollLoot(ctx);
   queue.push({ x, y, z, items, next: ctx.time.tick + 20 });
   ctx.emit({ type: "sound", name: "block.vault.insert_item", x: x + 0.5, y: y + 0.5, z: z + 0.5 });
-  ctx.emit({ type: "advancement", title: "Under Lock and Key" });
+  advTrigger({ t: "vault", ominous: key === "ominous_trial_key" });
   return true;
 };
 

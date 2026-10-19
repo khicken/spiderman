@@ -5,12 +5,12 @@ import {
 } from "./mob-kit";
 
 function zombie(k: number, shift: number, extra: Gen | null = null): MobSounds {
-  const groan = say({ dur: 1.3, f: [95 * k, 105 * k, 82 * k, 70 * k], vowels: ["u", "uh", "o", "u"], rough: 0.65, breath: 0.15, shift, vibRate: 5, vibDepth: 0.03 });
+  const groan = tremolo(say({ dur: 1.3, f: [92 * k, 108 * k, 96 * k, 80 * k, 66 * k], vowels: ["o", "uh", "a", "uh", "u"], rough: 0.7, breath: 0.22, jitter: 0.04, shift, vibRate: 4.5, vibDepth: 0.04 }), 26, 0.3);
   const s: MobSounds = {
     ambient: R(extra ? seq([[groan, 0], [extra, 0.2, 0.5]]) : groan, 0.7),
     hurt: R(say({ dur: 0.35, f: [140 * k, 175 * k, 110 * k], vowels: ["uh", "a", "u"], rough: 0.5, breath: 0.2, shift }), 0.9),
     death: R(say({ dur: 1.3, f: [130 * k, 115 * k, 72 * k, 50 * k], vowels: ["a", "uh", "o", "u"], rough: 0.7, breath: 0.2, shift }), 0.9),
-    step: R(step("mid"), 0.18, 4, 0.1),
+    step: R(step("mid"), 0.75, 4, 0.1),
     attack_wooden_door: R(thud(120, 0.06, 0.6), 0.9),
     break_wooden_door: R(seq([[thud(100, 0.08, 0.9), 0], [clicks([10, 16], 0.3, 400, 1500, 0.8), 0.02]]), 1),
     converted_to_drowned: R(seq([[groan, 0], [bubbles(1, 14, 300, 900), 0.1, 0.6]]), 0.8),
@@ -27,7 +27,7 @@ function skeleton(lo: number, hi: number, wet: boolean, breath = false): MobSoun
     ambient: R(hiss ? seq([[withWet(rattle), 0], [hiss, 0, 0.25]]) : withWet(rattle), 0.6),
     hurt: R(withWet(seq([[clicks([6, 9], 0.18, lo, hi, 0.7), 0], [say({ dur: 0.2, f: [220, 160], vowels: ["uh", "u"], breath: 0.6, rough: 0.4 }), 0, 0.35]])), 0.9),
     death: R(withWet(clicks([22, 32], 0.9, lo * 0.8, hi, 0.7, 1.8)), 0.9),
-    step: R(clicks([2, 3], 0.08, lo, hi, 0.4), 0.18, 4, 0.1),
+    step: R(clicks([2, 3], 0.08, lo, hi, 0.4), 0.75, 4, 0.1),
   };
 }
 
@@ -37,17 +37,20 @@ function hissy(k: number): MobSounds {
     ambient: R(seq([[chitter(0.6), 0], [clicks([3, 6], 0.5, 1500, 3000, 0.3), 0, 0.4]]), 0.6),
     hurt: R(seq([[chitter(0.25), 0], [say({ dur: 0.25, f: [500 * k, 700 * k], vowels: ["hiss", "a"], noiseOnly: true, breath: 0.5 }), 0, 0.6]]), 0.85),
     death: R(say({ dur: 0.9, f: [400 * k, 200 * k], vowels: ["hiss", "a", "uh"], noiseOnly: true, breath: 0.5, shift: 0.8 * k }), 0.85),
-    step: R(clicks([3, 5], 0.1, 1800, 4000, 0.3), 0.15, 4, 0.1),
+    step: R(clicks([3, 5], 0.1, 1800, 4000, 0.3), 0.75, 4, 0.1),
   };
 }
 
 function pig(k: number, rough: number): MobSounds {
-  const oink = say({ dur: 0.14, f: [190 * k, 150 * k], vowels: ["n", "o", "u"], rough, breath: 0.25, pulse: 0.3, shift: 0.9 + k * 0.1 });
+  const oink = seq([
+    [say({ dur: 0.15, f: [175 * k, 205 * k, 140 * k], vowels: ["n", "o", "uh"], rough, breath: 0.35, jitter: 0.05, pulse: 0.3, shift: 0.9 + k * 0.1 }), 0],
+    [noiseSweep(0.09, 1100 * k, 700 * k, 1.4, 0.15, "bandpass"), 0.01, 0.45],
+  ]);
   return {
     ambient: R(repeat(oink, [1, 3], [0.15, 0.22]), 0.7),
     hurt: R(say({ dur: 0.4, f: [520 * k, 720 * k, 450 * k], vowels: ["i", "e", "a"], rough: rough * 0.6, breath: 0.15, pulse: 0.25 }), 0.85),
     death: R(say({ dur: 0.85, f: [560 * k, 650 * k, 380 * k, 250 * k], vowels: ["i", "e", "a", "u"], rough: rough * 0.6, breath: 0.15, pulse: 0.25 }), 0.85),
-    step: R(step("mid"), 0.15, 4, 0.1),
+    step: R(step("mid"), 0.75, 4, 0.1),
   };
 }
 
@@ -56,7 +59,7 @@ function cow(k: number): MobSounds {
     ambient: R(say({ dur: 1.35, f: [105 * k, 125 * k, 118 * k, 95 * k], vowels: ["m", "u", "o", "u"], rough: 0.25, breath: 0.06, pulse: 0.25, vibRate: 4, vibDepth: 0.02 }), 0.7),
     hurt: R(say({ dur: 0.5, f: [145 * k, 170 * k, 120 * k], vowels: ["m", "o", "u"], rough: 0.3, pulse: 0.25 }), 0.85),
     death: R(say({ dur: 1.1, f: [135 * k, 115 * k, 80 * k], vowels: ["m", "o", "u"], rough: 0.4, pulse: 0.25 }), 0.85),
-    step: R(step("heavy"), 0.2, 4, 0.1),
+    step: R(step("heavy"), 0.75, 4, 0.1),
     milk: R(seq([[noiseSweep(0.4, 800, 400, 2, 0.05), 0], [bubbles(0.4, 8, 300, 700), 0.05, 0.6]]), 0.6),
   };
 }
@@ -66,7 +69,7 @@ function bleat(k: number, harsh: number): MobSounds {
     ambient: R(say({ dur: 0.85, f: [300 * k, 325 * k, 290 * k], vowels: ["m", "e", "ae", "a"], vibRate: 7, vibDepth: 0.07, rough: harsh, breath: 0.1 }), 0.7),
     hurt: R(say({ dur: 0.4, f: [390 * k, 430 * k, 350 * k], vowels: ["e", "ae", "a"], vibRate: 8, vibDepth: 0.08, rough: harsh }), 0.85),
     death: R(say({ dur: 0.95, f: [330 * k, 285 * k, 220 * k], vowels: ["e", "a", "uh"], vibRate: 6, vibDepth: 0.07, rough: harsh }), 0.85),
-    step: R(step("light"), 0.15, 4, 0.1),
+    step: R(step("light"), 0.75, 4, 0.1),
     shear: R(repeat(clicks([1, 1], 0.01, 2500, 4000, 0.8), [2, 2], [0.09, 0.12]), 0.7),
   };
 }
@@ -77,7 +80,7 @@ function chicken(): MobSounds {
     ambient: R(repeat(cluck, [2, 4], [0.1, 0.16]), 0.6),
     hurt: R(say({ dur: 0.3, f: [900, 1250, 800], vowels: ["a", "e", "a"], rough: 0.4, pulse: 0.2 }), 0.8),
     death: R(say({ dur: 0.45, f: [950, 1300, 700], vowels: ["a", "e", "u"], rough: 0.4, pulse: 0.2 }), 0.8),
-    step: R(step("click"), 0.12, 4, 0.1),
+    step: R(step("click"), 0.75, 4, 0.1),
     egg: R(seq([[thud(300, 0.02, 0.1), 0]]), 0.6),
   };
 }
@@ -93,7 +96,7 @@ function canine(k: number, screech: number): MobSounds {
     shake: R(tremolo(noiseSweep(0.6, 1500, 1500, 0.8, 0.1), 14, 0.8), 0.5),
     hurt: R(say({ dur: 0.2, f: [800 * k, 1000 * k, 600 * k], vowels: ["i", "a"], rough: 0.3 + screech, breath: 0.2 }), 0.85),
     death: R(say({ dur: 0.9, f: [700 * k, 800 * k, 400 * k], vowels: ["i", "a", "u"], breath: 0.2, vibRate: 7, vibDepth: 0.04 }), 0.85),
-    step: R(step("light"), 0.15, 4, 0.1),
+    step: R(step("light"), 0.75, 4, 0.1),
   };
 }
 
@@ -115,7 +118,7 @@ function feline(k: number): MobSounds {
     beg_for_food: R(say({ dur: 0.9, f: [600 * k, 900 * k, 650 * k], vowels: ["i", "a", "u"], vibRate: 6, vibDepth: 0.03 }), 0.6),
     hurt: R(say({ dur: 0.35, f: [800 * k, 1050 * k, 700 * k], vowels: ["a", "ae"], rough: 0.3, breath: 0.15 }), 0.8),
     death: R(say({ dur: 0.8, f: [750 * k, 900 * k, 450 * k], vowels: ["ae", "a", "u"], breath: 0.15 }), 0.8),
-    step: R(step("light"), 0.1, 4, 0.1),
+    step: R(step("light"), 0.75, 4, 0.1),
   };
 }
 
@@ -130,7 +133,7 @@ function humanoid(f: number, rough: number, nasal: boolean): MobSounds {
     work_cartographer: R(hmm([1, 1.05]), 0.5),
     hurt: R(say({ dur: 0.3, f: [f * 1.2, f * 1.45, f * 1.0], vowels: ["uh", "a", "m"], rough: rough + 0.2, breath: 0.15 }), 0.85),
     death: R(say({ dur: 0.75, f: [f * 1.15, f * 0.9, f * 0.7], vowels: ["uh", "a", "m"], rough: rough + 0.2, breath: 0.15 }), 0.85),
-    step: R(step("mid"), 0.15, 4, 0.1),
+    step: R(step("mid"), 0.75, 4, 0.1),
   };
 }
 
@@ -157,7 +160,7 @@ function enderish(k: number): MobSounds {
     scream: R(scream, 0.9, 2),
     stare: R(scream, 0.9, 2),
     teleport: R(vwoop, 0.8),
-    step: R(step("mid"), 0.15, 4, 0.1),
+    step: R(step("mid"), 0.75, 4, 0.1),
   };
 }
 
@@ -174,7 +177,7 @@ function slimy(f: number, sizzle: boolean): MobSounds {
     death: R(sq(squelch(0.55, f * 0.8)), 0.85),
     death_small: R(squelch(0.35, f * 1.8), 0.7),
     ambient: R(squelch(0.3, f), 0.5),
-    step: R(squelch(0.18, f * 1.5), 0.3, 4, 0.1),
+    step: R(squelch(0.18, f * 1.5), 0.75, 4, 0.1),
   };
 }
 
@@ -183,7 +186,7 @@ function golem(f: number): MobSounds {
     ambient: R(lowpass(noiseSweep(0.7, 300, 250, 6, 0.4), 800), 0.3),
     hurt: R(clank(f, 0.25, 0.4), 0.9),
     death: R(seq([[clank(f * 0.75, 0.6, 0.6), 0], [thud(60, 0.1, 0.8), 0.25]]), 1),
-    step: R(seq([[thud(55, 0.05, 0.4), 0], [clank(f * 1.6, 0.05, 0), 0, 0.25]]), 0.5, 4, 0.08),
+    step: R(seq([[thud(55, 0.05, 0.4), 0], [clank(f * 1.6, 0.05, 0), 0, 0.25]]), 0.75, 4, 0.08),
     attack: R(seq([[whoosh(0.25, 300, 1200), 0], [clank(f * 1.2, 0.15, 0.3), 0.12]]), 0.9),
     repair: R(clank(f * 1.5, 0.2, 0.2), 0.8),
     damage: R(clicks([10, 14], 0.3, 400, 1500, 0.6), 0.8),
@@ -249,7 +252,7 @@ function armadillo(): MobSounds {
     hurt: R(chirps([1, 2], 0.08, 2000, 2800, 0.08), 0.7),
     hurt_reduced: R(clicks([2, 3], 0.05, 1500, 2500, 0.5), 0.6),
     death: R(chirps([1, 1], 0.1, 2400, 1200, 0.3), 0.7),
-    step: R(clicks([2, 3], 0.06, 2000, 4000, 0.3), 0.15, 4, 0.1),
+    step: R(clicks([2, 3], 0.06, 2000, 4000, 0.3), 0.75, 4, 0.1),
     roll: R(clicks([8, 12], 0.4, 1000, 2500, 0.5), 0.5),
     unroll_finish: R(clicks([3, 5], 0.2, 1200, 2500, 0.5), 0.5),
     land: R(thud(150, 0.03, 0.4), 0.5),
@@ -281,9 +284,10 @@ function horse(k: number, hee: boolean): MobSounds {
     snort: R(noiseSweep(0.25, 900, 600, 0.8, 0.05), 0.5),
     hurt: R(say({ dur: 0.4, f: [600 * k, 800 * k, 500 * k], vowels: ["e", "a"], rough: 0.4 }), 0.85),
     death: R(say({ dur: 1, f: [700 * k, 500 * k, 300 * k], vowels: ["e", "a", "u"], rough: 0.4, vibRate: 9, vibDepth: 0.06 }), 0.85),
-    step: R(clicks([1, 2], 0.05, 600, 1200, 0.8), 0.3, 4, 0.08),
+    step: R(clicks([1, 2], 0.05, 600, 1200, 0.8), 0.75, 4, 0.08),
     gallop: R(clicks([2, 3], 0.12, 500, 1100, 0.8), 0.35, 4, 0.08),
     eat: R(clicks([4, 6], 0.3, 1000, 3000, 0.2), 0.5),
+    jump: R(seq([[noiseSweep(0.3, 900, 500, 1, 0.05), 0, 0.5], [thud(90, 0.05, 0.4), 0.02]]), 0.6),
   };
 }
 
@@ -292,7 +296,7 @@ function smallCritter(f: number): MobSounds {
     ambient: R(chirps([1, 3], 0.1, f, f * 1.25, 0.05), 0.5),
     hurt: R(chirps([1, 2], 0.08, f * 1.3, f * 1.6, 0.07), 0.7),
     death: R(chirps([1, 1], 0.1, f * 1.4, f * 0.7, 0.25), 0.7),
-    step: R(clicks([1, 2], 0.04, 1500, 3000, 0.3), 0.12, 4, 0.1),
+    step: R(clicks([1, 2], 0.04, 1500, 3000, 0.3), 0.75, 4, 0.1),
   };
 }
 
@@ -351,7 +355,7 @@ function croaker(): MobSounds {
     tongue: R(squelch(0.12, 900), 0.6),
     eat: R(squelch(0.15, 400), 0.6),
     long_jump: R(whoosh(0.25, 400, 1200), 0.5),
-    step: R(squelch(0.08, 700), 0.2, 4, 0.1),
+    step: R(squelch(0.08, 700), 0.75, 4, 0.1),
   };
 }
 
@@ -372,7 +376,7 @@ export const MOB_SOUNDS: Record<string, MobSounds> = {
     ambient: R(clicks([2, 4], 0.3, 1500, 3000, 0.1), 0.1),
     hurt: R(seq([[clicks([8, 12], 0.15, 500, 1800, 0.3), 0], [hissNoise(0.3, 3000, 0.05), 0, 0.5]]), 0.85),
     death: R(seq([[clicks([14, 20], 0.35, 400, 1500, 0.3), 0], [hissNoise(0.7, 2500, 0.05), 0, 0.6]]), 0.85),
-    step: R(step("light"), 0.15, 4, 0.1),
+    step: R(step("light"), 0.75, 4, 0.1),
   },
   spider: hissy(1),
   cave_spider: hissy(1.25),

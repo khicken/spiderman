@@ -177,7 +177,7 @@ export function tickOrb(e: Entity, ctx: GameCtx) {
   }
   const { landed, vy } = move(e, ctx, e.data.noGravity ? 0 : 0.03);
   if (landed && vy < -0.05) v.y = -vy * 0.9 * 0.3;
-  if (canCollect(ctx) && bodiesTouch(p.body, b, 1, 0.5, 1) && ctx.time.tick >= xpDelayUntil) {
+  if (canCollect(ctx) && bodiesTouch(p.body, b, 1, 0.5, 1) && (ctx.time.tick >= xpDelayUntil || xpDelayUntil - ctx.time.tick > 2)) {
     xpDelayUntil = ctx.time.tick + 2;
     p.addXp((e.data.value as number) ?? 1);
     const r = ctx.random;

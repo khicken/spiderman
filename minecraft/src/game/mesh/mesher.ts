@@ -40,8 +40,9 @@ function meshCube() {
   const tb = (id * 16 + M.meta) * 6;
   const kind = KIND[id];
   const leaves = kind & K.Leaves;
+  const fastLeaves = leaves && !GFX.fancyLeaves;
   const snowy = kind & K.Snowy && KIND[blocks[pi + PY] & 0xfff] & K.SnowCover;
-  const bi = LAYER[id];
+  const bi = fastLeaves ? 0 : LAYER[id];
   const b = BUFS[bi];
   const own = M.light[pi];
   const emit = M.emit;
@@ -52,6 +53,7 @@ function meshCube() {
     if (nid) {
       if (FULL[nid]) continue;
       if (nid === id && !leaves) continue;
+      if (fastLeaves && KIND[nid] & K.Leaves) continue;
       if (occludes(ns, OPP[f])) continue;
     }
     smoothCorners(npi, f, own >> 4, own & 15);
@@ -96,6 +98,8 @@ function meshCube() {
 }
 
 export const GREEDY = { on: true };
+// Fast graphics: leaves are opaque cubes with inner faces culled, like vanilla.
+export const GFX = { fancyLeaves: true };
 
 export const padIndex = (x: number, y: number, z: number) => ((y + 1) * 18 + z + 1) * 18 + x + 1;
 

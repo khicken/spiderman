@@ -298,3 +298,20 @@ export function trimTail(data: Float32Array, sr: number, floor = 0.0008): Float3
   while (end > sr * 0.02 && Math.abs(data[end - 1]) < thr) end--;
   return end < data.length - sr * 0.01 ? data.slice(0, end) : data;
 }
+
+// Scales to a loudest-100ms RMS target so different sounds match in loudness; the peak cap still wins.
+export function normalizeLoudness(data: Float32Array, sr: number, targetDb = -15, peakCap = 0.89): void {
+  const w = Math.max(1, Math.floor(0.1 * sr));
+  let acc = 0;
+  let best = 0;
+  for (let i = 0; i < data.length; i++) {
+    acc += data[i] * data[i];
+    if (i >= w) acc -= data[i - w] * data[i - w];
+    if (acc > best) best = acc;
+  }
+  const rms = Math.sqrt(best / Math.min(w, data.length));
+  const p = peak(data);
+  if (rms < 1e-9 || p < 1e-9) return;
+  const g = Math.min(Math.pow(10, targetDb / 20) / rms, peakCap / p);
+  for (let i = 0; i < data.length; i++) data[i] *= g;
+}

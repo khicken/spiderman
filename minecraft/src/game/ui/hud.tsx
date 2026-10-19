@@ -32,7 +32,7 @@ const HUD_CSS = `
 @keyframes mc-blink{0%,49%{opacity:1}50%,100%{opacity:0.3}}
 `;
 
-const BOSS: Record<string, [number, number]> = {
+export const BOSS: Record<string, [number, number]> = {
   pink: [0xec00b8, 0x56003c],
   blue: [0x00b7ec, 0x003c56],
   red: [0xec3500, 0x561300],
@@ -42,7 +42,7 @@ const BOSS: Record<string, [number, number]> = {
   white: [0xececec, 0x565656],
 };
 
-const lighten = (c: number) => (Math.min(255, ((c >> 16) & 255) + 50) << 16) | (Math.min(255, ((c >> 8) & 255) + 50) << 8) | Math.min(255, (c & 255) + 50);
+export const lighten = (c: number) => (Math.min(255, ((c >> 16) & 255) + 50) << 16) | (Math.min(255, ((c >> 8) & 255) + 50) << 8) | Math.min(255, (c & 255) + 50);
 
 export const effectIcon = (id: string) => {
   const c = EFFECTS[id]?.color ?? 0x808080;

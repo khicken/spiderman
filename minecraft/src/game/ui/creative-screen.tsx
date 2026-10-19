@@ -5,7 +5,7 @@ import type { ClickKind, ContainerView, ItemStack, SlotView } from "../contracts
 import { Text, useGui } from "./gui";
 import { ItemIcon, tooltipLines } from "./item-icon";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
-import { PlayerDoll } from "./player-doll";
+import { PlayerDoll, type DollInventory } from "./player-doll";
 import { keyFor } from "./settings";
 import type { EmptySlotKind } from "./sprites";
 
@@ -26,6 +26,7 @@ interface Props {
   onClose: () => void;
   creative: CreativeProps;
   advanced?: boolean;
+  inventory?: DollInventory;
 }
 
 const W = 195;
@@ -49,7 +50,7 @@ function tabSpots(tabs: CreativeProps["tabs"]) {
 const tabX = (col: number) => (col === 6 ? W - 26 : col * 27);
 const trashUrl = () => pixelUrl("trash", 16, 16, (x, y) => (Math.abs(x - y) <= 1 || Math.abs(x + y - 15) <= 1) && x > 2 && x < 13 ? 0xffd03030 : 0);
 
-export function CreativeScreen({ view, onClick, onClose, creative, advanced }: Props) {
+export function CreativeScreen({ view, onClick, onClose, creative, advanced, inventory }: Props) {
   const { width, height } = useGui();
   const [tab, setTab] = useState(creative.tabs[0]?.id ?? "search");
   const [search, setSearch] = useState("");
@@ -177,7 +178,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced }: P
           {isInv ? (
             <>
               <div style={{ position: "absolute", left: 73, top: 6, width: 32, height: 43, background: "#000" }} />
-              <PlayerDoll x={73} y={6} w={32} h={43} scale={20} panel={{ left, top }} mouse={mouse} />
+              <PlayerDoll x={73} y={6} w={32} h={43} scale={20} panel={{ left, top }} mouse={mouse} inventory={inventory} />
               {slots.filter((s) => ARMOR_POS[s.role]).map((s) => playerSlot(s, ARMOR_POS[s.role][0], ARMOR_POS[s.role][1]))}
               {slots.filter((s) => s.role === "offhand").map((s) => playerSlot(s, 35, 20))}
               {storage.map((s, i) => playerSlot(s, 9 + (i % 9) * 18, 54 + Math.floor(i / 9) * 18))}

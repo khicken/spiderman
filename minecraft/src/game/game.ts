@@ -1,6 +1,6 @@
 import type { ContainerView, Dim, EntityApi, GameCtx, GameEvent, HudState, Quality, RendererApi } from "./contracts";
-import { AIR, DAY_TICKS, MIN_Y, SET_NOTIFY, idOf, stateOf } from "./contracts";
-import { BLOCKS, OPAQUE, SOLID, blockDef, blockId } from "./blocks/registry";
+import { AIR, DAY_TICKS, MIN_Y, idOf, stateOf } from "./contracts";
+import { BLOCKS, blockDef, blockId } from "./blocks/registry";
 import { itemDef } from "./items/registry";
 import { isPotionItem, potionItemName, potionOf } from "./items/potions";
 import { createAudio, type GameAudio } from "./audio";
@@ -9,6 +9,8 @@ import { createHostileWorld } from "./entities/hostile";
 import { createInventory } from "./items";
 import { BEHAVIORS } from "./mechanics";
 import { bedStandSpot, wakeUp, type BedSpawn } from "./mechanics/interact";
+import { portalArrived } from "./mechanics/portal";
+import { buildPortal as forcePortal, forgetPortal, nearestKnown, scanPortal } from "./mechanics/portal-link";
 import { createInput, createPlayer } from "./player";
 import { setKeyBinds } from "./player/input";
 import { createTouchControls, isTouchDevice } from "./player/touch";
@@ -22,6 +24,8 @@ import type { Settings } from "./ui/settings";
 import { createWorld, type World } from "./world";
 import { loadEntities, saveEntities, saveMeta, type WorldMeta } from "./world/save";
 import { findSpawn } from "./worldgen";
+import type { GameInternals, NetLink } from "./net";
+import type { LanOptions } from "./net/host";
 
 export type GamePhase = "loading" | "playing";
 
@@ -37,6 +41,7 @@ export interface GameUi {
   action(a: string): void; // input actions the page handles: pause, chat, command, debug, hide_gui
   toast?(t: Toast): void;
   credits?(): void;
+  lockHint?(show: boolean): void; // gameplay wants pointer lock but the browser refused it
 }
 
 export interface GameOptions {
@@ -44,6 +49,7 @@ export interface GameOptions {
   settings: Settings;
   ui: GameUi;
   audio?: GameAudio;
+  net?: NetLink; // multiplayer client session
 }
 
 type Meta = WorldMeta & { hostile?: unknown; systems?: unknown };
@@ -51,6 +57,8 @@ type Meta = WorldMeta & { hostile?: unknown; systems?: unknown };
 const TICK = 1 / 20;
 const MAX_TICKS = 4;
 const AUTOSAVE_MS = 30000;
+const SPAWN_R = 3;
+const LOAD_TIMEOUT_MS = 20000;
 const FURNACE_LIKE = new Set(["furnace", "lit_furnace", "blast_furnace", "lit_blast_furnace", "smoker", "lit_smoker", "brewing_stand", "hopper"]);
 const FACING = ["north (Towards negative Z)", "east (Towards positive X)", "south (Towards positive Z)", "west (Towards negative X)"];
 const r2 = (v: number) => v.toFixed(3);
@@ -80,6 +88,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   let containerOpen = false;
   let disposed = false;
   let paused = false;
+  let net: NetLink | null = opts.net ?? null;
+  let adopted = false;
 
   const ctx = {
     rules: meta.rules,
@@ -95,6 +105,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
   const inventory = createInventory(getCtx);
   ctx.inventory = inventory;
+  net?.wrapInventory?.(inventory);
   const rawOpen = inventory.open.bind(inventory);
   const rawClose = inventory.close.bind(inventory);
   inventory.open = (kind, at) => {
@@ -109,14 +120,21 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
   function buildStage(d: Dim) {
     dim = d;
-    world = createWorld({ seed: meta.seed, dim: d, worldId: meta.id, behaviors: BEHAVIORS, getCtx });
+    const taken = net?.adoptWorld?.(d) ?? null;
+    adopted = !!taken;
+    world = taken?.world ?? createWorld({ seed: meta.seed, dim: d, worldId: meta.id, behaviors: BEHAVIORS, getCtx: () => net?.ctxFor?.(d) ?? ctx, remote: net?.remoteWorld?.(d) });
     ctx.world = world;
     renderer = createRenderer(canvas, world);
     ctx.renderer = renderer;
     renderer.resize(window.innerWidth, window.innerHeight);
     applySettings();
-    entities = createEntities(getCtx);
+    const made = createEntities(getCtx);
+    entities = net?.wrapEntities?.(made) ?? made;
     ctx.entities = entities;
+    if (taken) {
+      entities.load(taken.saves);
+      world.reannounce();
+    }
     offWorld = world.on((e) => {
       if (e.type !== "loaded") return;
       const list = world.takeEntities(e.cx, e.cz);
@@ -129,9 +147,10 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     if (staged) systems.unstage();
     staged = false;
     offWorld?.();
+    const saves = net?.releaseWorld ? entities.save() : null;
     entities.dispose();
     renderer.dispose();
-    world.dispose();
+    if (!saves || !net?.releaseWorld?.(dim, world, saves)) world.dispose();
   }
 
   buildStage(dim);
@@ -143,14 +162,42 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   if (meta.player) player.load(meta.player);
   systems.load(meta.systems);
   const hasSave = !!meta.player;
+  const internals: GameInternals = {
+    ctx,
+    meta,
+    get world() {
+      return world;
+    },
+    get entities() {
+      return entities;
+    },
+    get dim() {
+      return dim;
+    },
+    get phase() {
+      return phase;
+    },
+    get settings() {
+      return settings;
+    },
+    player,
+    inventory,
+    chat: (text, color) => ui.chat(text, color),
+    actionBar: (text) => ui.actionBar?.(text),
+    route: (e) => route(e),
+    systemsSave: () => systems.save(),
+  };
+  net?.attach?.(internals);
   const sp = findSpawn(meta.seed);
   if (!meta.spawn) meta.spawn = { x: sp.x, y: 80, z: sp.z };
   if (!hasSave) player.spawn = { ...meta.spawn };
 
   let phase: GamePhase = "loading";
+  let portalTarget = { x: 0, y: 0, z: 0 };
   let target = hasSave ? { x: player.body.pos.x, y: player.body.pos.y, z: player.body.pos.z } : { x: meta.spawn.x + 0.5, y: NaN, z: meta.spawn.z + 0.5 };
   let arrival: "spawn" | "portal" | "end" | "saved" = hasSave ? "saved" : "spawn";
   let loadStart = performance.now();
+  let loadShown = 0;
   let entitiesToLoad: Dim | null = dim;
 
   function setPhase(p: GamePhase, progress: number) {
@@ -160,6 +207,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
   function route(e: GameEvent) {
     systems.onEvent(e);
+    net?.event(e);
     switch (e.type) {
       case "sound":
         audio.play(e.name, e.x, e.y, e.z, e.volume, e.pitch);
@@ -232,7 +280,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       ui.chat(`Saved screenshot as ${link.download}`);
       return;
     }
-    if (a === "pause" || a === "chat" || a === "command" || a === "debug" || a === "hide_gui") ui.action(a);
+    if (a === "pause" || a === "chat" || a === "command" || a === "debug" || a === "hide_gui" || a === "advancements") ui.action(a);
   });
 
   function applySettings() {
@@ -254,81 +302,27 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
 
   function changeDim(e: Extract<GameEvent, { type: "change_dim" }>) {
-    void saveEntities(meta.id, dim, entities.save()).catch(() => {});
-    void world.save().catch(() => {});
+    if (net?.role !== "client") {
+      void saveEntities(meta.id, dim, entities.save()).catch(() => {});
+      void world.save().catch(() => {});
+    }
     if (inventory.view()) inventory.close();
+    audio.changeDim();
     disposeStage();
     buildStage(e.dim);
     meta.dim = e.dim;
     target = { x: e.x, y: e.y, z: e.z };
     arrival = e.dim === "end" ? "end" : e.dim === "overworld" && e.x === player.spawn.x && e.z === player.spawn.z ? "spawn" : "portal";
     if (arrival === "spawn") target.y = NaN;
-    entitiesToLoad = e.dim;
+    portalTarget = { ...target };
+    const linked = arrival === "portal" ? nearestKnown(e.dim, Math.floor(e.x), Math.floor(e.y), Math.floor(e.z)) : null;
+    if (linked) target = { x: linked[0] + 0.5, y: linked[1], z: linked[2] + 0.5 };
+    entitiesToLoad = adopted || net?.role === "client" ? null : e.dim;
     player.teleport(e.x, e.y, e.z);
     loadStart = performance.now();
+    loadShown = 0;
     input.enabled = false;
     setPhase("loading", 0);
-  }
-
-  function solidAt(x: number, y: number, z: number) {
-    const id = idOf(world.getBlock(x, y, z));
-    return !!SOLID[id] && !!OPAQUE[id];
-  }
-  const free = (x: number, y: number, z: number) => {
-    const s = world.getBlock(x, y, z);
-    return s === AIR || blockDef(s).replaceable === true;
-  };
-
-  function findPortalBlock(x: number, y: number, z: number): [number, number, number] | null {
-    const portal = blockId("nether_portal");
-    const top = dim === "nether" ? 126 : 319;
-    let best: [number, number, number] | null = null;
-    let bestD = Infinity;
-    for (let dx = -16; dx <= 16; dx++) {
-      for (let dz = -16; dz <= 16; dz++) {
-        for (let yy = Math.max(MIN_Y, dim === "nether" ? 1 : MIN_Y); yy <= top; yy++) {
-          if (idOf(world.getBlock(x + dx, yy, z + dz)) !== portal) continue;
-          if (idOf(world.getBlock(x + dx, yy - 1, z + dz)) === portal) continue;
-          const d = dx * dx + dz * dz + (yy - y) * (yy - y);
-          if (d < bestD) {
-            bestD = d;
-            best = [x + dx, yy, z + dz];
-          }
-        }
-      }
-    }
-    return best;
-  }
-
-  function buildPortal(x: number, z: number, yHint: number): [number, number, number] {
-    let y = -1;
-    const lo = dim === "nether" ? 32 : Math.max(MIN_Y + 8, 0);
-    const hi = dim === "nether" ? 110 : Math.min(world.topY(x, z) + 1, 300);
-    const ok = (yy: number) => solidAt(x, yy - 1, z) && solidAt(x + 1, yy - 1, z) && [0, 1, 2, 3].every((h) => free(x - 1, yy + h, z) && free(x, yy + h, z) && free(x + 1, yy + h, z) && free(x + 2, yy + h, z));
-    let bestD = Infinity;
-    for (let yy = lo; yy <= hi; yy++) if (ok(yy) && Math.abs(yy - yHint) < bestD) {
-      bestD = Math.abs(yy - yHint);
-      y = yy;
-    }
-    const obsidian = stateOf(blockId("obsidian"));
-    if (y < 0) {
-      y = dim === "nether" ? 70 : Math.max(70, world.topY(x, z) + 1);
-      for (let dx = -1; dx <= 2; dx++) for (let dz = -1; dz <= 1; dz++) {
-        world.setBlock(x + dx, y - 1, z + dz, obsidian, SET_NOTIFY);
-        for (let h = 0; h < 4; h++) world.setBlock(x + dx, y + h, z + dz, AIR, SET_NOTIFY);
-      }
-    }
-    for (let i = -1; i <= 2; i++) {
-      world.setBlock(x + i, y - 1, z, obsidian, 0);
-      world.setBlock(x + i, y + 3, z, obsidian, 0);
-    }
-    for (let h = 0; h < 3; h++) {
-      world.setBlock(x - 1, y + h, z, obsidian, 0);
-      world.setBlock(x + 2, y + h, z, obsidian, 0);
-    }
-    const portal = stateOf(blockId("nether_portal"), 1);
-    for (let h = 0; h < 3; h++) for (let i = 0; i < 2; i++) world.setBlock(x + i, y + h, z, portal, 0);
-    return [x, y, z];
   }
 
   function placeEndPlatform() {
@@ -368,8 +362,16 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       placeEndPlatform();
       player.teleport(100.5, 49, 0.5);
     } else if (arrival === "portal") {
-      const found = findPortalBlock(tx, Number.isFinite(target.y) ? Math.floor(target.y) : 64, tz) ?? buildPortal(tx, tz, Math.floor(target.y));
+      const ty = Number.isFinite(target.y) ? Math.floor(target.y) : 64;
+      let found = scanPortal(world, tx, ty, tz, 16);
+      if (!found && (tx !== Math.floor(portalTarget.x) || tz !== Math.floor(portalTarget.z))) {
+        forgetPortal(dim, tx, ty, tz);
+        found = scanPortal(world, Math.floor(portalTarget.x), ty, Math.floor(portalTarget.z), 16);
+      }
+      found ??= forcePortal(world, Math.floor(portalTarget.x), Math.floor(portalTarget.y), Math.floor(portalTarget.z), (x, y, z, st) => world.setBlock(x, y, z, st, 0));
       player.teleport(found[0] + 0.5, found[1], found[2] + 0.5);
+      portalArrived(time.tick);
+      route({ type: "sound", name: "block.portal.travel", x: found[0] + 0.5, y: found[1] + 1, z: found[2] + 0.5, volume: 0.25, pitch: Math.random() * 0.4 + 0.8 });
     } else if (arrival === "spawn") {
       const [sx, sy, sz] = safeSpot(tx, tz);
       if (!hasSave && player.spawn.y === 80) player.spawn = { x: sx, y: sy, z: sz };
@@ -392,24 +394,39 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     }
     setPhase("playing", 1);
     resume();
+    grabFocus();
   }
 
-  function loadingProgress(): number {
-    const tx = target.x, tz = target.z;
-    const loaded = world.loadedChunks();
-    const pend = world.pendingChunks();
-    const chunkP = loaded / Math.max(1, loaded + pend);
-    const q = renderer.meshQueue();
-    const meshP = 1 / (1 + q / 40);
-    const ready = world.ready(tx, tz) && world.ready(tx + 16, tz) && world.ready(tx - 16, tz) && world.ready(tx, tz + 16) && world.ready(tx, tz - 16);
-    return ready ? Math.min(1, 0.6 + 0.4 * meshP) : Math.min(0.6, chunkP * 0.6);
+  // Pointer lock needs a recent user gesture. Without one it fails and the frame loop shows the click hint.
+  function grabFocus() {
+    if (touch || !input.enabled) return;
+    canvas.focus({ preventScroll: true });
+    input.requestLock();
   }
 
-  function loadingDone(): boolean {
-    const tx = target.x, tz = target.z;
-    const ready = world.ready(tx, tz) && world.ready(tx + 16, tz) && world.ready(tx - 16, tz) && world.ready(tx, tz + 16) && world.ready(tx, tz - 16);
-    if (!ready) return false;
-    return renderer.meshQueue() < 8 || performance.now() - loadStart > 15000;
+  // Vanilla-style spawn area: a fixed chunk square that must be generated, lit and meshed before play.
+  function spawnArea() {
+    const r = Math.min(SPAWN_R, settings.renderDistance);
+    const tcx = Math.floor(target.x) >> 4, tcz = Math.floor(target.z) >> 4;
+    let gen = 0, lit = 0, meshed = 0;
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      const x = (tcx + dx) << 4, z = (tcz + dz) << 4;
+      if (!world.isLoaded(x, z)) continue;
+      gen++;
+      if (!world.ready(x, z)) continue;
+      lit++;
+      if (renderer.chunkMeshed?.(tcx + dx, tcz + dz) ?? renderer.meshQueue() === 0) meshed++;
+    }
+    return { gen, lit, meshed, total: (2 * r + 1) * (2 * r + 1) };
+  }
+
+  function loadingStep(now: number): boolean {
+    const a = spawnArea();
+    loadShown = Math.max(loadShown, (a.gen + a.lit + a.meshed) / (3 * a.total));
+    if (a.meshed === a.total) return true;
+    if (now - loadStart < LOAD_TIMEOUT_MS) return false;
+    console.warn(`spawn area not ready after ${LOAD_TIMEOUT_MS / 1000} s, entering anyway: ${a.gen}/${a.total} generated, ${a.lit} lit, ${a.meshed} meshed, ${Math.round(world.pendingChunks())} chunks pending, ${renderer.meshQueue()} sections queued`);
+    return true;
   }
 
   function resume() {
@@ -447,6 +464,14 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
 
   function tick() {
+    if (net?.role === "client") {
+      time.tick++;
+      net.tick();
+      player.tick(ctx);
+      net.afterTick?.();
+      tickPortalFx();
+      return;
+    }
     time.tick++;
     world.tick(ctx);
     entities.tick(ctx);
@@ -454,6 +479,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     inventory.tick(ctx);
     player.tick(ctx);
     systems.tick();
+    net?.tick();
     tickPortalFx();
     if (meta.rules.doDaylightCycle && dim === "overworld") {
       if (++time.dayTime >= DAY_TICKS) {
@@ -471,6 +497,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   const prof = { frame: 0, worst: 0, worstAcc: 0, tick: 0, ticks: 0, entities: 0, world: 0, render: 0 };
   const ema = (a: number, b: number) => a + (b - a) * 0.1;
   let hudAt = 0;
+  let unlockedAt = 0;
+  let lockHint = false;
   let saveAt = last + AUTOSAVE_MS;
   let lastView = -1;
   let dark = false;
@@ -498,15 +526,15 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         world.update(target.x, target.z, settings.renderDistance);
         renderer.camera.position.set(target.x, Number.isFinite(target.y) ? target.y + 1.6 : 100, target.z);
         renderer.render(dt);
-        if (loadingDone()) arrive();
-        else if (now - hudAt > 100) {
+        if (now - hudAt > 100) {
           hudAt = now;
-          ui.phase("loading", loadingProgress());
+          if (loadingStep(now)) arrive();
+          else ui.phase("loading", loadShown);
         }
         return;
       }
       const p0 = performance.now();
-      if (!paused) {
+      if (!paused || net) {
         acc += dt;
         let n = 0;
         while (acc >= TICK && n < MAX_TICKS) {
@@ -524,12 +552,13 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
           return;
         }
       }
-      const pt = paused ? 1 : acc / TICK;
+      const pt = paused && !net ? 1 : acc / TICK;
       touch?.update(input.enabled);
       const p1 = performance.now();
       player.frame(dt, pt);
       entities.frame(dt, pt);
       systems.frame(dt);
+      net?.frame(dt);
       const p2 = performance.now();
       world.update(player.body.pos.x, player.body.pos.z, settings.renderDistance);
       const p3 = performance.now();
@@ -548,10 +577,17 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       if (now - hudAt > 100) {
         hudAt = now;
         const pos = player.body.pos;
-        const isDark = dim !== "overworld" || world.getSkyLight(Math.floor(pos.x), Math.floor(pos.y + 1), Math.floor(pos.z)) < 8;
+        const isDark = dim === "end" || (dim === "overworld" && world.getSkyLight(Math.floor(pos.x), Math.floor(pos.y + 1), Math.floor(pos.z)) < 8);
         if (isDark !== dark) dark = isDark;
         audio.setAmbient({ dark, rain: dim === "overworld" ? time.rain : 0 });
+        audio.setBiomeAmbient(dim === "nether" ? world.getBiome(Math.floor(pos.x), Math.floor(pos.z)).name : null);
+        if (!paused) audio.setMusic(dim === "nether" ? "nether" : dim === "end" ? "end" : player.gameMode === "creative" ? "creative" : player.air < 300 ? "underwater" : "overworld");
         ui.hud(hudState());
+        const wantLock = !touch && input.enabled && !input.pointerLocked;
+        if (!wantLock) unlockedAt = 0;
+        else if (!unlockedAt) unlockedAt = now;
+        const hint = wantLock && now - unlockedAt > 400;
+        if (hint !== lockHint) ui.lockHint?.((lockHint = hint));
       }
       if (now > saveAt) {
         saveAt = now + AUTOSAVE_MS;
@@ -721,6 +757,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
 
   async function save() {
+    if (net?.role === "client") return;
     try {
       meta.lastPlayed = Date.now();
       meta.dayTime = time.dayTime;
@@ -734,6 +771,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       meta.hostile = hostile.save();
       meta.systems = systems.save();
       meta.gameMode = player.gameMode;
+      net?.beforeSave?.(meta);
       await Promise.all([world.save(), saveEntities(meta.id, dim, entities.save()), saveMeta(meta)]);
     } catch (err) {
       console.warn("save failed", err);
@@ -765,6 +803,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     },
     setPaused(p: boolean) {
       paused = p;
+      audio.setPaused(p);
       if (p) input.enabled = false;
       else resume();
     },
@@ -773,13 +812,14 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       else resume();
     },
     lock() {
+      if (!touch) canvas.focus({ preventScroll: true });
       input.requestLock();
     },
     leaveBed() {
       wakeUp(ctx);
     },
     command(line: string): string[] {
-      return runCommand(ctx, line);
+      return net?.command?.(line) ?? runCommand(ctx, line);
     },
     clickSlot: (i: number, c: Parameters<typeof inventory.clickSlot>[1]) => inventory.clickSlot(i, c),
     closeContainer() {
@@ -823,9 +863,24 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       await save();
       handle.dispose();
     },
+    get net() {
+      return net;
+    },
+    async openToLan(o: LanOptions): Promise<string> {
+      if (net) return net.code;
+      const { createHost } = await import("./net/host");
+      net = await createHost(internals, o);
+      return net.code;
+    },
+    chat(text: string) {
+      if (net) net.say(text);
+      else ui.chat(`<Player> ${text}`);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
+      net?.dispose();
+      net = null;
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       offAction();
@@ -837,7 +892,11 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       touch?.dispose();
       input.dispose();
       if (ownAudio) audio.dispose();
-      else audio.setMusic("menu");
+      else {
+        audio.stopAll();
+        audio.setPaused(false);
+        audio.setMusic("menu");
+      }
       if (typeof window !== "undefined") delete (window as { __mc?: unknown }).__mc;
     },
   };

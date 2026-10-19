@@ -20,10 +20,11 @@ export function heal(p: PlayerState, amount: number): void {
 
 export function addExhaustion(p: PlayerState, v: number): void {
   if (invulnerableMode(p)) return;
+  if (p.remote) return p.remote.exhaust(v);
   p.exhaustion = Math.min(40, p.exhaustion + v);
 }
 
-function armorTotals(ctx: GameCtx): { points: number; toughness: number; kbRes: number } {
+export function armorTotals(ctx: Pick<GameCtx, "inventory">): { points: number; toughness: number; kbRes: number } {
   let points = 0, toughness = 0, kbRes = 0;
   for (let i = 36; i <= 39; i++) {
     const s = ctx.inventory.slots[i];
@@ -36,7 +37,7 @@ function armorTotals(ctx: GameCtx): { points: number; toughness: number; kbRes: 
   return { points, toughness, kbRes };
 }
 
-function protectionEpf(ctx: GameCtx, source: DamageSource): number {
+export function protectionEpf(ctx: Pick<GameCtx, "inventory">, source: DamageSource): number {
   let epf = 0;
   for (let i = 36; i <= 39; i++) {
     const s = ctx.inventory.slots[i];
@@ -45,7 +46,7 @@ function protectionEpf(ctx: GameCtx, source: DamageSource): number {
     if (source === "fire" || source === "lava") epf += 2 * ench(s, "fire_protection");
     if (source === "fall") epf += 3 * ench(s, "feather_falling");
     if (source === "explosion") epf += 2 * ench(s, "blast_protection");
-    if (source === "arrow") epf += 2 * ench(s, "projectile_protection");
+    if (source === "arrow" || source === "trident") epf += 2 * ench(s, "projectile_protection");
   }
   return epf;
 }
@@ -71,7 +72,7 @@ export function damageSlot(ctx: GameCtx, i: number, amount: number): void {
   } else ctx.inventory.setSlot(i, { ...s, damage: dmg });
 }
 
-function useTotem(p: PlayerState, ctx: GameCtx): boolean {
+export function useTotem(p: PlayerState, ctx: GameCtx): boolean {
   let slot = -1;
   if (ctx.inventory.held()?.item === "totem_of_undying") slot = ctx.inventory.selected;
   else if (ctx.inventory.slots[40]?.item === "totem_of_undying") slot = 40;
@@ -102,7 +103,7 @@ function blockWithShield(p: PlayerState, ctx: GameCtx, amount: number, from: { x
   if (amount >= 3) damageSlot(ctx, slot, 1 + Math.floor(amount));
   if (melee) {
     ctx.entities.knockback(melee.id, dx, dz, 0.5);
-    if (String(melee.data.held ?? "").endsWith("_axe")) disableShield(p, ctx);
+    if (String(melee.data.held ?? "").endsWith("_axe") && ctx.random() < 0.25) disableShield(p, ctx);
   }
   return true;
 }
@@ -114,10 +115,11 @@ export function disableShield(p: PlayerState, ctx: GameCtx): void {
   sound(ctx, "item.shield.break", p, 0.8, 0.8 + ctx.random() * 0.4);
 }
 
-function difficultyScale(ctx: GameCtx, amount: number, source: DamageSource): number {
-  if (source !== "mob" && source !== "arrow" && source !== "explosion" && source !== "player") return amount;
+// Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them.
+export function difficultyScale(ctx: Pick<GameCtx, "rules">, amount: number, source: DamageSource, attacker?: Entity): number {
+  if (source !== "mob" && source !== "explosion" && !((source === "arrow" || source === "trident") && attacker)) return amount;
   switch (ctx.rules.difficulty) {
-    case "peaceful": return source === "explosion" ? amount : 0;
+    case "peaceful": return 0;
     case "easy": return Math.min(amount / 2 + 1, amount);
     case "hard": return amount * 1.5;
     default: return amount;
@@ -136,7 +138,11 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
   if (p.dead || amount <= 0) return;
   if (invulnerableMode(p) && source !== "void") return;
   if ((source === "fire" || source === "lava") && p.hasEffect("fire_resistance")) return;
-  amount = difficultyScale(ctx, amount, source);
+  if (p.remote) {
+    p.damageFrom = null;
+    return p.remote.damage(amount, source, attacker);
+  }
+  amount = difficultyScale(ctx, amount, source, attacker);
   if (amount <= 0) return;
   const from = p.damageFrom ?? (attacker ? attacker.body.pos : null);
   p.damageFrom = null;
@@ -153,8 +159,8 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
   }
   if (!BYPASS_ARMOR.has(source)) {
     const a = armorTotals(ctx);
+    const per = Math.max(1, Math.floor(dealt / 4));
     dealt = armorReduce(dealt, a.points, a.toughness);
-    const per = Math.max(1, Math.floor(amount / 4));
     for (let i = 36; i <= 39; i++) if (ctx.inventory.slots[i]) damageSlot(ctx, i, per);
   }
   const res = p.hasEffect("resistance");
@@ -182,17 +188,6 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
     ctx.emit({ type: "player_hurt", amount: dealt, source });
   }
   if (p.health <= 0 && !useTotem(p, ctx)) die(p, ctx, source, attacker);
-}
-
-function knockback(p: PlayerState, ctx: GameCtx, dx: number, dz: number, strength: number): void {
-  strength *= 1 - Math.min(1, armorTotals(ctx).kbRes);
-  if (strength <= 0) return;
-  const len = Math.hypot(dx, dz);
-  if (len < 1e-5) return;
-  const v = p.body.vel;
-  v.x = v.x / 2 - (dx / len) * strength;
-  v.z = v.z / 2 - (dz / len) * strength;
-  if (p.body.onGround) v.y = Math.min(0.4, v.y / 2 + strength);
 }
 
 function thorns(ctx: GameCtx, attacker: Entity): void {
@@ -449,7 +444,7 @@ export function tickSurvival(p: PlayerState, ctx: GameCtx): void {
   if (p.hurtTime > 0) p.hurtTime--;
   tickEffects(p);
   if (p.dead) return;
-  tickFood(p, ctx);
+  if (!p.remote) tickFood(p, ctx);
   if (p.dead) return;
   tickEnvironment(p, ctx);
 }
@@ -472,4 +467,29 @@ export function respawnState(p: PlayerState): void {
   p.body.vel.set(0, 0, 0);
   p.body.fallDistance = 0;
   p.deathMessage = "";
+}
+
+// Multiplayer client: the host applied a hit; play what the local damage() would have shown.
+export function remoteHurt(p: PlayerState, amount: number, source: DamageSource, armorPer: number, ax?: number, az?: number): void {
+  const ctx = p.ctx();
+  p.invulnerable = 20;
+  p.hurtTime = 10;
+  p.lastSource = source;
+  p.hurtDir = ax !== undefined && az !== undefined ? (Math.atan2(az - p.body.pos.z, ax - p.body.pos.x) * 180) / Math.PI - (p.yaw * -180) / Math.PI : 0;
+  for (let i = 36; i <= 39 && armorPer > 0; i++) if (ctx.inventory.slots[i]) damageSlot(ctx, i, armorPer);
+  sound(ctx, hurtSound(source), p, 1, (ctx.random() - ctx.random()) * 0.2 + 1);
+  ctx.emit({ type: "player_hurt", amount, source });
+}
+
+export function remoteBlock(p: PlayerState, amount: number, axe: boolean): void {
+  const ctx = p.ctx();
+  const slot = p.using?.hand === "off" ? 40 : ctx.inventory.selected;
+  sound(ctx, "item.shield.block", p, 1, 0.8 + ctx.random() * 0.4);
+  if (amount >= 3) damageSlot(ctx, slot, 1 + Math.floor(amount));
+  if (axe) disableShield(p, ctx);
+}
+
+export function remoteArmorHit(p: PlayerState, slots: number[], n: number): void {
+  const ctx = p.ctx();
+  for (const i of slots) damageSlot(ctx, i, n);
 }

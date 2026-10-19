@@ -232,6 +232,30 @@ export const LOOT: Record<string, Table> = {
     P(1, 1, [["empty", 11], ["snout_armor_trim_smithing_template", 1]]),
     P(1, 1, [["empty", 9], ["netherite_upgrade_smithing_template", 1]]),
   ],
+  bastion_bridge: [
+    P(1, 1, [["lodestone", 1]]),
+    P(1, 2, [
+      ["crossbow", 1, 1, 1, "dmg"], ["spectral_arrow", 1, 10, 28], ["gilded_blackstone", 1, 8, 12], ["crying_obsidian", 1, 3, 8], ["gold_block", 1],
+      ["gold_ingot", 1, 4, 9], ["iron_ingot", 1, 4, 9], ["golden_sword", 1, 1, 1, "ench"], ["golden_chestplate", 1, 1, 1, "ench"],
+      ["golden_helmet", 1, 1, 1, "ench"], ["golden_leggings", 1, 1, 1, "ench"], ["golden_boots", 1, 1, 1, "ench"], ["golden_axe", 1, 1, 1, "ench"],
+    ]),
+    P(2, 4, [["string", 1, 1, 6], ["leather", 1, 1, 3], ["arrow", 1, 5, 17], ["iron_nugget", 1, 2, 6], ["gold_nugget", 1, 2, 6]]),
+    P(1, 1, [["empty", 11], ["snout_armor_trim_smithing_template", 1]]),
+    P(1, 1, [["empty", 9], ["netherite_upgrade_smithing_template", 1]]),
+  ],
+  bastion_hoglin_stable: [
+    P(1, 1, [
+      ["diamond_shovel", 15, 1, 1, "ench"], ["diamond_pickaxe", 12, 1, 1, "ench"], ["netherite_scrap", 8], ["ancient_debris", 12], ["ancient_debris", 5, 2, 2],
+      ["saddle", 12], ["gold_block", 16, 2, 4], ["golden_carrot", 10, 8, 17], ["golden_apple", 9], ["golden_axe", 10, 1, 1, "ench"],
+    ]),
+    P(3, 4, [
+      ["crying_obsidian", 1, 1, 5], ["glowstone", 1, 3, 6], ["gilded_blackstone", 1, 2, 5], ["soul_sand", 1, 2, 7], ["crimson_nylium", 1, 2, 7],
+      ["gold_nugget", 1, 2, 8], ["leather", 1, 1, 3], ["arrow", 1, 5, 17], ["string", 1, 3, 8], ["porkchop", 1, 2, 5], ["cooked_porkchop", 1, 2, 5],
+      ["crimson_fungus", 1, 2, 7], ["crimson_roots", 1, 2, 7],
+    ]),
+    P(1, 1, [["empty", 11], ["snout_armor_trim_smithing_template", 1]]),
+    P(1, 1, [["empty", 9], ["netherite_upgrade_smithing_template", 1]]),
+  ],
   end_city_treasure: [
     P(2, 6, [
       ["diamond", 5, 2, 7], ["iron_ingot", 10, 4, 8], ["gold_ingot", 15, 2, 7], ["emerald", 2, 2, 6], ["beetroot_seeds", 5, 1, 10], ["saddle", 3],
