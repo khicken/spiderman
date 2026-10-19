@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { ChunkUniforms, GameCtx } from "../contracts";
 import { createArmorLayer, type ArmorLayer } from "../entities/armor-layer";
 import { brightnessAt } from "../entities/render";
-import { createHand, type HandView } from "../player/hand";
+import { createHand, createHeldSlot, type HandView } from "../player/hand";
 import { createItemMeshes, type ItemMeshes } from "../player/item-mesh";
 import { createPlayerModel, type PlayerModel } from "../player/model";
 import { rasterText } from "../ui/font";
@@ -12,6 +12,7 @@ interface Avatar {
   snap: PlayerSnap;
   model: PlayerModel;
   hand: HandView;
+  off: ReturnType<typeof createHeldSlot>;
   armor: ArmorLayer;
   tag: THREE.Sprite;
   tagTex: THREE.Texture;
@@ -101,15 +102,17 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
   const meshes = () => (items ??= createItemMeshes(() => getCtx().renderer?.scene.userData.chunkUniforms as ChunkUniforms | undefined));
 
   function make(s: PlayerSnap): Avatar {
-    const model = createPlayerModel();
+    const model = createPlayerModel({ slim: s.skin === 1 });
     if (s.skin === 1) paintAlex(model.skin);
     const hand = createHand(model, meshes());
+    const off = createHeldSlot(meshes(), -1);
     const armor = createArmorLayer(model.model.parts, true);
     const { sprite, tex } = nameTagSprite(s.name);
     sprite.position.set(0, 2.1, 0);
     model.model.root.add(sprite);
     getCtx().renderer.scene.add(model.model.root);
-    return { snap: s, model, hand, armor, tag: sprite, tagTex: tex, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0 };
+    model.model.root.userData.shadowRadius = 0.5;
+    return { snap: s, model, hand, off, armor, tag: sprite, tagTex: tex, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0 };
   }
 
   function free(a: Avatar) {
@@ -119,6 +122,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
     a.tagTex.dispose();
     a.armor.dispose();
     a.hand.dispose();
+    a.off.dispose();
     a.model.dispose();
   }
 
@@ -194,6 +198,8 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
           sneaking: sneak,
           usingRight: false,
           flying: (s.f & F.fly) !== 0,
+          holdRight: !!s.eq.held,
+          holdLeft: !!s.eq.off,
         });
         root.rotation.order = "YXZ";
         root.rotation.x = sleep ? -Math.PI / 2 : (s.f & F.swim) !== 0 ? Math.PI / 2 - a.pitch : 0;
@@ -206,6 +212,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
         a.armor.set({ head: st(eq.armor[0]), chest: eq.armor[1] === "elytra" ? null : st(eq.armor[1]), legs: st(eq.armor[2]), feet: st(eq.armor[3]) });
         a.armor.setLight(light, hurt);
         a.hand.setThirdPerson(a.model.model.parts.right_arm, st(eq.held));
+        a.off.set(a.model.model.parts.left_arm, st(eq.off));
       }
     },
     dispose() {

@@ -218,7 +218,7 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
       });
       return { kind: "block", create: () => new THREE.Mesh(geo, mats) };
     }
-    if (!it && !def) return null;
+    if (!it && !def && !hasItemPainter(name)) return null;
     const rgba = itemSpritePixels(name);
     const geo = extrudeSprite(solid && def.tint ? tinted(rgba, TINTS[def.tint] ?? 0xffffff) : rgba);
     geos.push(geo);

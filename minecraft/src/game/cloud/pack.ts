@@ -27,7 +27,7 @@ export function unpackEntries(buf: Uint8Array, maxEntries = 4096): PackEntry[] {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   if (buf.length < 4) throw new Error("bad pack");
   const n = view.getUint32(0);
-  if (n > maxEntries) throw new Error("too many entries");
+  if (n > maxEntries) throw new Error("bad pack: too many entries");
   const out: PackEntry[] = [];
   let o = 4;
   for (let i = 0; i < n; i++) {

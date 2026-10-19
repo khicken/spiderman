@@ -82,9 +82,15 @@ export function fileKv(dir: string): Kv {
       return (await read(key))?.v ?? null;
     },
     async set(key, value, opts = {}) {
-      if (opts.nx && (await read(key))) return false;
-      await write(key, { v: value, exp: opts.ex ? Date.now() + opts.ex * 1000 : 0 });
-      return true;
+      const row = { v: value, exp: opts.ex ? Date.now() + opts.ex * 1000 : 0 };
+      if (!opts.nx) {
+        await write(key, row);
+        return true;
+      }
+      if (await read(key)) return false;
+      await mkdir(dir, { recursive: true });
+      // "wx" fails when the file exists, so two racing NX sets cannot both win.
+      return writeFile(file(key), JSON.stringify(row), { flag: "wx" }).then(() => true, () => false);
     },
     async del(keys) {
       await Promise.all(keys.map((k) => rm(file(k), { force: true })));

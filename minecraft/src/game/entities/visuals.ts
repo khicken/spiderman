@@ -317,6 +317,13 @@ export function createViews(getCtx: () => GameCtx) {
           shadows.add(ctx, x, y, z, r, e.type === "item" || e.type === "xp_orb" ? 0.75 : 1, d2);
         }
       }
+      for (const o of scene.children) {
+        const r = o.userData.shadowRadius as number | undefined;
+        if (!r || !o.visible) continue;
+        const { x, y, z } = o.position;
+        const d2 = (x - camPos.x) ** 2 + (y - camPos.y) ** 2 + (z - camPos.z) ** 2;
+        if (d2 < 256) shadows.add(ctx, x, y, z, r, 1, d2);
+      }
       shadows.end();
       for (const [id, v] of views) if (v.seen !== frameNo) destroy(id, v);
     },

@@ -23,7 +23,7 @@ import { HideWhileSigning, SignEditScreen } from "../game/ui/sign-screen";
 import { ConnectingScreen, DirectConnectScreen, DisconnectedScreen, MultiplayerScreen, OpenToLanScreen, PlayerListOverlay } from "../game/ui/multiplayer";
 import { forgetServer, playerName, rememberServer, servers as savedServers, setPlayerNameStored, type ServerEntry } from "../game/net/profile";
 import type { ClientLink } from "../game/net/client";
-import type { PlayerListEntry } from "../game/net/protocol";
+import { cleanRoomCode, type PlayerListEntry } from "../game/net/protocol";
 import { useCloud } from "../game/cloud/use-cloud";
 
 type Screen = "title" | "select" | "create" | "options" | "game" | "multiplayer" | "direct" | "connecting" | "disconnected";
@@ -285,7 +285,7 @@ export default function Page() {
   }, [audio]);
 
   const join = useCallback((raw: string) => {
-    const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^([A-Z]{4})([0-9]{4})$/, "$1-$2");
+    const code = cleanRoomCode(raw);
     rememberServer(code, savedServers().find((s) => s.code === code)?.name ?? "Minecraft Server");
     setConnectStatus("Connecting to the server...");
     setScreen("connecting");
@@ -443,7 +443,6 @@ export default function Page() {
       <GuiRoot guiScale={settings.guiScale}>
         {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics === "fancy"} />}
         {playing && !hideGui && settings.showSubtitles && <Subtitles />}
-        {playing && !hideGui && <Toasts toasts={toasts} />}
         {credits && (
           <CreditsScreen
             onDone={() => {
@@ -497,6 +496,7 @@ export default function Page() {
               }}
               onOption={(id) => inv.chooseOption(id)}
               advanced={settings.advancedTooltips}
+              inventory={inv}
               creative={
                 view.kind === "creative"
                   ? {
@@ -583,6 +583,7 @@ export default function Page() {
             <LoadingScreen progress={loading ?? 0} title={freshWorld ? "Generating world" : "Loading terrain..."} status={freshWorld ? "Building terrain" : undefined} />
           </div>
         )}
+        {playing && !hideGui && <Toasts toasts={toasts} />}
       </GuiRoot>
     </>
   );

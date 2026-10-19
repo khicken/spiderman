@@ -42,6 +42,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 1000);
 
   const handScene = new THREE.Scene();
+  const handCam = new THREE.PerspectiveCamera(70, 1, 0.05, 100);
   const lights = [scene, handScene].map((s) => {
     const ambient = new THREE.AmbientLight(0xffffff, 0.4 * Math.PI);
     const a = new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI);
@@ -269,8 +270,17 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     }
     if (!handObj) return;
     if (handObj.parent !== handScene) handScene.add(handObj);
+    // Vanilla renders the hand at a fixed 70 degree FOV, ignoring the FOV setting and sprint/fly zoom.
+    const fov = (camera.userData.handFov as number | undefined) ?? 70;
+    if (handCam.fov !== fov || handCam.aspect !== camera.aspect) {
+      handCam.fov = fov;
+      handCam.aspect = camera.aspect;
+      handCam.updateProjectionMatrix();
+    }
+    handCam.position.copy(camera.position);
+    handCam.quaternion.copy(camera.quaternion);
     renderer.clearDepth();
-    renderer.render(handScene, camera);
+    renderer.render(handScene, handCam);
   }
 
   function render(dt: number) {

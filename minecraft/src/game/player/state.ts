@@ -32,6 +32,7 @@ export interface PlayerState extends PlayerApi {
   deathMessage: string;
   swingTime: number;
   swinging: boolean;
+  swingOff: boolean; // the last swing used the offhand
   attackAnim: number;
   prevAttackAnim: number;
   attackTicker: number;

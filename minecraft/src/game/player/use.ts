@@ -470,12 +470,17 @@ function useInAir(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): bool
   return equipArmor(p, ctx, h, stack);
 }
 
+function swingHand(p: PlayerState, h: Hand) {
+  p.swing();
+  p.swingOff = h === "off";
+}
+
 export function useItem(p: PlayerState, ctx: GameCtx, h: Hand): boolean {
   const stack = stackOf(ctx, h);
   if (p.targetEntity) {
     if (ctx.entities.interact(p.targetEntity.id, stack)) {
       advEntityUse(ctx, ctx.entities.get(p.targetEntity.id), stack, slotOf(ctx, h));
-      p.swing();
+      swingHand(p, h);
       return true;
     }
   } else if (p.target) {
@@ -484,11 +489,11 @@ export function useItem(p: PlayerState, ctx: GameCtx, h: Hand): boolean {
     const skip = p.sneaking && (!!ctx.inventory.held() || !!ctx.inventory.slots[40]);
     if (!skip && beh?.use && beh.use(ctx, hit.x, hit.y, hit.z, hit.state, stack)) {
       advTrigger({ t: "item_used_on_block", item: stack?.item ?? "", block: blockDef(hit.state).name, x: hit.x, y: hit.y, z: hit.z });
-      p.swing();
+      swingHand(p, h);
       return true;
     }
     if (stack && useOn(p, ctx, h, stack, hit, !skip)) {
-      p.swing();
+      swingHand(p, h);
       return true;
     }
   }
@@ -496,7 +501,7 @@ export function useItem(p: PlayerState, ctx: GameCtx, h: Hand): boolean {
   const kind = itemDef(stack.item);
   const swings = !!THROWN[stack.item] || stack.item === "bucket" || stack.item === "glass_bottle" || stack.item.endsWith("_boat") || stack.item === "fishing_rod" || (!!kind?.armor && !p.using);
   const ok = useInAir(p, ctx, h, stack);
-  if (ok && swings) p.swing();
+  if (ok && swings) swingHand(p, h);
   return ok;
 }
 

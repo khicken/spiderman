@@ -7,6 +7,8 @@ export const MAX_ENTRY_BYTES = 1024 * 1024;
 export const MAX_META_BYTES = 1024 * 1024;
 export const MAX_FETCH_BYTES = 3 * 1024 * 1024;
 const MAX_ICON = 64 * 1024;
+export const MAX_WORLDS = 100;
+const LOCK_S = 60;
 const MODES = new Set(["survival", "creative", "adventure", "spectator"]);
 
 export interface EntryInfo {
@@ -67,12 +69,24 @@ const emptyDoc = (): WorldDoc => ({ rev: 0, base: 0, updatedAt: 0, device: "", m
 const usedBy = (index: Index, skip: string) => Object.values(index).reduce((n, w) => (w.id === skip ? n : n + w.bytes), 0);
 
 function quotaCheck(index: Index, id: string, nextBytes: number) {
+  if (!index[id] && Object.keys(index).length >= MAX_WORLDS) throw new CloudError(413, `Too many cloud worlds (${MAX_WORLDS})`);
   if (usedBy(index, id) + nextBytes > QUOTA_BYTES) throw new CloudError(413, "Cloud storage full (50 MB)", { quota: QUOTA_BYTES, used: usedBy(index, id) });
 }
 
 function revCheck(doc: WorldDoc | null, baseRev: number, force: boolean) {
   const rev = doc?.rev ?? 0;
   if (!force && rev !== baseRev) throw new CloudError(409, "This world was changed on another device", { rev, updatedAt: doc?.updatedAt ?? 0, device: doc?.device ?? "" });
+}
+
+// Writes read the doc and index, then write both back. Parallel writes would drop each other's entries and leave uncounted blobs.
+async function locked<T>(kv: Kv, uid: string, fn: () => Promise<T>): Promise<T> {
+  const key = `mc:lock:${uid}`;
+  if (!(await kv.set(key, "1", { ex: LOCK_S, nx: true }))) throw new CloudError(429, "Cloud sync busy, try again");
+  try {
+    return await fn();
+  } finally {
+    await kv.del([key]).catch(() => {});
+  }
 }
 
 export async function listWorlds(kv: Kv, uid: string): Promise<{ worlds: WorldSummary[]; used: number; quota: number }> {
@@ -93,17 +107,19 @@ export async function putEntries(kv: Kv, blobs: BlobStore, uid: string, id: stri
     if (!isEntryKey(key)) throw new CloudError(400, "Bad entry key");
     if (data.length === 0 || data.length > MAX_ENTRY_BYTES) throw new CloudError(400, "Bad entry size");
   }
-  const doc = (await readDoc(kv, uid, id)) ?? emptyDoc();
-  revCheck(doc, baseRev, force);
-  const index = await readIndex(kv, uid);
-  const next: WorldDoc = { ...doc, entries: { ...doc.entries } };
-  for (const [key, data] of entries) next.entries[key] = { size: data.length, rev: doc.rev + 1 };
-  quotaCheck(index, id, docBytes(next));
-  for (const [key, data] of entries) await blobs.put(blobKey(uid, id, key), data);
-  await kv.set(docKey(uid, id), JSON.stringify(next));
-  index[id] = { ...(index[id] ?? blank(id)), bytes: docBytes(next) };
-  await kv.set(indexKey(uid), JSON.stringify(index));
-  return { stored: entries.length };
+  return locked(kv, uid, async () => {
+    const doc = (await readDoc(kv, uid, id)) ?? emptyDoc();
+    revCheck(doc, baseRev, force);
+    const index = await readIndex(kv, uid);
+    const next: WorldDoc = { ...doc, entries: { ...doc.entries } };
+    for (const [key, data] of entries) next.entries[key] = { size: data.length, rev: doc.rev + 1 };
+    quotaCheck(index, id, docBytes(next));
+    for (const [key, data] of entries) await blobs.put(blobKey(uid, id, key), data);
+    await kv.set(docKey(uid, id), JSON.stringify(next));
+    index[id] = { ...(index[id] ?? blank(id)), bytes: docBytes(next) };
+    await kv.set(indexKey(uid), JSON.stringify(index));
+    return { stored: entries.length };
+  });
 }
 
 const blank = (id: string): WorldSummary => ({ id, name: "", rev: 0, updatedAt: 0, device: "", bytes: 0, lastPlayed: 0, gameMode: "survival", hardcore: false, cheats: false });
@@ -130,37 +146,39 @@ export async function commitWorld(
   const meta = checkMeta(id, o.meta);
   const metaBytes = new TextEncoder().encode(JSON.stringify(meta));
   if (metaBytes.length > MAX_META_BYTES) throw new CloudError(413, "World data too large");
-  const doc = (await readDoc(kv, uid, id)) ?? emptyDoc();
-  revCheck(doc, o.baseRev, o.force);
-  const rev = doc.rev + 1;
-  const next: WorldDoc = { ...doc, rev, updatedAt: Date.now(), device: o.device.slice(0, 64), metaBytes: metaBytes.length, entries: { ...doc.entries } };
-  const drop: string[] = [];
-  if (o.keep) {
-    const keep = new Set(o.keep);
-    for (const k of Object.keys(next.entries)) if (!keep.has(k)) drop.push(k);
-    for (const k of drop) delete next.entries[k];
-    next.base = rev;
-  }
-  const index = await readIndex(kv, uid);
-  quotaCheck(index, id, docBytes(next));
-  await blobs.put(metaBlob(uid, id), metaBytes);
-  await kv.set(docKey(uid, id), JSON.stringify(next));
-  if (drop.length) await blobs.del(drop.map((k) => blobKey(uid, id, k)));
-  index[id] = {
-    id,
-    name: String(meta.name),
-    rev,
-    updatedAt: next.updatedAt,
-    device: next.device,
-    bytes: docBytes(next),
-    lastPlayed: Number(meta.lastPlayed),
-    gameMode: String(meta.gameMode),
-    hardcore: !!meta.hardcore,
-    cheats: !!meta.cheats,
-    icon: typeof meta.icon === "string" ? meta.icon : undefined,
-  };
-  await kv.set(indexKey(uid), JSON.stringify(index));
-  return { rev, updatedAt: next.updatedAt };
+  return locked(kv, uid, async () => {
+    const doc = (await readDoc(kv, uid, id)) ?? emptyDoc();
+    revCheck(doc, o.baseRev, o.force);
+    const rev = doc.rev + 1;
+    const next: WorldDoc = { ...doc, rev, updatedAt: Date.now(), device: o.device.slice(0, 64), metaBytes: metaBytes.length, entries: { ...doc.entries } };
+    const drop: string[] = [];
+    if (o.keep) {
+      const keep = new Set(o.keep);
+      for (const k of Object.keys(next.entries)) if (!keep.has(k)) drop.push(k);
+      for (const k of drop) delete next.entries[k];
+      next.base = rev;
+    }
+    const index = await readIndex(kv, uid);
+    quotaCheck(index, id, docBytes(next));
+    await blobs.put(metaBlob(uid, id), metaBytes);
+    await kv.set(docKey(uid, id), JSON.stringify(next));
+    if (drop.length) await blobs.del(drop.map((k) => blobKey(uid, id, k)));
+    index[id] = {
+      id,
+      name: String(meta.name),
+      rev,
+      updatedAt: next.updatedAt,
+      device: next.device,
+      bytes: docBytes(next),
+      lastPlayed: Number(meta.lastPlayed),
+      gameMode: String(meta.gameMode),
+      hardcore: !!meta.hardcore,
+      cheats: !!meta.cheats,
+      icon: typeof meta.icon === "string" ? meta.icon : undefined,
+    };
+    await kv.set(indexKey(uid), JSON.stringify(index));
+    return { rev, updatedAt: next.updatedAt };
+  });
 }
 
 export async function fetchEntries(kv: Kv, blobs: BlobStore, uid: string, id: string, keys: string[]): Promise<PackEntry[]> {
@@ -181,12 +199,14 @@ export async function fetchEntries(kv: Kv, blobs: BlobStore, uid: string, id: st
 }
 
 export async function deleteWorld(kv: Kv, blobs: BlobStore, uid: string, id: string) {
-  const doc = await readDoc(kv, uid, id);
-  if (doc) await blobs.del([...Object.keys(doc.entries).map((k) => blobKey(uid, id, k)), metaBlob(uid, id)]);
-  await kv.del([docKey(uid, id)]);
-  const index = await readIndex(kv, uid);
-  delete index[id];
-  await kv.set(indexKey(uid), JSON.stringify(index));
+  return locked(kv, uid, async () => {
+    const doc = await readDoc(kv, uid, id);
+    if (doc) await blobs.del([...Object.keys(doc.entries).map((k) => blobKey(uid, id, k)), metaBlob(uid, id)]);
+    await kv.del([docKey(uid, id)]);
+    const index = await readIndex(kv, uid);
+    delete index[id];
+    await kv.set(indexKey(uid), JSON.stringify(index));
+  });
 }
 
 const profileKey = (uid: string) => `mc:profile:${uid}`;

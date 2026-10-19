@@ -7,7 +7,9 @@ import { itemDef } from "../items/registry";
 import { defaultBoxes, outlineBoxes } from "../mechanics/index";
 import type { InputApi } from "./input";
 import { fluidAt } from "./physics";
-import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, attackStats, attackStrength, canHarvest, destroyProgress, ench, enchantDamageBonus, maceBonus, toolOf } from "./stats";
+import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, attackStats, attackStrength, canHarvest, destroyProgress, ench, enchantDamageBonus, maceBonus, pickKind, SPRINT_MULT, toolOf, WALK_SPEED } from "./stats";
+import { mobDef } from "../entities/registry";
+import { bodiesTouch } from "../entities/geom";
 import { addExhaustion, damageSlot } from "./survival";
 import type { PlayerState } from "./state";
 import { useItem } from "./use";
@@ -89,10 +91,10 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     eyeV.copy(p.eye());
     dirV.copy(p.lookDir());
     const hit = p.gameMode === "spectator" ? null : ctx.world.raycast(eyeV, dirV, reach());
-    const max = Math.min(entityReach(), hit ? hit.dist : Infinity);
-    const ent = ctx.entities.raycast(eyeV, dirV, max);
-    p.targetEntity = ent && (!hit || ent.dist < hit.dist) ? ent : null;
-    p.target = p.targetEntity ? null : hit;
+    const ent = ctx.entities.raycast(eyeV, dirV, hit ? hit.dist : Math.max(reach(), entityReach()));
+    const kind = pickKind(hit ? hit.dist : null, ent ? ent.dist : null, entityReach());
+    p.targetEntity = kind === "entity" ? ent : null;
+    p.target = kind === "block" ? hit : null;
     setOutline(ctx, p.target);
   }
 
@@ -226,13 +228,14 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
       knock++;
       sprintHit = true;
     }
-    const crit = charged && b.fallDistance > 0 && !b.onGround && !b.onClimbable && !b.inWater && !p.hasEffect("blindness") && !p.sprinting;
-    if (crit) dmg *= 1.5;
     const smash = held?.item === "mace" && b.fallDistance > 1.5 && !p.flying && !p.fallFlying;
     if (smash) dmg += maceBonus(b.fallDistance, ench(held, "density"));
+    const crit = charged && b.fallDistance > 0 && !b.onGround && !b.onClimbable && !b.inWater && !p.hasEffect("blindness") && p.vehicle == null && !p.sprinting;
+    if (crit) dmg *= 1.5;
     const total = dmg + bonus;
-    const walked = Math.hypot(b.pos.x - p.prevPos.x, b.pos.z - p.prevPos.z);
-    const sweep = charged && !crit && !sprintHit && b.onGround && walked < 0.13 && toolOf(held)?.kind === "sword";
+    const walked = Math.hypot(b.pos.x - p.prevPos.x, b.pos.z - p.prevPos.z) * 0.6;
+    const speed = WALK_SPEED * (p.sprinting ? SPRINT_MULT : 1) * (1 + 0.2 * p.hasEffect("speed")) * Math.max(0, 1 - 0.15 * p.hasEffect("slowness"));
+    const sweep = charged && !crit && !sprintHit && b.onGround && walked < speed && toolOf(held)?.kind === "sword";
     if (held?.item === "mace") e.data._breach = ench(held, "breach");
     ctx.entities.damage(id, total, smash ? "mace" : "player", "player");
     e.data._breach = undefined;
@@ -240,7 +243,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     const fire = ench(held, "fire_aspect");
     if (fire > 0) e.data.fireTicks = Math.max(Number(e.data.fireTicks ?? 0), fire * 80);
     if (knock > 0) ctx.entities.knockback(id, -Math.sin(p.yaw), -Math.cos(p.yaw), knock * 0.5);
-    if (sprintHit) {
+    if (knock > 0) {
       b.vel.x *= 0.6;
       b.vel.z *= 0.6;
       p.sprinting = false;
@@ -248,13 +251,12 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     if (sweep) {
       const ratio = ench(held, "sweeping_edge");
       const sd = 1 + dmg * (ratio / (ratio + 1));
-      ctx.entities.near(e.body.pos.x, e.body.pos.y, e.body.pos.z, 2, nearby);
+      ctx.entities.near(e.body.pos.x, e.body.pos.y, e.body.pos.z, 4, nearby);
       for (const o of nearby) {
-        if (o.id === id || o.dead || o.type === "item" || o.type === "xp_orb" || o.type === "armor_stand") continue;
-        if (Math.abs(o.body.pos.x - e.body.pos.x) > 1 + o.body.width / 2 || Math.abs(o.body.pos.z - e.body.pos.z) > 1 + o.body.width / 2) continue;
-        if (o.body.pos.distanceToSquared(b.pos) >= 9) continue;
+        if (o.id === id || o.dead || !(mobDef(o.type) || o.type === "armor_stand") || o.data.marker) continue;
+        if (!bodiesTouch(e.body, o.body, 1, 0.25, 1) || o.body.pos.distanceToSquared(b.pos) >= 9) continue;
         ctx.entities.knockback(o.id, -Math.sin(p.yaw), -Math.cos(p.yaw), 0.4);
-        ctx.entities.damage(o.id, sd, "player", "player");
+        ctx.entities.damage(o.id, (sd + enchantDamageBonus(held, o.type)) * s, "player", "player");
       }
       ctx.emit({ type: "sound", name: "entity.player.attack.sweep", x: b.pos.x, y: b.pos.y, z: b.pos.z });
     }

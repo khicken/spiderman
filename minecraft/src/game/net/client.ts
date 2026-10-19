@@ -114,6 +114,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
   let prevAnim = 0;
   let exh = 0;
   let pstJson = "";
+  let hostSeq = 0;
   const shadow = { hp: -1, food: 0, sat: 0 };
   const avatars = createAvatars(() => g!.ctx);
   setPlayerName(name);
@@ -138,10 +139,8 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     if (id === hostId && !joined) close("Connection Lost");
   };
 
-  function invSave() {
-    const d = inv!.save() as Record<string, unknown>;
-    return { ...d, carried: [], craft: [] };
-  }
+  // Cursor and 2x2 grid items stay in the save: the host counts guarded items and would see them vanish and return.
+  const invSave = () => inv!.save();
 
   function loadInv(data: unknown) {
     if (!inv || !data) return;
@@ -259,7 +258,10 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         ctx.renderer.addParticles(m.e as Extract<GameEvent, { type: "particles" }>);
         return;
       case "view": {
-        if (m.inv) loadInv(m.inv);
+        if (m.inv) {
+          loadInv(m.inv);
+          if (typeof m.seq === "number") hostSeq = m.seq;
+        }
         const was = !!remoteView;
         remoteView = m.view;
         if (inv) inv.version++;
@@ -267,7 +269,19 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         else if (!m.view && was) g.route({ type: "close_container" });
         return;
       }
+      case "setinv":
+        loadInv(m.inv);
+        hostSeq = m.seq;
+        return;
+      case "gm": {
+        const p = g.player;
+        p.gameMode = m.mode;
+        if (m.mode === "survival" || m.mode === "adventure") p.flying = false;
+        if (m.mode === "spectator") p.flying = true;
+        return;
+      }
       case "give": {
+        if (typeof m.seq === "number") hostSeq = m.seq;
         const rest = inv?.add({ ...m.stack });
         if (rest && rest.count > 0) {
           const p = g.player.body.pos;
@@ -476,7 +490,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
           const h = host(id);
           const ent = e.get(id);
           if (h === undefined || !ent) return false;
-          send({ t: "interact", id: h, inv: invSave() });
+          send({ t: "interact", id: h, inv: invSave(), seq: hostSeq });
           return !!mobDef(ent.type)?.onInteract || inv?.held()?.item === "name_tag";
         },
         explode(x, y, z, power, fire) {
@@ -496,7 +510,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       const rawOpt = i.chooseOption.bind(i);
       i.open = (kind, at) => {
         if (!at || kind === "inventory" || kind === "creative") return rawOpen(kind, at);
-        send({ t: "open", kind, at: { ...at }, inv: invSave() });
+        send({ t: "open", kind, at: { ...at }, inv: invSave(), seq: hostSeq });
       };
       i.close = () => {
         if (!remoteView) return rawClose();
@@ -545,7 +559,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       if (inv && now - invAt > 2000 && inv.version !== invVer) {
         invAt = now;
         invVer = inv.version;
-        send({ t: "inv", inv: invSave(), player: p.save(), adv: advOf() });
+        send({ t: "inv", inv: invSave(), player: p.save(), adv: advOf(), seq: hostSeq });
       }
     },
     frame(dt) {
@@ -563,7 +577,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     players: () => list,
     dispose() {
       if (!closed) {
-        if (g && inv) send({ t: "inv", inv: invSave(), player: g.player.save(), adv: advOf() });
+        if (g && inv) send({ t: "inv", inv: invSave(), player: g.player.save(), adv: advOf(), seq: hostSeq });
         send({ t: "bye" });
       }
       closed = true;

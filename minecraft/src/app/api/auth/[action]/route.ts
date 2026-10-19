@@ -1,5 +1,5 @@
 import {
-  COOKIE, LIMITS, PASSWORD_MAX, PASSWORD_MIN, USERNAME, burnHash, clearRate, clientIp, createUser, endSession, loadUser, rateLimited, readCookie,
+  COOKIE, LIMITS, PASSWORD_MAX, PASSWORD_MIN, USERNAME, burnHash, clientIp, createUser, endSession, loadUser, loginGate, loginPassed, rateLimited, readCookie,
   sessionCookie, sessionUser, startSession, verifyPassword,
 } from "../../../../server/auth";
 import { TooLarge, env, fail, json, offline, readJson, sameOrigin } from "../../../../server/http";
@@ -46,13 +46,13 @@ export async function POST(req: Request, { params }: Ctx) {
       const cookie = await startSession(e.kv, user, e.secret);
       return json({ user: { name: user.name } }, 200, { "set-cookie": sessionCookie(cookie) });
     }
-    const byUser = await rateLimited(e.kv, `login:u:${username.toLowerCase()}`, LIMITS.loginUser);
-    const byIp = await rateLimited(e.kv, `login:ip:${ip}`, LIMITS.loginIp);
-    if (byUser || byIp) return fail(429, "Too many attempts, try later");
+    const gate = await loginGate(e.kv, username, ip);
+    if (gate.blocked) return fail(429, "Too many attempts, try later");
+    if (gate.delayMs) await new Promise((r) => setTimeout(r, gate.delayMs));
     const user = await loadUser(e.kv, username);
     const ok = user ? await verifyPassword(password, user.hash) : await burnHash(password);
     if (!user || !ok) return fail(401, "Wrong name or password");
-    await clearRate(e.kv, `login:u:${username.toLowerCase()}`);
+    await loginPassed(e.kv, username, ip);
     const cookie = await startSession(e.kv, user, e.secret);
     return json({ user: { name: user.name } }, 200, { "set-cookie": sessionCookie(cookie) });
   } catch (err) {

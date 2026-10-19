@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { GameMode } from "../contracts";
+import { cleanRoomCode, validCode } from "../net/protocol";
 import { Text, useGui } from "./gui";
 import { pixelUrl } from "./sprites";
 import { Button, ListArea, Screen, TextField, onOff, useKeyDown } from "./widgets";
@@ -99,14 +100,14 @@ export function MultiplayerScreen({ servers, name, onName, onJoin, onDirect, onD
 export function DirectConnectScreen({ initial = "", onJoin, onCancel }: { initial?: string; onJoin: (code: string) => void; onCancel: () => void }) {
   const { width, height } = useGui();
   const [code, setCode] = useState(initial);
-  const ok = /^[A-Za-z]{4}-?[0-9]{4}$/.test(code.trim());
+  const ok = validCode(cleanRoomCode(code));
   useKeyDown((e) => e.key === "Escape" && onCancel());
   return (
     <Screen background="menu">
       <Text text="Direct Connection" x={width / 2} y={20} align="center" />
       <Text text="Room Code" color={0xa0a0a0} x={width / 2 - 100} y={100} />
-      <TextField x={width / 2 - 100} y={116} width={200} value={code} onChange={(v) => setCode(v.toUpperCase())} onEnter={() => ok && onJoin(code.trim())} maxLength={9} hint="ABCD-1234" autoFocus />
-      <Button x={width / 2 - 100} y={Math.floor(height / 4 + 96 + 12)} label="Join Server" disabled={!ok} onClick={() => onJoin(code.trim())} />
+      <TextField x={width / 2 - 100} y={116} width={200} value={code} onChange={(v) => setCode(v.toUpperCase())} onEnter={() => ok && onJoin(cleanRoomCode(code))} maxLength={14} hint="ABCD-EFGH-JKLM" autoFocus />
+      <Button x={width / 2 - 100} y={Math.floor(height / 4 + 96 + 12)} label="Join Server" disabled={!ok} onClick={() => onJoin(cleanRoomCode(code))} />
       <Button x={width / 2 - 100} y={Math.floor(height / 4 + 120 + 12)} label="Cancel" onClick={onCancel} />
     </Screen>
   );

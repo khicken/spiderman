@@ -128,6 +128,7 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
   ctx.renderer.setUnderwater(p.gameMode === "spectator" ? "none" : fluid ?? (powder ? "powder_snow" : "none"));
   let fov = p.fov * lerp(p.prevFovMod, p.fovMod, pt);
   if (fluid) fov *= 0.85714287;
+  cam.userData.handFov = fluid ? 70 * 0.85714287 : 70;
   if (nausea > 0) fov *= 1 + Math.sin((p.ticks + pt) * 0.27) * 0.12 * nausea;
   if (Math.abs(cam.fov - fov) > 1e-3) {
     cam.fov = fov;

@@ -12,10 +12,13 @@ const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 };
 const DEV_SECRET = "dev-only-minecraft-session-secret";
 
 export const LIMITS = {
-  loginUser: { max: 10, windowS: 15 * 60 },
+  loginPair: { max: 10, windowS: 15 * 60 },
+  loginUser: { max: 30, windowS: 15 * 60 },
   loginIp: { max: 50, windowS: 15 * 60 },
   signupIp: { max: 10, windowS: 60 * 60 },
 };
+const SLOW_STEP_MS = 250;
+const SLOW_MAX_MS = 4000;
 
 export interface User {
   id: string;
@@ -118,6 +121,18 @@ export async function rateLimited(kv: Kv, key: string, limit: { max: number; win
 }
 
 export const clearRate = (kv: Kv, key: string) => kv.del([`mc:rl:${key}`]);
+
+// Blocking per name would let anyone lock a known user out, so the per-name count above its limit only slows each try.
+export async function loginGate(kv: Kv, name: string, ip: string): Promise<{ blocked: boolean; delayMs: number }> {
+  const user = name.toLowerCase();
+  const pair = await kv.incr(`mc:rl:login:p:${user}:${ip}`, LIMITS.loginPair.windowS);
+  const byIp = await kv.incr(`mc:rl:login:ip:${ip}`, LIMITS.loginIp.windowS);
+  const byUser = await kv.incr(`mc:rl:login:u:${user}`, LIMITS.loginUser.windowS);
+  const over = byUser - LIMITS.loginUser.max;
+  return { blocked: pair > LIMITS.loginPair.max || byIp > LIMITS.loginIp.max, delayMs: over > 0 ? Math.min(SLOW_MAX_MS, over * SLOW_STEP_MS) : 0 };
+}
+
+export const loginPassed = (kv: Kv, name: string, ip: string) => clearRate(kv, `login:p:${name.toLowerCase()}:${ip}`);
 
 export function clientIp(req: Request): string {
   return req.headers.get("x-real-ip")?.trim() || req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "local";

@@ -4,6 +4,7 @@ import { itemKey, type ItemMeshes, type ItemKind } from "./item-mesh";
 import type { PlayerModel } from "./model";
 import type { UseState } from "./state";
 import { mapTexture } from "../systems/features/map-render";
+import { itemDef } from "../items/registry";
 
 const D = Math.PI / 180;
 const MAP_SIZE = (0.38 * 142) / 128;
@@ -29,29 +30,99 @@ export interface HandFrame {
   light: number;
   visible: boolean;
   off?: ItemStack | null;
+  offEquip?: number;
+  swingOff?: boolean; // the swing belongs to the offhand
 }
 
-// Vanilla display transforms (rotation, translation in px, scale). item/generated and item/handheld match in first person.
-const FP: Record<ItemKind, [number, number, number, number, number, number, number]> = {
-  block: [0, 45, 0, 0, 0, 0, 0.4],
-  flat: [0, -90, 25, 1.13, 3.2, 1.13, 0.68],
-  shield: [0, 180, 5, 4, -5, -6, 0.75],
-};
-const TP: Record<ItemKind, [number, number, number, number, number, number, number]> = {
-  block: [75, 45, 0, 0, 2.5, 0, 0.375],
-  flat: [0, -90, 55, 0, 4, 0.5, 0.85],
-  shield: [0, 90, 0, -1, 6, -4, 1],
-};
-const display = (d: [number, number, number, number, number, number, number]) => {
-  T(d[3] / 16, d[4] / 16, d[5] / 16);
-  RXYZ(d[0], d[1], d[2]);
+type Display = [number, number, number, number, number, number, number];
+interface Displays {
+  fp: Display;
+  tp: Display;
+}
+
+// Vanilla model display transforms (rotation, translation in px, scale) for item/generated, item/handheld,
+// item/handheld_rod, bow, crossbow, block and shield. Left hands mirror them like ItemTransform.apply.
+const GENERATED: Displays = { fp: [0, -90, 25, 1.13, 3.2, 1.13, 0.68], tp: [0, 0, 0, 0, 3, 1, 0.55] };
+const HANDHELD: Displays = { fp: [0, -90, 25, 1.13, 3.2, 1.13, 0.68], tp: [0, -90, 55, 0, 4, 0.5, 0.85] };
+const ROD: Displays = { fp: [0, 90, 25, 0, 1.6, 0.8, 0.68], tp: [0, 90, 55, 0, 4, 2.5, 0.85] };
+const BOW: Displays = { fp: [0, -90, 25, 1.13, 3.2, 1.13, 0.68], tp: [-80, 260, -40, -1, -2, 2.5, 0.9] };
+const CROSSBOW: Displays = { fp: [-90, 0, -35, 1.13, 3.2, 1.13, 0.68], tp: [-90, 0, -60, 2, 0.1, -3, 0.9] };
+const BLOCK: Displays = { fp: [0, 45, 0, 0, 0, 0, 0.4], tp: [75, 45, 0, 0, 2.5, 0, 0.375] };
+const SHIELD: Displays = { fp: [0, 180, 5, 4, -5, -6, 0.75], tp: [0, 90, 0, -1, 6, -4, 1] };
+const HANDHELD_ITEMS = new Set(["stick", "bone", "blaze_rod", "breeze_rod", "bamboo", "mace", "debug_stick", "trident"]);
+const ROD_ITEMS = new Set(["fishing_rod", "carrot_on_a_stick", "warped_fungus_on_a_stick"]);
+
+export function itemDisplays(key: string, kind: ItemKind): Displays {
+  if (kind === "block") return BLOCK;
+  if (kind === "shield") return SHIELD;
+  const name = key.replace(/[@#].*$/, "");
+  if (name.startsWith("bow")) return BOW;
+  if (name.startsWith("crossbow")) return CROSSBOW;
+  if (ROD_ITEMS.has(name)) return ROD;
+  return itemDef(name)?.tool || HANDHELD_ITEMS.has(name) ? HANDHELD : GENERATED;
+}
+
+// Vanilla bow and crossbow model overrides: pulling stages while drawn, the loaded sprite when charged.
+export function heldKey(s: ItemStack | null, u: UseState | null | undefined, useTicks: number): string | null {
+  const k = itemKey(s);
+  if (!s || !k || (s.item !== "bow" && s.item !== "crossbow")) return k;
+  const glint = k.endsWith("#glint") ? "#glint" : "";
+  if (s.item === "bow") {
+    if (u?.kind !== "bow") return k;
+    const p = useTicks / 20;
+    return `bow_pulling_${p < 0.65 ? 0 : p < 0.9 ? 1 : 2}${glint}`;
+  }
+  if (u?.kind === "crossbow") {
+    const p = useTicks / u.total;
+    return `crossbow_pulling_${p < 0.58 ? 0 : p < 1 ? 1 : 2}${glint}`;
+  }
+  if (s.data?.charged) return `${s.data.projectile === "firework_rocket" ? "crossbow_firework" : "crossbow_arrow"}${glint}`;
+  return k;
+}
+
+const display = (d: Display, i: number) => {
+  T((i * d[3]) / 16, d[4] / 16, d[5] / 16);
+  RXYZ(d[0], i * d[1], i * d[2]);
   S(d[6], d[6], d[6]);
 };
+
+// Vanilla ItemInHandLayer: the item hangs from the hand of a third-person arm; i is 1 right, -1 left.
+export function createHeldSlot(items: ItemMeshes, i: number) {
+  const holder = new THREE.Group();
+  holder.matrixAutoUpdate = false;
+  let shown: string | null = null;
+  let arm: THREE.Object3D | null = null;
+  return {
+    set(a: THREE.Object3D | null, stack: ItemStack | null, use?: UseState | null, useTicks = 0) {
+      if (a !== arm) {
+        holder.removeFromParent();
+        arm = a;
+        if (a) a.add(holder);
+      }
+      const name = heldKey(stack, use, useTicks);
+      if (name === shown) return;
+      shown = name;
+      holder.clear();
+      const md = name ? items.model(name) : null;
+      if (!md || !name) return;
+      holder.add(md.create());
+      m.identity();
+      T(i / 16, -10 / 16, -1 / 16);
+      RX(-90);
+      display(itemDisplays(name, md.kind).tp, i);
+      holder.matrix.copy(m);
+    },
+    dispose() {
+      holder.removeFromParent();
+      holder.clear();
+    },
+  };
+}
 
 export interface HandView {
   root: THREE.Group;
   update(f: HandFrame): void;
-  setThirdPerson(arm: THREE.Object3D | null, stack: ItemStack | null): void;
+  setThirdPerson(arm: THREE.Object3D | null, stack: ItemStack | null, use?: UseState | null, useTicks?: number): void;
   dispose(): void;
 }
 
@@ -66,25 +137,22 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   itemHolder.matrixAutoUpdate = false;
   root.add(armHolder, itemHolder);
   let shown: string | null = null;
-  let shownKind: ItemKind = "flat";
-  let tpShown: string | null = null;
-  let tpArm: THREE.Object3D | null = null;
-  const tpHolder = new THREE.Group();
-  tpHolder.matrixAutoUpdate = false;
+  let shownFp: Display = GENERATED.fp;
+  const tp = createHeldSlot(items, 1);
 
   const setItem = (name: string | null) => {
     if (name === shown) return;
     shown = name;
     itemHolder.clear();
     const md = name ? items.model(name) : null;
-    if (md) {
-      shownKind = md.kind;
+    if (md && name) {
+      shownFp = itemDisplays(name, md.kind).fp;
       itemHolder.add(md.create());
     }
   };
 
   function armMatrix(f: HandFrame) {
-    const s = f.swing;
+    const s = f.swingOff ? 0 : f.swing;
     const g = Math.sqrt(s);
     m.copy(f.bob);
     T(-0.3 * Math.sin(g * Math.PI) + 0.64000005, 0.4 * Math.sin(g * Math.PI * 2) - 0.6 - f.equip * 0.6, -0.4 * Math.sin(s * Math.PI) - 0.71999997);
@@ -102,7 +170,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   const armTransform = (equip: number, i: number) => T(i * 0.56, -0.52 - equip * 0.6, -0.72);
 
   // Vanilla ItemInHandRenderer.renderArmWithItem; i is 1 for the right hand and -1 for the left.
-  function itemMatrix(f: HandFrame, i: number, u: UseState | null, swing: number, equip: number, kind: ItemKind, holder: THREE.Object3D) {
+  function itemMatrix(f: HandFrame, i: number, u: UseState | null, swing: number, equip: number, d: Display, holder: THREE.Object3D) {
     m.copy(f.bob);
     if (u && (u.kind === "eat" || u.kind === "drink")) {
       const rem = u.total - f.useTicks + 1;
@@ -162,10 +230,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       RX(Math.sin(g * Math.PI) * -80);
       RY(i * -45);
     }
-    const d = FP[kind];
-    T((i * d[3]) / 16, d[4] / 16, d[5] / 16);
-    RXYZ(d[0], i * d[1], i * d[2]);
-    S(d[6], d[6], d[6]);
+    display(d, i);
     holder.matrix.copy(m);
   }
 
@@ -173,14 +238,14 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   offHolder.matrixAutoUpdate = false;
   root.add(offHolder);
   let offShown: string | null = null;
-  let offKind: ItemKind = "flat";
+  let offFp: Display = GENERATED.fp;
   const setOff = (key: string | null) => {
     if (key === offShown) return;
     offShown = key;
     offHolder.clear();
     const md = key ? items.model(key) : null;
-    if (md) {
-      offKind = md.kind;
+    if (md && key) {
+      offFp = itemDisplays(key, md.kind).fp;
       offHolder.add(md.create());
     }
   };
@@ -246,49 +311,33 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       showMap(mapOff, offTex, f.light);
       model.setLight(f.light, false);
       items.setLight(f.light);
-      setItem(itemKey(f.stack));
+      const mainUse = f.use && f.use.hand === "main" ? f.use : null;
+      setItem(heldKey(f.stack, mainUse, f.useTicks));
       const empty = !shown;
       armHolder.visible = empty;
       itemHolder.visible = !empty;
-      const mainUse = f.use && f.use.hand === "main" ? f.use : null;
       if (mainTex) {
         armHolder.visible = itemHolder.visible = false;
-        if (f.off) oneHandedMap(f, 1, f.swing, f.equip, mapMain);
+        if (f.off) oneHandedMap(f, 1, f.swingOff ? 0 : f.swing, f.equip, mapMain);
         else twoHandedMap(f);
       } else if (empty) armMatrix(f);
-      else itemMatrix(f, 1, mainUse, mainUse ? 0 : f.swing, f.equip, shownKind, itemHolder);
-      setOff(itemKey(f.off ?? null));
+      else itemMatrix(f, 1, mainUse, mainUse || f.swingOff ? 0 : f.swing, f.equip, shownFp, itemHolder);
+      const offUse = f.use && f.use.hand === "off" ? f.use : null;
+      setOff(heldKey(f.off ?? null, offUse, f.useTicks));
       offHolder.visible = !!offShown && !offTex && !(mainTex && !f.off);
-      if (offTex) oneHandedMap(f, -1, 0, 0, mapOff);
-      else if (offHolder.visible) itemMatrix(f, -1, f.use && f.use.hand === "off" ? f.use : null, 0, 0, offKind, offHolder);
+      const offSwing = f.swingOff ? f.swing : 0, offEquip = f.offEquip ?? 0;
+      if (offTex) oneHandedMap(f, -1, offSwing, offEquip, mapOff);
+      else if (offHolder.visible) itemMatrix(f, -1, offUse, offUse ? 0 : offSwing, offEquip, offFp, offHolder);
     },
-    setThirdPerson(arm, stack) {
-      const name = itemKey(stack);
-      if (arm !== tpArm) {
-        tpHolder.removeFromParent();
-        tpArm = arm;
-        if (arm) arm.add(tpHolder);
-      }
-      if (name !== tpShown) {
-        tpShown = name;
-        tpHolder.clear();
-        const md = name ? items.model(name) : null;
-        if (md) {
-          tpHolder.add(md.create());
-          m.identity();
-          T(1 / 16, -10 / 16, -1 / 16);
-          RX(-90);
-          display(TP[md.kind]);
-          tpHolder.matrix.copy(m);
-        }
-      }
+    setThirdPerson(arm, stack, use, useTicks) {
+      tp.set(arm, stack, use, useTicks);
     },
     dispose() {
       mapGeo.dispose();
       mapMain.material.dispose();
       mapOff.material.dispose();
       root.clear();
-      tpHolder.removeFromParent();
+      tp.dispose();
     },
   };
 }

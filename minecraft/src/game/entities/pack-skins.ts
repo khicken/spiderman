@@ -87,6 +87,7 @@ export const MOB_SKIN_PATHS: Record<string, string> = {
   zombie_villager: "entity/zombie_villager/zombie_villager",
   zombified_piglin: "entity/piglin/zombified_piglin",
   player: "entity/player/wide/steve",
+  player_slim: "entity/player/slim/alex",
 };
 
 type SkinMat = THREE.MeshLambertMaterial | THREE.MeshBasicMaterial;

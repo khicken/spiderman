@@ -8,7 +8,7 @@ import { LAYOUTS, placeSlots } from "./container-layouts";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
 import { arrowUrl, containerBg, flameUrl, panelUrl } from "./sprites";
 import { useKeyDown } from "./widgets";
-import { PlayerDoll } from "./player-doll";
+import { PlayerDoll, type DollInventory } from "./player-doll";
 import { keyFor } from "./settings";
 import { canStack } from "../items/stack";
 import { maxStack } from "../items/registry";
@@ -37,6 +37,7 @@ export interface ContainerScreenProps {
   onRename?: (name: string) => void; // anvil; falls back to onOption("rename:<name>")
   creative?: CreativeProps; // required when view.kind is "creative"
   advanced?: boolean; // F3+H tooltips
+  inventory?: DollInventory; // the player preview shows its armor and held items
 }
 
 const EMPTY_ICON: Partial<Record<SlotRole, EmptySlotKind>> = {
@@ -58,7 +59,7 @@ export function ContainerScreen(props: ContainerScreenProps) {
   return <SurvivalContainer {...props} />;
 }
 
-function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advanced }: ContainerScreenProps) {
+function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advanced, inventory }: ContainerScreenProps) {
   const { width, height } = useGui();
   const L = LAYOUTS[view.kind];
   const placed = useMemo(() => placeSlots(view.kind, view.groups), [view.kind, view.groups]);
@@ -199,7 +200,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
           <Img src={panelUrl(L.w, L.h)} x={0} y={0} w={L.w} h={L.h} />
         )}
         {view.kind === "inventory" && !bg && <div style={{ position: "absolute", left: 26, top: 8, width: 49, height: 70, background: "#000", boxShadow: "inset 1px 1px 0 #373737, inset -1px -1px 0 #fff" }} />}
-        {view.kind === "inventory" && <PlayerDoll x={26} y={8} w={49} h={70} panel={{ left, top }} mouse={mouse} />}
+        {view.kind === "inventory" && <PlayerDoll x={26} y={8} w={49} h={70} panel={{ left, top }} mouse={mouse} inventory={inventory} />}
         {view.kind === "inventory" && !bg && <Img src={arrowUrl(0, 16, 13)} x={135} y={29} w={16} h={13} />}
         {view.kind === "crafting_table" && !bg && <Img src={arrowUrl(0)} x={90} y={35} w={22} h={15} />}
         {(view.kind === "furnace" || view.kind === "blast_furnace" || view.kind === "smoker") && (

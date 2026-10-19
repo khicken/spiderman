@@ -54,7 +54,7 @@ export function createScreenFx(items: ItemMeshes): ScreenFx {
   return {
     root,
     update(camera, spyglass, totemTicks, pt) {
-      const h = 2 * DIST * Math.tan((camera.fov * D) / 2);
+      const h = 2 * DIST * Math.tan((((camera.userData.handFov as number | undefined) ?? camera.fov) * D) / 2);
       const w = h * camera.aspect;
       scope.visible = spyglass;
       if (spyglass) {

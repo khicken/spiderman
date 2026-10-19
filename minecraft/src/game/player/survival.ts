@@ -46,7 +46,7 @@ export function protectionEpf(ctx: Pick<GameCtx, "inventory">, source: DamageSou
     if (source === "fire" || source === "lava") epf += 2 * ench(s, "fire_protection");
     if (source === "fall") epf += 3 * ench(s, "feather_falling");
     if (source === "explosion") epf += 2 * ench(s, "blast_protection");
-    if (source === "arrow") epf += 2 * ench(s, "projectile_protection");
+    if (source === "arrow" || source === "trident") epf += 2 * ench(s, "projectile_protection");
   }
   return epf;
 }
@@ -103,7 +103,7 @@ function blockWithShield(p: PlayerState, ctx: GameCtx, amount: number, from: { x
   if (amount >= 3) damageSlot(ctx, slot, 1 + Math.floor(amount));
   if (melee) {
     ctx.entities.knockback(melee.id, dx, dz, 0.5);
-    if (String(melee.data.held ?? "").endsWith("_axe")) disableShield(p, ctx);
+    if (String(melee.data.held ?? "").endsWith("_axe") && ctx.random() < 0.25) disableShield(p, ctx);
   }
   return true;
 }
@@ -115,10 +115,11 @@ export function disableShield(p: PlayerState, ctx: GameCtx): void {
   sound(ctx, "item.shield.break", p, 0.8, 0.8 + ctx.random() * 0.4);
 }
 
-export function difficultyScale(ctx: Pick<GameCtx, "rules">, amount: number, source: DamageSource): number {
-  if (source !== "mob" && source !== "arrow" && source !== "explosion" && source !== "player") return amount;
+// Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them.
+export function difficultyScale(ctx: Pick<GameCtx, "rules">, amount: number, source: DamageSource, attacker?: Entity): number {
+  if (source !== "mob" && source !== "explosion" && !((source === "arrow" || source === "trident") && attacker)) return amount;
   switch (ctx.rules.difficulty) {
-    case "peaceful": return source === "explosion" ? amount : 0;
+    case "peaceful": return 0;
     case "easy": return Math.min(amount / 2 + 1, amount);
     case "hard": return amount * 1.5;
     default: return amount;
@@ -141,7 +142,7 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
     p.damageFrom = null;
     return p.remote.damage(amount, source, attacker);
   }
-  amount = difficultyScale(ctx, amount, source);
+  amount = difficultyScale(ctx, amount, source, attacker);
   if (amount <= 0) return;
   const from = p.damageFrom ?? (attacker ? attacker.body.pos : null);
   p.damageFrom = null;
@@ -158,8 +159,8 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
   }
   if (!BYPASS_ARMOR.has(source)) {
     const a = armorTotals(ctx);
+    const per = Math.max(1, Math.floor(dealt / 4));
     dealt = armorReduce(dealt, a.points, a.toughness);
-    const per = Math.max(1, Math.floor(amount / 4));
     for (let i = 36; i <= 39; i++) if (ctx.inventory.slots[i]) damageSlot(ctx, i, per);
   }
   const res = p.hasEffect("resistance");

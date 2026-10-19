@@ -1,5 +1,7 @@
 // Fallback transport for peers that WebRTC cannot reach: a tiny MQTT 3.1.1 client over WSS
 // to free public brokers. Every message goes to every live broker, the receiver drops repeats.
+// Brokers are public, so each envelope is AES-GCM sealed with the room key and signed by the sender's session key.
+import { PUB_BYTES, ReplayWindow, SIG_BYTES, hex, open as unseal, seal, verifyFrom, type Identity } from "./room-crypto";
 
 // hz: publish budget. EMQX drops messages above about 10 per second per client.
 const BROKERS = [
@@ -36,11 +38,11 @@ function varint(n: number): number[] {
 
 type Broker = { url: string; hz: number; ws: WebSocket | null; ok: boolean; tokens: number; at: number; retry: number; buf: Uint8Array };
 
-export function createRelay(room: string, me: string, onMsg: RelayMsg): Relay {
-  const topic = str(`kalebkim-minecraft/v1/${room}`);
-  const meB = enc.encode(me);
-  const seen = new Map<string, Set<number>>();
-  let n = 0;
+export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg: RelayMsg): Relay {
+  const topic = str(`kalebkim-minecraft/v2/${topicId}`);
+  const ivs = new Set<string>();
+  let inQ: Promise<unknown> = Promise.resolve();
+  let outQ: Promise<unknown> = Promise.resolve();
   let closed = false;
   const brokers: Broker[] = BROKERS.map((b) => ({ ...b, ws: null, ok: false, tokens: b.hz, at: performance.now(), retry: 1000, buf: new Uint8Array(0) }));
   const ping = setInterval(() => {
@@ -119,27 +121,16 @@ export function createRelay(room: string, me: string, onMsg: RelayMsg): Relay {
     }
   }
 
-  // kind, u32 counter, from, to (empty = everyone), body
+  const codec = relayCodec(me, key);
+
   function envelope(m: Uint8Array) {
-    if (m.length < 7) return;
-    const kind = m[0];
-    const cnt = ((m[1] << 24) | (m[2] << 16) | (m[3] << 8) | m[4]) >>> 0;
-    const fl = m[5];
-    const from = dec.decode(m.subarray(6, 6 + fl));
-    const tl = m[6 + fl];
-    const to = tl ? dec.decode(m.subarray(7 + fl, 7 + fl + tl)) : "";
-    if (from === me || (to && to !== me)) return;
-    if (!/^[A-Za-z0-9]{1,40}$/.test(from)) return;
-    let s = seen.get(from);
-    if (!s) {
-      // strangers on a public topic: keep the newest few senders only
-      if (seen.size >= MAX_SENDERS) seen.delete(seen.keys().next().value!);
-      seen.set(from, (s = new Set()));
-    }
-    if (s.has(cnt)) return;
-    s.add(cnt);
-    if (s.size > 256) for (const k of s) { s.delete(k); if (s.size <= 192) break; }
-    onMsg(from, kind, m.subarray(7 + fl + tl));
+    if (m.length < 28 || closed) return;
+    const iv = hex(m.subarray(0, 12));
+    if (ivs.has(iv)) return;
+    ivs.add(iv);
+    if (ivs.size > 1024) for (const k of ivs) { ivs.delete(k); if (ivs.size <= 768) break; }
+    const sealed = m.slice();
+    inQ = inQ.then(() => codec.read(sealed)).then((r) => r && !closed && onMsg(r.from, r.kind, r.body)).catch(() => {});
   }
 
   for (const b of brokers) open(b);
@@ -151,30 +142,24 @@ export function createRelay(room: string, me: string, onMsg: RelayMsg): Relay {
       return k;
     },
     publish(kind, body, lossy, to = "") {
-      const toB = enc.encode(to);
-      const msg = new Uint8Array(7 + meB.length + toB.length + body.length);
-      const c = n++ >>> 0;
-      msg[0] = kind;
-      msg[1] = c >>> 24; msg[2] = (c >>> 16) & 255; msg[3] = (c >>> 8) & 255; msg[4] = c & 255;
-      msg[5] = meB.length;
-      msg.set(meB, 6);
-      msg[6 + meB.length] = toB.length;
-      msg.set(toB, 7 + meB.length);
-      msg.set(body, 7 + meB.length + toB.length);
-      const rem = topic.length + msg.length;
-      const head = [0x30, ...varint(rem), ...topic];
-      const pkt = new Uint8Array(head.length + msg.length);
-      pkt.set(head);
-      pkt.set(msg, head.length);
-      const now = performance.now();
-      for (const b of brokers) {
-        if (!b.ok) continue;
-        b.tokens = Math.min(b.hz, b.tokens + ((now - b.at) / 1000) * b.hz);
-        b.at = now;
-        if (lossy && b.tokens < 1) continue;
-        b.tokens -= 1;
-        send(b, pkt);
-      }
+      const sealed = codec.wire(kind, body, to);
+      outQ = outQ.then(() => sealed).then((msg) => {
+        if (closed) return;
+        const rem = topic.length + msg.length;
+        const head = [0x30, ...varint(rem), ...topic];
+        const pkt = new Uint8Array(head.length + msg.length);
+        pkt.set(head);
+        pkt.set(msg, head.length);
+        const now = performance.now();
+        for (const b of brokers) {
+          if (!b.ok) continue;
+          b.tokens = Math.min(b.hz, b.tokens + ((now - b.at) / 1000) * b.hz);
+          b.at = now;
+          if (lossy && b.tokens < 1) continue;
+          b.tokens -= 1;
+          send(b, pkt);
+        }
+      }).catch((e) => console.warn("relay send:", e));
     },
     close() {
       closed = true;
@@ -185,6 +170,50 @@ export function createRelay(room: string, me: string, onMsg: RelayMsg): Relay {
         b.ws = null;
         b.ok = false;
       }
+    },
+  };
+}
+
+// Sealed: kind, u32 counter, sender public key, to (empty = everyone), body, then a signature over all of it.
+export function relayCodec(me: Identity, key: CryptoKey) {
+  const seen = new Map<string, ReplayWindow>();
+  let n = 0;
+  return {
+    async wire(kind: number, body: Uint8Array, to: string): Promise<Uint8Array> {
+      const toB = enc.encode(to);
+      const plain = new Uint8Array(6 + PUB_BYTES + toB.length + body.length);
+      const c = n++ >>> 0;
+      plain[0] = kind;
+      plain[1] = c >>> 24; plain[2] = (c >>> 16) & 255; plain[3] = (c >>> 8) & 255; plain[4] = c & 255;
+      plain.set(me.pub, 5);
+      plain[5 + PUB_BYTES] = toB.length;
+      plain.set(toB, 6 + PUB_BYTES);
+      plain.set(body, 6 + PUB_BYTES + toB.length);
+      const sig = await me.sign(plain);
+      const signed = new Uint8Array(plain.length + sig.length);
+      signed.set(plain);
+      signed.set(sig, plain.length);
+      return seal(key, signed);
+    },
+    async read(sealed: Uint8Array): Promise<{ from: string; kind: number; body: Uint8Array } | null> {
+      const p = await unseal(key, sealed);
+      if (!p || p.length < 6 + PUB_BYTES + SIG_BYTES) return null;
+      const signed = p.subarray(0, p.length - SIG_BYTES);
+      const from = await verifyFrom(p.subarray(5, 5 + PUB_BYTES), p.subarray(p.length - SIG_BYTES), signed);
+      if (!from || from === me.id) return null;
+      const cnt = ((p[1] << 24) | (p[2] << 16) | (p[3] << 8) | p[4]) >>> 0;
+      let o = 5 + PUB_BYTES;
+      const tl = p[o++];
+      const to = tl ? dec.decode(p.subarray(o, o + tl)) : "";
+      o += tl;
+      if (o > signed.length || (to && to !== me.id)) return null;
+      let w = seen.get(from);
+      if (!w) {
+        if (seen.size >= MAX_SENDERS) seen.delete(seen.keys().next().value!);
+        seen.set(from, (w = new ReplayWindow()));
+      }
+      if (!w.accept(cnt)) return null;
+      return { from, kind: p[0], body: signed.slice(o) };
     },
   };
 }

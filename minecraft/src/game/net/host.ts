@@ -1,11 +1,15 @@
 import * as THREE from "three";
-import type { BlockState, DamageSource, Dim, Entity, EntityApi, EntitySave, GameCtx, GameEvent, GameMode, PlayerApi } from "../contracts";
-import { idOf } from "../contracts";
+import type { BlockState, DamageSource, Dim, Entity, EntityApi, EntitySave, GameCtx, GameEvent, GameMode, ItemStack, PlayerApi } from "../contracts";
+import { MAX_Y, MIN_Y, idOf } from "../contracts";
 import { BLOCKS } from "../blocks/registry";
 import type { PlayerPicker } from "../entities";
 import { createInventory } from "../items";
 import { SLEEP_RULE } from "../mechanics/interact";
 import { makeBody } from "../player/physics";
+import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND } from "../player/stats";
+import { mobDef } from "../entities/registry";
+import { createGuard, type Guard, type RateKind } from "./host-guard";
+import { boxDistSq } from "../entities/geom";
 import { runCommand, setPlayerName } from "../ui/commands";
 import type { KeepCenter, World } from "../world";
 import { saveMeta, type WorldMeta } from "../world/save";
@@ -15,7 +19,7 @@ import { closeDim, openDim, tickDim, type DimState } from "./host-dims";
 import { createTracker, type EntityTracker } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
 import { playerName, skinOf } from "./profile";
-import { cleanName, F, MAX_PLAYERS, PROTOCOL, newRoomCode, num, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type PlayerRecord, type PlayerSnap } from "./protocol";
+import { cleanName, F, MAX_PLAYERS, PROTOCOL, int, isDim, newRoomCode, num, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type PlayerRecord, type PlayerSnap } from "./protocol";
 import { createTransport, type Transport } from "./transport";
 import { createAvatars } from "./avatars";
 import { setAdvancementSink } from "../systems/advancements";
@@ -51,6 +55,7 @@ interface Remote {
   dimTick: number;
   hp: Health;
   owner: HealthOwner;
+  guard: Guard;
 }
 
 type Meta = WorldMeta & { players?: Record<string, PlayerRecord> };
@@ -62,6 +67,16 @@ const MAX_RD = 8;
 const REACH = 12;
 const key = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
 const clampRd = (r: number) => Math.max(2, Math.min(MAX_RD, r | 0));
+const MAX_REQS = (2 * MAX_RD + 3) ** 2;
+// Mobs a survival player can make without a spawn egg: golems, the wither, infested blocks, portals, oozing, mob buckets.
+const SURVIVAL_MOBS = new Set(["iron_golem", "snow_golem", "wither", "silverfish", "zombified_piglin", "slime", "cod", "salmon", "pufferfish", "tropical_fish", "axolotl", "tadpole"]);
+const MAX_BE_JSON = 64 * 1024;
+const itemName = (v: unknown): string | null => (typeof v === "string" && v.length <= 64 ? v : null);
+const blockAt = (m: { x: unknown; y: unknown; z: unknown }) => int(m.x) !== null && int(m.y, MIN_Y, MAX_Y) !== null && int(m.z) !== null;
+const nearPos = (r: { pos: THREE.Vector3 }, m: { x: unknown; y: unknown; z: unknown }, d: number) => {
+  const x = num(m.x), y = num(m.y, -1000, 2000), z = num(m.z);
+  return x !== null && y !== null && z !== null && r.pos.distanceToSquared(new THREE.Vector3(x, y, z)) <= d * d;
+};
 
 export async function createHost(g: GameInternals, opts: LanOptions): Promise<NetLink> {
   const code = newRoomCode();
@@ -191,6 +206,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         healBy(r.owner, n);
       },
       addXp(n: number) {
+        r.guard.grantXp(n);
         send(r, { t: "xp", n });
       },
       addExhaustion(v: number) {
@@ -219,7 +235,6 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     if (typeof pl.xpLevel === "number") px.xpLevel = pl.xpLevel;
     if (typeof pl.xpTotal === "number") px.xpTotal = pl.xpTotal;
     if (typeof pl.xpProgress === "number") px.xpProgress = pl.xpProgress;
-    if (typeof pl.gameMode === "string") px.gameMode = pl.gameMode as GameMode;
     if (pl.spawn && typeof pl.spawn === "object") px.spawn = pl.spawn as PlayerApi["spawn"];
   }
 
@@ -256,10 +271,16 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   function remoteInv(r: Remote): Inventory {
     const v = Object.create(r.inv) as Inventory;
     v.add = (stack) => {
-      if (stack && stack.count > 0) send(r, { t: "give", stack: { ...stack } });
+      if (stack && stack.count > 0) give(r, stack);
       return null;
     };
     return v;
+  }
+
+  // The host copy gets the item too, so a later full inventory send still has it.
+  function give(r: Remote, stack: ItemStack) {
+    r.inv.add({ ...stack });
+    send(r, { t: "give", stack: { ...stack }, seq: r.guard.gave(stack) });
   }
 
   function everyone(d: Dim): PlayerApi[] {
@@ -272,7 +293,41 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   function sendView(r: Remote, withInv = true) {
     const v = r.inv.view();
     r.viewJson = v ? JSON.stringify(v) : "";
-    send(r, { t: "view", view: v, inv: withInv ? r.inv.save() : undefined });
+    const inv = withInv ? r.inv.save() : undefined;
+    send(r, { t: "view", view: v, inv, seq: inv ? r.guard.whole(inv) : undefined });
+  }
+
+  // Host setting decides the mode unless cheats are on, where the client may run /gamemode itself.
+  const exempt = (r: Remote) => opts.cheats || r.proxy.gameMode === "creative";
+
+  function clientMode(r: Remote, gm: unknown) {
+    if (gm !== "survival" && gm !== "creative" && gm !== "adventure" && gm !== "spectator") return;
+    if (opts.cheats) r.proxy.gameMode = gm;
+    else if (gm !== r.proxy.gameMode) send(r, { t: "gm", mode: r.proxy.gameMode });
+  }
+
+  // Checks a client inventory against the ledger. Returns the save to use, or null when it predates a host change.
+  function takeInv(r: Remote, inv: unknown, seq: unknown): unknown {
+    const c = r.guard.check(inv, typeof seq === "number" ? seq : 0, exempt(r));
+    if (c.stale) return null;
+    if (c.clamped) {
+      r.guard.strike(performance.now(), 10);
+      send(r, { t: "setinv", inv: c.save, seq: r.guard.whole(c.save) });
+    }
+    r.record.inventory = c.save;
+    return c.save;
+  }
+
+  function limited(r: Remote, k: RateKind) {
+    return !r.guard.allow(k, performance.now());
+  }
+
+  // Vanilla ServerPlayer.canInteractWithBlock: block range plus a 1 block buffer, eye to the block box.
+  function reachesBlock(r: Remote, x: number, y: number, z: number) {
+    const range = (r.proxy.gameMode === "creative" ? BLOCK_REACH + CREATIVE_REACH_BONUS : BLOCK_REACH) + 1;
+    const ex = r.pos.x, ey = r.pos.y + (r.f & F.sneak ? EYE_SNEAK : EYE_STAND), ez = r.pos.z;
+    const dx = Math.max(x - ex, 0, ex - x - 1), dy = Math.max(y - ey, 0, ey - y - 1), dz = Math.max(z - ez, 0, ez - z - 1);
+    return dx * dx + dy * dy + dz * dz <= range * range;
   }
 
   // Furnaces and brewing stands tick from one tracker per dimension, whoever placed or opened them.
@@ -331,11 +386,13 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       t.send(peer, { t: "full", reason: "The server is full!" } satisfies HostMsg);
       return;
     }
-    let name = cleanName(String(m.name)) || "Player";
+    const base = cleanName(String(m.name)) || "Player";
+    let name = base;
     const taken = (n: string) => n.toLowerCase() === hostName.toLowerCase() || [...remotes.values()].some((r) => r.name.toLowerCase() === n.toLowerCase());
-    for (let i = 2; taken(name); i++) name = `${cleanName(String(m.name)).slice(0, 13)}_${i}`;
+    for (let i = 2; taken(name); i++) name = `${base.slice(0, 13)}_${i}`;
     meta.players ??= {};
-    const record: PlayerRecord = meta.players[name] ?? { dim: "overworld", player: undefined, inventory: undefined };
+    const old = Object.hasOwn(meta.players, name) ? meta.players[name] : undefined;
+    const record: PlayerRecord = old && isDim(old.dim) ? old : { dim: "overworld", player: undefined, inventory: undefined };
     const saved = record.player as { pos?: [number, number, number] } | undefined;
     const sp = meta.spawn ?? { ...findSpawn(meta.seed), y: 80 };
     const pos = saved?.pos ? new THREE.Vector3(saved.pos[0], saved.pos[1], saved.pos[2]) : new THREE.Vector3(sp.x + 0.5, sp.y, sp.z + 0.5);
@@ -343,7 +400,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       peer, num: nextNum++, name, skin: skinOf(name), dim: record.dim, pos, yaw: 0, pitch: 0, f: 0, sw: 0,
       eq: { held: null, off: null, armor: [null, null, null, null] }, center: null, reqs: new Map(), tracker: createTracker(),
       inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), moveTick: tick, joinedAt: performance.now(), dimTick: tick,
-      hp: newHealth(), owner: null!,
+      hp: newHealth(), owner: null!, guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
     };
     r.owner = {
       get hp() {
@@ -398,6 +455,12 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     return dx * dx + dy * dy + dz * dz <= REACH * REACH;
   }
 
+  // Vanilla ServerPlayer.canInteractWithEntity: entity range plus a 1 block buffer, eye to hit box.
+  function canReach(r: Remote, e: Entity) {
+    const range = (r.proxy.gameMode === "creative" ? ENTITY_REACH + CREATIVE_ENTITY_BONUS : ENTITY_REACH) + 1;
+    return boxDistSq(r.pos.x, r.pos.y + (r.f & F.sneak ? EYE_SNEAK : EYE_STAND), r.pos.z, e.body) < range * range;
+  }
+
   function correct(r: Remote, w: World, x: number, y: number, z: number) {
     send(r, { t: "blocks", dim: r.dim, list: [x, y, z, w.getBlock(x, y, z)] });
   }
@@ -408,6 +471,12 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     if (m.t === "hello") return hello(peer, m);
     const r = remotes.get(peer);
     if (!r) return;
+    if (r.guard.kick()) {
+      send(r, { t: "bye", reason: "Kicked for spamming" });
+      say(`§e${r.name} was kicked`);
+      leave(peer, true);
+      return;
+    }
     switch (m.t) {
       case "move": {
         const x = num(m.x), y = num(m.y, -200, 1000), z = num(m.z);
@@ -429,83 +498,117 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         return;
       }
       case "equip":
-        if (m.eq && Array.isArray(m.eq.armor)) r.eq = { held: m.eq.held ?? null, off: m.eq.off ?? null, armor: m.eq.armor.slice(0, 4) };
+        if (m.eq && Array.isArray(m.eq.armor)) r.eq = { held: itemName(m.eq.held), off: itemName(m.eq.off), armor: [0, 1, 2, 3].map((i) => itemName(m.eq.armor[i])) };
         return;
       case "center": {
+        const cx = int(m.cx, -2e6, 2e6), cz = int(m.cz, -2e6, 2e6);
+        if (!isDim(m.dim) || cx === null || cz === null) return;
         if (m.dim !== r.dim) {
           if (r.inv.view()) withPlayer(r, () => r.inv.close());
           r.dim = m.dim;
           r.dimTick = tick;
-          r.pos.set(m.cx * 16 + 8, r.pos.y, m.cz * 16 + 8);
+          r.pos.set(cx * 16 + 8, r.pos.y, cz * 16 + 8);
           r.reqs.clear();
           r.tracker.clear();
           send(r, { t: "ents", clear: true });
           ensureDim(r.dim);
         }
-        r.center = { cx: m.cx | 0, cz: m.cz | 0, r: clampRd(m.r) + 1 };
+        r.center = { cx, cz, r: clampRd(num(m.r) ?? 2) + 1 };
         return;
       }
-      case "req":
-        if (m.dim !== r.dim) send(r, { t: "nochunk", dim: m.dim, cx: m.cx, cz: m.cz });
-        else r.reqs.set(key(m.cx, m.cz), [m.cx | 0, m.cz | 0]);
+      case "req": {
+        const cx = int(m.cx, -2e6, 2e6), cz = int(m.cz, -2e6, 2e6);
+        if (!isDim(m.dim) || cx === null || cz === null) return;
+        if (m.dim !== r.dim) send(r, { t: "nochunk", dim: m.dim, cx, cz });
+        else if (r.reqs.size < MAX_REQS) r.reqs.set(key(cx, cz), [cx, cz]);
         return;
+      }
       case "set": {
         const w = worldOf(r.dim);
-        if (!w || m.dim !== r.dim) return;
-        if (!nearEye(r, m.x, m.y, m.z) || !BLOCKS[idOf(m.s)]) return correct(r, w, m.x, m.y, m.z);
+        if (!w || m.dim !== r.dim || !blockAt(m) || int(m.s, 0, 0xffff) === null) return;
+        if (limited(r, "set") || !nearEye(r, m.x, m.y, m.z) || !BLOCKS[idOf(m.s)]) return correct(r, w, m.x, m.y, m.z);
+        const was = w.getBlock(m.x, m.y, m.z);
         withPlayer(r, (c) => c.world.setBlock(m.x, m.y, m.z, m.s as BlockState, m.f | 0));
         if (w.getBlock(m.x, m.y, m.z) !== m.s) correct(r, w, m.x, m.y, m.z);
+        else if (idOf(was) !== 0 && idOf(was) !== idOf(m.s)) r.guard.broke(was, r.eq.held, m.x, m.y, m.z, tick, BLOCKS[idOf(was)]?.xp?.[1] ?? 0);
         return;
       }
       case "be": {
         const w = worldOf(r.dim);
-        if (!w || m.dim !== r.dim || !nearEye(r, m.x, m.y, m.z)) return;
+        if (!w || m.dim !== r.dim || !blockAt(m) || !nearEye(r, m.x, m.y, m.z)) return;
+        if (m.be !== null && (typeof m.be !== "object" || JSON.stringify(m.be).length > MAX_BE_JSON)) return;
+        if (limited(r, "set") || !r.guard.blockEntity(w.getBlockEntity(m.x, m.y, m.z), m.be, exempt(r))) {
+          r.guard.strike(performance.now(), 5);
+          send(r, { t: "blocks", dim: r.dim, list: [], be: [{ x: m.x, y: m.y, z: m.z, be: w.getBlockEntity(m.x, m.y, m.z) ?? null }] });
+          return;
+        }
         withPlayer(r, (c) => c.world.setBlockEntity(m.be ? { ...m.be } : null, m.x, m.y, m.z));
         queueBe(r.dim, m.x, m.y, m.z);
         return;
       }
       case "wl": {
         const w = worldOf(r.dim);
-        if (!w || m.dim !== r.dim || !nearEye(r, m.x, m.y, m.z)) return;
+        if (!w || m.dim !== r.dim || !blockAt(m) || !nearEye(r, m.x, m.y, m.z)) return;
         withPlayer(r, (c) => c.world.setWaterlogged?.(m.x, m.y, m.z, !!m.on));
         return;
       }
       case "spawn": {
         const e = entsOf(r.dim);
-        if (!e || r.pos.distanceTo(new THREE.Vector3(m.x, m.y, m.z)) > 16) return;
+        if (!e || !nearPos(r, m, 16) || typeof m.type !== "string" || limited(r, "spawn")) return;
+        const def = mobDef(m.type);
+        if (def && def.category !== "misc" && !exempt(r) && (!SURVIVAL_MOBS.has(m.type) || limited(r, "mob"))) return r.guard.strike(performance.now(), 5);
         withPlayer(r, () => e.spawn(String(m.type), m.x, m.y, m.z, { ...(m.data ?? {}), vel: m.vel, yaw: m.yaw, pitch: m.pitch, _net: r.num }));
         return;
       }
       case "drop": {
         const e = entsOf(r.dim);
-        if (!e || !m.stack || typeof m.stack.item !== "string") return;
+        if (!e || !nearPos(r, m, 16) || !m.stack || typeof m.stack.item !== "string" || int(m.stack.count, 1, 64) === null || limited(r, "drop")) return;
+        if (!r.guard.drop(m.stack, m.x, m.y, m.z, tick, exempt(r))) return r.guard.strike(performance.now(), 5);
         withPlayer(r, () => e.dropItem({ ...m.stack }, m.x, m.y, m.z, m.vel ? new THREE.Vector3(m.vel[0], m.vel[1], m.vel[2]) : undefined));
         return;
       }
       case "dropxp":
+        if (!nearPos(r, m, 16) || limited(r, "drop")) return;
+        if (!r.guard.dropXp(m.n | 0, m.x, m.y, m.z, tick, r.hp.dead || (r.f & F.dead) !== 0, r.proxy.xpLevel, exempt(r))) return r.guard.strike(performance.now(), 5);
         withPlayer(r, () => entsOf(r.dim)?.dropXp(Math.min(10000, m.n | 0), m.x, m.y, m.z));
         return;
-      case "hit":
+      case "hit": {
+        const target = entsOf(r.dim)?.get(m.id);
+        if ((m.source === "player" || m.source === "mace") && (!target || !canReach(r, target))) return;
         withPlayer(r, () => entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), m.source, "player"));
         return;
+      }
       case "kb":
         entsOf(r.dim)?.knockback(m.id, +m.dx || 0, +m.dz || 0, Math.min(5, +m.s || 0));
         return;
       case "interact": {
-        if (m.inv) r.inv.load(m.inv);
+        const target = entsOf(r.dim)?.get(m.id);
+        if (limited(r, "open") || !target || !canReach(r, target)) return;
+        const inv = m.inv ? takeInv(r, m.inv, m.seq) : null;
+        if (inv) r.inv.load(inv);
         withPlayer(r, () => entsOf(r.dim)?.interact(m.id, r.inv.held()));
         sendView(r);
         return;
       }
       case "explode":
-        if (r.pos.distanceTo(new THREE.Vector3(m.x, m.y, m.z)) < 16) withPlayer(r, () => entsOf(r.dim)?.explode(m.x, m.y, m.z, Math.min(8, +m.power || 0), !!m.fire));
+        if (nearPos(r, m, 16) && !limited(r, "explode")) withPlayer(r, () => entsOf(r.dim)?.explode(m.x, m.y, m.z, Math.min(exempt(r) ? 8 : 5, +m.power || 0), !!m.fire));
         return;
-      case "open":
-        if (m.inv) r.inv.load(m.inv);
+      case "open": {
+        const at = m.at;
+        if (!at || limited(r, "open")) return;
+        const ent = typeof at.entityId === "number" ? entsOf(r.dim)?.get(at.entityId) : undefined;
+        const ok = typeof at.entityId === "number" ? !!ent && canReach(r, ent) : blockAt(at) && reachesBlock(r, at.x, at.y, at.z);
+        if (!ok) {
+          r.guard.strike(performance.now(), 5);
+          return send(r, { t: "view", view: null });
+        }
+        const inv = m.inv ? takeInv(r, m.inv, m.seq) : null;
+        if (inv) r.inv.load(inv);
         withPlayer(r, () => r.inv.open(m.kind, m.at));
-        if (m.at && (TICKED.has(m.kind) || m.kind === "brewing_stand")) trackIn(r.dim, m.at.x | 0, m.at.y | 0, m.at.z | 0);
+        if (TICKED.has(m.kind) || m.kind === "brewing_stand") trackIn(r.dim, at.x | 0, at.y | 0, at.z | 0);
         sendView(r);
         return;
+      }
       case "click":
         withPlayer(r, () => r.inv.clickSlot(m.i, m.c));
         sendView(r);
@@ -516,31 +619,43 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         return;
       case "close":
         withPlayer(r, () => r.inv.close());
-        send(r, { t: "view", view: null, inv: r.inv.save() });
+        sendView(r);
         r.viewJson = "";
         return;
-      case "inv":
-        r.record.inventory = m.inv;
-        r.record.player = m.player;
+      case "inv": {
+        takeInv(r, m.inv, m.seq);
+        const pl = m.player && typeof m.player === "object" ? (m.player as Record<string, unknown>) : {};
+        const px = r.proxy;
+        if (!r.guard.xpOk(pl.xpTotal, exempt(r))) {
+          Object.assign(pl, { xpLevel: px.xpLevel, xpTotal: px.xpTotal, xpProgress: px.xpProgress });
+          send(r, { t: "stats", xpLevel: px.xpLevel, xpTotal: px.xpTotal, xpProgress: px.xpProgress });
+        }
+        r.record.player = pl;
         if (m.adv) r.record.adv = m.adv;
         applyRecord(r);
-        r.proxy.gameMode = (m.player as { gameMode?: GameMode })?.gameMode ?? r.proxy.gameMode;
+        clientMode(r, pl.gameMode);
         return;
+      }
       case "chat": {
+        if (limited(r, "chat")) return;
         const text = String(m.text).slice(0, 256);
         if (text) say(`<${r.name}> ${text}`);
         return;
       }
       case "adv": {
+        if (limited(r, "chat")) return;
         const text = String(m.text).slice(0, 200);
         if (!text.startsWith(`${r.name} has `)) return;
         g.chat(text);
         for (const o of remotes.values()) if (o !== r) send(o, { t: "chat", text });
         return;
       }
-      case "died":
-        say(String(m.msg).slice(0, 200));
+      case "died": {
+        if (limited(r, "chat")) return;
+        const text = String(m.msg).slice(0, 200);
+        if (text.startsWith(`${r.name} `)) say(text);
         return;
+      }
       case "dmg": {
         const c = ctxFor(r.dim);
         const n = num(m.amount, 0, 3.5e38);
@@ -571,14 +686,16 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         h.maxHealth = num(m.max, 1, 1024) ?? 20;
         h.health = Math.min(h.health, h.maxHealth);
         h.blocking = !!m.block;
-        if (m.gm === "survival" || m.gm === "creative" || m.gm === "adventure" || m.gm === "spectator") r.proxy.gameMode = m.gm;
+        clientMode(r, m.gm);
         return;
       }
       case "respawn":
         resetHealth(r.hp);
+        r.guard.respawned();
         r.joinedAt = performance.now();
         return;
       case "cmd": {
+        if (limited(r, "chat")) return;
         const line = String(m.line).slice(0, 512);
         const shared = social(line, r.name);
         if (shared) return send(r, { t: "cmdres", lines: shared });
@@ -729,7 +846,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (delay > 0) continue;
         const stack = e.data.stack as { item: string; count: number } | undefined;
         if (!stack) continue;
-        send(r, { t: "give", stack: { ...stack } });
+        give(r, stack);
         e.dead = true;
         e.data._fly = 3;
         all({ t: "sound", name: "entity.item.pickup", x: r.pos.x, y: r.pos.y, z: r.pos.z, volume: 0.2, pitch: 1.4 + Math.random() * 0.6 });

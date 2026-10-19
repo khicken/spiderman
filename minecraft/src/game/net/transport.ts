@@ -1,4 +1,5 @@
 import { createRelay, type Relay } from "./relay";
+import { PUB_BYTES, SIG_BYTES, newIdentity, roomKeys, verifyFrom } from "./room-crypto";
 
 const APP_ID = "kalebkim-minecraft";
 // The same live-probed nostr relays as the cars game.
@@ -42,9 +43,13 @@ export interface Transport {
 
 type Act = { send: (d: unknown, o?: { target?: string }) => Promise<unknown> };
 
+// Peer ids are session key hashes. A WebRTC peer proves its id once with a signature bound to both connection ids;
+// after that every message on that connection is that id. Relay messages carry their own signature.
 export async function createTransport(code: string): Promise<Transport> {
-  const room = code.replace("-", "");
-  const { joinRoom, selfId } = await import("trystero");
+  const [keys, me, { joinRoom, selfId: rtcSelf }] = await Promise.all([roomKeys(code), newIdentity(), import("trystero")]);
+  const selfId = me.id;
+  const rtcId = new Map<string, string>();
+  const idRtc = new Map<string, string>();
   const forced = typeof location !== "undefined" && new URLSearchParams(location.search).get("relay") === "1";
   const rtc = new Set<string>();
   const seen = new Map<string, number>();
@@ -70,8 +75,9 @@ export async function createTransport(code: string): Promise<Transport> {
       if (relay.up) relay.publish(K_JSON, enc.encode(JSON.stringify(msg)), false);
     },
     sendBin(to, data, ordered = true) {
-      if (!ordered && rtc.has(to) && binAct && data instanceof Uint8Array) {
-        binAct.send(data, { target: to }).catch(() => {});
+      const peer = idRtc.get(to);
+      if (!ordered && peer && rtc.has(to) && binAct && data instanceof Uint8Array) {
+        binAct.send(data, { target: peer }).catch(() => {});
         return;
       }
       push(to, K_BIN, data);
@@ -101,9 +107,10 @@ export async function createTransport(code: string): Promise<Transport> {
   }
 
   function out(to: string, kind: number, body: unknown): Promise<unknown> | void {
-    if (rtc.has(to)) {
+    const peer = idRtc.get(to);
+    if (peer && rtc.has(to)) {
       const a = kind === K_JSON ? jsonAct : binAct;
-      if (a) return a.send(body, { target: to });
+      if (a) return a.send(body, { target: peer });
     }
     if (!relay.up) return;
     relay.publish(kind, kind === K_JSON ? enc.encode(JSON.stringify(body)) : (body as Uint8Array), false, to);
@@ -134,7 +141,7 @@ export async function createTransport(code: string): Promise<Transport> {
     }
   }
 
-  const relay: Relay = createRelay(room, selfId, (from, kind, body) => {
+  const relay: Relay = createRelay(keys.topic, me, keys.key, (from, kind, body) => {
     if (rtc.has(from)) return;
     if (kind === K_JSON) {
       try {
@@ -144,19 +151,48 @@ export async function createTransport(code: string): Promise<Transport> {
   });
 
   if (!forced) {
-    const r = joinRoom({ appId: APP_ID, relayConfig: { urls: RELAYS }, rtcConfig: { iceServers: iceServers() } } as never, "mc-" + room);
+    const r = joinRoom({ appId: APP_ID, password: keys.password, relayConfig: { urls: RELAYS }, rtcConfig: { iceServers: iceServers() } } as never, "mc-" + keys.topic);
     leaveRoom = () => r.leave();
     const j = r.makeAction<never>("j");
     const b = r.makeAction<never>("b");
+    const idAct = r.makeAction<never>("i") as unknown as Act & { onMessage: unknown };
     jsonAct = j as unknown as Act;
     binAct = b as unknown as Act;
-    (j as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) => recv(typeof info === "string" ? info : info.peerId, K_JSON, d);
-    (b as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) => recv(typeof info === "string" ? info : info.peerId, K_BIN, d instanceof Uint8Array ? d : new Uint8Array(d as ArrayBuffer));
-    r.onPeerJoin = (id: string) => {
-      rtc.add(id);
-      heard(id);
+    const peerOf = (info: { peerId: string } | string) => (typeof info === "string" ? info : info.peerId);
+    const bindText = (a: string, b2: string) => enc.encode(`mc-bind|${a}|${b2}`);
+    (j as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) => {
+      const id = rtcId.get(peerOf(info));
+      if (id) recv(id, K_JSON, d);
     };
-    r.onPeerLeave = (id: string) => {
+    (b as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) => {
+      const id = rtcId.get(peerOf(info));
+      if (id) recv(id, K_BIN, d instanceof Uint8Array ? d : new Uint8Array(d as ArrayBuffer));
+    };
+    idAct.onMessage = (d: unknown, info: { peerId: string } | string) => {
+      const peer = peerOf(info);
+      const raw = d instanceof Uint8Array ? d : d instanceof ArrayBuffer ? new Uint8Array(d) : null;
+      if (!raw || raw.length !== PUB_BYTES + SIG_BYTES || rtcId.has(peer)) return;
+      void verifyFrom(raw.subarray(0, PUB_BYTES), raw.subarray(PUB_BYTES), bindText(peer, rtcSelf)).then((id) => {
+        if (!id || left || id === selfId) return;
+        rtcId.set(peer, id);
+        idRtc.set(id, peer);
+        rtc.add(id);
+        heard(id);
+      });
+    };
+    r.onPeerJoin = (peer: string) => {
+      void me.sign(bindText(rtcSelf, peer)).then((sig) => {
+        const out = new Uint8Array(PUB_BYTES + SIG_BYTES);
+        out.set(me.pub);
+        out.set(sig, PUB_BYTES);
+        return idAct.send(out, { target: peer });
+      }).catch(() => {});
+    };
+    r.onPeerLeave = (peer: string) => {
+      const id = rtcId.get(peer);
+      rtcId.delete(peer);
+      if (!id) return;
+      idRtc.delete(id);
       rtc.delete(id);
       if (!relay.up) drop(id);
     };

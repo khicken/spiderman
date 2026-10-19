@@ -63,11 +63,11 @@ export function hostDamage(o: HealthOwner, ctx: GameCtx, amount: number, source:
   if (h.dead || !(amount > 0)) return;
   if (invulnerableMode(o) && source !== "void") return;
   if ((source === "fire" || source === "lava") && level(h, "fire_resistance")) return;
-  amount = difficultyScale(ctx, amount, source);
+  amount = difficultyScale(ctx, amount, source, attacker);
   if (amount <= 0) return;
   const src = from ?? (attacker ? attacker.body.pos : null);
   if (h.blocking && src && SHIELDED.has(source) && -Math.sin(o.yaw) * (src.x - o.pos.x) - Math.cos(o.yaw) * (src.z - o.pos.z) > 0) {
-    o.send({ t: "hurt", amount, source, blocked: String(attacker?.data.held ?? "").endsWith("_axe") ? 2 : 1 });
+    o.send({ t: "hurt", amount, source, blocked: String(attacker?.data.held ?? "").endsWith("_axe") && ctx.random() < 0.25 ? 2 : 1 });
     return;
   }
   let dealt = amount;
@@ -85,8 +85,8 @@ export function hostDamage(o: HealthOwner, ctx: GameCtx, amount: number, source:
   let per = 0;
   if (!BYPASS_ARMOR.has(source)) {
     const a = armorTotals(inv);
+    per = Math.max(1, Math.floor(dealt / 4));
     dealt = armorReduce(dealt, a.points, a.toughness);
-    per = Math.max(1, Math.floor(amount / 4));
   }
   const res = level(h, "resistance");
   if (res > 0 && source !== "void") dealt *= Math.max(0, 1 - res * 0.2);

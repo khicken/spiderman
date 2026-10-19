@@ -96,13 +96,13 @@ export type ClientMsg =
   | { t: "dropxp"; n: number; x: number; y: number; z: number }
   | { t: "hit"; id: number; amount: number; source: DamageSource }
   | { t: "kb"; id: number; dx: number; dz: number; s: number }
-  | { t: "interact"; id: number; inv: unknown }
+  | { t: "interact"; id: number; inv: unknown; seq?: number }
   | { t: "explode"; x: number; y: number; z: number; power: number; fire: boolean }
-  | { t: "open"; kind: ContainerKind; at: { x: number; y: number; z: number; entityId?: number }; inv: unknown }
+  | { t: "open"; kind: ContainerKind; at: { x: number; y: number; z: number; entityId?: number }; inv: unknown; seq?: number }
   | { t: "click"; i: number; c: ClickKind }
   | { t: "opt"; id: string }
   | { t: "close" }
-  | { t: "inv"; inv: unknown; player: unknown; adv?: unknown }
+  | { t: "inv"; inv: unknown; player: unknown; adv?: unknown; seq?: number } // seq: the last host inventory event the client applied
   | { t: "adv"; text: string }
   | { t: "chat"; text: string }
   | { t: "died"; msg: string }
@@ -127,8 +127,10 @@ export type HostMsg =
   | { t: "chat"; text: string; color?: string }
   | { t: "sound"; name: string; x?: number; y?: number; z?: number; volume?: number; pitch?: number }
   | { t: "fx"; e: Record<string, unknown> }
-  | { t: "view"; view: ContainerView | null; inv?: unknown }
-  | { t: "give"; stack: ItemStack }
+  | { t: "view"; view: ContainerView | null; inv?: unknown; seq?: number }
+  | { t: "setinv"; inv: unknown; seq: number }
+  | { t: "gm"; mode: GameMode }
+  | { t: "give"; stack: ItemStack; seq?: number }
   | { t: "xp"; n: number }
   | { t: "stats"; xpLevel?: number; xpTotal?: number; xpProgress?: number; food?: number; health?: number; saturation?: number; absorption?: number }
   | { t: "hurt"; amount: number; source: DamageSource; armor?: number; ax?: number; az?: number; blocked?: 1 | 2 }
@@ -144,28 +146,30 @@ export type HostMsg =
   | { t: "host" }
   | { t: "bye"; reason: string };
 
-// Room codes look like ABCD-1234. The signaling room is the code without the dash.
-const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+// Room codes look like 7KQX-M3ZP-A9TD: 12 characters from 32 (60 bits), no 0/O or 1/I to misread.
+const CODE_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
 export function newRoomCode(): string {
-  const b = new Uint8Array(8);
+  const b = new Uint8Array(12);
   crypto.getRandomValues(b);
-  let s = "";
-  for (let i = 0; i < 4; i++) s += LETTERS[b[i] % LETTERS.length];
-  s += "-";
-  for (let i = 4; i < 8; i++) s += String(b[i] % 10);
-  return s;
+  const s = Array.from(b, (x) => CODE_CHARS[x % 32]).join("");
+  return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8)}`;
 }
 
 export function cleanRoomCode(s: string): string {
-  const c = s.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
-  return c.length > 4 ? `${c.slice(0, 4)}-${c.slice(4)}` : c;
+  const c = s.toUpperCase().replace(/[^2-9A-HJ-NP-Z]/g, "").slice(0, 12);
+  return c.match(/.{1,4}/g)?.join("-") ?? "";
 }
 
-export const validCode = (s: string) => /^[A-Z]{4}-[0-9]{4}$/.test(s);
+export const validCode = (s: string) => /^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(s);
 
 export function cleanName(s: string): string {
-  return s.replace(/[^A-Za-z0-9_]/g, "").slice(0, 16);
+  const n = s.replace(/[^A-Za-z0-9_]/g, "").slice(0, 16);
+  // Names key plain objects (saved players, advancements); "__proto__" would reach Object.prototype.
+  return n in Object.prototype ? "" : n;
 }
+
+export const isDim = (v: unknown): v is Dim => typeof v === "string" && (DIMS as string[]).includes(v);
+export const int = (v: unknown, lo = -3e7, hi = 3e7): number | null => (Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi ? (v as number) : null);
 
 export const num = (v: unknown, lo = -3e7, hi = 3e7): number | null => (typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi ? v : null);

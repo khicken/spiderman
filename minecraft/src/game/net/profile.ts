@@ -1,4 +1,4 @@
-import { cleanName } from "./protocol";
+import { cleanName, validCode } from "./protocol";
 
 const NAME_KEY = "mc-player-name";
 const SERVERS_KEY = "mc-servers";
@@ -39,7 +39,7 @@ export function setPlayerNameStored(n: string) {
 
 export function servers(): ServerEntry[] {
   const list = read<ServerEntry[]>(SERVERS_KEY, []);
-  return Array.isArray(list) ? list.filter((s) => s && typeof s.code === "string").slice(0, 20) : [];
+  return Array.isArray(list) ? list.filter((s) => s && typeof s.code === "string" && validCode(s.code)).slice(0, 20) : [];
 }
 
 export function rememberServer(code: string, name: string) {

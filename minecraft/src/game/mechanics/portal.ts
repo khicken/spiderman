@@ -73,9 +73,11 @@ let lastInside = -10;
 let cooldown = false;
 let cooldownUntil = 0;
 
-// Vanilla portal cooldown: 300 ticks after arrival, renewed while the player stays inside a portal.
+// Vanilla player portal cooldown: 10 ticks after arrival, renewed while the player stays inside a portal.
+const PLAYER_PORTAL_DELAY = 10;
 export function portalArrived(tick: number) {
-  cooldownUntil = tick + 300;
+  cooldownUntil = tick + PLAYER_PORTAL_DELAY;
+  cooldown = false;
   portalTicks = 0;
   lastInside = tick;
 }
@@ -102,7 +104,7 @@ export const NETHER_PORTAL_BEHAVIOR: BlockBehavior = {
     const t = ctx.time.tick;
     if (t === lastInside) return;
     if (t < cooldownUntil) {
-      cooldownUntil = Math.max(cooldownUntil, t + 20);
+      cooldownUntil = t + PLAYER_PORTAL_DELAY;
       lastInside = t;
       return;
     }

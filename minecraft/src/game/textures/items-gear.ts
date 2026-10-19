@@ -475,6 +475,35 @@ GEAR_PAINTERS.clock_00 = GEAR_PAINTERS.clock;
 GEAR_PAINTERS.compass_00 = GEAR_PAINTERS.compass;
 GEAR_PAINTERS.recovery_compass_00 = GEAR_PAINTERS.recovery_compass;
 GEAR_PAINTERS.crossbow_standby = GEAR_PAINTERS.crossbow;
+
+// Vanilla pulling and loaded sprites: the string is drawn back to a nock point and an arrow (or rocket) lies along the diagonal.
+function drawn(base: readonly string[], nx: number, ny: number, load: "" | "arrow" | "firework"): string[] {
+  const g = base.map((r) => r.replace(/s/g, ".").split(""));
+  const put = (x: number, y: number, c: string) => {
+    if (x >= 0 && y >= 0 && x < 16 && y < 16) g[y][x] = c;
+  };
+  const line = (x0: number, y0: number, x1: number, y1: number) => {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let i = 0; i <= n; i++) put(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), "s");
+  };
+  line(2, 2, nx, ny);
+  line(nx, ny, 12, 12);
+  if (load) {
+    for (let i = 1; i <= 8; i++) put(nx + i, ny - i, i <= 2 ? (load === "arrow" ? "W" : "r") : load === "arrow" ? "c" : "r");
+    put(nx + 9, ny - 9, "g");
+    put(nx + 8, ny - 9, "g");
+    put(nx + 9, ny - 8, "g");
+  }
+  return g.map((r) => r.join(""));
+}
+const LOAD = { s: "#d8d8d8", c: "#8a6a3a", g: "#9a9a9a", r: "#b02e26" };
+const NOCK: [number, number][] = [[6, 8], [5, 9], [4, 10]];
+NOCK.forEach(([x, y], i) => {
+  GEAR_PAINTERS[`bow_pulling_${i}`] = (p) => T(p, drawn(BOW, x, y, "arrow"), { A: WOODR, ...LOAD }, 52);
+  GEAR_PAINTERS[`crossbow_pulling_${i}`] = (p) => T(p, drawn(CROSSBOW, x, y, ""), { A: WOODR, B: ["#1f1f1f", "#4a3416", "#6b4f22", "#8a8a8a", "#a8a8a8"], ...LOAD }, 53);
+});
+GEAR_PAINTERS.crossbow_arrow = (p) => T(p, drawn(CROSSBOW, 4, 10, "arrow"), { A: WOODR, B: ["#1f1f1f", "#4a3416", "#6b4f22", "#8a8a8a", "#a8a8a8"], ...LOAD }, 53);
+GEAR_PAINTERS.crossbow_firework = (p) => T(p, drawn(CROSSBOW, 4, 10, "firework"), { A: WOODR, B: ["#1f1f1f", "#4a3416", "#6b4f22", "#8a8a8a", "#a8a8a8"], ...LOAD }, 53);
 GEAR_PAINTERS.tipped_arrow_base = GEAR_PAINTERS.tipped_arrow;
 
 const SLOT_SHAPE: Record<string, readonly string[]> = { helmet: HELMET, chestplate: CHEST, leggings: LEGS, boots: BOOTS, horse_armor: HORSE };
