@@ -255,7 +255,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     if (live && inp.pressed.has("teamAttack")) {
       const ti = player.lock?.titan.alive ? player.lock.titan : tv.nearest(player.pos, inp.look, 160);
       const ev = ti ? allies.team({ titan: ti, part: "nape" }) : [];
-      route(ev.length || player.lock ? ev : allies.toggle());
+      route(!ti ? allies.toggle() : ev.length ? ev : [{ type: "sfx", name: "ui", volume: 0.6 }]);
     }
     if (opening !== allies.opening > 0) {
       opening = !opening;

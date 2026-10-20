@@ -91,19 +91,16 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const tip = (acts: Action[], key: string, text: string, touch: string, rel = false) => ((used.get(text) ?? 0) >= 3 ? null : { acts, key, text, touch, rel });
   const hint = () => {
     if (mode === "dead" || mode === "held") return null;
-    if (charging) return tip(["attack"], "E", "Release to strike", "Release Slash to strike", true);
+    if (charging) return tip(["attack"], "E", "Release when the blades glow", "Release Slash when the blades glow", true);
     const near = (lock && titans.partPos(lock.titan, lock.part, hv) && hv.distanceTo(pos) < 32) || ((ti) => ti && titans.partPos(ti, "nape", hv))(titans.nearest(pos, lastLook, 22));
     if (near) {
       const b = lock?.part === "nape" && isBoss(lock.titan.kind) ? titans.boss() : null;
       if (b?.hardened) return lock!.titan.kind === "armored" ? tip(["lock", "cycle"], "Q", "Target a leg", "Tap Lock to target a leg") : tip(["lock", "cycle"], "Q", "Target a limb", "Tap Lock to target a limb");
-      if (vel.length() < 12) return tip(["gas"], "", "Swing in fast, then strike", "Swing in fast with Gas, then Slash");
       return tip(["attack"], "E", "Hold, release to strike", "Hold Slash, release to strike");
     }
     const on = hooks.some((h) => h.state === "on");
     if (on && hooks.some((h) => h.state === "on" && h.titan)) return tip(["gas"], "Space", "Gas to close in", "Hold Gas to close in");
     if (on) return hooks.some((h) => h.latch) ? tip(["gas"], "", "Space to boost, click to let go", "Hold Gas to boost, tap L or R to let go") : null;
-    const seen = !lock && ((ti) => ti && titans.partPos(ti, "nape", hv) && reach(hv) < 0)(titans.nearest(pos, lastLook, RANGE));
-    if (aim.kind === "titan" || (lock && hv.distanceTo(pos) < RANGE) || seen) return tip(["anchorL", "anchorR"], "", "Click to hook the titan", "Tap L or R to hook the titan");
     if (!lock && titans.nearest(pos, lastLook, RANGE)) return tip(["lock"], "Q", "Lock on a titan", "Tap Lock to target a titan");
     return tip(["anchorL", "anchorR"], "", "Click to anchor, Space for gas", "Tap L or R, hold Gas");
   };

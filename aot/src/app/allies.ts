@@ -152,7 +152,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     filter(r.events, a.pos);
     if (a.team && r.zone && t === teamTi && t.alive) {
       if (open <= 0) {
-        out.push({ type: "callout", text: "Nape open! Cut now" }, { type: "sfx", name: "bell" }, { type: "slowmo", scale: 0.5, duration: 0.6 });
+        out.push({ type: "sfx", name: "bell" }, { type: "slowmo", scale: 0.5, duration: 0.6 });
       }
       open = OPEN;
     }
@@ -399,7 +399,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       const t = lock?.titan.alive ? lock.titan : null;
       if (teamCd > 0 || !t) return [];
       const free = squad.filter((a) => a.mode === "fly");
-      if (!free.length) return [{ type: "callout", text: "No squad to call" }];
+      if (!free.length) return [{ type: "sfx", name: "ui", volume: 0.6 }];
       let sent = 0;
       free.forEach((a, k) => {
         const leg: TitanPart = k % 2 ? "legR" : "legL";
@@ -413,13 +413,12 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         a.cd = 0;
         sent++;
       });
-      if (!sent) return [{ type: "callout", text: "No squad to call" }];
+      if (!sent) return [{ type: "sfx", name: "ui", volume: 0.6 }];
       teamCd = TEAM_CD;
       teamTi = t;
       return [
         { type: "radio", who: "You", text: "Team attack! Hit it now!" },
         { type: "sfx", name: "horn", volume: 0.7 },
-        { type: "callout", text: "Squad strikes. Get ready for the nape" },
       ];
     },
     get opening() {
