@@ -265,6 +265,14 @@ export function createFx(scene: THREE.Scene): Fx {
         puffs.spawn(pos.x + Math.cos(a) * s * 0.3, pos.y + 0.3, pos.z + Math.sin(a) * s * 0.3, Math.cos(a) * sp, Math.random() * s * 0.8, Math.sin(a) * sp, s * (0.4 + Math.random() * 0.4), s * 0.6, 0.9 + Math.random() * 0.8, PUFF.dust, 2.5, 0.4);
       }
     },
+    flare(pos) {
+      const count = Math.ceil(24 * rate);
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 3 + Math.random() * 4;
+        puffs.spawn(pos.x, pos.y, pos.z, Math.cos(a) * sp, 2 + Math.random() * 4, Math.sin(a) * sp, 1.2 + Math.random(), 4, 1.4 + Math.random() * 0.8, PUFF.flare, 1.5, -0.2);
+      }
+    },
     slash(a, b, c) {
       let sl = slashes[0];
       for (const s of slashes) if (s.age > sl.age) sl = s;

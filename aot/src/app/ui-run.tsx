@@ -74,12 +74,11 @@ export function LevelUp({ run, onPick }: { run: RunHud; onPick: (i: number) => v
       onPointerMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-      <div className="mb-1 flex items-baseline justify-between text-xs uppercase tracking-[0.2em] ink-shadow">
+      <div className="mb-1 text-xs uppercase tracking-[0.2em] ink-shadow">
         <span>
           Level {run.level} <span className="font-jp font-bold text-blood">強化</span> <span className="text-bone/70 [.touch-hud_&]:hidden">Press 1, 2 or 3</span>
           <span className="hidden text-bone/70 [.touch-hud_&]:inline">Tap one</span>
         </span>
-        <span className="tabular-nums text-bone/60">{Math.ceil(run.choiceT)}s</span>
       </div>
       <div className="grid grid-cols-3 gap-2 [.touch-hud_&]:gap-1.5">
         {run.choice.map((u, i) => (

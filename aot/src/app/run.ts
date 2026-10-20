@@ -3,7 +3,7 @@ import type { Allies, Boost, Fx, GameEvent, Objective, Player, RunHud, TitanKind
 import { gearBoost } from "./progression";
 import { bossFor, isBoss, quotaFor, type BossKind } from "./titan-waves";
 
-type Count = "hook" | "gas" | "kill" | "waveKill" | "abnormal" | "tendon" | "sever" | "limb" | "perfect" | "save" | "boss" | "fastKill";
+type Count = "hook" | "gas" | "kill" | "waveKill" | "abnormal" | "tendon" | "sever" | "limb" | "perfect" | "save" | "boss" | "fastKill" | "supply";
 type Spec = { text: string; hint?: string; need: number; count?: Count; kind?: TitanKind; until?: "noDeath" | "depot" };
 type Obj = Objective & { spec: Spec };
 
@@ -22,6 +22,7 @@ const DRILL_KEY = "aot-bootcamp";
 const DRILL: Spec[] = [
   { text: "Hook onto a building", hint: "Fire an anchor at a wall or roof", need: 1, count: "hook" },
   { text: "Boost with gas", hint: "Hold gas in the air", need: 1, count: "gas" },
+  { text: "Refill at the green smoke", need: 1, count: "supply" },
   { text: "Cut a nape", hint: "Lock on, then slash the neck", need: 1, count: "kill" },
 ];
 const FAST = 40;
@@ -46,7 +47,7 @@ export function plan(n: number): [Spec, Spec] {
   if (bk) return BOSS_OBJ[bk];
   if (n === 1) return [{ text: "Kill 3 titans", need: 3, count: "kill" }, { text: "No deaths this wave", need: 1, until: "noDeath" }];
   if (n === 2) return [{ text: "Cut a tendon", hint: "Lock a leg, then strike", need: 1, count: "tendon" }, { text: "Kill an abnormal", need: 1, count: "abnormal" }];
-  if (n === 3) return [{ text: "Land a perfect cut", hint: "Release the charge on the flash", need: 1, count: "perfect" }, { text: "Kill 2 abnormals", need: 2, count: "abnormal" }];
+  if (n === 3) return [{ text: "Land a perfect cut", hint: "Release when the blades glow", need: 1, count: "perfect" }, { text: "Kill 2 abnormals", need: 2, count: "abnormal" }];
   let k = 0;
   for (let m = 5; m < n; m++) if (!bossFor(m)) k++;
   const hold = Math.min(quotaFor(n, false), 8 + Math.floor(n / 3));
@@ -79,7 +80,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
   let total = 0;
   let pending = 0;
   let choice: Upgrade[] | null = null;
-  let choiceT = 0;
+  let open = false;
   let done = 0;
   let count = 0;
   let deaths = 0;
@@ -289,36 +290,26 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         if (h.hooks[0] || h.hooks[1]) add("hook", undefined);
         if (h.gas < gasWas && !player.grounded) add("gas", undefined);
         gasWas = h.gas;
+        if (h.supply) add("supply", undefined);
         if (objs.every((ob) => ob.state === "done")) {
           if ((finT += real) > 2.5) endDrill();
         } else if (dt > 0 && objs.some((ob) => ob.spec.count === "kill" && ob.state === "on") && !titans.list().some((t) => t.alive)) titans.drill?.(1);
       }
-      choiceT = titans.breakT;
-      if (choice) {
-        if (choiceT <= 0) {
-          const names = [choice[0].name];
-          out.push(...this.pick(0));
-          for (; pending > 0; pending--) {
-            choice = roll();
-            if (choice.length) names.push(choice[0].name), out.push(...this.pick(0));
-          }
-          choice = null;
-          out.push({ type: "toast", title: "Upgrades", text: names.join(", ") });
-        }
-      } else if (pending > 0 && choiceT > 0 && choiceT < 12 && live && !dead && !titans.held()) {
-        pending--;
-        const c = roll();
-        if (c.length) {
-          choice = c;
-          out.push({ type: "sfx", name: "bladeDraw" });
-        }
+      world.setBeckon(pending > 0);
+      const was = open;
+      open = pending > 0 && player.inSupply && live && !dead && !titans.held();
+      if (open && !choice) {
+        choice = roll();
+        if (!choice.length) choice = null, pending = 0, open = false;
       }
+      if (open && !was) out.push({ type: "sfx", name: "bladeDraw" });
       return out.splice(0);
     },
     pick(i: number): GameEvent[] {
-      const u = choice?.[i];
+      const u = open ? choice?.[i] : undefined;
       if (!u) return [];
       choice = null;
+      pending--;
       lv[u.id]++;
       player.setBoost(boost());
       const ev: GameEvent[] = [{ type: "sfx", name: "bladeSwap" }];
@@ -326,7 +317,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
       return ev;
     },
     hud(): RunHud {
-      return { level, xp, need: needFor(level), total, objectives: objs, choice, choiceT, done, count, drill };
+      return { level, xp, need: needFor(level), total, objectives: objs, choice: open ? choice : null, pending, done, count, drill, showDepot: drill && objs.some((ob) => ob.spec.count === "supply" && ob.state === "on") };
     },
     get upgrades() {
       return { ...lv };

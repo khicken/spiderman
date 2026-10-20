@@ -212,6 +212,15 @@ export const SFX: Record<Sfx, SfxDef> = {
     blip(c, o, 0.5, 880, 880, 0.15, 0.25);
     blip(c, o, 0.62, 1320, 1320, 0.25, 0.25);
   } },
+  refilled: { dur: 0.6, n: 1, g: 0.6, fn: (c, o) => {
+    blip(c, o, 0, 1320, 1320, 0.12, 0.25);
+    blip(c, o, 0.1, 1760, 1760, 0.2, 0.25);
+    ring(c, o, [3520], 0.15, 0.08, 0.1);
+  } },
+  lowSupply: { dur: 0.6, n: 1, g: 0.7, fn: (c, o) => {
+    blip(c, o, 0, 660, 660, 0.1, 0.3);
+    blip(c, o, 0.16, 440, 440, 0.18, 0.3);
+  } },
   hurt: { dur: 0.6, n: 3, g: 1.2, fn: (c, o, _f, r) => {
     thud(c, o, 130, 55, 0.07, 1);
     noise(c, filter(c, env(c, o, (p) => hit(p, 0, 0.6, 0.001, 0.04)), "lowpass", 1200), 0, 0.3);
