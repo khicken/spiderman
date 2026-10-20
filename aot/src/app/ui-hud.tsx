@@ -14,7 +14,7 @@ export type Pop = UiEvent & { id: number };
 export type Msgs = { banner: Pop | null; radio: Pop | null; callout: Pop | null };
 type Lock = NonNullable<HudState["lock"]>;
 
-const PERFECT = 0.85;
+export const PERFECT = 0.61; // PERFECT[0] / PERFECT[1] in player.ts, the ring is full when the window closes
 const RED = "#ff3b2a";
 const BONE = "#efe6d2";
 const GLOW = "#9fe3ff";
@@ -60,7 +60,7 @@ export function Hud({
 }) {
   if (h.intro) return <Intro onSkip={onSkip} />;
   const b = msgs.banner;
-  const free = !h.dead && h.escape === null;
+  const free = !h.dead && !h.held;
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden font-cond text-bone">
       <Vignettes h={h} pops={pops} />
@@ -68,7 +68,7 @@ export function Hud({
       {h.boss && <BossBar boss={h.boss} />}
       <WavePanel h={h} />
       <KillPanel h={h} />
-      {free && <Crosshair h={h} />}
+      {!h.dead && <Crosshair h={h} />}
       {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b || (touch && !!h.run.choice)} />}
       {free && <Prompt h={h} touch={touch} />}
       <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
@@ -77,7 +77,6 @@ export function Hud({
       <GearPanel h={h} who={who} />
       <SpeedPanel h={h} />
       {msgs.radio?.type === "radio" && <Radio key={msgs.radio.id} who={msgs.radio.who} text={msgs.radio.text} />}
-      {h.escape !== null && !h.dead && <Grab escape={h.escape} touch={touch} />}
       {b?.type === "kill" && <KillBanner key={b.id} height={b.height} speed={b.speed} kind={b.kind} />}
       {b?.type === "banner" && <Banner key={b.id} jp={b.jp} en={b.en} text={b.text} />}
       {h.dead && <Dead final={final} />}
@@ -135,7 +134,7 @@ function Vignettes({ h, pops }: { h: HudState; pops: Pop[] }) {
           />
         ) : null,
       )}
-      {h.escape !== null && (
+      {h.held && (
         <div className="absolute inset-0 shadow-[inset_0_0_120px_30px_rgba(150,0,0,0.85)]" />
       )}
     </>
@@ -368,7 +367,7 @@ function Crosshair({ h }: { h: HudState }) {
   const color = h.aim === "titan" ? RED : BONE;
   const dim = h.aim === "none" ? 0.3 : 0.95;
   const c = h.charge;
-  const perfect = c !== null && c >= PERFECT;
+  const perfect = c !== null && c >= PERFECT && c < 1;
   return (
     <div className="hud-z absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
       <svg
@@ -826,30 +825,6 @@ function SpeedPanel({ h }: { h: HudState }) {
             }}
           />
         ))}
-      </div>
-    </div>
-  );
-}
-
-function Grab({ escape, touch }: { escape: number; touch: boolean }) {
-  return (
-    <div className="hud-z absolute left-1/2 top-[62%] w-[360px] -translate-x-1/2 text-center">
-      <div className="font-jp text-lg font-black tracking-[0.3em] text-ember ink-shadow">
-        振りほどけ
-      </div>
-      <div className="mt-1 flex items-center justify-center gap-4">
-        <span className="font-display text-5xl uppercase tracking-wider ink-shadow">
-          Cut
-        </span>
-        <span className="pulse inline-flex h-14 w-14 items-center justify-center border-2 border-bone bg-blood font-display text-4xl shadow-[0_0_20px_rgba(255,40,20,0.8)]">
-          {touch ? <span className="font-jp font-black">斬</span> : "E"}
-        </span>
-      </div>
-      <div className="mx-auto mt-3 h-3 w-[300px] -skew-x-[20deg] border border-black bg-black/70 shadow-[0_0_0_1px_rgba(201,162,90,0.5)]">
-        <div
-          className="h-full bg-gradient-to-r from-brass to-bone transition-[width] duration-100"
-          style={{ width: `${clamp01(escape) * 100}%` }}
-        />
       </div>
     </div>
   );

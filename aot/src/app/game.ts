@@ -330,7 +330,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         score,
         left: titans.left,
         breakT: titans.breakT,
-        escape: titans.escape,
+        held: !!titans.held(),
         lock: lock ? { part: lock.part, health: titans.partHealth(lock.titan, lock.part), height: lock.titan.height, kind: lock.titan.kind, name: lock.titan.name } : null,
         boss,
         blips,
