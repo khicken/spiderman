@@ -501,7 +501,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     const H = t.height;
     const w = blade.weapon ?? "blades";
     const crit = w === "blades" && blade.charge >= 0.92;
-    const P = (w === "spears" ? 52 : w === "pistols" ? 3 : blade.speed * (0.55 + 0.45 * clamp01(blade.charge)) * (crit ? 1.5 : 1)) * (blade.damage ?? 1);
+    const P = (w === "spears" ? 52 : blade.speed * (0.3 + 0.7 * clamp01(blade.charge)) * (crit ? 1.5 : 1)) * (blade.damage ?? 1);
     const hitSfx: Sfx = crit ? "slashCrit" : "slashHit";
     if (w !== "spears" && t.kind === "armored" && part !== "eyes" && !(part === "nape" && !t.hardened) && !armorGap(t, part, blade)) {
       events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
@@ -554,7 +554,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       } else {
         fx.blood(pt, blade.dir, H * 0.06);
         events.push({ type: "sfx", name: hitSfx, at: pt }, { type: "hitstop", duration: 0.05 }, { type: "impact", kind: "hit" }, { type: "shake", strength: 0.12 });
-        if (w === "pistols" && t.act !== "hold" && t.act !== "flinch") startAct(t, "flinch");
       }
     } else {
       fx.blood(pt, blade.dir, H * 0.04);
@@ -1627,7 +1626,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       if (!t.alive) return 0;
       return clamp01(t.hp[part]);
     },
-    nearest(pos, look, maxDist) {
+    nearest(pos, look, maxDist, minDot = -1) {
       let best: T | null = null, bs = Infinity;
       for (const t of list) {
         if (!t.alive) continue;
@@ -1635,6 +1634,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         const d = _a.length();
         if (d > maxDist) continue;
         const dot = d > 0.01 ? _a.dot(look) / d : 1;
+        if (dot < minDot) continue;
         const s = d * (dot > 0.5 ? 1 : 1.5 + (0.5 - dot) * 4);
         if (s < bs) {
           bs = s;

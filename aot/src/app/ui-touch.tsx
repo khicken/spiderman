@@ -32,9 +32,8 @@ const ACTIONS: Record<Action, Action[]> = {
   attack: ["attack"],
   lock: ["lock"],
   cycle: ["cycle"],
-  weapon: ["weapon"],
   teamAttack: ["teamAttack"],
-  shift: ["shift"],
+  spear: ["spear"],
 };
 
 const at = (right: number, bottom: number, size: number) => ({
@@ -145,17 +144,12 @@ export function TouchControls({ pad, h, onPause }: { pad: VirtualPad; h: HudStat
       </HoldButton>
 
       <LockButton pad={pad} locked={!!h.lock} label={lockLabel} style={at(34, 248, 54)} />
-      <HoldButton pad={pad} kind="weapon" style={at(102, 252, 46)} small>
-        <Face jp="武器" en={h.weapon} small />
+      <HoldButton pad={pad} kind="spear" style={at(102, 252, 46)} small>
+        <Face jp="雷槍" en={`Spear ${h.ammo}`} small />
       </HoldButton>
       {h.squad.max > 0 && (
         <HoldButton pad={pad} kind="teamAttack" style={at(164, 252, 46)} small lit={h.squad.opening > 0 || h.squad.order === "attack"}>
           <Face jp={h.lock && h.squad.team <= 0 ? "連携" : h.squad.order === "attack" ? "攻撃" : "集合"} en="Squad" small />
-        </HoldButton>
-      )}
-      {(h.shift.active || h.shift.meter >= 1) && (
-        <HoldButton pad={pad} kind="shift" style={at(226, 252, 46)} small lit>
-          <Face jp="巨人" en="Shift" small />
         </HoldButton>
       )}
 

@@ -7,9 +7,8 @@ export const KEYS: Record<string, Action> = {
   ShiftRight: "dash",
   KeyE: "attack",
   KeyQ: "lock",
-  KeyR: "weapon",
   KeyF: "teamAttack",
-  KeyT: "shift",
+  KeyT: "spear",
   KeyC: "anchorL",
   KeyV: "anchorR",
 };

@@ -55,9 +55,6 @@ export function createSpears(scene: THREE.Scene, world: World, titans: Titans, f
   };
 
   return {
-    get armed() {
-      return spears.some((s) => s.on);
-    },
     // Homes on the aimed titan point, so a moving titan does not dodge a clean aim.
     fire(from: THREE.Vector3, dir: THREE.Vector3, target: { point: THREE.Vector3; obj: THREE.Object3D; titan: TitanView; zone: HitZone } | null) {
       const s = spears.find((x) => !x.on) ?? spears[0];
@@ -75,9 +72,6 @@ export function createSpears(scene: THREE.Scene, world: World, titans: Titans, f
       }
       s.mesh.visible = true;
       fx.gas(from, n.copy(dir).negate(), 1.4);
-    },
-    detonate(out: GameEvent[], speed: number, damage: number) {
-      for (const s of spears) if (s.on) blow(s, out, speed, damage);
     },
     update(dt: number, out: GameEvent[], speed: number, damage: number) {
       for (const s of spears) {
