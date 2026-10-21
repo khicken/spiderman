@@ -58,6 +58,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   let dashCd = 0;
   let gasPuffT = 0;
   let inSupply = false;
+  let lowArmed = true;
+  let chimed = false;
   let supplyT = 0;
   let combo = 0;
   let comboT = 0;
@@ -513,17 +515,28 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   };
 
   const supply = (dt: number) => {
-    let near = false;
+    let near = -1;
     for (let i = 0; i < world.supplies.length; i++) {
       const s = world.supplies[i];
       if (world.depotDown[i]) continue;
       const dx = s.x - pos.x;
       const dz = s.z - pos.z;
-      if (dx * dx + dz * dz < 64 && Math.abs(pos.y - s.y) < 8) near = true;
+      if (dx * dx + dz * dz < 64 && Math.abs(pos.y - s.y) < 8) near = i;
     }
-    if (near && !inSupply && (gas < 0.99 || blades < spare || sharp < 1 || health < 1 || spearAmmo < SPEARS)) sfx("resupply");
-    inSupply = near;
-    if (!near) return;
+    const low = gas < 0.25 || (blades === 0 && sharp < 0.5);
+    if (!low) lowArmed = true;
+    else if (lowArmed && near < 0) {
+      lowArmed = false;
+      sfx("lowSupply");
+    }
+    const full = gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= SPEARS;
+    if (near >= 0 && !inSupply) {
+      fx.flare(world.depotTops[near]);
+      sfx("resupply", full ? 0.3 : undefined);
+      chimed = full;
+    }
+    inSupply = near >= 0;
+    if (!inSupply) return;
     gas = Math.min(1, gas + 0.4 * st.refill * dt);
     health = Math.min(1, health + 0.2 * dt);
     supplyT += dt;
@@ -532,6 +545,10 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       if (sharp < 1) sharp = 1;
       else if (blades < spare) blades++;
       spearAmmo = Math.min(SPEARS, spearAmmo + 1);
+    }
+    if (!chimed && gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= SPEARS) {
+      chimed = true;
+      sfx("refilled");
     }
   };
 
@@ -858,6 +875,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     },
     get grounded() {
       return grounded;
+    },
+    get inSupply() {
+      return inSupply;
     },
     get sinceDash() {
       return time - dashAt;

@@ -279,6 +279,7 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
   group.add(flares.mesh);
   let flareAcc = 0;
   let flareRate = 0.14;
+  let beckon = false;
 
   const collider = createCollider(shapes);
 
@@ -389,8 +390,9 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
 
   const update = (dt: number): GameEvent[] => {
     flareAcc += dt;
-    while (flareAcc > flareRate) {
-      flareAcc -= flareRate;
+    const fr = beckon ? flareRate / 2 : flareRate;
+    while (flareAcc > fr) {
+      flareAcc -= fr;
       for (let i = 0; i < flareTops.length; i++) if (!depotDown[i]) flares.spawn(flareTops[i].x + (r() - 0.5), flareTops[i].y, flareTops[i].z + (r() - 0.5), 1.2 + r(), 7 + r() * 2, 0.6, 2.6 + r() * 1.2, 1.5, 7.5, PUFF.flare, 0.25, -0.2);
     }
     flares.update(dt);
@@ -465,11 +467,15 @@ export function createWorld(scene: THREE.Scene, fx: Fx): World {
   };
 
   return {
+    setBeckon(on: boolean) {
+      beckon = on;
+    },
     group,
     spawn,
     spawnYaw,
     supplies,
     depotDown,
+    depotTops: flareTops,
     titanSpawns,
     breach,
     colossalHead: COLOSSAL_HEAD,

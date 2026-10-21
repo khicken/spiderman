@@ -147,7 +147,7 @@ const nearest = <T extends { dist: number }>(list: T[]) => list.reduce<T | undef
 
 export function DepotArrow({ h }: { h: HudState }) {
   const d = nearest(h.depots);
-  if (!d || h.dead || !lowSupply(h)) return null;
+  if (!d || h.dead || !(lowSupply(h) || (h.run.showDepot && !h.supply))) return null;
   return (
     <div className="absolute left-0 top-0 [transform:rotate(var(--depot,0rad))]">
       <div className="absolute left-0 top-[calc(min(30vh,34vw)*-1)] flex -translate-x-1/2 flex-col items-center">
@@ -684,6 +684,11 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
             <span className={h.squad.order === "attack" ? "text-ember" : "text-[#8fd6a0]"}>
               {h.squad.order === "attack" ? "Attack" : "Regroup"}
             </span>
+          </span>
+        )}
+        {h.run.pending > 0 && (
+          <span className="inline-flex h-5 min-w-5 items-center justify-center self-center border border-bone bg-blood px-1 font-display text-sm leading-none tabular-nums shadow-[0_0_8px_rgba(255,40,20,0.8)]">
+            {h.run.pending}
           </span>
         )}
       </div>

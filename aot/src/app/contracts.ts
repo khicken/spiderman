@@ -32,7 +32,7 @@ export type Input = {
 
 export type Sfx =
   | "anchorFire" | "anchorHit" | "anchorMiss" | "reel" | "release" | "gasBurst" | "gasDash" | "land" | "roll"
-  | "bladeDraw" | "charge" | "slash" | "slashHit" | "slashCrit" | "sever" | "napeKill" | "clang" | "bladeBreak" | "bladeSwap" | "resupply"
+  | "bladeDraw" | "charge" | "slash" | "slashHit" | "slashCrit" | "sever" | "napeKill" | "clang" | "bladeBreak" | "bladeSwap" | "resupply" | "refilled" | "lowSupply"
   | "hurt" | "grabbed" | "bite" | "escape" | "death"
   | "stomp" | "swat" | "titanStep" | "roar" | "titanHurt" | "titanFall" | "steamHiss" | "harden"
   | "horn" | "bell" | "gateBreak" | "lightning" | "lock" | "lockCycle" | "ui";
@@ -89,6 +89,7 @@ export interface Fx {
   blood(pos: THREE.Vector3, dir: THREE.Vector3, size: number): void; // titan blood, evaporates to steam
   gas(pos: THREE.Vector3, dir: THREE.Vector3, strength: number): void; // ODM gas puff
   dust(pos: THREE.Vector3, size: number): void;
+  flare(pos: THREE.Vector3): void; // green depot smoke burst
   slash(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3): void; // blade arc through three points
   update(dt: number, camera: THREE.Camera): void;
   setQuality(q: Quality): void;
@@ -112,6 +113,8 @@ export interface World {
   pushTitan(pos: THREE.Vector3, radius: number, maxStep: number): void;
   inside(x: number, z: number): boolean; // inside the walls
   readonly depotDown: boolean[]; // per supply depot: fallen, no refills
+  readonly depotTops: readonly THREE.Vector3[]; // per supply depot: where the green smoke rises
+  setBeckon(on: boolean): void; // denser depot smoke
   kickGate(): GameEvent[]; // the Colossal Titan breaks the gate, once
   smash(at: THREE.Vector3, radius: number): void; // flattens houses within radius of a ground point
   update(dt: number, t: number): GameEvent[];
@@ -228,6 +231,7 @@ export interface Player {
   readonly alive: boolean;
   readonly grounded: boolean;
   readonly sinceDash: number;
+  readonly inSupply: boolean;
   readonly lock: Lock | null;
   update(dt: number, input: Input, playing: boolean): GameEvent[]; // owns anchors, lock, attacks, gas, blades
   damage(amount: number, from?: THREE.Vector3): GameEvent[];
@@ -298,9 +302,10 @@ export type RunHud = {
   need: number;
   total: number;
   objectives: Objective[];
-  choice: Upgrade[] | null; // level-up picks while the game runs. Keys 1-3 or a tap pick, the timer takes the first
-  choiceT: number; // seconds until the first pick is taken
+  choice: Upgrade[] | null; // level-up picks, shown in a supply depot. Keys 1-3 or a tap pick
+  pending: number; // levels not yet spent
   done: number;
   count: number;
   drill: boolean; // bootcamp before wave 1, objectives hold its drills
+  showDepot: boolean; // point the depot arrow even when supplies are fine
 };
