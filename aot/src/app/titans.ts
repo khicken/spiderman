@@ -421,7 +421,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     if (ti.kind === "armored" && k >= 2 && ti.sev[5 - k] <= 0) once(events, "Knee cut", "Now the other knee");
     if (ti.kind === "beast" && k < 2) {
       if (ti.sev[1 - k] > 0) once(events, "Both arms severed", "No more rocks. Go for the nape");
-      else once(events, "Arm severed", "He still throws with the other");
     }
     if (ti.kind === "female") {
       const n = ti.sev.reduce((a, v) => a + (v > 0 ? 1 : 0), 0);
