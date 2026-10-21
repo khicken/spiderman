@@ -17,9 +17,8 @@ export type Action =
   | "attack" // hold E to charge, release to strike
   | "lock" // Q: lock on, next part, hold to clear
   | "cycle" // mouse wheel: next part on the locked titan
-  | "weapon" // R: next weapon slot
   | "teamAttack" // F: team attack on the lock or nearest titan, else attack or regroup
-  | "shift"; // T: titan shifting
+  | "spear"; // T: fire a thunder spear
 
 export type Input = {
   wish: THREE.Vector3; // camera-relative flat move direction, unit length or zero
@@ -132,8 +131,8 @@ export interface TitanView {
 export type TitanHit = { t: number; point: THREE.Vector3; titan: TitanView; zone: HitZone; obj: THREE.Object3D }; // anchors attach to obj
 // charge 0..1, 1 is a perfect release. speed is the real speed, damage multiplies the hit (bonuses), weapon defaults to blades.
 export type Blade = { pos: THREE.Vector3; dir: THREE.Vector3; speed: number; charge: number; radius: number; damage?: number; weapon?: Weapon };
-// Weapon slots. Spears stick and blow up, pierce armor and hardening. Pistols are hitscan: stun eyes and limbs, scratch the nape.
-export type Weapon = "blades" | "spears" | "pistols";
+// Spears stick and blow up, pierce armor and hardening.
+export type Weapon = "blades" | "spears";
 export type StrikeResult = { events: GameEvent[]; zone: HitZone | null; titan: TitanView | null; killed: boolean };
 export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; grounded: boolean };
 // Squad play: the host sends snap() to guests, guests draw it with show(). Guests own hp of a titan they just hit for a moment.
@@ -151,7 +150,7 @@ export interface Titans {
   raycast(o: THREE.Vector3, d: THREE.Vector3, maxT: number): TitanHit | null;
   partPos(titan: TitanView, part: TitanPart, out: THREE.Vector3): THREE.Vector3 | null; // null when severed or dead
   partHealth(titan: TitanView, part: TitanPart): number; // 0..1, 0 when severed
-  nearest(pos: THREE.Vector3, look: THREE.Vector3, maxDist: number): TitanView | null;
+  nearest(pos: THREE.Vector3, look: THREE.Vector3, maxDist: number, minDot?: number): TitanView | null;
   strike(blade: Blade, target: { titan: TitanView; part: TitanPart } | null): StrikeResult;
   held(): THREE.Vector3 | null; // where the player is held, null when free
   struggle(add: number): GameEvent[]; // add to the escape meter while held, 1 frees
@@ -219,8 +218,7 @@ export type PlayerHud = {
   combo: number; // chain count, 0 when no chain
   comboT: number; // 0..1, time left in the chain window
   comboBonus: number; // damage multiplier from the chain, 1 is none
-  weapon: Weapon;
-  ammo: number; // spears or pistol shots left, blades show as spare sets
+  ammo: number; // spears left
 };
 export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; health: number; spare: number }; // multipliers, spare adds
 export interface Player {
@@ -268,9 +266,6 @@ export interface Allies {
   dispose(): void;
 }
 
-// ---- shifter.ts: createShifter(scene: THREE.Scene, world: World, titans: Titans, fx: Fx)
-export type ShiftHud = { meter: number; active: boolean; hp: number }; // 0..1 each, meter fills from kills and drains while shifted
-
 // ---- game.ts to the UI
 export type TitanBlip = { bearing: number; dist: number; height: number; kind: TitanKind };
 export type HudState = {
@@ -290,7 +285,6 @@ export type HudState = {
   blips: TitanBlip[];
   depots: { bearing: number; dist: number }[];
   squad: SquadHud;
-  shift: ShiftHud;
   run: RunHud;
 } & PlayerHud;
 

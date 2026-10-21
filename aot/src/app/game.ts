@@ -12,7 +12,6 @@ import { createPlayer } from "./player";
 import { gearTier, loadCareer } from "./progression";
 import { createRender } from "./render";
 import { createRun } from "./run";
-import { createShifter } from "./shifter";
 import { setTitanDetail } from "./titan-model";
 import { createTitans } from "./titans";
 import { createWorld } from "./world";
@@ -43,7 +42,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const tv = wrapTitans(titans, () => (!squad ? "solo" : squad.guest ? "guest" : "host"), (id, part, dmg) => squad?.hit(id, part, dmg));
   const player = createPlayer(view.scene, world, tv, fx);
   const allies = createAllies(view.scene, world, tv, fx);
-  const shifter = createShifter(view.scene, world, tv, fx);
   let baseBoost: Boost | null = null;
   let opening = false;
   const setBoost = player.setBoost;
@@ -91,7 +89,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         slowT = e.duration;
       } else if (e.type === "impact") view.impact(e.kind);
       else if (e.type === "hurt") {
-        route(shifter.active ? shifter.damage(e.amount) : player.damage(e.amount, e.from));
+        route(player.damage(e.amount, e.from));
         onEvent({ type: "hurt", amount: e.amount });
       } else if (e.type === "score") {
         score += e.amount;
@@ -254,8 +252,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
     const control = playing && introT < 0;
     route(world.update(dt, t));
     const live = control && dt > 0;
-    if (live && inp.pressed.has("shift")) route(shifter.start(player, rig.yaw));
-    if (live && inp.pressed.has("teamAttack") && !shifter.active) {
+    if (live && inp.pressed.has("teamAttack")) {
       const ti = player.lock?.titan.alive ? player.lock.titan : tv.nearest(player.pos, inp.look, 160);
       const ev = ti ? allies.team({ titan: ti, part: "nape" }) : [];
       route(ev.length || player.lock ? ev : allies.toggle());
@@ -264,15 +261,14 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       opening = !opening;
       if (baseBoost) player.setBoost(baseBoost);
     }
-    if (playing && !squad?.guest) route(titans.update(dt, t, shifter.active ? shifter.view : player));
+    if (playing && !squad?.guest) route(titans.update(dt, t, player));
     if (playing && squad) route(squad.update(real, dt, player, rig.yaw));
     if (playing) route(allies.update(dt, t, player, rig.yaw));
     if (playing) route(run.update(dt, real, control));
-    if (playing) route(shifter.update(dt, inp, player, rig));
-    if (!shifter.active && (control || !everPlayed)) route(player.update(dt, inp, control));
+    if (control || !everPlayed) route(player.update(dt, inp, control));
     if (control) route(border.update(dt, player.pos, player.vel));
     rig.update(real, player.cameraView(), playing, input.mouseIdle);
-    player.setVisible(!shifter.active && view.camera.position.distanceTo(player.pos) > 1.3);
+    player.setVisible(view.camera.position.distanceTo(player.pos) > 1.3);
     const speed = player.vel.length();
     view.frame(dt, player.pos, control ? THREE.MathUtils.clamp((speed - 25) / 35, 0, 1) : 0);
     fx.update(dt, view.camera);
@@ -340,7 +336,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         blips,
         depots,
         squad: allies.hud(),
-        shift: shifter.hud(),
         run: run.hud(),
         ...player.hud(),
       });
@@ -348,7 +343,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   };
   raf = requestAnimationFrame(frame);
 
-  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { noAuto: () => (autoQ = false), view, world, titans, tv, player, allies, shifter, rig, fx, input, endIntro, run };
+  if (process.env.NODE_ENV !== "production") (window as unknown as Record<string, unknown>).__aot = { noAuto: () => (autoQ = false), view, world, titans, tv, player, allies, rig, fx, input, endIntro, run };
 
   return {
     play() {
@@ -397,7 +392,6 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       audio?.dispose();
       titans.dispose();
       allies.dispose();
-      shifter.dispose();
       player.dispose();
       fx.dispose();
       view.scene.traverse((o) => {

@@ -70,7 +70,7 @@ export function Hud({
       <KillPanel h={h} />
       {free && <Crosshair h={h} />}
       {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b || (touch && !!h.run.choice)} />}
-      {free && !h.shift.active && <Prompt h={h} touch={touch} />}
+      {free && <Prompt h={h} touch={touch} />}
       <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
       <ScorePops pops={pops} />
       {h.combo > 1 && <Combo n={h.combo} t={h.comboT} bonus={h.comboBonus} />}
@@ -688,7 +688,7 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
           </span>
         )}
       </div>
-      <ShiftTeam h={h} />
+      <Team h={h} />
       {h.supply && (
         <div className="blink mb-2 inline-flex items-center gap-2 border border-[#6fbf7f]/60 bg-corps/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-[#bff0c8]">
           <span className="font-jp">補給</span> Resupplying
@@ -744,8 +744,8 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
             <span className="font-display text-sm">{h.blades}</span>
           </div>
           <div className="mb-1 flex items-baseline justify-between text-[9px] font-semibold uppercase tracking-[0.25em] text-bone/70">
-            {h.weapon}
-            {h.weapon !== "blades" && <span className="font-display text-sm tracking-normal text-brass">{h.ammo}</span>}
+            Spears
+            <span className="font-display text-sm tracking-normal text-brass">{h.ammo}</span>
           </div>
           <div className="grid grid-cols-4 gap-x-1.5 gap-y-1">
             {Array.from({ length: 8 }, (_, i) => (
@@ -774,26 +774,11 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
   );
 }
 
-function Meter({ v, color }: { v: number; color: string }) {
-  return (
-    <span className="inline-block h-2 w-14 -skew-x-[25deg] border border-black bg-black/70">
-      <span className="block h-full" style={{ width: `${clamp01(v) * 100}%`, background: color }} />
-    </span>
-  );
-}
-
-function ShiftTeam({ h }: { h: HudState }) {
-  const { meter, active, hp } = h.shift;
+function Team({ h }: { h: HudState }) {
   const team = h.squad.max > 0;
-  if (!team && meter <= 0 && !active) return null;
+  if (!team) return null;
   return (
     <div className="plate mb-2 flex items-center gap-4 bg-ink/75 py-1 pl-2 pr-3 text-xs uppercase tracking-[0.2em] text-bone/80">
-      <span className={`flex items-center gap-1.5 ${active || meter >= 1 ? "text-ember" : ""}`}>
-        <span className="font-jp text-bone/60">巨人</span>
-        {active ? "HP" : "Shift"}
-        <Meter v={active ? hp : meter} color={active ? "#c3161c" : meter >= 1 ? "#ff8a3a" : "#9e9282"} />
-        {!active && meter >= 1 && <span data-keyhint><Key>{keyFor("shift")}</Key></span>}
-      </span>
       {team && (
         <span className={`flex items-center gap-1.5 ${h.squad.opening > 0 ? "blink text-[#ffd27a]" : ""}`}>
           <span className="font-jp text-bone/60">連携</span>
