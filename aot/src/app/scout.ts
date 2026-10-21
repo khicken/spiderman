@@ -11,6 +11,7 @@ export type ScoutFrame = {
   speed: number;
   vel: THREE.Vector3;
   charge: number;
+  perfect: boolean; // release now lands a perfect cut
   side: number;
   broken: boolean;
 };
@@ -442,7 +443,7 @@ export function createScout(look: ScoutLook = CADET) {
     for (let j = 0; j < N; j++) joints[j].rotation.set(cur[j * 3], cur[j * 3 + 1], cur[j * 3 + 2]);
     spin.rotation.set(spinX, spinY, spinZ, "YXZ");
 
-    const glow = f.anim === "charge" && f.charge >= 0.83 ? 0.6 + 0.4 * Math.sin(time * 40) : 0;
+    const glow = f.perfect ? 0.6 + 0.4 * Math.sin(time * 40) : 0;
     if (glow !== bladeGlow) {
       bladeGlow = glow;
       const m = mats.blade as THREE.MeshToonMaterial;

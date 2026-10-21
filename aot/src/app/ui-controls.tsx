@@ -31,7 +31,7 @@ const GROUPS: Group[] = [
       { keys: ["W", "A", "S", "D"], pc: "Move", btn: "Left side", tap: "Drag to move" },
       { keys: ["Mouse"], pc: "Look", btn: "Right side", tap: "Drag to look" },
       { a: "gas", pc: "Gas boost, jump", btn: "Gas", tap: "Boost, jump" },
-      { a: "dash", pc: "Dash", btn: "Dash", tap: "Dash" },
+      { a: "dash", pc: "Dash, or dodge a grab", btn: "Dash", tap: "Dash, or dodge a grab" },
     ],
   },
   {
@@ -53,7 +53,7 @@ const GROUPS: Group[] = [
       { a: "cycle", pc: "Next part" },
       { a: "attack", pc: "Hold, release to strike", btn: "Slash", tap: "Hold, release to strike" },
       { a: "spear", pc: "Fire a thunder spear", btn: "Spear", tap: "Fire a thunder spear" },
-      { keys: ["E"], pc: "In a grab: release on the chime", btn: "Slash", tap: "In a grab: release on the chime" },
+      { keys: ["E"], pc: "In a grab: release when the blades glow", btn: "Slash", tap: "In a grab: release when the blades glow" },
     ],
   },
   {

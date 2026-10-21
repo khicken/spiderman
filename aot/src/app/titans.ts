@@ -197,7 +197,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   let bossPending: BossKind | null = null;
   const rocks = createRocks(scene, world, fx);
   let heldBy: T | null = null;
-  let esc = 0;
   let holdSide: 0 | 1 = 0;
   const heldPos = new THREE.Vector3();
   const bossOut = { name: "", kind: "female" as TitanKind, health: 1, hardened: false };
@@ -706,11 +705,15 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           tg.lean = clamp((0.6 * H - (ti.aim.y - ti.pos.y)) / H, 0, 0.7);
           tg.jaw = 0.45;
           palm(ti, i, _c);
-          if (!ti.hit && a > 0.9 && pl.alive && !heldBy && _c.distanceTo(pl.pos) < H * 0.08 + 1.7) {
+          if (!ti.hit && a > 0.9 && pl.alive && !heldBy && _c.distanceTo(pl.pos) < H * 0.08 + 1.7 && (pl.sinceDash ?? 9) < Math.min(0.3, a - 0.75)) {
+            ti.hit = true;
+            ti.cool = 3;
+            startAct(ti, "flinch");
+            out.push({ type: "sfx", name: "swat", at: _c.clone() });
+          } else if (!ti.hit && a > 0.9 && pl.alive && !heldBy && _c.distanceTo(pl.pos) < H * 0.08 + 1.7) {
             ti.hit = true;
             heldBy = ti;
             holdSide = i;
-            esc = 0;
             heldPos.copy(_c);
             startAct(ti, "hold");
             out.push({ type: "sfx", name: "grabbed", at: _c.clone() }, { type: "shake", strength: 0.45 });
@@ -1513,9 +1516,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     get breakT() {
       return Math.max(0, breakT);
     },
-    get escape() {
-      return heldBy ? esc : null;
-    },
     hold(view, side, on) {
       const t = view as T;
       if (!t.alive || heldBy === t) return;
@@ -1647,17 +1647,17 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     held() {
       return heldBy ? heldPos : null;
     },
+    holder() {
+      return heldBy;
+    },
 
-    struggle(add) {
+    struggle() {
       if (!heldBy) return [];
-      esc += add;
-      if (esc < 1) return [{ type: "shake", strength: 0.06 }];
       const t = heldBy;
       heldBy = null;
-      esc = 0;
       t.cool = 3;
       startAct(t, "flinch");
-      return [{ type: "sfx", name: "escape" }, { type: "toast", title: "Broke free" }, { type: "score", amount: 25, reason: "Escape" }];
+      return [{ type: "sfx", name: "escape" }, { type: "score", amount: 25, reason: "Escape" }];
     },
     pushOut(pos, radius, vel) {
       if (heldBy) return;

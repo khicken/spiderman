@@ -12,7 +12,7 @@ Quick start: Q locks on a titan, F hooks it, hold E and release to strike the na
 - Trackpad or keyboard only: F fires both anchors at the locked titan, or at the crosshair.
 - Space adds gas speed while anchored. Gas cannot lift you without an anchor. Shift dashes.
 - Q or the mouse wheel picks the part: nape, eyes, arms, legs. T fires a thunder spear. Blades swap by themselves when dull.
-- Only a nape cut kills. Cut legs to make a titan kneel, eyes to blind it, arms to stop a grab. Mash E or Space when grabbed.
+- Only a nape cut kills. Cut legs to make a titan kneel, eyes to blind it, arms to stop a grab. Dash as a hand reaches for you to dodge it. If caught, hold E and release when the blades glow.
 - Phone or tablet: play in landscape. Use the left stick to move, drag to look, and the right buttons for anchors, gas, slash, and dash.
 - Bosses: the Female Titan (wave 4), the Armored Titan (wave 7), and the Beast Titan (wave 10). Waves never end after wave 10.
 - A Survey Corps squad fights with you. G orders them to attack your target or regroup. C and V fire single anchors.

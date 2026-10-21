@@ -134,7 +134,7 @@ export type Blade = { pos: THREE.Vector3; dir: THREE.Vector3; speed: number; cha
 // Spears stick and blow up, pierce armor and hardening.
 export type Weapon = "blades" | "spears";
 export type StrikeResult = { events: GameEvent[]; zone: HitZone | null; titan: TitanView | null; killed: boolean };
-export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; grounded: boolean };
+export type PlayerView = { pos: THREE.Vector3; vel: THREE.Vector3; alive: boolean; grounded: boolean; sinceDash?: number }; // seconds since the last dash
 // Squad play: the host sends snap() to guests, guests draw it with show(). Guests own hp of a titan they just hit for a moment.
 export type TitanNet = { snap(): number[]; show(snap: number[], dt: number): GameEvent[]; hit(id: number, part: TitanPart, dmg: number): GameEvent[]; own(id: number): void };
 export interface Titans {
@@ -153,8 +153,8 @@ export interface Titans {
   nearest(pos: THREE.Vector3, look: THREE.Vector3, maxDist: number, minDot?: number): TitanView | null;
   strike(blade: Blade, target: { titan: TitanView; part: TitanPart } | null): StrikeResult;
   held(): THREE.Vector3 | null; // where the player is held, null when free
-  struggle(add: number): GameEvent[]; // add to the escape meter while held, 1 frees
-  readonly escape: number | null; // 0..1 while held
+  holder(): TitanView | null; // the titan holding the player
+  struggle(): GameEvent[]; // a perfect cut frees the held player
   pushOut(pos: THREE.Vector3, radius: number, vel: THREE.Vector3): void;
   boss(): { name: string; kind: TitanKind; health: number; hardened: boolean } | null;
   lure(p: THREE.Vector3 | null): void; // half the titans march on this point
@@ -227,6 +227,7 @@ export interface Player {
   readonly mode: PlayerMode;
   readonly alive: boolean;
   readonly grounded: boolean;
+  readonly sinceDash: number;
   readonly lock: Lock | null;
   update(dt: number, input: Input, playing: boolean): GameEvent[]; // owns anchors, lock, attacks, gas, blades
   damage(amount: number, from?: THREE.Vector3): GameEvent[];
@@ -279,7 +280,7 @@ export type HudState = {
   score: number;
   left: number;
   breakT: number;
-  escape: number | null;
+  held: boolean;
   lock: { part: TitanPart; health: number; height: number; kind: TitanKind; name: string } | null;
   boss: { name: string; kind: TitanKind; health: number; hardened: boolean } | null;
   blips: TitanBlip[];

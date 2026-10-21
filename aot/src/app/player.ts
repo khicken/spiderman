@@ -64,6 +64,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const chain = new Set<string>();
   let spearAmmo = SPEARS;
   let time = 0;
+  let dashAt = -9;
   let reelT = 0;
   let wallT = 0;
   let chargeT = 0;
@@ -71,7 +72,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   let flashed = false;
   let brokeToast = 0;
   let lockHeld = false;
-  let grabHint = false;
   let wasHeld = false;
   let flipNext = false;
   const act: Act = { name: null, t: 0, dur: 0 };
@@ -82,7 +82,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const blade: Blade = { pos: new THREE.Vector3(), dir: new THREE.Vector3(), speed: 0, charge: 0, radius: 2.5 };
 
   const aim = { kind: "none" as "none" | "world" | "titan", dist: 0, point: new THREE.Vector3(), normal: new THREE.Vector3(), obj: null as THREE.Object3D | null, titan: null as TitanView | null };
-  const frame: ScoutFrame = { anim: "idle", t: 0, k: 0, speed: 0, vel, charge: 0, side: 1, broken: false };
+  const frame: ScoutFrame = { anim: "idle", t: 0, k: 0, speed: 0, vel, charge: 0, perfect: false, side: 1, broken: false };
   const pressT = new Map<Action, number>();
   const lastLook = new THREE.Vector3(0, 0, 1);
   const hv = new THREE.Vector3();
@@ -503,6 +503,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     slash.on = false;
     act.name = null;
     flipNext = false;
+    wasHeld = false;
     combo = 0;
     chain.clear();
     spearAmmo = SPEARS;
@@ -652,6 +653,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     dashCd -= dt;
     if (input.pressed.has("dash") && dashCd <= 0 && gas > 0.02 && mode !== "held") {
       dashCd = 0.45;
+      dashAt = time;
       gas = Math.max(0, gas - 0.05 * drain());
       if (wish.lengthSq() > 0) t2.copy(wish).addScaledVector(UP, grounded ? 0.12 : 0.18).normalize();
       else if (n) t2.copy(look);
@@ -806,6 +808,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     frame.k = act.name ? Math.min(1, act.t / act.dur) : 0;
     frame.speed = mode === "ground" || mode === "wall" ? hsp : speed;
     frame.charge = charging ? Math.min(1, chargeT / chargeFull()) : 0;
+    frame.perfect = charging && isPerfect();
     frame.broken = sharp <= 0;
 
     if (hsp > 0.5) facing.set(vel.x / hsp, 0, vel.z / hsp);
@@ -859,6 +862,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     get grounded() {
       return grounded;
     },
+    get sinceDash() {
+      return time - dashAt;
+    },
     get lock() {
       return lock;
     },
@@ -902,10 +908,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         mode = "held";
         pos.copy(heldAt);
         vel.set(0, 0, 0);
-        if (!grabHint) {
-          grabHint = true;
-          out.push({ type: "toast", title: "Break free", text: "Hold E, release on the chime", touch: "Hold Slash, release on the chime" });
-        }
         if (input.pressed.has("attack")) {
           charging = true;
           chargeT = 0;
@@ -914,20 +916,18 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         }
         if (charging && chargeUp(input)) {
           charging = false;
-          const perfect = isPerfect();
-          if (perfect || chargeT > PERFECT[1] * st.chargeTime) {
+          if (isPerfect()) {
             sharp = Math.max(0, sharp - 0.1 * st.wear);
             sfx("slash", 0.8);
-            for (const e of titans.struggle(perfect ? 1 : 0.4)) out.push(e);
-            if (perfect && !titans.held()) {
-              wasHeld = false;
-              mode = "air";
-              grounded = false;
-              vel.copy(input.look).multiplyScalar(40).addScaledVector(UP, 6);
-              startAct("flip", 0.6);
-              return out;
-            }
-          } else sfx("clang", 0.6);
+            for (const e of titans.struggle()) out.push(e);
+            wasHeld = false;
+            mode = "air";
+            grounded = false;
+            vel.copy(input.look).multiplyScalar(40).addScaledVector(UP, 6);
+            startAct("flip", 0.6);
+            return out;
+          }
+          sfx("clang", 0.6);
         }
         updateHooks(dt, input);
         animate(dt, input);
@@ -1064,7 +1064,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       hud.sharp = sharp;
       hud.hooks[0] = hooks[0].state === "on";
       hud.hooks[1] = hooks[1].state === "on";
-      hud.charge = charging ? Math.min(1, chargeT / chargeFull()) : null;
+      hud.charge = charging ? Math.min(1, chargeT / (PERFECT[1] * st.chargeTime)) : null;
       hud.aim = aim.kind;
       hud.aimDist = aim.dist;
       hud.supply = inSupply;
@@ -1080,7 +1080,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     cameraView() {
       view.mode = mode;
       view.charge = charging ? Math.min(1, chargeT / chargeFull()) : 0;
-      view.lockPoint = lock && titans.partPos(lock.titan, lock.part, lockPoint) ? lockPoint : null;
+      const ho = mode === "held" ? titans.holder() : null;
+      view.lockPoint = ho ? (titans.partPos(ho, "eyes", lockPoint) ? lockPoint : null) : lock && titans.partPos(lock.titan, lock.part, lockPoint) ? lockPoint : null;
       return view;
     },
     setVisible(on) {

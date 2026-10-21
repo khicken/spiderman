@@ -75,7 +75,7 @@ export function createSquad(scene: THREE.Scene, titans: Titans, o: SquadOpts, on
       const tag = nameTag(n || "Scout");
       scout.root.visible = tag.visible = false;
       scene.add(scout.root, tag);
-      remotes.set(id, { key: n + ch, scout, tag, a: null, b: null, ta: 0, tb: 0, yaw: 0, frame: { anim: "idle", t: 0, k: 0, speed: 0, vel: new THREE.Vector3(), charge: 0, side: 0, broken: false } });
+      remotes.set(id, { key: n + ch, scout, tag, a: null, b: null, ta: 0, tb: 0, yaw: 0, frame: { anim: "idle", t: 0, k: 0, speed: 0, vel: new THREE.Vector3(), charge: 0, perfect: false, side: 0, broken: false } });
     }
   };
 
