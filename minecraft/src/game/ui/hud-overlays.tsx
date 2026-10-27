@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import type { HudState } from "../contracts";
 import { paintBlockTexture } from "../textures";
-import { pixelUrl } from "./sprites";
+import { packUrl, pixelUrl } from "./sprites";
 
 const OVERLAY_CSS = `
 @keyframes mc-portal{0%{background-position:0 0}100%{background-position:0 100%}}
@@ -61,6 +61,7 @@ const portalUrl = () => {
 export function HudOverlays({ state, width, height, vignette }: { state: HudState; width: number; height: number; vignette?: boolean }) {
   const scope = Math.min(width, height);
   const light = state.light ?? 1;
+  const vig = 0.6 * (1 - light / (4 - 3 * light)); // vanilla LightTexture.getBrightness curve
   const freeze = state.freeze ?? (state.frozen ? 1 : 0);
   let portal = state.portal ?? 0;
   if (portal > 0 && portal < 1) {
@@ -71,13 +72,15 @@ export function HudOverlays({ state, width, height, vignette }: { state: HudStat
   return (
     <>
       <style>{OVERLAY_CSS}</style>
-      {vignette && (
-        <div style={full(width, height, { background: `radial-gradient(ellipse 75% 75% at center, transparent 45%, rgba(0,0,0,${0.2 + 0.35 * (1 - light)}) 100%)` })} />
-      )}
+      {vignette && (packUrl("misc/vignette") ? (
+        <div style={full(width, height, { background: "#000", opacity: vig, transition: "opacity 2s", maskImage: `url(${packUrl("misc/vignette")})`, maskMode: "luminance", maskSize: "100% 100%" })} />
+      ) : (
+        <div style={full(width, height, { background: "radial-gradient(ellipse 75% 75% at center, transparent 45%, #000 100%)", opacity: vig, transition: "opacity 2s" })} />
+      ))}
       {state.spyglass && (
         <div style={full(width, height, { background: `radial-gradient(circle ${scope / 2}px at center, transparent 92%, rgba(0,0,0,0.6) 97%, #000 100%)` })} />
       )}
-      {state.pumpkin && <img alt="" src={pumpkin()} draggable={false} style={full(width, height, { opacity: 1 })} />}
+      {state.pumpkin && <img alt="" src={packUrl("misc/pumpkinblur") || pumpkin()} draggable={false} style={full(width, height, { opacity: 1 })} />}
       {freeze > 0 && (
         <div
           style={full(width, height, {

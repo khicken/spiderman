@@ -13,6 +13,10 @@ const ctx = self as unknown as { onmessage: ((e: MessageEvent<GenRequest>) => vo
 
 ctx.onmessage = (e) => {
   const { id, seed, dim, cx, cz } = e.data;
-  const chunk = generateChunk(seed, dim, cx, cz);
-  ctx.postMessage({ id, chunk }, [chunk.blocks.buffer, chunk.light.buffer, chunk.biomes.buffer, chunk.heightmap.buffer]);
+  try {
+    const chunk = generateChunk(seed, dim, cx, cz);
+    ctx.postMessage({ id, chunk }, [chunk.blocks.buffer, chunk.light.buffer, chunk.biomes.buffer, chunk.heightmap.buffer]);
+  } catch (err) {
+    ctx.postMessage({ id, error: err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err) }, []);
+  }
 };

@@ -108,6 +108,9 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   let handHeight = 1;
   let prevHandHeight = 1;
   let shownItem: string | null = null;
+  let offHeight = 1;
+  let prevOffHeight = 1;
+  let shownOff: string | null = null;
   let walkSpeed = 0;
   let walkPos = 0;
   let prevWalkSpeed = 0;
@@ -159,6 +162,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     deathMessage: "",
     swingTime: 0,
     swinging: false,
+    swingOff: false,
     attackAnim: 0,
     prevAttackAnim: 0,
     attackTicker: 0,
@@ -217,6 +221,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
         p.swingTime = -1;
         p.swinging = true;
       }
+      p.swingOff = false;
     },
     teleport(x: number, y: number, z: number) {
       body.pos.set(x, y, z);
@@ -436,6 +441,10 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     const f = attackStrength(p.attackTicker, attackStats(held).speed, 1);
     handHeight += Math.max(-0.4, Math.min(0.4, (name === shownItem ? f * f * f : 0) - handHeight));
     if (handHeight < 0.1) shownItem = name;
+    prevOffHeight = offHeight;
+    const off = ctx.inventory.slots[40]?.item ?? null;
+    offHeight += Math.max(-0.4, Math.min(0.4, (off === shownOff ? 1 : 0) - offHeight));
+    if (offHeight < 0.1) shownOff = off;
     let fovT = p.flying ? 1.1 : 1;
     fovT *= (speedAttr() / WALK_SPEED + 1) / 2;
     if (p.using?.kind === "bow") {
@@ -511,6 +520,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       const third = p.thirdPerson !== 0 && p.gameMode !== "spectator";
       const root = model.model.root;
       root.visible = third;
+      root.userData.shadowRadius = p.dead || p.hasEffect("invisibility") > 0 ? 0 : 0.5;
       if (third) {
         modelPos.set(lerp(p.prevPos.x, body.pos.x, pt), lerp(p.prevPos.y, body.pos.y, pt) - (p.pose === "crouching" ? 0.125 : 0), lerp(p.prevPos.z, body.pos.z, pt));
         root.position.copy(modelPos);
@@ -525,10 +535,13 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
           usingRight: p.using?.kind === "bow" || p.using?.kind === "crossbow",
           flying: p.flying,
           riding: p.vehicle != null,
+          holdRight: !!ctx.inventory.held(),
+          holdLeft: !!ctx.inventory.slots[40],
+          swingLeft: p.swingOff,
         });
         model.setLight(light, p.hurtTime > 0 || p.dead);
         extras.update(p, ctx, pt, light, p.hurtTime > 0 || p.dead);
-        hand.setThirdPerson(model.model.parts.right_arm, getCtx().inventory.held());
+        hand.setThirdPerson(model.model.parts.right_arm, getCtx().inventory.held(), p.using?.hand === "main" ? p.using : null, p.using ? p.using.ticks + pt : 0);
       }
       const u = p.using;
       const held = ctx.inventory.held();
@@ -544,7 +557,10 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       const lx = Math.floor(body.pos.x), ly = Math.floor(body.pos.y + p.eyeHeight), lz = Math.floor(body.pos.z);
       items.setLevels(ctx.world.getSkyLight(lx, ly, lz), ctx.world.getBlockLight(lx, ly, lz));
       hf.visible = showHand && !third && !p.dead && !p.sleeping && p.gameMode !== "spectator";
-      hf.off = ctx.inventory.slots[40] ?? null;
+      const offStack = ctx.inventory.slots[40] ?? null;
+      hf.off = shownOff ? (offStack?.item === shownOff ? offStack : { item: shownOff, count: 1 }) : null;
+      hf.offEquip = 1 - lerp(prevOffHeight, offHeight, pt);
+      hf.swingOff = p.swingOff;
       const scoping = p.using?.kind === "spyglass" && p.thirdPerson === 0;
       if (scoping) hf.visible = false;
       screen.update(ctx.renderer.camera, scoping && !p.dead, p.totemTicks, pt);

@@ -4,6 +4,7 @@ import { idOf, metaOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { blockIds, fluidAt } from "./physics";
 import type { PlayerState } from "./state";
+import { lightmap } from "../mesh/lightmap";
 
 const D = Math.PI / 180;
 const eye = new THREE.Vector3();
@@ -65,29 +66,15 @@ export function daylight(dayTime: number): number {
   return Math.max(0, Math.min(1, c * 2 + 0.5));
 }
 
-// Mean channel of the vanilla lightmap at default gamma, matching the chunk shader.
+const LM: [number, number, number] = [1, 1, 1];
+const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+
+// Mean channel of the chunk shader lightmap, linear, for player model and hand material colors.
 export function lightAt(ctx: GameCtx, x: number, y: number, z: number, nightVision: boolean): number {
   if (nightVision) return 1;
   const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
-  const dim = ctx.world.dim;
-  const amb = dim === "nether" ? 0.1 : 0;
-  const curve = (l: number) => amb + (1 - amb) * (l / 15 / (4 - (3 * l) / 15));
-  const q = curve(ctx.world.getBlockLight(bx, by, bz)) * 1.5;
-  let r = q, g = q * ((q * 0.6 + 0.4) * 0.6 + 0.4), b = q * (q * q * 0.6 + 0.4);
-  if (dim === "end") {
-    r += (0.99 - r) * 0.25; g += (1.12 - g) * 0.25; b += (1 - b) * 0.25;
-  } else {
-    const f = dim === "overworld" ? 0.2 + 0.8 * daylight(ctx.time.dayTime) : 0.2;
-    const s = curve(ctx.world.getSkyLight(bx, by, bz)) * (f * 0.95 + 0.05);
-    const sk = 0.35 + 0.65 * f;
-    r += sk * s; g += sk * s; b += s;
-  }
-  return Math.min(1, (gammaMix(r) + gammaMix(g) + gammaMix(b)) / 3);
-}
-
-function gammaMix(c: number): number {
-  const v = Math.min(1, c * 0.96 + 0.03);
-  return ((v + 1 - Math.pow(1 - v, 4)) / 2) * 0.96 + 0.03;
+  lightmap(ctx.world.getSkyLight(bx, by, bz), ctx.world.getBlockLight(bx, by, bz), LM);
+  return (toLinear(LM[0]) + toLinear(LM[1]) + toLinear(LM[2])) / 3;
 }
 
 export interface CameraOut {
@@ -141,6 +128,7 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
   ctx.renderer.setUnderwater(p.gameMode === "spectator" ? "none" : fluid ?? (powder ? "powder_snow" : "none"));
   let fov = p.fov * lerp(p.prevFovMod, p.fovMod, pt);
   if (fluid) fov *= 0.85714287;
+  cam.userData.handFov = fluid ? 70 * 0.85714287 : 70;
   if (nausea > 0) fov *= 1 + Math.sin((p.ticks + pt) * 0.27) * 0.12 * nausea;
   if (Math.abs(cam.fov - fov) > 1e-3) {
     cam.fov = fov;

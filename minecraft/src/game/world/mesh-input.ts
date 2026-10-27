@@ -4,7 +4,10 @@ import { HEIGHT, PAD, SECTIONS } from "../contracts";
 import type { Chunk, Store } from "./store";
 
 const grid: (Chunk | undefined)[] = new Array(9);
-const TINTS = new WeakMap<Chunk, Uint32Array>();
+let TINTS = new WeakMap<Chunk, Uint32Array>();
+export const resetTints = () => {
+  TINTS = new WeakMap();
+};
 const R = 2; // vanilla biome blend 2: a 5x5 average
 const W = 16 + 2 * R;
 const wide = new Uint8Array(W * W);

@@ -3,6 +3,7 @@ import type { BlockBehavior, BlockEntityData, Dim, GameCtx, GameEvent } from "..
 import { MAX_Y, idOf } from "../../contracts";
 import { BLOCKS, LIGHT_FILTER, blockDef } from "../../blocks/registry";
 import { sound } from "../../mechanics/util";
+import { advTrigger } from "../advancements/bus";
 
 export const BASE_BLOCKS = new Set(["iron_block", "gold_block", "emerald_block", "diamond_block", "netherite_block"]);
 export const PAYMENT = new Set(["iron_ingot", "gold_ingot", "emerald", "diamond", "netherite_ingot"]);
@@ -196,6 +197,8 @@ export function refresh(ctx: GameCtx, x: number, y: number, z: number) {
     data.levels = levels;
     ctx.world.setBlockEntity(be, x, y, z);
     if (levels > 0 && was === 0) sound(ctx, "block.beacon.activate", x, y, z);
+    const pp = ctx.player.body.pos;
+    if (levels > 0 && Math.abs(pp.x - x) <= levels * 10 + 10 && Math.abs(pp.z - z) <= levels * 10 + 10) advTrigger({ t: "construct_beacon", level: levels });
     if (levels === 0 && was > 0) sound(ctx, "block.beacon.deactivate", x, y, z);
   }
   const sig = levels > 0 && segs ? segs.map((g) => `${g.y0}:${g.color}`).join("|") : "";

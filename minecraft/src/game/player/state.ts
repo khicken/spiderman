@@ -32,6 +32,7 @@ export interface PlayerState extends PlayerApi {
   deathMessage: string;
   swingTime: number;
   swinging: boolean;
+  swingOff: boolean; // the last swing used the offhand
   attackAnim: number;
   prevAttackAnim: number;
   attackTicker: number;
@@ -70,6 +71,7 @@ export interface PlayerState extends PlayerApi {
   totemTicks: number; // totem animation, counts down from 40
   prevJump: boolean;
   lastDeath: { x: number; y: number; z: number; dim: string } | null;
+  remote?: { damage(amount: number, source: DamageSource, attacker?: Entity): void; exhaust(v: number): void }; // multiplayer client: the host owns health and hunger
 }
 
 export const effectLevel = (p: { effects: { id: string; amplifier: number }[] }, id: string): number => {

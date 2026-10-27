@@ -12,6 +12,7 @@ import { dialFrame, paintDial } from "../textures/dials";
 import type { ItemStack } from "../contracts";
 import { GLINT_TIME } from "../entities/armor-layer";
 import { createShieldModel } from "./shield-model";
+import { packVersion } from "../packs";
 
 export function itemKey(s: ItemStack | null): string | null {
   if (!s) return null;
@@ -217,14 +218,22 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
       });
       return { kind: "block", create: () => new THREE.Mesh(geo, mats) };
     }
-    if (!it && !def) return null;
+    if (!it && !def && !hasItemPainter(name)) return null;
     const rgba = itemSpritePixels(name);
     const geo = extrudeSprite(solid && def.tint ? tinted(rgba, TINTS[def.tint] ?? 0xffffff) : rgba);
     geos.push(geo);
     return { kind: "flat", create: () => new THREE.Mesh(geo, flatMat) };
   }
 
+  let packV = packVersion();
+  const stale: THREE.DataTexture[] = [];
   function model(name: string): ItemModel | null {
+    if (packV !== packVersion()) {
+      packV = packVersion();
+      cache.clear();
+      stale.push(...textures.values());
+      textures.clear();
+    }
     if (!cache.has(name)) cache.set(name, build(name));
     return cache.get(name) ?? null;
   }
@@ -240,6 +249,7 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
     dispose() {
       for (const g of geos) g.dispose();
       for (const t of textures.values()) t.dispose();
+      for (const t of stale) t.dispose();
       for (const s of shaded) s.mat.dispose();
       glintMat.dispose();
       held?.dispose();

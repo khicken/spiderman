@@ -1,7 +1,7 @@
 import { stateOf } from "../contracts";
 import { biomeId } from "./biomes";
 import { B } from "./ids";
-import { createOctaves, hash01, hash32, type Octaves } from "./noise";
+import { createOctaves, hash32, type Octaves } from "./noise";
 
 const id = biomeId;
 export const BI = {
@@ -78,7 +78,7 @@ export function topBlockFor(sn: SurfaceNoise, seed: number, biome: number, x: nu
   if (biome === BI.mangrove) return B.mud;
   if (biome === BI.desert || biome === BI.beach || biome === BI.snowyBeach) return B.sand;
   if (biome === BI.stonyShore || biome === BI.stonyPeaks) return B.stone;
-  if (biome === BI.jagged || biome === BI.frozenPeaks || biome === BI.snowySlopes || biome === BI.iceSpikes) return B.snow_block;
+  if (biome === BI.jagged || biome === BI.frozenPeaks || biome === BI.snowySlopes || biome === BI.iceSpikes || biome === BI.grove) return B.snow_block;
   if (isBadlands(biome)) {
     if (biome === BI.wooded && y > 96) return B.grass_block;
     return y > 74 + Math.round(sn.surface.sample2(x, z) * 4) ? B.terracotta : B.red_sand;
@@ -88,7 +88,6 @@ export function topBlockFor(sn: SurfaceNoise, seed: number, biome: number, x: nu
   if (biome === BI.wsGravelly) return n > 0.24 ? B.gravel : n > 0.12 ? B.stone : B.grass_block;
   if (biome === BI.wsHills && n > 0.18) return B.stone;
   if (biome === BI.wsSavanna) return n > 0.22 ? B.stone : n > 0.08 ? B.coarse_dirt : B.grass_block;
-  if (biome === BI.grove && hash01(seed, x, y, z) < 0.04) return B.powder_snow;
   return B.grass_block;
 }
 
@@ -100,6 +99,7 @@ export interface Surf {
   deepDepth: number;
 }
 
+const STEEP_STONE_Y = 96;
 const surf: Surf = { top: 0, wet: 0, fill: 0, deep: 0, deepDepth: 0 };
 
 export function surfaceFor(sn: SurfaceNoise, seed: number, biome: number, x: number, y: number, z: number, steep: boolean): Surf {
@@ -118,15 +118,19 @@ export function surfaceFor(sn: SurfaceNoise, seed: number, biome: number, x: num
   } else if (top === B.stone) {
     surf.fill = S(B.stone);
     surf.wet = S(biome === BI.stonyShore ? B.gravel : B.stone);
-    if (biome === BI.stonyPeaks && sn.patch.sample2(x, z) > 0.2) surf.top = S(B.calcite);
+    if (biome === BI.stonyPeaks && Math.abs(sn.patch.sample2(x * 0.25, z * 0.25)) < 0.05) surf.top = surf.fill = S(B.calcite);
   } else if (top === B.snow_block) {
-    surf.fill = S(biome === BI.iceSpikes ? B.dirt : B.snow_block);
+    surf.fill = S(biome === BI.iceSpikes || biome === BI.grove ? B.dirt : biome === BI.jagged ? B.stone : B.snow_block);
     if (biome === BI.frozenPeaks) {
       const p = sn.patch.sample2(x, z);
       if (p > 0.38) surf.top = S(B.packed_ice);
       else if (p < -0.45) surf.top = S(B.ice);
     }
     if (biome === BI.snowySlopes && sn.patch.sample2(x, z) > 0.3) surf.top = S(B.powder_snow);
+    else if (biome === BI.grove) {
+      const p = sn.patch.sample2(x, z);
+      if (p > 0.35 && p < 0.5) surf.top = S(B.powder_snow);
+    }
     if (steep) surf.top = surf.fill = biome === BI.frozenPeaks ? S(B.packed_ice) : S(B.stone);
   } else if (top === B.mud) {
     surf.fill = S(B.mud);
@@ -140,9 +144,11 @@ export function surfaceFor(sn: SurfaceNoise, seed: number, biome: number, x: num
     surf.fill = S(B.gravel);
   } else if (top === B.coarse_dirt || top === B.podzol) {
     surf.fill = S(B.dirt);
-  } else if (steep && (biome === BI.wsHills || biome === BI.wsForest || biome === BI.grove || biome === BI.meadow || biome === BI.cherry)) {
+  } else if (steep && (biome === BI.wsHills || biome === BI.wsForest || biome === BI.meadow || biome === BI.cherry)) {
     surf.top = surf.fill = S(B.stone);
   }
+  // Steep mountain faces show stone, never dirt walls. Lowland banks keep vanilla dirt.
+  if (steep && y >= STEEP_STONE_Y && surf.fill === S(B.dirt) && !isBadlands(biome)) surf.top = surf.fill = S(B.stone);
   if (isOcean(biome)) {
     const warm = biome === BI.warmOcean || biome === BI.lukewarm || biome === BI.deepLukewarm;
     const cold = biome === BI.cold || biome === BI.deepCold || biome === BI.frozenOcean || biome === BI.deepFrozen;

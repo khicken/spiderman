@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Rgb } from "./celestial";
 import type { CloudMode } from "./quality";
 import { paintCloudMap } from "./sky-art";
+import { tileOr } from "./pack-art";
 
 const CELL = 12;
 const MAP = 256;
@@ -46,9 +47,17 @@ const _pos: number[] = [];
 const _idx: number[] = [];
 
 export function createClouds(scene: THREE.Scene) {
-  const map = paintCloudMap();
+  let map = paintCloudMap();
   const texData = new Uint8Array(MAP * MAP * 4);
-  for (let i = 0; i < MAP * MAP; i++) texData.fill(map[i] ? 255 : 0, i * 4, i * 4 + 4);
+  const loadMap = () => {
+    const art = tileOr("environment/clouds", MAP, MAP);
+    if (art) {
+      map = new Uint8Array(MAP * MAP);
+      for (let i = 0; i < MAP * MAP; i++) map[i] = art.data[i * 4 + 3] >= 128 ? 1 : 0;
+    } else map = paintCloudMap();
+    for (let i = 0; i < MAP * MAP; i++) texData.fill(map[i] ? 255 : 0, i * 4, i * 4 + 4);
+  };
+  loadMap();
   const tex = new THREE.DataTexture(texData, MAP, MAP, THREE.RGBAFormat);
   tex.magFilter = tex.minFilter = THREE.NearestFilter;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -151,6 +160,11 @@ export function createClouds(scene: THREE.Scene) {
   return {
     update,
     setMode(m: CloudMode) { mode = m; group.visible = m !== "off"; },
+    reloadArt() {
+      loadMap();
+      tex.needsUpdate = true;
+      lastCi = NaN;
+    },
     setRange(blocks: number) { range = Math.max(192, blocks * 2); },
     dispose() {
       scene.remove(group);

@@ -3,6 +3,14 @@ import { generateEnd } from "./end";
 import { generateNether } from "./nether";
 import { generateOverworld, overworldGen } from "./overworld";
 import { isOcean, BI } from "./surface";
+import { endBiomeAt } from "./end";
+import { netherGen } from "./nether-gen";
+
+export function biomeAtXZ(seed: number, dim: Dim, x: number, z: number): number {
+  if (dim === "nether") return netherGen(seed).biomeAt(x, z);
+  if (dim === "end") return endBiomeAt(seed, x, z);
+  return overworldGen(seed).ow.biomeAt(x, z);
+}
 
 export function generateChunk(seed: number, dim: Dim, cx: number, cz: number): ChunkData {
   if (dim === "nether") return generateNether(seed, cx, cz);

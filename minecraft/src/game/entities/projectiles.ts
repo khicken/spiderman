@@ -8,6 +8,8 @@ import { isMob } from "./registry";
 import { applyPotion, potionImpact } from "../systems/brewing/effects";
 import { hitTarget } from "../mechanics/redstone";
 import { shieldFaces } from "../player/survival";
+import { advTrigger } from "../systems/advancements/bus";
+import { markProjectile } from "../systems/advancements/hooks";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -162,6 +164,10 @@ function stick(e: Entity, ctx: GameCtx, h: Hit) {
   e.data.crit = false;
   ctx.emit({ type: "sound", name: "entity.arrow.hit", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 1, pitch: 1.2 / (ctx.random() * 0.2 + 0.9) });
   hitTarget(ctx, h.bx!, h.by!, h.bz!, b.pos.x, b.pos.y, b.pos.z, h.face ?? Face.Up, true);
+  if (e.data.owner === "player" && blockByName("target")?.id === idOf(ctx.world.getBlock(h.bx!, h.by!, h.bz!))) {
+    const pp = ctx.player.body.pos;
+    advTrigger({ t: "target_hit", signal: ctx.world.getBlock(h.bx!, h.by!, h.bz!) >>> 12, distance: Math.hypot(pp.x - b.pos.x, pp.y - b.pos.y, pp.z - b.pos.z) });
+  }
 }
 
 function applyArrowEffects(e: Entity, list: Effect[], ctx: GameCtx, t: Entity | "player") {
@@ -188,6 +194,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
     ctx.player.damageFrom = { x: fx, y: b.pos.y, z: fz };
     ctx.player.damage(dmg, "arrow", owner && owner !== "player" ? owner : undefined);
     if (blocked) {
+      advTrigger({ t: "blocked_by_shield" });
       b.vel.multiplyScalar(-0.1);
       e.data.owner = undefined;
       return;
@@ -207,6 +214,8 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
       return;
     }
     if (e.data.fire) t.data._fire = Math.max((t.data._fire as number) ?? 0, 100);
+    markProjectile(t, e, ctx.time.tick);
+    if (owner === "player") advTrigger({ t: "projectile_hit", projectile: e.type, target: t.type });
     ctx.entities.damage(t.id, dmg, "arrow", owner);
     if (punch > 0) ctx.entities.knockback(t.id, b.vel.x, b.vel.z, punch * 0.6);
     if (e.data.type === "spectral_arrow" || e.type === "spectral_arrow") t.effects.push({ id: "glowing", amplifier: 0, ticks: 200 });
@@ -311,6 +320,7 @@ export function tickWindCharge(e: Entity, ctx: GameCtx) {
   if (h) {
     advance(e, h.t);
     const owner = ownerEntity(ctx, e.data.owner as Owner);
+    if (h.entity) markProjectile(h.entity, e, ctx.time.tick);
     if (h.entity) ctx.entities.damage(h.entity.id, 1, "generic", owner);
     else if (h.kind === "player") ctx.player.damage(1, "generic", owner && owner !== "player" ? owner : undefined);
     const p = e.body.pos;
@@ -350,6 +360,7 @@ export function tickFireball(e: Entity, ctx: GameCtx) {
   if (h) {
     advance(e, h.t);
     e.data._remove = true;
+    if (h.entity) markProjectile(h.entity, e, ctx.time.tick);
     if (small) {
       if (h.entity && !h.entity.data.fireImmune) {
         h.entity.data._fire = Math.max((h.entity.data._fire as number) ?? 0, 100);
@@ -394,4 +405,5 @@ export function deflect(e: Entity, ctx: GameCtx) {
   e.data.ay = d.y * 0.1;
   e.data.az = d.z * 0.1;
   e.data.owner = "player";
+  e.data.deflected = true;
 }

@@ -1,5 +1,5 @@
 import type { Entity, GameCtx, MobDef } from "../../contracts";
-import { rig, wrap, setRot, overlay, type VPart } from "../rig";
+import { rig, wrap, setRot, overlay, syncOverlay, type VPart } from "../rig";
 import { skin, shade, type Pix } from "./paint";
 import { animalAI, feed, num, sound, useItem, type AnimalOpts } from "./common";
 import { isBaby } from "../geom";
@@ -61,6 +61,35 @@ function paintSaddle(p: Pix) {
   }
 }
 
+const ARMOR_COLOR: Record<string, number> = { leather_horse_armor: 0xa06540, iron_horse_armor: 0xd8d8d8, golden_horse_armor: 0xf2cd3c, diamond_horse_armor: 0x4aedd9 };
+
+// Horse armor in gray, tinted per material through the overlay's base color.
+function paintArmor(p: Pix) {
+  const G = [0xffffff, 0xe8e8e8, 0xd0d0d0];
+  const D = [0x9a9a9a, 0x8a8a8a];
+  const body = p.fillCuboid(0, 32, 10, 10, 22, G);
+  for (const s of [body.right, body.left]) {
+    p.noise([s[0], s[1] + 8, s[2], 2], D);
+    p.noise([s[0] + 10, s[1], 2, s[3]], D);
+  }
+  p.fillCuboid(0, 35, 4, 12, 7, G);
+  const head = p.fillCuboid(0, 13, 6, 5, 7, G);
+  p.rect([head.right[0] + 2, head.right[1] + 1, 1, 1], 0);
+  p.rect([head.left[0] + 4, head.left[1] + 1, 1, 1], 0);
+  p.fillCuboid(0, 25, 4, 5, 5, D);
+  const leg = p.fillCuboid(48, 21, 4, 11, 4, G);
+  p.noise([48, leg.front[1] + 9, 16, 2], D);
+}
+
+function paintChests(p: Pix) {
+  const W = [0x8a5a2e, 0x7a4e26, 0x9a6634];
+  for (const u of [26, 44]) {
+    const f = p.fillCuboid(u, 21, 3, 8, 8, W);
+    p.rect([f.right[0], f.right[1] + 3, 3, 1], 0x3a2614);
+    p.rect([f.left[0], f.left[1] + 3, 3, 1], 0x3a2614);
+  }
+}
+
 function horseModel(kind: Kind) {
   const eared = kind === "donkey" || kind === "mule";
   const leg = (name: string, x: number, z: number, bx: number, bz: number, mirror: boolean): VPart => ({ name, pivot: [x, 14, z], box: [bx, -1.01, bz, 4, 11, 4], uv: [48, 21], mirror });
@@ -91,6 +120,25 @@ function horseModel(kind: Kind) {
   const paint = (k: string) => skin(k, 64, 64, (p) => paintHorse(p, k.slice(6), k === "horse_donkey" || k === "horse_mule"));
   const r = rig(paint(kind === "horse" ? "horse_brown" : `horse_${kind}`), parts);
   const saddle = overlay(r, skin("horse_saddle", 64, 64, paintSaddle), [{ name: "body", pivot: [0, 11, 5], box: [-5, -8, -9, 10, 9, 9], uv: [26, 0], inflate: 0.5 }]);
+  const armorList: VPart[] = [
+        { name: "body", pivot: [0, 11, 5], box: [-5, -8, -17, 10, 10, 22], uv: [0, 32], inflate: 0.12 },
+        { name: "head_parts", pivot: [0, 4, -12], box: [-2.05, -6, -2, 4, 12, 7], uv: [0, 35], inflate: 0.12, rot: [Math.PI / 6, 0, 0] },
+        { name: "head", parent: "head_parts", pivot: [0, 0, 0], box: [-3, -11, -2, 6, 5, 7], uv: [0, 13], inflate: 0.12 },
+        { name: "upper_mouth", parent: "head_parts", pivot: [0, 0, 0], box: [-2, -11, -7, 4, 5, 5], uv: [0, 25], inflate: 0.12 },
+        leg("left_hind_leg", 4, 7, -3, -1, true),
+        leg("right_hind_leg", -4, 7, -1, -1, false),
+        leg("left_front_leg", 4, -12, -3, -1.9, true),
+        leg("right_front_leg", -4, -12, -1, -1.9, false),
+      ];
+  const armorParts = armorList.map((p): VPart => (p.name.endsWith("_leg") ? { ...p, inflate: 0.12 } : p));
+  const armor = kind === "horse" ? overlay(r, skin("horse_armor_gray", 64, 64, paintArmor), armorParts) : null;
+  const chests = kind === "donkey" || kind === "mule"
+    ? overlay(r, skin("horse_chests", 64, 64, paintChests), [
+        { name: "left_chest", pivot: [6.5, 5, -2], box: [-1.5, 0, 0, 3, 8, 8], uv: [26, 21] },
+        { name: "right_chest", pivot: [-6.5, 5, -2], box: [-1.5, 0, 0, 3, 8, 8], uv: [44, 21] },
+      ])
+    : null;
+  let armorItem = "";
   return wrap(
     r,
     (a) => {
@@ -109,6 +157,19 @@ function horseModel(kind: Kind) {
         setRot(r.p.right_front_leg, -0.9 - Math.sin(a.age * 0.6) * 0.4, 0, 0);
       }
       saddle.root.visible = a.e.data.saddle === true;
+      if (chests) chests.root.visible = a.e.data.chest === true;
+      if (armor) {
+        const item = (a.e.data.armor as string | undefined) ?? "";
+        armor.root.visible = !!ARMOR_COLOR[item];
+        if (item !== armorItem && ARMOR_COLOR[item]) {
+          armor.root.traverse((o) => {
+            const m = (o as { material?: { userData: Record<string, unknown> } }).material;
+            if (m) m.userData.base = ARMOR_COLOR[item];
+          });
+        }
+        armorItem = item;
+        syncOverlay(r);
+      }
     },
     { scale: eared ? (kind === "mule" ? 0.92 : 0.87) : 1.1, head: ["head_parts"], babyHead: 1.3, variant: key, variantSkin: paint },
   );
@@ -251,6 +312,19 @@ function horseDef(kind: Kind): MobDef {
         e.data.saddle = true;
         useItem(ctx);
         sound(ctx, e, "entity.horse.saddle", 0.5, 1);
+        return true;
+      }
+      if (kind === "horse" && item?.endsWith("_horse_armor") && e.data.tame && !isBaby(e)) {
+        if (e.data.armor) ctx.entities.dropItem({ item: e.data.armor as string, count: 1 }, e.body.pos.x, e.body.pos.y + 1, e.body.pos.z);
+        e.data.armor = item;
+        useItem(ctx);
+        sound(ctx, e, "entity.horse.armor", 0.5, 1);
+        return true;
+      }
+      if ((kind === "donkey" || kind === "mule") && item === "chest" && e.data.tame && !e.data.chest && !isBaby(e)) {
+        e.data.chest = true;
+        useItem(ctx);
+        sound(ctx, e, `entity.${kind}.chest`, 1, 1);
         return true;
       }
       if (undead && !e.data.tame) return false;

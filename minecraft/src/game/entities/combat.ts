@@ -1,18 +1,45 @@
 import * as THREE from "three";
-import type { Entity, GameCtx } from "../contracts";
+import type { Body, Entity, GameCtx, WorldApi } from "../contracts";
+import { SOLID } from "../blocks/registry";
+import { itemDef } from "../items/registry";
+import { bodiesTouch } from "./geom";
 
 const rayO = new THREE.Vector3();
 const rayD = new THREE.Vector3();
 
+// Vanilla LivingEntity.hasLineOfSight: a COLLIDER clip, so grass, flowers and torches do not block it.
+export function lineClear(world: Pick<WorldApi, "raycast">, ox: number, oy: number, oz: number, tx: number, ty: number, tz: number) {
+  rayO.set(ox, oy, oz);
+  rayD.set(tx - ox, ty - oy, tz - oz);
+  let left = rayD.length();
+  if (left < 1e-3) return true;
+  rayD.multiplyScalar(1 / left);
+  for (let i = 0; i < 32; i++) {
+    const hit = world.raycast(rayO, rayD, left, false);
+    if (!hit || hit.dist >= left - 0.05) return true;
+    if (SOLID[hit.state & 0xfff]) return false;
+    const ex = rayD.x > 0 ? (hit.x + 1 - rayO.x) / rayD.x : rayD.x < 0 ? (hit.x - rayO.x) / rayD.x : Infinity;
+    const ey = rayD.y > 0 ? (hit.y + 1 - rayO.y) / rayD.y : rayD.y < 0 ? (hit.y - rayO.y) / rayD.y : Infinity;
+    const ez = rayD.z > 0 ? (hit.z + 1 - rayO.z) / rayD.z : rayD.z < 0 ? (hit.z - rayO.z) / rayD.z : Infinity;
+    const step = Math.max(hit.dist, Math.min(ex, ey, ez)) + 1e-4;
+    rayO.addScaledVector(rayD, step);
+    left -= step;
+    if (left <= 0) return true;
+  }
+  return true;
+}
+
 export function canSee(ctx: GameCtx, e: Entity, x: number, y: number, z: number) {
   const b = e.body;
-  rayO.set(b.pos.x, b.pos.y + b.height * 0.85, b.pos.z);
-  rayD.set(x - rayO.x, y - rayO.y, z - rayO.z);
-  const dist = rayD.length();
-  if (dist < 1e-3) return true;
-  rayD.multiplyScalar(1 / dist);
-  const hit = ctx.world.raycast(rayO, rayD, dist, false);
-  return !hit || hit.dist >= dist - 0.05;
+  return lineClear(ctx.world, b.pos.x, b.pos.y + b.height * 0.85, b.pos.z, x, y, z);
+}
+
+// Vanilla 1.21 Mob.DEFAULT_ATTACK_REACH: the attack box grows this much on x and z.
+export const ATTACK_REACH = Math.sqrt(2.04) - 0.6;
+
+// Vanilla 1.21 Mob.isWithinMeleeAttackRange: the grown attack box must intersect the target box (no y growth).
+export function inMeleeRange(attacker: Body, target: Body, reach = ATTACK_REACH) {
+  return bodiesTouch(attacker, target, reach, 0, reach);
 }
 
 export function canSeePlayer(ctx: GameCtx, e: Entity) {
@@ -51,40 +78,50 @@ export function knockBody(body: { vel: THREE.Vector3; onGround: boolean }, dx: n
   if (body.onGround) body.vel.y = Math.min(0.4, body.vel.y / 2 + strength);
 }
 
-// Vanilla MeleeAttackGoal hit: reach (2 * width)^2 + target width, 20 tick cooldown.
+// Vanilla MeleeAttackGoal: in melee range, line of sight from eye to eye, 20 tick cooldown.
 // Hits e.data._target, or the player when no target is set. Returns true on a hit.
 export function meleeAttack(e: Entity, ctx: GameCtx, damage: number, cooldown = 20) {
   const cd = (e.data._atk as number) || 0;
   if (cd > e.age) return false;
   const t = (e.data._target as Target) ?? "player";
   const b = e.body;
-  let tw: number;
-  let tp: THREE.Vector3;
+  let tb: Body;
+  let eyeY: number;
   if (t === "player") {
     if (!playerTargetable(ctx)) return false;
-    tw = ctx.player.body.width;
-    tp = ctx.player.body.pos;
+    tb = ctx.player.body;
+    eyeY = ctx.player.eye().y;
   } else {
     const o = ctx.entities.get(t);
     if (!o || o.dead) return false;
-    tw = o.body.width;
-    tp = o.body.pos;
+    tb = o.body;
+    eyeY = tb.pos.y + tb.height * 0.85;
   }
-  const reach = b.width * 2 * (b.width * 2) + tw;
-  const dx = tp.x - b.pos.x;
-  const dz = tp.z - b.pos.z;
-  const dy = tp.y - b.pos.y;
-  if (dx * dx + dz * dz > reach || dy > b.height + 0.5 || dy < -2) return false;
+  if (!inMeleeRange(b, tb, e.type === "ravager" ? ATTACK_REACH - 0.05 : ATTACK_REACH)) return false;
+  if (!canSee(ctx, e, tb.pos.x, eyeY, tb.pos.z)) return false;
+  const dx = tb.pos.x - b.pos.x;
+  const dz = tb.pos.z - b.pos.z;
   e.data._atk = e.age + cooldown;
   e.data._swing = 10;
   if (t === "player") {
+    const pl = ctx.player as GameCtx["player"] & { invulnerable?: number };
+    const fresh = (pl.invulnerable ?? 0) <= 10;
     ctx.player.damage(damage, "mob", e);
-    knockBody(ctx.player.body, dx, dz, 0.4);
+    if (pl.invulnerable === undefined || (fresh && pl.invulnerable === 20)) knockBody(ctx.player.body, dx, dz, 0.4, playerKbResist(ctx));
     alertPets(ctx, e.id);
   } else {
     ctx.entities.damage(t, damage, "mob", e);
   }
   return true;
+}
+
+function playerKbResist(ctx: GameCtx) {
+  let r = 0;
+  for (let i = 36; i <= 39; i++) {
+    const s = ctx.inventory.slots[i];
+    r += (s && itemDef(s.item)?.armor?.knockbackResistance) || 0;
+  }
+  return Math.min(1, r);
 }
 
 // Tamed wolves go after whatever hurt or was hurt by their owner.

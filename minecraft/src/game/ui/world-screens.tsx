@@ -5,7 +5,7 @@ import type { GameMode, Rules } from "../contracts";
 import { Text, useGui } from "./gui";
 import { Button, ListArea, Screen, TextField, onOff, playClick, useKeyDown } from "./widgets";
 import { textWidth } from "./font";
-import { pixelUrl } from "./sprites";
+import { gridUrl, pixelUrl } from "./sprites";
 
 export interface WorldListEntry {
   id: string;
@@ -15,6 +15,7 @@ export interface WorldListEntry {
   hardcore?: boolean;
   cheats?: boolean;
   icon?: string; // image URL, optional
+  cloud?: CloudIcon;
 }
 
 export interface ConfirmScreenProps {
@@ -57,12 +58,14 @@ const defaultIcon = () =>
 export interface SelectWorldScreenProps {
   worlds: WorldListEntry[];
   onPlay: (id: string) => void;
+  onDownload?: (id: string) => void;
+  note?: string;
   onCreate: () => void;
   onDelete: (id: string) => void;
   onCancel: () => void;
 }
 
-export function SelectWorldScreen({ worlds, onPlay, onCreate, onDelete, onCancel }: SelectWorldScreenProps) {
+export function SelectWorldScreen({ worlds, onPlay: play, onDownload, note, onCreate, onDelete, onCancel }: SelectWorldScreenProps) {
   const { width, height } = useGui();
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState<string | null>(null);
@@ -74,6 +77,7 @@ export function SelectWorldScreen({ worlds, onPlay, onCreate, onDelete, onCancel
     [worlds, search],
   );
   const selected = list.find((w) => w.id === sel) ?? null;
+  const onPlay = (id: string) => (worlds.find((w) => w.id === id)?.cloud === "cloud" ? onDownload?.(id) : play(id));
   useKeyDown((e) => {
     if (confirm) return;
     if (e.key === "Escape") onCancel();
@@ -136,13 +140,15 @@ export function SelectWorldScreen({ worlds, onPlay, onCreate, onDelete, onCancel
                 <Text text={w.name} x={37} y={3} />
                 <Text text={`${w.name.replace(/[^\w -]/g, "_")} (${fmtDate(w.lastPlayed)})`} color={0x808080} x={37} y={14} />
                 <Text text={`${mode}${w.cheats ? ", Cheats" : ""}, Version: 1.21`} color={0x808080} x={37} y={24} />
+                {w.cloud && <img alt={CLOUD_ALT[w.cloud]} title={CLOUD_ALT[w.cloud]} src={cloudIconUrl(w.cloud)} width={15} height={11} draggable={false} style={{ position: "absolute", left: rowW - 15, top: 3, imageRendering: "pixelated" }} />}
               </div>
             );
           })}
           {list.length === 0 && <Text text={search ? "No worlds found" : "No worlds yet"} color={0xa0a0a0} x={width / 2} y={20} align="center" />}
         </div>
       </ListArea>
-      <Button x={width / 2 - 154} y={height - 52} width={150} label="Play Selected World" disabled={!selected} onClick={() => selected && onPlay(selected.id)} />
+      {note && <Text text={note} color={0xff5555} x={width / 2} y={bottom + 2} align="center" />}
+      <Button x={width / 2 - 154} y={height - 52} width={150} label={selected?.cloud === "cloud" ? "Download" : "Play Selected World"} disabled={!selected} onClick={() => selected && onPlay(selected.id)} />
       <Button x={width / 2 + 4} y={height - 52} width={150} label="Create New World" onClick={onCreate} />
       <Button x={width / 2 - 154} y={height - 28} width={72} label="Edit" disabled />
       <Button x={width / 2 - 76} y={height - 28} width={72} label="Delete" disabled={!selected} onClick={() => selected && setConfirm(selected)} />
@@ -150,6 +156,54 @@ export function SelectWorldScreen({ worlds, onPlay, onCreate, onDelete, onCancel
       <Button x={width / 2 + 82} y={height - 28} width={72} label="Back" onClick={onCancel} />
     </Screen>
   );
+}
+
+export type CloudIcon = "local" | "cloud" | "synced" | "upload" | "behind" | "conflict";
+
+const CLOUD_ALT: Record<CloudIcon, string> = {
+  local: "Local only",
+  cloud: "Cloud only",
+  synced: "Synced",
+  upload: "Waiting to sync",
+  behind: "Newer copy in cloud",
+  conflict: "Changed on another device",
+};
+
+const CLOUD_SHAPE = [
+  "......###......",
+  "....##WWW##....",
+  "...#WWWWWWW#...",
+  ".###WWWWWWWW##.",
+  "#WWWWWWWWWWWWW#",
+  "#WWWWWWWWWWWWW#",
+  "#WWWWWWWWWWWWW#",
+  ".#############.",
+];
+const DOWN = ["", "", "", ".......M.......", ".....M.M.M.....", "......MMM......", ".......M.......", ""];
+const MARKS: Record<CloudIcon, string[]> = {
+  local: [],
+  cloud: DOWN,
+  behind: DOWN,
+  upload: ["", "", "", ".......M.......", "......MMM......", ".....M.M.M.....", ".......M.......", ""],
+  synced: ["", "", "", "", ".........M.....", "......M.M......", ".......M.......", ""],
+  conflict: ["", "", ".......M.......", ".......M.......", ".......M.......", "", ".......M.......", ""],
+};
+const CLOUD_COLORS: Record<CloudIcon, [number, number]> = {
+  local: [0xff6f6f6f, 0],
+  cloud: [0xff8fb8ff, 0xff1d3f8f],
+  behind: [0xffffffff, 0xff2050c0],
+  upload: [0xffd8d8d8, 0xff3a3a3a],
+  synced: [0xffffffff, 0xff3a8f2a],
+  conflict: [0xffffe080, 0xffa02020],
+};
+
+function cloudIconUrl(kind: CloudIcon): string {
+  const [fill, mark] = CLOUD_COLORS[kind];
+  const rows = CLOUD_SHAPE.map((r, y) => {
+    const m = (MARKS[kind][y] ?? "").padEnd(15, ".");
+    return [...r].map((c, x) => (c === "W" && m[x] === "M" ? "M" : c)).join("");
+  });
+  return gridUrl(`cloud:${kind}`, ["...............", "...............", "...............", ...rows], { "#": 0xff000000, W: fill, M: mark });
 }
 
 // Java String.hashCode, the vanilla rule for a seed that is not a number.

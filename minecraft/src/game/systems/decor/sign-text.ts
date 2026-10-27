@@ -2,7 +2,6 @@ import * as THREE from "three";
 import type { BlockEntityData, BlockState, GameCtx } from "../../contracts";
 import { metaOf } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
-import { daylight } from "../../entities/ai";
 import { brightnessAt } from "../../entities/render";
 import { rasterText } from "../../ui/font";
 
@@ -177,11 +176,11 @@ export function createSignTexts(ctx: GameCtx) {
     scene.add(group);
     const v = { key, x, y, z, group, sides };
     views.set(key, v);
-    shadeOne(v, daylight(ctx));
+    shadeOne(v);
   }
 
-  function shadeOne(v: SignView, day: number) {
-    const br = brightnessAt(ctx, v.x + 0.5, v.y + 0.5, v.z + 0.5, day);
+  function shadeOne(v: SignView) {
+    const br = brightnessAt(ctx, v.x + 0.5, v.y + 0.5, v.z + 0.5);
     for (const s of v.sides) s.mat.color.setScalar(s.glowing ? 1 : br);
   }
 
@@ -193,8 +192,7 @@ export function createSignTexts(ctx: GameCtx) {
     get: (key: number) => views.get(key),
     frame() {
       if (frameNo++ % 10 !== 0) return;
-      const day = daylight(ctx);
-      for (const v of views.values()) shadeOne(v, day);
+      for (const v of views.values()) shadeOne(v);
     },
     dispose() {
       for (const k of [...views.keys()]) remove(k);

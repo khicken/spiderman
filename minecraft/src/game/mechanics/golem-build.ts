@@ -1,6 +1,7 @@
 import type { BlockBehavior, GameCtx } from "../contracts";
 import { AIR, SET_NO_DROP, SET_NOTIFY } from "../contracts";
 import { blockDef } from "../blocks/registry";
+import { advTrigger } from "../systems/advancements/bus";
 
 type Cell = [number, number, number];
 const is = (...names: string[]) => (n: string) => names.includes(n);
@@ -58,7 +59,7 @@ function headPlaced(ctx: GameCtx, x: number, y: number, z: number) {
   const iron = findPattern(ctx, x, y, z, IRON_GOLEM, IRON_EMPTY);
   if (iron) {
     clear(ctx, [[x, y, z], ...iron]);
-    ctx.entities.spawn("iron_golem", x + 0.5, y - 2, z + 0.5, { playerCreated: true, persistent: true });
+    if (ctx.entities.spawn("iron_golem", x + 0.5, y - 2, z + 0.5, { playerCreated: true, persistent: true })) advTrigger({ t: "summoned", type: "iron_golem" });
   }
 }
 
@@ -69,6 +70,7 @@ function skullPlaced(ctx: GameCtx, x: number, y: number, z: number) {
   clear(ctx, body);
   const w = ctx.entities.spawn("wither", cx + 0.5, y - 2, cz + 0.5, { persistent: true, invul: 220 });
   if (w) ctx.emit({ type: "sound", name: "entity.wither.spawn", x: cx + 0.5, y, z: cz + 0.5, volume: 1 });
+  if (w) advTrigger({ t: "summoned", type: "wither" });
 }
 
 const head: BlockBehavior = { onPlaced: (ctx, x, y, z) => headPlaced(ctx, x, y, z) };

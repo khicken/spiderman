@@ -15,6 +15,8 @@ import { explodeAt } from "./explosion";
 import { createSpawner, despawns } from "./spawning";
 import { baseTick, rollDrops, deathSound, hurtSound, ambientTick, stepSounds } from "./living";
 import { createViews } from "./visuals";
+import { advKill } from "../systems/advancements/hooks";
+import { leadInteract } from "../systems/features/leads";
 import { mobEffectDeath, mobEffectHurt } from "../systems/brewing/effects";
 
 const MISC_SIZE: Record<string, [number, number]> = {
@@ -87,7 +89,26 @@ function stripData(data: Record<string, unknown>) {
   return out;
 }
 
-export function createEntities(getCtx: () => GameCtx): EntityApi {
+// Multiplayer host: a mob ticks against its nearest player. Multiplayer client: entities are mirrors.
+export type PlayerPicker = (e: Entity) => GameCtx["player"] | null;
+const NO_PICK = new Set(["item", "xp_orb", "fishing_bobber", "eye_of_ender"]);
+
+// A remote player proxy carries its own inventory view as `inv`.
+function asPlayer(ctx: GameCtx, pl: GameCtx["player"], fn: () => void) {
+  const own = ctx.player, oi = ctx.inventory;
+  const inv = (pl as { inv?: GameCtx["inventory"] }).inv;
+  ctx.player = pl;
+  if (inv) ctx.inventory = inv;
+  try {
+    fn();
+  } finally {
+    ctx.player = own;
+    ctx.inventory = oi;
+  }
+}
+export type MirrorEntities = EntityApi & { tickMirror(): void; create(type: string, x: number, y: number, z: number, data?: Record<string, unknown>): Entity | null };
+
+export function createEntities(getCtx: () => GameCtx): MirrorEntities {
   const list: Entity[] = [];
   const byId = new Map<number, Entity>();
   const grid = new Map<number, Entity[]>();
@@ -270,7 +291,7 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
     const ctx = getCtx();
     const def = mobDef(e.type);
     if (!def) {
-      if (attacker === "player" && (e.type === "fireball" || e.type === "small_fireball")) deflect(e, ctx);
+      if (attacker === "player" && (e.type === "fireball" || e.type === "small_fireball" || e.type === "breeze_wind_charge")) deflect(e, ctx);
       else if (e.type === "item" || e.type === "xp_orb") {
         if ((source === "fire" || source === "lava") && /^netherite_|^ancient_debris$/.test((e.data.stack as ItemStack)?.item ?? "")) return;
         if (source === "explosion" && (e.data.stack as ItemStack)?.item === "nether_star") return;
@@ -335,6 +356,7 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
     e.body.vel.x *= 0.2;
     e.body.vel.z *= 0.2;
     deathSound(e, ctx, def);
+    advKill(ctx, e, def, attacker);
     def.onDeath?.(e, ctx);
     if (e.effects.length) mobEffectDeath(ctx, e);
     const byPlayer = attacker === "player" || ((e.data._byPlayer as number) ?? 0) > 0;
@@ -374,6 +396,7 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
       if (ctx.player.gameMode !== "creative") ctx.inventory.removeHeld(1);
       return true;
     }
+    if (leadInteract(ctx, e, held)) return true;
     const def = mobDef(e.type);
     return def?.onInteract?.(e, ctx, held) ?? false;
   }
@@ -480,14 +503,34 @@ export function createEntities(getCtx: () => GameCtx): EntityApi {
           continue;
         }
         e.data._frozen = false;
-        tickOne(e, ctx);
+        const pick = (ctx as GameCtx & { playerFor?: PlayerPicker }).playerFor;
+        const pl = pick && (isMob(e.type) || e.data._net !== undefined || (!NO_PICK.has(e.type) && e.data.owner !== "player")) ? pick(e) : null;
+        if (pl && pl !== ctx.player) asPlayer(ctx, pl, () => tickOne(e, ctx));
+        else tickOne(e, ctx);
       }
       purge();
       rebuildGrid();
-      spawner.tick(ctx, list);
+      const everyone = (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.();
+      if (everyone && everyone.length > 1) for (const pl of everyone) asPlayer(ctx, pl, () => spawner.tick(ctx, list, everyone.length));
+      else spawner.tick(ctx, list);
     },
     frame(dt, partialTick) {
       views.frame(list, partialTick, dt);
+    },
+    create: spawn,
+    tickMirror() {
+      for (const e of list) {
+        e.age++;
+        if (e.hurtTicks > 0) e.hurtTicks--;
+        if (e.data._fly !== undefined) {
+          tickCollected(e);
+          continue;
+        }
+        if (e.dead) e.data._death = ((e.data._death as number) ?? 0) + 1;
+        if (isMob(e.type)) walkAnim(e);
+      }
+      purge();
+      rebuildGrid();
     },
     save() {
       const out: EntitySave[] = [];

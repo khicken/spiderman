@@ -1,19 +1,75 @@
 import { paintBlockTexture } from "../textures";
+import { activePacks, packImage, packVersion, type Img } from "../packs";
+import { nineSlice, resize } from "../packs/img";
 
 type Px = (x: number, y: number) => number; // 0xAARRGGBB, 0 = transparent
 
+// One provider for every GUI sprite: a selected pack's gui/sprites file wins, the Claude painter is the fallback.
 const CACHE = new Map<string, string>();
+let cacheV = 0;
+let capture: Img | null | undefined;
 
-export function pixelUrl(key: string, w: number, h: number, px: Px): string {
-  const hit = CACHE.get(key);
-  if (hit) return hit;
+function checkPacks() {
+  if (cacheV === packVersion()) return;
+  cacheV = packVersion();
+  CACHE.clear();
+}
+
+export function imgUrl(img: Img): string {
   if (typeof document === "undefined") return "";
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = img.w;
+  canvas.height = img.h;
   const g = canvas.getContext("2d");
   if (!g) return "";
-  const img = g.createImageData(w, h);
+  const id = g.createImageData(img.w, img.h);
+  id.data.set(img.data);
+  g.putImageData(id, 0, 0);
+  return canvas.toDataURL();
+}
+
+// Runs a sprite function with packs ignored and returns the Claude pixels it painted (for the pack exporter).
+export function claudeSprite(fn: () => string): Img | null {
+  capture = null;
+  try {
+    fn();
+    return capture;
+  } finally {
+    capture = undefined;
+  }
+}
+
+// Pack sprite at path (under textures/), scaled to w x h GUI pixels; nine-slice keeps a border of `border` GUI pixels.
+export function packUrl(path: string, w?: number, h?: number, border = 0): string {
+  if (capture !== undefined || !activePacks().length) return "";
+  checkPacks();
+  const key = `pack:${path}:${w}:${h}:${border}`;
+  const hit = CACHE.get(key);
+  if (hit !== undefined) return hit;
+  const src = packImage(path);
+  let url = "";
+  if (src) {
+    let img = src;
+    if (w && h) {
+      if (border) {
+        const k = Math.max(1, Math.round(src.h / 20));
+        img = resize(nineSlice(src, w * k, h * k, border * k), w, h);
+      } else img = resize(src, w, h);
+    }
+    url = imgUrl(img);
+  }
+  CACHE.set(key, url);
+  return url;
+}
+
+export function pixelUrl(key: string, w: number, h: number, px: Px): string {
+  if (capture === undefined) {
+    checkPacks();
+    const hit = CACHE.get(key);
+    if (hit) return hit;
+    if (typeof document === "undefined") return "";
+  }
+  const img: Img = { w, h, data: new Uint8ClampedArray(w * h * 4) };
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const c = px(x, y);
@@ -24,8 +80,11 @@ export function pixelUrl(key: string, w: number, h: number, px: Px): string {
       img.data[o + 3] = (c >>> 24) & 255;
     }
   }
-  g.putImageData(img, 0, 0);
-  const url = canvas.toDataURL();
+  if (capture !== undefined) {
+    capture = img;
+    return "";
+  }
+  const url = imgUrl(img);
   CACHE.set(key, url);
   return url;
 }
@@ -64,7 +123,16 @@ const HEART_COLORS: Record<HeartKind, [number, number, number]> = {
   frozen: [0x7fd6f8, 0xe4f8ff, 0x3f97c8],
 };
 
+export function heartPath(kind: HeartKind, fill: "full" | "half" | "empty", hardcore = false, blink = false): string {
+  const hc = hardcore ? "_hardcore" : "";
+  if (fill === "empty") return `gui/sprites/hud/heart/container${hc}${blink ? "_blinking" : ""}`;
+  const pre = kind === "normal" ? "" : `${kind}_`;
+  return `gui/sprites/hud/heart/${pre}${hardcore ? "hardcore_" : ""}${fill}`;
+}
+
 export function heartUrl(kind: HeartKind, fill: "full" | "half" | "empty", hardcore = false, blink = false): string {
+  const pack = packUrl(heartPath(kind, fill, hardcore, blink), 9, 9);
+  if (pack) return pack;
   const rows = hardcore ? HEART_HC : HEART;
   const [r, w, d] = HEART_COLORS[kind];
   return pixelUrl(`heart:${kind}:${fill}:${hardcore}:${blink}`, 9, 9, (x, y) => {
@@ -89,7 +157,11 @@ const SHANK = [
   ".KK......",
 ];
 
+export const foodPath = (fill: "full" | "half" | "empty", hunger = false) => `gui/sprites/hud/food_${fill}${hunger ? "_hunger" : ""}`;
+
 export function foodUrl(fill: "full" | "half" | "empty", hunger = false): string {
+  const pack = packUrl(foodPath(fill, hunger), 9, 9);
+  if (pack) return pack;
   const [m, l, d, b, w] = hunger ? [0x6e8f2c, 0xa3bd52, 0x3e5616, 0xc8d4a2, 0xe8f0d0] : [0xb7752a, 0xe8a862, 0x7a4416, 0xe0dccb, 0xffffff];
   return pixelUrl(`food:${fill}:${hunger}`, 9, 9, (x, y) => {
     const ch = SHANK[y][x];
@@ -114,6 +186,8 @@ const ARMOR = [
 ];
 
 export function armorUrl(fill: "full" | "half" | "empty"): string {
+  const pack = packUrl(`gui/sprites/hud/armor_${fill}`, 9, 9);
+  if (pack) return pack;
   return pixelUrl(`armor:${fill}`, 9, 9, (x, y) => {
     const ch = ARMOR[y][x];
     if (ch === ".") return 0;
@@ -136,6 +210,8 @@ const BUBBLE = [
 ];
 
 export function bubbleUrl(popping = false): string {
+  const pack = packUrl(`gui/sprites/hud/${popping ? "air_bursting" : "air"}`, 9, 9);
+  if (pack) return pack;
   return pixelUrl(`bubble:${popping}`, 9, 9, (x, y) => {
     const ch = BUBBLE[y][x];
     if (ch === ".") return 0;
@@ -147,7 +223,15 @@ export function bubbleUrl(popping = false): string {
 
 export type ButtonLook = "normal" | "hover" | "disabled";
 
+export const BUTTON_PATHS: Record<ButtonLook, string> = {
+  normal: "gui/sprites/widget/button",
+  hover: "gui/sprites/widget/button_highlighted",
+  disabled: "gui/sprites/widget/button_disabled",
+};
+
 export function buttonUrl(w: number, h: number, look: ButtonLook): string {
+  const pack = packUrl(BUTTON_PATHS[look], w, h, 3);
+  if (pack) return pack;
   const [body, hi, lo, edge] =
     look === "disabled" ? [0x2f2f2f, 0x3c3c3c, 0x222222, 0x000000] : [0x6f6f6f, 0xa8a8a8, 0x565656, look === "hover" ? 0xffffff : 0x000000];
   return pixelUrl(`btn:${w}:${h}:${look}`, w, h, (x, y) => {
@@ -159,7 +243,13 @@ export function buttonUrl(w: number, h: number, look: ButtonLook): string {
   });
 }
 
+export function sliderHandleUrl(w: number, h: number, hover: boolean): string {
+  return packUrl(`gui/sprites/widget/slider_handle${hover ? "_highlighted" : ""}`, w, h, 3) || buttonUrl(w, h, hover ? "hover" : "normal");
+}
+
 export function sliderTrackUrl(w: number, h: number): string {
+  const pack = packUrl("gui/sprites/widget/slider", w, h, 3);
+  if (pack) return pack;
   return pixelUrl(`slider:${w}:${h}`, w, h, (x, y) => {
     if (x === 0 || y === 0 || x === w - 1 || y === h - 1) return O(0x000000);
     if (y >= h - 3 || x === w - 2) return O(0x1f1f1f);
@@ -187,6 +277,8 @@ export function panelUrl(w: number, h: number, fill = 0xc6c6c6): string {
 }
 
 export function slotUrl(size = 18): string {
+  const pack = size === 18 ? packUrl("gui/sprites/container/slot", 18, 18) : "";
+  if (pack) return pack;
   return pixelUrl(`slot:${size}`, size, size, (x, y) => {
     const r = size - 1;
     if ((x === r && y === 0) || (x === 0 && y === r)) return O(0x8b8b8b);
@@ -207,6 +299,8 @@ export function disabledSlotUrl(): string {
 }
 
 export function hotbarUrl(): string {
+  const pack = packUrl("gui/sprites/hud/hotbar", 182, 22);
+  if (pack) return pack;
   return pixelUrl("hotbar", 182, 22, (x, y) => {
     if (x === 0 || y === 0 || x === 181 || y === 21) return 0xc0000000;
     const cx = (x - 1) % 20;
@@ -218,6 +312,8 @@ export function hotbarUrl(): string {
 }
 
 export function offhandUrl(): string {
+  const pack = packUrl("gui/sprites/hud/hotbar_offhand_left", 29, 24);
+  if (pack) return pack;
   return pixelUrl("offhand", 29, 24, (x, y) => {
     if (x > 21 || y === 0) return 0;
     if (x === 0 || y === 1 || x === 21 || y === 23) return 0xc0000000;
@@ -229,6 +325,8 @@ export function offhandUrl(): string {
 }
 
 export function selectionUrl(): string {
+  const pack = packUrl("gui/sprites/hud/hotbar_selection", 24, 23);
+  if (pack) return pack;
   return pixelUrl("hotbar_sel", 24, 23, (x, y) => {
     const e = Math.min(x, y, 23 - x, 22 - y);
     if (e === 0) return O(0x000000);
@@ -238,7 +336,17 @@ export function selectionUrl(): string {
   });
 }
 
+export function barPath(key: string): string | null {
+  const m = /^(xp|jump)_(bg|fill)$/.exec(key);
+  if (m) return `gui/sprites/hud/${m[1] === "xp" ? "experience" : "jump"}_bar_${m[2] === "bg" ? "background" : "progress"}`;
+  const b = /^boss_(bg|fg)_(\w+)$/.exec(key);
+  return b ? `gui/sprites/boss_bar/${b[2]}_${b[1] === "bg" ? "background" : "progress"}` : null;
+}
+
 export function barUrl(key: string, w: number, fillTop: number, fillMid: number, fillBot: number, notch = 0): string {
+  const path = barPath(key);
+  const pack = path ? packUrl(path, w, 5) : "";
+  if (pack) return pack;
   return pixelUrl(`bar:${key}:${w}`, w, 5, (x, y) => {
     if (y === 0 || y === 4 || x === 0 || x === w - 1) return O(0x000000);
     if (notch && x % notch === 0) return O(0x000000);
@@ -258,6 +366,12 @@ export function dirtUrl(): string {
 }
 
 export function arrowUrl(progress: number, w = 22, h = 15, fill = 0xffffff): string {
+  if (fill === 0xffffff && w === 24) {
+    if (activePacks().length && packImage("gui/container/furnace") && packImage("gui/sprites/container/furnace/burn_progress")) {
+      const p = Math.round(progress * w);
+      return p > 0 ? packCrop("gui/sprites/container/furnace/burn_progress", w, h, p, h, false) : BLANK;
+    }
+  }
   const p = Math.round(progress * w);
   return pixelUrl(`arrow:${p}:${w}:${h}:${fill}`, w, h, (x, y) => {
     const head = x >= w - 8;
@@ -270,6 +384,10 @@ export function arrowUrl(progress: number, w = 22, h = 15, fill = 0xffffff): str
 }
 
 export function flameUrl(progress: number): string {
+  if (activePacks().length && packImage("gui/container/furnace") && packImage("gui/sprites/container/furnace/lit_progress")) {
+    const p = Math.round(progress * 14);
+    return p > 0 ? packCrop("gui/sprites/container/furnace/lit_progress", 14, 14, 14, p, true) : BLANK;
+  }
   const p = Math.round(progress * 14);
   const rows = [
     "......#.......",
@@ -318,6 +436,8 @@ export type EmptySlotKind = keyof typeof EMPTY_SLOT;
 
 // Ghost silhouettes like vanilla container/slot/helmet.png etc.
 export function emptySlotUrl(kind: EmptySlotKind): string {
+  const pack = packUrl(`gui/sprites/container/slot/${kind}`, 16, 16);
+  if (pack) return pack;
   const rows = EMPTY_SLOT[kind];
   const on = (x: number, y: number) => x >= 0 && y >= 0 && x < 16 && y < 16 && (rows[y]?.[x] ?? ".") === "#";
   return pixelUrl(`empty:${kind}`, 16, 16, (x, y) => {
@@ -325,4 +445,62 @@ export function emptySlotUrl(kind: EmptySlotKind): string {
     const edge = !on(x - 1, y) || !on(x + 1, y) || !on(x, y - 1) || !on(x, y + 1);
     return O(edge ? 0x5a5a5a : 0x737373);
   });
+}
+
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+// Shows the left cw columns (or the bottom ch rows when fromBottom) of a progress sprite scaled to w x h.
+function packCrop(path: string, w: number, h: number, cw: number, ch: number, fromBottom: boolean): string {
+  checkPacks();
+  const key = `crop:${path}:${w}:${h}:${cw}:${ch}`;
+  const hit = CACHE.get(key);
+  if (hit) return hit;
+  const src = packImage(path);
+  if (!src) return BLANK;
+  const img = resize(src, w, h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) if (x >= cw || (fromBottom ? y < h - ch : y >= ch)) img.data[(y * w + x) * 4 + 3] = 0;
+  const url = imgUrl(img === src ? { ...img, data: new Uint8ClampedArray(img.data) } : img);
+  CACHE.set(key, url);
+  return url;
+}
+
+export interface ContainerBg {
+  url: string;
+  bottomUrl?: string;
+  split?: number;
+}
+
+const CONTAINER_BG: Record<string, string> = {
+  inventory: "inventory", crafting_table: "crafting_table", furnace: "furnace", blast_furnace: "blast_furnace", smoker: "smoker",
+  shulker_box: "shulker_box", dispenser: "dispenser", dropper: "dispenser", hopper: "hopper",
+  chest: "generic_54", barrel: "generic_54", ender_chest: "generic_54", large_chest: "generic_54",
+};
+
+// Vanilla gui/container/<name>.png backgrounds (256x256 sheets, panel at the top-left). Chests use the two-part generic_54 sheet.
+export function containerBg(kind: string, w: number, h: number): ContainerBg | null {
+  const name = CONTAINER_BG[kind];
+  if (!name || !activePacks().length) return null;
+  const src = packImage(`gui/container/${name}`);
+  if (!src) return null;
+  checkPacks();
+  const key = `bg:${kind}:${w}:${h}`;
+  const k = src.w / 256;
+  const cut = (x: number, y: number, cw: number, ch: number) => {
+    const ck = `${key}:${x}:${y}:${cw}:${ch}`;
+    let u = CACHE.get(ck);
+    if (!u) {
+      const out: Img = { w: cw, h: ch, data: new Uint8ClampedArray(cw * ch * 4) };
+      const scaled = resize(src, 256, Math.round(src.h / k));
+      for (let yy = 0; yy < ch; yy++) out.data.set(scaled.data.subarray(((y + yy) * 256 + x) * 4, ((y + yy) * 256 + x + cw) * 4), yy * cw * 4);
+      u = imgUrl(out);
+      CACHE.set(ck, u);
+    }
+    return u;
+  };
+  if (name === "generic_54") {
+    const top = h - 97;
+    return { url: cut(0, 0, w, top), bottomUrl: cut(0, 126, w, 96), split: top };
+  }
+  return { url: cut(0, 0, w, h) };
 }

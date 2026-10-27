@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { syncPackSkin } from "../entities/pack-skins";
 import { boxModel, makeSkin, type BoxModel, type PartSpec } from "../entities/model";
 
 type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -95,8 +96,35 @@ export const PLAYER_PARTS: PartSpec[] = [
 
 const PART_NAMES = PLAYER_PARTS.map((s) => s.name);
 
+// Vanilla PlayerModel second skin layer: hat, jacket, sleeves and pants, inflated over each base part.
+const OUTER: [string, string, [number, number], number][] = [
+  ["hat", "head", [32, 0], 0.5],
+  ["jacket", "body", [16, 32], 0.25],
+  ["right_sleeve", "right_arm", [40, 32], 0.25],
+  ["left_sleeve", "left_arm", [48, 48], 0.25],
+  ["right_pants", "right_leg", [0, 32], 0.25],
+  ["left_pants", "left_leg", [0, 48], 0.25],
+];
+
+// Slim (Alex) arms are 3 px wide and pivot half a pixel lower.
+function playerParts(slim: boolean): PartSpec[] {
+  const base = PLAYER_PARTS.map((s): PartSpec => {
+    if (!slim || !s.name.endsWith("_arm")) return s;
+    const right = s.name === "right_arm";
+    return { ...s, pivot: [s.pivot[0], 21.5, 0], box: [right ? -1 : -2, -10, -2, 3, 12, 4] };
+  });
+  const outer = OUTER.map(([name, parent, uv, inflate]): PartSpec => ({ name, parent, pivot: [0, 0, 0], box: base.find((b) => b.name === parent)!.box, uv, inflate }));
+  return [...base, ...outer];
+}
+
 // Vanilla first-person arm: the raw model-space arm (y down) is the y-up spec turned by pi about x.
-const ARM_PARTS: PartSpec[] = [{ name: "arm", pivot: [5, -2, 0], box: [-1, -10, -2, 4, 12, 4], uv: [40, 16] }];
+function armParts(slim: boolean): PartSpec[] {
+  const box: PartSpec["box"] = [-1, -10, -2, slim ? 3 : 4, 12, 4];
+  return [
+    { name: "arm", pivot: [5, slim ? -2.5 : -2, 0], box, uv: [40, 16] },
+    { name: "sleeve", parent: "arm", pivot: [0, 0, 0], box, uv: [40, 32], inflate: 0.25 },
+  ];
+}
 
 export interface PlayerModel {
   model: BoxModel;
@@ -119,6 +147,9 @@ export interface PoseInput {
   usingRight: boolean;
   flying: boolean;
   riding?: boolean;
+  holdRight?: boolean; // vanilla ArmPose.ITEM: an arm holding an item hangs a little forward
+  holdLeft?: boolean;
+  swingLeft?: boolean; // the attack swing is on the left arm
 }
 
 function useBasic(m: BoxModel, mat: THREE.MeshBasicMaterial) {
@@ -127,10 +158,11 @@ function useBasic(m: BoxModel, mat: THREE.MeshBasicMaterial) {
   });
 }
 
-export function createPlayerModel(): PlayerModel {
+export function createPlayerModel(opts: { slim?: boolean } = {}): PlayerModel {
+  const slim = !!opts.slim;
   const canvas = paintSteveSkin();
-  const model = boxModel(canvas, PLAYER_PARTS);
-  const arm = boxModel(canvas, ARM_PARTS);
+  const model = boxModel(canvas, playerParts(slim));
+  const arm = boxModel(canvas, armParts(slim));
   arm.root.rotation.x = Math.PI;
   const skin = model.material.map!;
   const material = new THREE.MeshBasicMaterial({ map: skin, alphaTest: 0.1 });
@@ -143,12 +175,15 @@ export function createPlayerModel(): PlayerModel {
   };
   const pivots: Record<string, THREE.Vector3> = {};
   for (const s of PLAYER_PARTS) pivots[s.name] = base(s.name);
+  if (slim) pivots.right_arm.y = pivots.left_arm.y = 21.5 / 16;
+  const skinType = slim ? "player_slim" : "player";
   return {
     model,
     arm,
     material,
     skin,
     setLight(v, hurt) {
+      syncPackSkin(skinType, model.root, material);
       if (hurt) material.color.setRGB(Math.min(1, v * 1.2 + 0.3), v * 0.45, v * 0.45);
       else material.color.setScalar(v);
     },
@@ -161,14 +196,19 @@ export function createPlayerModel(): PlayerModel {
       P.left_arm.rotation.set(Math.cos(swing) * amt, 0, 0);
       P.right_leg.rotation.set(Math.cos(swing) * 1.4 * amt, 0, 0);
       P.left_leg.rotation.set(Math.cos(swing + Math.PI) * 1.4 * amt, 0, 0);
-      P.right_arm.rotation.z = -(Math.cos(o.limbSwing * 0.09) * 0.05 + 0.05);
-      P.left_arm.rotation.z = Math.cos(o.limbSwing * 0.09) * 0.05 + 0.05;
+      P.right_arm.rotation.z = Math.cos(o.limbSwing * 0.09) * 0.05 + 0.05;
+      P.left_arm.rotation.z = -(Math.cos(o.limbSwing * 0.09) * 0.05 + 0.05);
+      if (o.holdRight) P.right_arm.rotation.x = P.right_arm.rotation.x * 0.5 + Math.PI / 10;
+      if (o.holdLeft) P.left_arm.rotation.x = P.left_arm.rotation.x * 0.5 + Math.PI / 10;
       if (o.attack > 0) {
         const f = o.attack;
         const e = 1 - Math.pow(1 - f, 4);
-        P.body.rotation.y = Math.sin(Math.sqrt(f) * Math.PI * 2) * 0.2;
-        P.right_arm.rotation.x += Math.sin(e * Math.PI) * 1.2 + Math.sin(f * Math.PI) * 0.7 * 0.75;
-        P.right_arm.rotation.y = P.body.rotation.y;
+        const k = o.swingLeft ? -1 : 1;
+        const a = P[o.swingLeft ? "left_arm" : "right_arm"];
+        P.body.rotation.y = -Math.sin(Math.sqrt(f) * Math.PI * 2) * 0.2 * k;
+        a.rotation.x += Math.sin(e * Math.PI) * 1.2 + Math.sin(f * Math.PI) * (0.7 + o.pitch) * 0.75;
+        a.rotation.y = P.body.rotation.y;
+        a.rotation.z -= Math.sin(f * Math.PI) * 0.4;
       } else P.body.rotation.y = 0;
       if (o.usingRight) {
         P.right_arm.rotation.x = Math.PI / 2 + o.pitch;
@@ -178,8 +218,8 @@ export function createPlayerModel(): PlayerModel {
       for (const n of PART_NAMES) P[n].position.copy(pivots[n]);
       if (o.sneaking) {
         P.body.rotation.x = -0.5;
-        P.right_arm.rotation.x += 0.4;
-        P.left_arm.rotation.x += 0.4;
+        P.right_arm.rotation.x -= 0.4;
+        P.left_arm.rotation.x -= 0.4;
         P.head.position.y -= 4.2 / 16;
         P.body.position.y -= 3.2 / 16;
         P.right_arm.position.y -= 3.2 / 16;

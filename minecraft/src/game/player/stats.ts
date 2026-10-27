@@ -20,6 +20,13 @@ export const CREATIVE_REACH_BONUS = 0.5;
 export const CREATIVE_ENTITY_BONUS = 2;
 export const MAX_AIR = 300;
 
+// Vanilla GameRenderer.pick: the closer hit wins, then it is cut to its own range,
+// so a mob past entity range still hides the block behind it.
+export function pickKind(blockDist: number | null, entDist: number | null, entityRange: number): "block" | "entity" | null {
+  if (entDist !== null && (blockDist === null || entDist < blockDist)) return entDist <= entityRange ? "entity" : null;
+  return blockDist === null ? null : "block";
+}
+
 const WEAPONS: Record<string, { attackDamage: number; attackSpeed: number }> = {
   trident: { attackDamage: 9, attackSpeed: 1.1 },
   mace: { attackDamage: 6, attackSpeed: 0.6 },

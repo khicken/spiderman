@@ -5,12 +5,15 @@ import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE } from "../blocks/waterlog";
 import { chunkKey, type Store } from "./store";
 
 const MAX_SCHEDULED_PER_TICK = 65536;
+// A large pour after load must not stall the frame; the rest stays due for the next tick.
+const SCHEDULED_BUDGET_MS = 6;
+const clock = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const RANDOM_TICK_CHUNKS = 8;
 
 export interface Ticker {
   tickable: Uint8Array;
   schedule(x: number, y: number, z: number, id: number, due: number): void;
-  run(ctx: GameCtx, centerX: number, centerZ: number): void;
+  run(ctx: GameCtx, centerX: number, centerZ: number, extra?: { cx: number; cz: number }[]): void;
   pending(): number;
   unpark(key: number): void;
   clear(): void;
@@ -98,7 +101,9 @@ export function createTicker(store: Store, behaviors: Record<string, BlockBehavi
   const runScheduled = (ctx: GameCtx) => {
     const now = ctx.time.tick;
     let n = 0;
+    const start = clock();
     while (due.length && due[0] <= now && n < MAX_SCHEDULED_PER_TICK) {
+      if ((n & 63) === 63 && clock() - start > SCHEDULED_BUDGET_MS) break;
       const x = px[0];
       const y = py[0];
       const z = pz[0];
@@ -125,14 +130,18 @@ export function createTicker(store: Store, behaviors: Record<string, BlockBehavi
     }
   };
 
-  const runRandom = (ctx: GameCtx, centerX: number, centerZ: number) => {
+  const runRandom = (ctx: GameCtx, centerX: number, centerZ: number, extra?: { cx: number; cz: number }[]) => {
     const speed = ctx.rules?.randomTickSpeed ?? 3;
     if (speed <= 0) return;
     const ccx = centerX >> 4;
     const ccz = centerZ >> 4;
     const rnd = ctx.random;
     for (const c of store.chunks.values()) {
-      if (Math.abs(c.cx - ccx) > RANDOM_TICK_CHUNKS || Math.abs(c.cz - ccz) > RANDOM_TICK_CHUNKS) continue;
+      if (Math.abs(c.cx - ccx) > RANDOM_TICK_CHUNKS || Math.abs(c.cz - ccz) > RANDOM_TICK_CHUNKS) {
+        let near = false;
+        if (extra) for (const e of extra) if (Math.abs(c.cx - e.cx) <= RANDOM_TICK_CHUNKS && Math.abs(c.cz - e.cz) <= RANDOM_TICK_CHUNKS) near = true;
+        if (!near) continue;
+      }
       if (!c.announced) continue;
       const bx = c.cx << 4;
       const bz = c.cz << 4;
@@ -153,9 +162,9 @@ export function createTicker(store: Store, behaviors: Record<string, BlockBehavi
   return {
     tickable,
     schedule,
-    run(ctx, centerX, centerZ) {
+    run(ctx, centerX, centerZ, extra) {
       runScheduled(ctx);
-      runRandom(ctx, centerX, centerZ);
+      runRandom(ctx, centerX, centerZ, extra);
     },
     pending: () => due.length,
     unpark(key) {

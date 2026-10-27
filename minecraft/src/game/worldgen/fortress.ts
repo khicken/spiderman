@@ -4,7 +4,7 @@ import { B } from "./ids";
 import { createRng, idTable, type Rng, type Writer } from "./rng";
 import type { Start } from "./structure-grid";
 
-const enum K { Bridge, Cross, Corridor, Blaze, Wart, BigCross }
+const enum K { Bridge, Cross, Corridor, Blaze, Wart, BigCross, Stairs, Entrance }
 
 interface Piece {
   kind: K;
@@ -15,6 +15,8 @@ interface Piece {
   z1: number;
   axisX: boolean;
   seed: number;
+  rise?: number;
+  dir?: number;
 }
 
 const DX = [0, -1, 0, 1], DZ = [1, 0, -1, 0];
@@ -31,7 +33,7 @@ function layout(s: Start): Piece[] {
   const list: Piece[] = [];
   const start: Piece = { kind: K.BigCross, x0: s.x - 9, z0: s.z - 9, x1: s.x + 9, z1: s.z + 9, y: s.y, axisX: true, seed: r.int(1 << 30) };
   list.push(start);
-  for (let d = 0; d < 4; d++) grow(r, list, s, s.x + DX[d] * 10, s.z + DZ[d] * 10, d, 0);
+  for (let d = 0; d < 4; d++) grow(r, list, s, s.x + DX[d] * 10, s.y, s.z + DZ[d] * 10, d, 0);
   if (cache.size > 16) cache.clear();
   cache.set(s.seed, list);
   return list;
@@ -42,27 +44,28 @@ function hit(list: Piece[], p: Piece) {
   return false;
 }
 
-function grow(r: Rng, list: Piece[], s: Start, x: number, z: number, d: number, depth: number) {
+function grow(r: Rng, list: Piece[], s: Start, x: number, y: number, z: number, d: number, depth: number) {
   if (depth > 6 || list.length > 40 || Math.abs(x - s.x) > 76 || Math.abs(z - s.z) > 76) return;
   const roll = r.next();
-  const kind = depth === 0 || roll < 0.45 ? K.Bridge : roll < 0.62 ? K.Cross : roll < 0.8 ? K.Corridor : roll < 0.9 ? K.Blaze : K.Wart;
-  const len = kind === K.Bridge ? 10 + r.int(10) : kind === K.Cross ? 7 : kind === K.Corridor ? 5 + r.int(2) * 5 : kind === K.Blaze ? 9 : 13;
-  const half = kind === K.Bridge || kind === K.Corridor ? 2 : kind === K.Wart ? 6 : 3;
+  const kind = depth === 0 || roll < 0.4 ? K.Bridge : roll < 0.55 ? K.Cross : roll < 0.7 ? K.Corridor : roll < 0.78 ? K.Stairs : roll < 0.86 ? K.Blaze : roll < 0.93 ? K.Wart : K.Entrance;
+  const len = kind === K.Bridge ? 10 + r.int(10) : kind === K.Cross ? 7 : kind === K.Corridor ? 5 + r.int(2) * 5 : kind === K.Stairs ? 10 : kind === K.Blaze ? 9 : 13;
+  const half = kind === K.Bridge || kind === K.Corridor || kind === K.Stairs ? 2 : kind === K.Wart || kind === K.Entrance ? 6 : 3;
   const ex = x + DX[d] * (len - 1), ez = z + DZ[d] * (len - 1);
   const axisX = DX[d] !== 0;
+  const rise = kind === K.Stairs ? (y + 7 <= s.y + 14 && (y <= s.y || r.chance(0.5)) ? 7 : -7) : 0;
   const p: Piece = {
-    kind, axisX, y: s.y, seed: r.int(1 << 30),
+    kind, axisX, y, seed: r.int(1 << 30), rise, dir: d,
     x0: Math.min(x, ex) - (axisX ? 0 : half), x1: Math.max(x, ex) + (axisX ? 0 : half), z0: Math.min(z, ez) - (axisX ? half : 0), z1: Math.max(z, ez) + (axisX ? half : 0),
   };
   if (hit(list, p)) return;
   list.push(p);
   if (kind === K.Blaze) return;
-  grow(r, list, s, ex + DX[d], ez + DZ[d], d, depth + 1);
-  if (kind === K.Cross || kind === K.Wart) {
+  grow(r, list, s, ex + DX[d], y + rise, ez + DZ[d], d, depth + 1);
+  if (kind === K.Cross || kind === K.Wart || kind === K.Entrance) {
     const mid = len >> 1;
     for (const sd of [(d + 1) & 3, (d + 3) & 3]) {
       if (r.chance(0.25)) continue;
-      grow(r, list, s, x + DX[d] * mid + DX[sd] * (half + 1), z + DZ[d] * mid + DZ[sd] * (half + 1), sd, depth + 1);
+      grow(r, list, s, x + DX[d] * mid + DX[sd] * (half + 1), y, z + DZ[d] * mid + DZ[sd] * (half + 1), sd, depth + 1);
     }
   }
 }
@@ -75,6 +78,8 @@ export function fortress(w: Writer, s: Start) {
     else if (p.kind === K.Cross || p.kind === K.BigCross) cross(f, p);
     else if (p.kind === K.Corridor) corridor(f, p);
     else if (p.kind === K.Blaze) blaze(f, p);
+    else if (p.kind === K.Stairs) stairway(f, p);
+    else if (p.kind === K.Entrance) entrance(f, p);
     else wart(f, p);
   }
 }
@@ -173,5 +178,44 @@ function wart(f: Frame, p: Piece) {
     fill(f, a0, p.y + 1, b0, a1, p.y + 1, b1, S(I("nether_wart"), 3));
   }
   for (let k = 0; k < 4; k++) fill(f, cx - 1, p.y + 1 + k, cz - 1 + k, cx + 1, p.y + 1 + k, cz - 1 + k, S(B.nether_brick_stairs, 0));
+  supports(f, p, 4);
+}
+
+function stairway(f: Frame, p: Piece) {
+  const rise = p.rise ?? 7, d = p.dir ?? 0;
+  const len = p.axisX ? p.x1 - p.x0 : p.z1 - p.z0;
+  const step = (x: number, z: number) => {
+    const t = p.axisX ? (DX[d] > 0 ? x - p.x0 : p.x1 - x) : (DZ[d] > 0 ? z - p.z0 : p.z1 - z);
+    const k = Math.max(0, Math.min(7, t - Math.floor((len - 7) / 2)));
+    return rise > 0 ? k : -k;
+  };
+  const lo = Math.min(0, rise) - 1, hi = Math.max(0, rise) + 6;
+  fillFn(f, p.x0, p.y + lo, p.z0, p.x1, p.y + hi, p.z1, (x, y, z) => {
+    const sd = p.axisX ? z - p.z0 : x - p.x0, width = p.axisX ? p.z1 - p.z0 : p.x1 - p.x0;
+    const floor = p.y + step(x, z);
+    const wy = y;
+    if (wy <= floor || wy === floor + 6) return NB;
+    if (wy > floor + 6) return -1;
+    if (sd === 0 || sd === width) return (wy === floor + 3 || wy === floor + 4) && ((p.axisX ? x : z) & 1) === 1 ? FENCE : NB;
+    return 0;
+  });
+  supports(f, p, 5);
+}
+
+function entrance(f: Frame, p: Piece) {
+  const cx = (p.x0 + p.x1) >> 1, cz = (p.z0 + p.z1) >> 1;
+  fillFn(f, p.x0, p.y - 1, p.z0, p.x1, p.y + 9, p.z1, (x, y, z) => {
+    if (y <= p.y || y === p.y + 9) return NB;
+    const edge = x === p.x0 || x === p.x1 || z === p.z0 || z === p.z1;
+    const door = (Math.abs(x - cx) <= 1 || Math.abs(z - cz) <= 1) && y <= p.y + 3;
+    if (!edge) return 0;
+    if (door) return 0;
+    if ((y === p.y + 4 || y === p.y + 5) && ((x + z) & 1) === 0) return FENCE;
+    return NB;
+  });
+  fill(f, cx - 2, p.y + 1, cz - 2, cx + 2, p.y + 1, cz + 2, NB);
+  fill(f, cx - 1, p.y + 1, cz - 1, cx + 1, p.y + 1, cz + 1, S(B.lava));
+  fill(f, cx - 2, p.y + 2, cz - 2, cx - 2, p.y + 2, cz + 2, FENCE);
+  fill(f, cx + 2, p.y + 2, cz - 2, cx + 2, p.y + 2, cz + 2, FENCE);
   supports(f, p, 4);
 }

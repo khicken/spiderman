@@ -4,6 +4,7 @@ import { moveWithinPlayer, playerSlots, type MenuDeps } from "./menus";
 import { itemDef, maxStack } from "./registry";
 import { LEVEL_NAMES, LEVEL_XP, tradePrice } from "../systems/villagers/trades";
 import { onTraded, priceCtx } from "../systems/villagers/brain";
+import { advTrigger } from "../systems/advancements/bus";
 
 export interface MerchantTrade {
   buy: ItemStack;
@@ -69,6 +70,7 @@ export function merchantMenu(d: MenuDeps, at: Pos | undefined): Menu | null {
       const c = d.ctx();
       if (!c) return;
       onTraded(e, c, m.t);
+      advTrigger({ t: "villager_trade", y: c.player.body.pos.y, type: e.type });
       const p = e.body.pos;
       c.entities.dropXp(3 + Math.floor(c.random() * 4), p.x, p.y + 0.5, p.z);
       c.emit({ type: "sound", name: `entity.${e.type}.yes`, x: p.x, y: p.y + 1, z: p.z });

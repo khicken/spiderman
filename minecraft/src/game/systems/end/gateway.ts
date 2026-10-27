@@ -4,6 +4,7 @@ import { OPAQUE, SOLID, blockByName } from "../../blocks/registry";
 import { endTopAt } from "../../worldgen/end";
 import { END_STATE, type Gateway } from "./state";
 import { buildGateway } from "./exit";
+import { advTrigger } from "../advancements/bus";
 
 const same = (g: Gateway, x: number, y: number, z: number) => g.x === x && g.y === y && g.z === z;
 
@@ -46,6 +47,7 @@ function findExit(seed: number, gx: number, gz: number): { x: number; z: number;
 
 export function enterGateway(ctx: GameCtx, gx: number, gy: number, gz: number): void {
   if (ctx.world.dim !== "end" || pending || ctx.time.tick < cooldownUntil) return;
+  advTrigger({ t: "entered_block", block: "end_gateway" });
   cooldownUntil = ctx.time.tick + 40;
   const outer = END_STATE.outer.find((g) => same(g, gx, gy, gz));
   ctx.emit({ type: "sound", name: "block.end_gateway.spawn", x: gx + 0.5, y: gy + 0.5, z: gz + 0.5, volume: 1 });
