@@ -7,7 +7,7 @@ export interface AccountState {
   error: string | null; // last cloud sync problem worth showing
 }
 
-let state: AccountState = { ready: false, available: true, user: null, error: null };
+let state: AccountState = { ready: false, available: false, user: null, error: null };
 const subs = new Set<(s: AccountState) => void>();
 
 export const account = () => state;
