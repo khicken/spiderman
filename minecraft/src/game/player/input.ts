@@ -6,6 +6,7 @@ export type InputAction =
 export interface InputApi {
   enabled: boolean; // false while a screen is open. Setting false clears held keys.
   readonly pointerLocked: boolean;
+  readonly lockPending: boolean; // a lock request is still retrying
   forward: number;
   strafe: number; // positive is right
   jump: boolean;
@@ -106,12 +107,11 @@ export function createInput(canvas: HTMLElement): InputApi {
       api.rightClicks = 0;
     },
     requestLock() {
-      try {
-        const r = (canvas as HTMLElement & { requestPointerLock(o?: unknown): Promise<void> | void }).requestPointerLock();
-        if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => {});
-      } catch {
-        // Headless browsers have no pointer lock.
-      }
+      lockAt = performance.now();
+      tryLock();
+    },
+    get lockPending() {
+      return !locked() && performance.now() - lockAt < LOCK_RETRY_MS;
     },
     onAction(cb) {
       listeners.add(cb);
@@ -128,6 +128,8 @@ export function createInput(canvas: HTMLElement): InputApi {
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("contextmenu", onContext);
       document.removeEventListener("pointerlockchange", onLockChange);
+      document.removeEventListener("pointerlockerror", retryLock);
+      clearTimeout(lockTimer);
       listeners.clear();
       keys.clear();
     },
@@ -240,6 +242,24 @@ export function createInput(canvas: HTMLElement): InputApi {
 
   const onContext = (e: Event) => e.preventDefault();
 
+  // Browsers refuse a re-lock for about 1 s after the user presses Escape, so keep retrying.
+  const LOCK_RETRY_MS = 1600;
+  let lockAt = -Infinity;
+  let lockTimer: ReturnType<typeof setTimeout> | undefined;
+  function tryLock() {
+    lockTimer = undefined;
+    if (locked() || !enabled) return;
+    try {
+      const r = (canvas as HTMLElement & { requestPointerLock(o?: unknown): Promise<void> | void }).requestPointerLock();
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(retryLock);
+    } catch {
+      retryLock(); // Headless browsers have no pointer lock.
+    }
+  }
+  function retryLock() {
+    if (lockTimer === undefined && !locked() && enabled && performance.now() - lockAt < LOCK_RETRY_MS) lockTimer = setTimeout(tryLock, 250);
+  }
+
   let wasLocked = false;
   function onLockChange() {
     const now = locked();
@@ -256,5 +276,6 @@ export function createInput(canvas: HTMLElement): InputApi {
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("contextmenu", onContext);
   document.addEventListener("pointerlockchange", onLockChange);
+  document.addEventListener("pointerlockerror", retryLock);
   return api;
 }

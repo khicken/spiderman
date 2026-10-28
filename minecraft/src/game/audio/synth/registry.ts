@@ -1,6 +1,6 @@
 import type { SoundGroup } from "../../contracts";
 import { BLOCK_ACTIONS, blockRecipe, isSoundGroup, SOUND_GROUPS, type BlockAction } from "./blocks";
-import { finalize, hashString, makeRng, normalizeLoudness, trimTail } from "./dsp";
+import { filter, finalize, hashString, makeRng, normalizeLoudness, trimTail } from "./dsp";
 import { GENERIC_MOB, MOB_SOUNDS } from "./mobs";
 import type { MobSounds } from "./mob-kit";
 import { NOTE_SFX } from "./notes";
@@ -52,6 +52,9 @@ const ALIASES: Record<string, string> = {
   ...EXTRA_ALIASES,
 };
 
+// Vanilla event names that differ from the registry's mob key.
+const MOB_ALIASES: Record<string, string> = { puffer_fish: "pufferfish" };
+
 const BLOCK_KEYWORDS: [string, SoundGroup][] = [
   ["glass", "glass"], ["wool", "wool"], ["carpet", "wool"], ["copper", "copper"], ["iron", "metal"], ["gold", "metal"],
   ["chain", "chain"], ["lantern", "lantern"], ["bamboo", "bamboo_wood"], ["cherry", "cherry_wood"], ["planks", "wood"],
@@ -63,7 +66,13 @@ const BLOCK_KEYWORDS: [string, SoundGroup][] = [
 
 const blockCache = new Map<string, Recipe>();
 
+// Vanilla reuses the dig samples for place and the step samples for hit and fall.
 function blockSound(group: SoundGroup, action: BlockAction): Resolved {
+  if (action === "place") {
+    action = "break";
+    if (group === "glass") group = "stone";
+  }
+  else if (action === "hit" || action === "fall") action = "step";
   const key = `block.${group}.${action}`;
   let rec = blockCache.get(key);
   if (!rec) {
@@ -127,7 +136,7 @@ function resolveUncached(name: string): Resolved | null {
     return resolveBlock(parts.slice(1).join("."), suffix);
   }
   if (parts[0] === "entity" && parts.length >= 3) {
-    const mob = parts[1];
+    const mob = MOB_ALIASES[parts[1]] ?? parts[1];
     const mobSuffix = parts.slice(2).join(".");
     const sounds = MOB_SOUNDS[mob];
     if (sounds) {
@@ -147,6 +156,8 @@ function resolveUncached(name: string): Resolved | null {
 export function renderVariant(key: string, recipe: Recipe, variant: number, sr: number): Float32Array {
   const r = makeRng(hashString(key) ^ Math.imul(variant + 1, 0x9e3779b1));
   const d = trimTail(recipe.render(r, sr), sr);
+  // Raw noise above ~11 kHz reads as hiss; vanilla samples roll off there.
+  filter(d, "lowpass", 11000, 0.6, sr);
   finalize(d, sr);
   normalizeLoudness(d, sr);
   return d;

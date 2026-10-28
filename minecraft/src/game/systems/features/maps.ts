@@ -12,11 +12,12 @@ export interface MapData {
   colors: Uint8Array; // 128 * 128, byte = color * 4 + shade, row-major from the north-west corner
   version: number;
   marker?: { x: number; z: number; kind: string };
+  banners?: { x: number; y: number; z: number; color: string; name?: string }[];
 }
 
 const maps = new Map<number, MapData>();
 let nextId = 0;
-let cursor = 0;
+let step = 0;
 const WATER = 12;
 
 export const mapById = (id: number) => maps.get(id);
@@ -53,12 +54,42 @@ export function resolveMap(ctx: GameCtx, stack: ItemStack): MapData | null {
   } else if (m.scale !== scale || (!!d.locked && !m.locked)) {
     const nid = createMap(m.cx, m.cz, scale, m.dim);
     const n = maps.get(nid)!;
-    if (scale === m.scale) n.colors.set(m.colors);
+    if (scale === m.scale) {
+      n.colors.set(m.colors);
+      n.marker = m.marker;
+      n.banners = m.banners?.map((b) => ({ ...b }));
+    }
     n.locked = !!d.locked;
     d.map = nid;
     m = n;
   }
   return m;
+}
+
+// Vanilla MapItemSavedData.toggleBanner: a map used on a banner inside its area adds or removes that banner's marker.
+export function toggleBannerMarker(ctx: GameCtx, stack: ItemStack, x: number, y: number, z: number, color: string, name?: string): boolean {
+  const m = resolveMap(ctx, stack);
+  if (!m || m.dim !== ctx.world.dim) return false;
+  const s = 1 << m.scale;
+  const fx = (x + 0.5 - m.cx) / s, fz = (z + 0.5 - m.cz) / s;
+  if (Math.abs(fx) >= 63 || Math.abs(fz) >= 63) return false;
+  const list = (m.banners ??= []);
+  const i = list.findIndex((b) => b.x === x && b.y === y && b.z === z);
+  if (i >= 0) list.splice(i, 1);
+  else list.push(name ? { x, y, z, color, name } : { x, y, z, color });
+  m.version++;
+  return true;
+}
+
+const isBannerOf = (n: string, color: string) => n === `${color}_banner` || n === `${color}_wall_banner`;
+
+function checkBanners(ctx: GameCtx, m: MapData) {
+  if (!m.banners?.length) return;
+  const keep = m.banners.filter((b) => !ctx.world.isLoaded(b.x, b.z) || isBannerOf(blockDef(ctx.world.getBlock(b.x, b.y, b.z)).name, b.color));
+  if (keep.length !== m.banners.length) {
+    m.banners = keep;
+    m.version++;
+  }
 }
 
 export function useEmptyMap(ctx: GameCtx, slot: number): boolean {
@@ -75,19 +106,13 @@ export function useEmptyMap(ctx: GameCtx, slot: number): boolean {
     } else ctx.inventory.setSlot(slot, filled);
   } else ctx.inventory.add(filled);
   ctx.emit({ type: "sound", name: "ui.cartography_table.take_result", x: p.x, y: p.y, z: p.z, volume: 0.5 });
-  updateMap(ctx, maps.get(id)!, 128);
+  updateMap(ctx, maps.get(id)!, true);
   return true;
 }
 
 function surface(ctx: GameCtx, x: number, z: number, out: { y: number; c: number; depth: number }) {
   const w = ctx.world;
   let y = w.topY(x, z);
-  const nether = w.dim === "nether";
-  if (nether) {
-    y = 120;
-    while (y > 0 && w.getBlock(x, y, z) !== 0) y--;
-    while (y > 0 && w.getBlock(x, y, z) === 0) y--;
-  }
   let c = 0;
   for (; y > -64; y--) {
     c = mapColorOf(w.getBlock(x, y, z));
@@ -96,10 +121,8 @@ function surface(ctx: GameCtx, x: number, z: number, out: { y: number; c: number
   let depth = 0;
   if (c === WATER) {
     let yy = y - 1;
-    while (yy > -64 && depth < 16 && blockDef(w.getBlock(x, yy, z)).name === "water") {
-      yy--;
-      depth++;
-    }
+    do depth++;
+    while (yy > -64 && blockDef(w.getBlock(x, yy--, z)).name === "water");
   }
   out.y = y;
   out.c = c;
@@ -107,44 +130,72 @@ function surface(ctx: GameCtx, x: number, z: number, out: { y: number; c: number
 }
 
 const col = { y: 0, c: 0, depth: 0 };
+const counts = new Uint16Array(64);
+const DIRT = 10, STONE = 11;
+
+// One map pixel over its 2^scale square, as vanilla MapItem.update: the most common color, mean height, mean water depth.
+function sample(ctx: GameCtx, wx: number, wz: number, s: number, out: { y: number; c: number; depth: number }) {
+  if (ctx.world.dim === "nether") {
+    let n = (wx + wz * 231871) | 0;
+    n = (Math.imul(Math.imul(n, n), 31287121) + Math.imul(n, 11)) | 0;
+    out.c = ((n >> 20) & 1) === 0 ? DIRT : STONE;
+    out.y = 100;
+    out.depth = 0;
+    return;
+  }
+  if (s === 1) return surface(ctx, wx, wz, out);
+  counts.fill(0);
+  let h = 0, depth = 0, best = 0;
+  for (let dx = 0; dx < s; dx++)
+    for (let dz = 0; dz < s; dz++) {
+      surface(ctx, wx + dx, wz + dz, col);
+      h += col.y;
+      depth += col.depth;
+      if (++counts[col.c] > counts[best]) best = col.c;
+    }
+  out.y = h / (s * s);
+  out.c = best;
+  out.depth = Math.floor(depth / (s * s));
+}
+
+const pix = { y: 0, c: 0, depth: 0 };
 
 // Vanilla MapItem.update: a radius around the holder fills in; height against the north neighbor picks the shade.
-export function updateMap(ctx: GameCtx, m: MapData, columns = 16) {
+export function updateMap(ctx: GameCtx, m: MapData, full = false) {
   if (m.locked || m.dim !== ctx.world.dim) return;
+  if (step % 20 === 0) checkBanners(ctx, m);
   const s = 1 << m.scale;
   const p = ctx.player.body.pos;
   const px = Math.floor((p.x - m.cx) / s) + 64, pz = Math.floor((p.z - m.cz) / s) + 64;
-  const r = 128 / s;
+  const r = Math.floor(128 / s / (ctx.world.dim === "nether" ? 2 : 1));
   let changed = false;
-  for (let k = 0; k < columns; k++) {
-    const ix = (cursor + k) & 127;
-    if (Math.abs(ix - px) > r) continue;
+  for (let ix = Math.max(0, px - r + 1); ix < Math.min(128, px + r); ix++) {
+    if (!full && (ix & 15) !== (step & 15)) continue;
     let prevY = -9999;
-    for (let iz = Math.max(0, pz - r - 1); iz < Math.min(128, pz + r); iz++) {
-      const dx = ix - px, dz = iz - pz;
-      const inside = dx * dx + dz * dz <= r * r;
+    for (let iz = Math.max(-1, pz - r - 1); iz < Math.min(128, pz + r); iz++) {
       const wx = m.cx + (ix - 64) * s, wz = m.cz + (iz - 64) * s;
       if (!ctx.world.isLoaded(wx, wz)) {
         prevY = -9999;
         continue;
       }
-      surface(ctx, wx, wz, col);
-      const y = col.y;
+      sample(ctx, wx, wz, s, pix);
+      const y = pix.y;
       if (prevY === -9999) {
-        surface(ctx, wx, wz - s, col);
+        sample(ctx, wx, wz - s, s, col);
         prevY = col.y;
-        surface(ctx, wx, wz, col);
       }
-      if (inside && iz >= 0) {
+      const d2 = (ix - px) ** 2 + (iz - pz) ** 2;
+      const rim = d2 > (r - 2) * (r - 2);
+      if (iz >= 0 && d2 < r * r && (!rim || ((ix + iz) & 1) !== 0)) {
         let shade = 1;
-        if (col.c === WATER) {
-          const d = col.depth * 0.1 + ((ix + iz) & 1) * 0.2;
+        if (pix.c === WATER) {
+          const d = pix.depth * 0.1 + ((ix + iz) & 1) * 0.2;
           shade = d < 0.5 ? 2 : d > 0.9 ? 0 : 1;
         } else {
-          const d = ((y - prevY) * 4) / (m.scale + 4) + (((ix + iz) & 1) - 0.5) * 0.4;
+          const d = ((y - prevY) * 4) / (s + 4) + (((ix + iz) & 1) - 0.5) * 0.4;
           shade = d > 0.6 ? 2 : d < -0.6 ? 0 : 1;
         }
-        const v = col.c ? col.c * 4 + shade : 0;
+        const v = pix.c ? pix.c * 4 + shade : 0;
         const i = iz * 128 + ix;
         if (m.colors[i] !== v) {
           m.colors[i] = v;
@@ -154,12 +205,12 @@ export function updateMap(ctx: GameCtx, m: MapData, columns = 16) {
       prevY = y;
     }
   }
-  cursor = (cursor + columns) & 127;
   if (changed) m.version++;
 }
 
 export function tickMaps(ctx: GameCtx) {
   const inv = ctx.inventory;
+  step++;
   for (const st of [inv.held(), inv.slots[40]]) {
     if (st?.item !== "filled_map") continue;
     const m = resolveMap(ctx, st);
@@ -186,16 +237,16 @@ function decode(s: string, out: Uint8Array) {
 }
 
 export function saveMaps() {
-  return { next: nextId, maps: [...maps].map(([id, m]) => ({ id, cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: m.locked, marker: m.marker, colors: encode(m.colors) })) };
+  return { next: nextId, maps: [...maps].map(([id, m]) => ({ id, cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: m.locked, marker: m.marker, banners: m.banners, colors: encode(m.colors) })) };
 }
 
 export function loadMaps(data: unknown) {
   maps.clear();
-  const d = (data ?? {}) as { next?: number; maps?: { id: number; cx: number; cz: number; scale: number; dim: Dim; locked: boolean; marker?: MapData["marker"]; colors: string }[] };
+  const d = (data ?? {}) as { next?: number; maps?: { id: number; cx: number; cz: number; scale: number; dim: Dim; locked: boolean; marker?: MapData["marker"]; banners?: MapData["banners"]; colors: string }[] };
   nextId = Number(d.next ?? 0);
   for (const m of d.maps ?? []) {
     const colors = new Uint8Array(128 * 128);
     decode(m.colors ?? "", colors);
-    maps.set(m.id, { cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: !!m.locked, marker: m.marker, colors, version: 1 });
+    maps.set(m.id, { cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: !!m.locked, marker: m.marker, banners: m.banners, colors, version: 1 });
   }
 }

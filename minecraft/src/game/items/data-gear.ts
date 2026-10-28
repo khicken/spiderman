@@ -111,7 +111,7 @@ const other: ItemSpec[] = [
   { name: "shears", maxStack: 1, durability: 238, tool: { kind: "shears", tier: 0, speed: 1.5, durability: 238, attackDamage: 1, attackSpeed: 4 } },
   { name: "bow", maxStack: 1, durability: 384, fuelTicks: 300 },
   { name: "crossbow", maxStack: 1, durability: 465, fuelTicks: 300 },
-  { name: "shield", maxStack: 1, durability: 336, fuelTicks: 300 },
+  { name: "shield", maxStack: 1, durability: 336 },
   { name: "trident", maxStack: 1, durability: 250, rarity: "epic" },
   { name: "mace", maxStack: 1, durability: 500, rarity: "epic" },
   { name: "elytra", maxStack: 1, durability: 432, rarity: "epic", tags: ["chest_equippable"] },

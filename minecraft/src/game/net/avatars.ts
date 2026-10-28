@@ -7,6 +7,7 @@ import { createItemMeshes, type ItemMeshes } from "../player/item-mesh";
 import { createPlayerModel, type PlayerModel } from "../player/model";
 import { rasterText } from "../ui/font";
 import { F, type PlayerSnap } from "./protocol";
+import { createCape, paintLook, type Cape, type Look } from "./skins";
 
 interface Avatar {
   snap: PlayerSnap;
@@ -25,40 +26,7 @@ interface Avatar {
   swing: number;
   lastSw: number;
   hurt: number;
-}
-
-const ALEX = { hair: "#e3913a", hairDark: "#c4762a", shirt: "#5f9e42", shirtDark: "#4d8636", pants: "#6b4a2f", pantsDark: "#5a3d26", eye: "#3a7d3a" };
-
-// Alex: the default slim skin colors painted over the Steve layout.
-function paintAlex(skin: THREE.Texture) {
-  const img = skin.image as HTMLCanvasElement | OffscreenCanvas;
-  const g = img.getContext("2d") as CanvasRenderingContext2D | null;
-  if (!g) return;
-  const rect = (c: string, x: number, y: number, w: number, h: number) => {
-    g.fillStyle = c;
-    g.fillRect(x, y, w, h);
-  };
-  rect(ALEX.hair, 8, 0, 8, 8);
-  rect(ALEX.hair, 24, 8, 8, 8);
-  rect(ALEX.hair, 0, 8, 8, 6);
-  rect(ALEX.hair, 16, 8, 8, 6);
-  rect(ALEX.hair, 8, 8, 8, 2);
-  rect(ALEX.hairDark, 8, 8, 2, 4);
-  rect(ALEX.hairDark, 14, 8, 2, 4);
-  rect(ALEX.eye, 10, 12, 1, 1);
-  rect(ALEX.eye, 13, 12, 1, 1);
-  rect(ALEX.shirt, 20, 16, 16, 4);
-  rect(ALEX.shirt, 16, 20, 24, 12);
-  rect(ALEX.shirtDark, 16, 30, 24, 2);
-  for (const [u, v] of [[40, 16], [32, 48]] as const) {
-    rect(ALEX.shirt, u, v + 4, 16, 4);
-    rect(ALEX.shirt, u + 4, v, 4, 4);
-  }
-  for (const [u, v] of [[0, 16], [16, 48]] as const) {
-    rect(ALEX.pants, u, v + 4, 16, 9);
-    rect(ALEX.pantsDark, u, v + 12, 16, 1);
-  }
-  skin.needsUpdate = true;
+  cape: Cape | null;
 }
 
 function nameTagSprite(name: string): { sprite: THREE.Sprite; tex: THREE.Texture } {
@@ -93,17 +61,24 @@ export interface Avatars {
   set(list: PlayerSnap[], self: number, dim: string): void;
   frame(dt: number): void;
   hurt(id: number): void;
+  look(id: number, l: Look): void;
+  list(): { id: number; name: string; x: number; y: number; z: number; look: Look | null; cape: boolean }[];
   dispose(): void;
 }
 
 export function createAvatars(getCtx: () => GameCtx): Avatars {
   const all = new Map<number, Avatar>();
+  const looks = new Map<number, Look>();
   let items: ItemMeshes | null = null;
   const meshes = () => (items ??= createItemMeshes(() => getCtx().renderer?.scene.userData.chunkUniforms as ChunkUniforms | undefined));
 
   function make(s: PlayerSnap): Avatar {
-    const model = createPlayerModel({ slim: s.skin === 1 });
-    if (s.skin === 1) paintAlex(model.skin);
+    const painted = paintLook(looks.get(s.id) ?? { kind: s.skin === 1 ? "alex" : "steve", slim: s.skin === 1 });
+    const model = createPlayerModel(painted);
+    void painted.ready.then(() => {
+      model.skin.needsUpdate = true;
+    });
+    const cape = painted.cape ? createCape(model.model.root, painted.cape, painted.ready) : null;
     const hand = createHand(model, meshes());
     const off = createHeldSlot(meshes(), -1);
     const armor = createArmorLayer(model.model.parts, true);
@@ -112,7 +87,8 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
     model.model.root.add(sprite);
     getCtx().renderer.scene.add(model.model.root);
     model.model.root.userData.shadowRadius = 0.5;
-    return { snap: s, model, hand, off, armor, tag: sprite, tagTex: tex, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0 };
+    model.model.root.scale.setScalar(0.9375);
+    return { snap: s, model, hand, off, armor, tag: sprite, tagTex: tex, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0, cape };
   }
 
   function free(a: Avatar) {
@@ -121,6 +97,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
     (a.tag.material as THREE.SpriteMaterial).dispose();
     a.tagTex.dispose();
     a.armor.dispose();
+    a.cape?.dispose();
     a.hand.dispose();
     a.off.dispose();
     a.model.dispose();
@@ -133,7 +110,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
         if (s.id === self || s.dim !== dim) continue;
         live.add(s.id);
         let a = all.get(s.id);
-        if (a && a.snap.name !== s.name) {
+        if (a && (a.snap.name !== s.name || a.snap.skin !== s.skin)) {
           free(a);
           all.delete(s.id);
           a = undefined;
@@ -158,6 +135,14 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
     hurt(id) {
       const a = all.get(id);
       if (a) a.hurt = 0.5;
+    },
+    list: () => [...all.values()].map((a) => ({ id: a.snap.id, name: a.snap.name, x: a.pos.x, y: a.pos.y, z: a.pos.z, look: looks.get(a.snap.id) ?? null, cape: !!a.cape })),
+    look(id, l) {
+      looks.set(id, l);
+      const a = all.get(id);
+      if (!a) return;
+      free(a);
+      all.delete(id);
     },
     frame(dt) {
       if (!all.size) return;
@@ -210,6 +195,8 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
         const eq = s.eq;
         const st = (n: string | null | undefined) => (n ? { item: n, count: 1 } : null);
         a.armor.set({ head: st(eq.armor[0]), chest: eq.armor[1] === "elytra" ? null : st(eq.armor[1]), legs: st(eq.armor[2]), feet: st(eq.armor[3]) });
+        a.cape?.update({ x: a.pos.x, y: a.pos.y, z: a.pos.z, bodyYaw: a.bodyYaw, onGround: (s.f & F.ground) !== 0, sneaking: sneak, hidden: dead || sleep || eq.armor[1] === "elytra" }, dt);
+        a.cape?.setLight(light);
         a.armor.setLight(light, hurt);
         a.hand.setThirdPerson(a.model.model.parts.right_arm, st(eq.held));
         a.off.set(a.model.model.parts.left_arm, st(eq.off));
@@ -218,6 +205,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
     dispose() {
       for (const a of all.values()) free(a);
       all.clear();
+      looks.clear();
       items?.dispose();
       items = null;
     },

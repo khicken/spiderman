@@ -7,6 +7,7 @@ import type { InputAction, InputApi } from "./input";
 import { createInteraction } from "./interact";
 import { createItemMeshes } from "./item-mesh";
 import { createPlayerModel } from "./model";
+import { createCape, localLook, paintLook } from "../net/skins";
 import { applyVanillaMotion, createMotionState, type MotionInput } from "./motion";
 import { blockOn, fluidAt, makeBody, noCollision, bodyBox, type MoveOpts } from "./physics";
 import { EYE_STAND, FLY_SPEED, HEIGHT_STAND, MAX_AIR, SNEAK_MULT, SPRINT_MULT, WALK_SPEED, WIDTH, attackStats, attackStrength, ench } from "./stats";
@@ -16,6 +17,7 @@ import { tickUse } from "./use";
 import { tickGlide, tryStartGlide } from "./elytra";
 import { createPlayerExtras } from "./model-extras";
 import { createScreenFx } from "./screen-fx";
+import { createFlames } from "../entities/fire-overlay";
 import { effectView, tickEffectParticles } from "./effects-fx";
 import { tickSpin } from "./ranged";
 import { bubbleAmbient } from "../mechanics/bubble";
@@ -72,6 +74,8 @@ const eyeOut = new THREE.Vector3();
 const lookOut = new THREE.Vector3();
 const mouse = { dx: 0, dy: 0 };
 const bob = new THREE.Matrix4();
+const handBob = new THREE.Matrix4();
+const swayM = new THREE.Matrix4();
 const modelPos = new THREE.Vector3();
 const dropVel = new THREE.Vector3();
 const D = Math.PI / 180;
@@ -114,7 +118,8 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   let walkSpeed = 0;
   let walkPos = 0;
   let prevWalkSpeed = 0;
-  const hf: HandFrame = { camera: new THREE.PerspectiveCamera(), bob, stack: null, equip: 0, swing: 0, use: null, useTicks: 0, light: 1, visible: true };
+  let xBob = 0, yBob = 0, prevXBob = 0, prevYBob = 0;
+  const hf: HandFrame = { camera: new THREE.PerspectiveCamera(), bob: handBob, stack: null, equip: 0, swing: 0, use: null, useTicks: 0, light: 1, visible: true };
 
   const p: PlayerState = {
     ctx: getCtx,
@@ -243,11 +248,17 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     },
   };
 
-  const model = createPlayerModel();
+  const look = paintLook(localLook());
+  const model = createPlayerModel(look);
+  void look.ready.then(() => {
+    model.skin.needsUpdate = true;
+  });
+  const cape = look.cape ? createCape(model.model.root, look.cape, look.ready) : null;
   const items = createItemMeshes(() => getCtx().renderer?.scene.userData.chunkUniforms as ChunkUniforms | undefined);
   const hand = createHand(model, items);
   const extras = createPlayerExtras(model, items);
   const screen = createScreenFx(items);
+  const flames = createFlames();
   hand.root.add(screen.root);
   const interaction = createInteraction(p, input);
   const riding = createRiding();
@@ -411,7 +422,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     p.wasInWater = body.inWater;
     if (landed > 0) onLand(p, ctx, landed);
     const hv = Math.hypot(body.vel.x, body.vel.z);
-    p.bob += ((body.onGround && !p.dead ? Math.min(0.1, hv) : 0) - p.bob) * 0.4;
+    p.bob += ((body.onGround && !p.dead && !p.swimming ? Math.min(0.1, hv) : 0) - p.bob) * 0.4;
     prevWalkSpeed = walkSpeed;
     walkSpeed += (Math.min(h * 4, 1) - walkSpeed) * 0.4;
     walkPos += walkSpeed;
@@ -435,6 +446,10 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       }
     } else p.swingTime = 0;
     p.attackAnim = p.swingTime / 6;
+    prevXBob = xBob;
+    prevYBob = yBob;
+    xBob += (p.pitch - xBob) * 0.5;
+    yBob += (p.yaw - yBob) * 0.5;
     prevHandHeight = handHeight;
     const held = ctx.inventory.held();
     const name = held?.item ?? null;
@@ -497,7 +512,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       writeDials(p, ctx);
       tickAnimation(ctx);
     },
-    frame(_dt: number, pt: number) {
+    frame(dt: number, pt: number) {
       const ctx = getCtx();
       if (model.model.root.parent !== ctx.renderer.scene) {
         ctx.renderer.scene.add(model.model.root);
@@ -520,10 +535,13 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       const third = p.thirdPerson !== 0 && p.gameMode !== "spectator";
       const root = model.model.root;
       root.visible = third;
+      cape?.update({ x: body.pos.x, y: body.pos.y, z: body.pos.z, bodyYaw: lerp(p.prevBodyYaw, p.bodyYaw, pt), onGround: body.onGround, sneaking: p.pose === "crouching", hidden: !third || p.dead || ctx.inventory.slots[37]?.item === "elytra" }, dt);
       root.userData.shadowRadius = p.dead || p.hasEffect("invisibility") > 0 ? 0 : 0.5;
       if (third) {
         modelPos.set(lerp(p.prevPos.x, body.pos.x, pt), lerp(p.prevPos.y, body.pos.y, pt) - (p.pose === "crouching" ? 0.125 : 0), lerp(p.prevPos.z, body.pos.z, pt));
         root.position.copy(modelPos);
+        // Vanilla PlayerRenderer.scale: the model draws at 15/16 size (1.875 blocks); the hitbox stays 0.6 x 1.8.
+        root.scale.setScalar(0.9375);
         model.pose({
           bodyYaw: lerp(p.prevBodyYaw, p.bodyYaw, pt),
           headYaw: p.yaw,
@@ -541,6 +559,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
         });
         model.setLight(light, p.hurtTime > 0 || p.dead);
         extras.update(p, ctx, pt, light, p.hurtTime > 0 || p.dead);
+        cape?.setLight(light);
         hand.setThirdPerson(model.model.parts.right_arm, getCtx().inventory.held(), p.using?.hand === "main" ? p.using : null, p.using ? p.using.ticks + pt : 0);
       }
       const u = p.using;
@@ -548,6 +567,8 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       let swing = p.attackAnim - p.prevAttackAnim;
       if (swing < 0) swing += 1;
       hf.camera = ctx.renderer.camera;
+      // Vanilla renderHandsWithItems: the hands trail the view by a tenth of the lag between view and xBob/yBob.
+      handBob.copy(bob).multiply(swayM.makeRotationX(-(p.pitch - lerp(prevXBob, xBob, pt)) * 0.1)).multiply(swayM.makeRotationY(-(p.yaw - lerp(prevYBob, yBob, pt)) * 0.1));
       hf.stack = shownItem ? (held?.item === shownItem ? held : { item: shownItem, count: 1 }) : null;
       hf.equip = 1 - lerp(prevHandHeight, handHeight, pt);
       hf.swing = p.prevAttackAnim + swing * pt;
@@ -563,10 +584,13 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       hf.swingOff = p.swingOff;
       const scoping = p.using?.kind === "spyglass" && p.thirdPerson === 0;
       if (scoping) hf.visible = false;
-      screen.update(ctx.renderer.camera, scoping && !p.dead, p.totemTicks, pt);
+      const burning = p.fireTicks > 0 && p.gameMode !== "spectator";
+      screen.update(ctx.renderer.camera, scoping && !p.dead, p.totemTicks, pt, burning && !third);
+      if (flames.mesh.parent !== ctx.renderer.scene) ctx.renderer.scene.add(flames.mesh);
+      flames.update(burning && third, modelPos.x, modelPos.y, modelPos.z, body.width, body.height, ctx.renderer.camera);
       const fxv = effectView(p, pt);
       ctx.renderer.setEffects?.(fxv);
-      GLINT_TIME.value += _dt;
+      GLINT_TIME.value += dt;
       hand.update(hf);
     },
     save(): unknown {
@@ -628,6 +652,8 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       hand.dispose();
       extras.dispose();
       screen.dispose();
+      flames.mesh.parent?.remove(flames.mesh);
+      cape?.dispose();
       model.dispose();
       items.dispose();
     },

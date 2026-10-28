@@ -41,7 +41,7 @@ export function protectionEpf(ctx: Pick<GameCtx, "inventory">, source: DamageSou
   let epf = 0;
   for (let i = 36; i <= 39; i++) {
     const s = ctx.inventory.slots[i];
-    if (!s?.ench) continue;
+    if (!s?.ench || source === "sonic_boom") continue;
     if (source !== "void" && source !== "starve") epf += ench(s, "protection");
     if (source === "fire" || source === "lava") epf += 2 * ench(s, "fire_protection");
     if (source === "fall") epf += 3 * ench(s, "feather_falling");
@@ -91,7 +91,7 @@ export function useTotem(p: PlayerState, ctx: GameCtx): boolean {
   return true;
 }
 
-// Vanilla LivingEntity.isDamageSourceBlocked: the source must be in front of the view; an axe hit disables the shield for 5 s.
+// Vanilla LivingEntity.isDamageSourceBlocked: the source must be in front of the view; a mob that canDisableShield (axe, warden) disables it for 5 s.
 export const shieldFaces = (p: PlayerApi, x: number, z: number) =>
   !!(p as { blocking?: boolean }).blocking && -Math.sin(p.yaw) * (x - p.body.pos.x) - Math.cos(p.yaw) * (z - p.body.pos.z) > 0;
 
@@ -103,7 +103,7 @@ function blockWithShield(p: PlayerState, ctx: GameCtx, amount: number, from: { x
   if (amount >= 3) damageSlot(ctx, slot, 1 + Math.floor(amount));
   if (melee) {
     ctx.entities.knockback(melee.id, dx, dz, 0.5);
-    if (String(melee.data.held ?? "").endsWith("_axe") && ctx.random() < 0.25) disableShield(p, ctx);
+    if (String(melee.data.held ?? "").endsWith("_axe") || melee.type === "warden") disableShield(p, ctx);
   }
   return true;
 }
@@ -117,7 +117,7 @@ export function disableShield(p: PlayerState, ctx: GameCtx): void {
 
 // Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them.
 export function difficultyScale(ctx: Pick<GameCtx, "rules">, amount: number, source: DamageSource, attacker?: Entity): number {
-  if (source !== "mob" && source !== "explosion" && !((source === "arrow" || source === "trident") && attacker)) return amount;
+  if (source !== "mob" && source !== "explosion" && source !== "sonic_boom" && !((source === "arrow" || source === "trident") && attacker)) return amount;
   switch (ctx.rules.difficulty) {
     case "peaceful": return 0;
     case "easy": return Math.min(amount / 2 + 1, amount);

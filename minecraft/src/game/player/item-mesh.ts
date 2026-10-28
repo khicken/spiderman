@@ -17,7 +17,8 @@ import { packVersion } from "../packs";
 export function itemKey(s: ItemStack | null): string | null {
   if (!s) return null;
   const f = dialFrame(s);
-  const base = f === null ? s.item : `${s.item}@${f}`;
+  const banner = s.item === "shield" && typeof s.data?.banner === "string" ? `~${s.data.banner}~${JSON.stringify(s.data.patterns ?? [])}` : "";
+  const base = f === null ? s.item + banner : `${s.item}@${f}`;
   return s.ench && Object.keys(s.ench).length ? `${base}#glint` : base;
 }
 
@@ -156,7 +157,7 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
   };
 
   const glintMat = new THREE.ShaderMaterial({ uniforms: { uTime: GLINT_TIME }, vertexShader: GLINT_VERT, fragmentShader: GLINT_FRAG, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthFunc: THREE.LessEqualDepth });
-  let shieldTex: THREE.Texture | null = null;
+  const shieldTexs: THREE.Texture[] = [];
 
   function build(key: string): ItemModel | null {
     if (key.endsWith("#glint")) {
@@ -183,10 +184,11 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
       return { kind: "flat", create: () => new THREE.Mesh(geo, flatMat) };
     }
     const name = key;
-    if (name === "shield") {
-      const sm = createShieldModel();
+    if (name === "shield" || name.startsWith("shield~")) {
+      const [, color, layers] = name.split("~");
+      const sm = createShieldModel(color ? { color, patterns: JSON.parse(layers) } : undefined);
       geos.push(sm.geometry);
-      shieldTex = sm.texture;
+      shieldTexs.push(sm.texture);
       const mat = new THREE.MeshBasicMaterial({ map: sm.texture });
       shaded.push({ mat, shade: 1 });
       return { kind: "shield", create: () => new THREE.Mesh(sm.geometry, mat) };
@@ -253,7 +255,7 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
       for (const s of shaded) s.mat.dispose();
       glintMat.dispose();
       held?.dispose();
-      shieldTex?.dispose();
+      for (const t of shieldTexs) t.dispose();
       cache.clear();
     },
   };

@@ -69,10 +69,11 @@ export function merchantMenu(d: MenuDeps, at: Pos | undefined): Menu | null {
       m.t.uses++;
       const c = d.ctx();
       if (!c) return;
+      const wasUp = !!e.data.levelUp;
       onTraded(e, c, m.t);
       advTrigger({ t: "villager_trade", y: c.player.body.pos.y, type: e.type });
       const p = e.body.pos;
-      c.entities.dropXp(3 + Math.floor(c.random() * 4), p.x, p.y + 0.5, p.z);
+      c.entities.dropXp(3 + Math.floor(c.random() * 4) + (!wasUp && e.data.levelUp ? 5 : 0), p.x, p.y + 0.5, p.z);
       c.emit({ type: "sound", name: `entity.${e.type}.yes`, x: p.x, y: p.y + 1, z: p.z });
     },
   };

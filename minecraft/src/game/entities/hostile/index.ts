@@ -7,6 +7,8 @@ import { ENDERMAN } from "./enderman";
 import { NETHER_MOBS } from "./nether";
 import { PHANTOM } from "./phantom";
 import { ILLAGERS } from "./pillager";
+import { ILLUSIONER } from "./illusioner";
+import { PUFFERFISH } from "./pufferfish";
 import { BUGS } from "./silverfish";
 import { SKELETONS } from "./skeleton";
 import { SLIMES } from "./slime";
@@ -29,6 +31,8 @@ export const HOSTILE_MOBS: MobDef[] = [
   BREEZE,
   ARMADILLO_DEF,
   ...ILLAGERS,
+  ILLUSIONER,
+  PUFFERFISH,
 ];
 
 export { createHostileWorld, isSlimeChunk, type HostileWorld } from "./world";

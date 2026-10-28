@@ -39,6 +39,41 @@ const door = (wood: boolean, open: boolean, size = 1): Gen => {
   return open ? seq([[k, 0, 0.5], [c, 0.02, 0.8]]) : seq([[c, 0, 0.6], [k, 0.3 * size, 1]]);
 };
 
+// 8 s bed whose swells run whole cycles, so it loops without a seam.
+const underwaterBed: Gen = (r, sr) => {
+  const dur = 8;
+  const d = brownNoise(Math.ceil(dur * sr), r);
+  filter(d, "lowpass", 260, 0.7, sr);
+  const w = alloc(dur, sr);
+  addNoise(w, r, 1);
+  filterFn(w, "bandpass", 3, sr, (t) => 380 + 160 * Math.sin((TAU * 2 * t) / dur));
+  for (let i = 0; i < d.length; i++) d[i] = d[i] * (0.8 + 0.2 * Math.sin((TAU * 3 * i) / d.length)) + w[i] * 0.25;
+  return d;
+};
+
+const plunge = (enter: boolean): Gen => (r, sr) => {
+  const dur = enter ? 1.1 : 0.8;
+  const d = alloc(dur, sr);
+  addNoise(d, r, 1);
+  filter(d, "lowpass", enter ? 2400 : 500, 0.8, sr, enter ? 300 : 2600);
+  for (let i = 0; i < d.length; i++) {
+    const u = i / d.length;
+    d[i] *= Math.min(1, u / 0.06) * Math.pow(1 - u, 1.8);
+  }
+  const b = bubbles(dur * 0.7, enter ? 14 : 8, 300, 900)(r, sr);
+  for (let i = 0; i < b.length && i < d.length; i++) d[i] += b[i] * 0.35;
+  return d;
+};
+
+const deepCall = (f0: number, dur: number): Gen => (r, sr) => {
+  const d = alloc(dur, sr);
+  const f = f0 * rand(r, 0.8, 1.2);
+  addTone(d, sr, { dur, freq: (t) => f * (1 + 0.25 * Math.sin((Math.PI * t) / dur)), amp: 0.6, attack: dur * 0.3, decay: dur * 0.5, wave: "tri" });
+  filter(d, "lowpass", f * 3, 0.7, sr);
+  for (let i = 0; i < d.length; i++) d[i] *= Math.min(1, (d.length - i) / (0.3 * sr));
+  return d;
+};
+
 const chest = (open: boolean, f = 200): Gen =>
   open ? seq([[creak(0.6, 120, 170, false), 0], [knock(f, 0.04), 0, 0.4]]) : seq([[creak(0.3, 170, 120, false), 0, 0.7], [knock(f * 0.8, 0.06), 0.25]]);
 
@@ -303,6 +338,12 @@ export const WORLD_SFX: Record<string, Recipe> = {
   "block.respawn_anchor.charge": W(portalDrone(1.2, 1.6), 0.6, 2), "block.respawn_anchor.set_spawn": W(portalDrone(2, 1.2), 0.6, 1), "block.respawn_anchor.deplete": W(portalDrone(1.5, 0.5), 0.6, 1),
   "block.bell.use": W(bell, 0.8, 1, 0), "block.bell.resonate": W(bell, 0.6, 1, 0),
   "entity.tnt.primed": W(fizz(1.6), 0.7, 2),
+  "ambient.underwater.loop": W(underwaterBed, 0.5, 1, 0),
+  "ambient.underwater.enter": W(plunge(true), 0.6, 3, 0.05),
+  "ambient.underwater.exit": W(plunge(false), 0.5, 3, 0.05),
+  "ambient.underwater.loop.additions": W(bubbles(1.2, 9, 250, 800), 0.45, 6, 0.15),
+  "ambient.underwater.loop.additions.rare": W(deepCall(140, 2.5), 0.4, 4, 0.1),
+  "ambient.underwater.loop.additions.ultra_rare": W(deepCall(70, 4), 0.45, 3, 0.1),
   "ambient.cave": { render: (r, sr) => caveSound(Math.floor(r() * 4))(r, sr), gain: 0.5, variants: 8, pitchVar: 0.1 },
   "weather.rain": W(rain, 0.35, 2, 0),
   "weather.rain.above": W(lowpassRain(), 0.2, 2, 0),

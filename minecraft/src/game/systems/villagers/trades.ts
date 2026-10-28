@@ -73,7 +73,7 @@ export const TRADE_POOLS: Record<string, Listing[][]> = {
   farmer: [
     [E("wheat", 20, 16, 2), E("potato", 26, 16, 2), E("carrot", 22, 16, 2), E("beetroot", 15, 16, 2), B(1, "bread", 6, 16, 1)],
     [E("pumpkin", 6, 12, 10), B(1, "pumpkin_pie", 4, 12, 5), B(1, "apple", 4, 16, 5)],
-    [B(1, "cookie", 18, 12, 10), E("melon", 4, 12, 20)],
+    [B(3, "cookie", 18, 12, 10), E("melon", 4, 12, 20)],
     [B(1, "cake", 1, 12, 15), STEW],
     [B(3, "golden_carrot", 3, 12, 30), B(4, "glistering_melon_slice", 3, 12, 30)],
   ],
@@ -107,7 +107,7 @@ export const TRADE_POOLS: Record<string, Listing[][]> = {
   ],
   cartographer: [
     [E("paper", 24, 16, 2), B(7, "map", 1, 12, 1)],
-    [E("glass_pane", 11, 16, 10), MAP(13, "Ocean Explorer Map", 5)],
+    [E("glass_pane", 11, 16, 10), MAP(13, "Ocean Explorer Map", 5), MAP(12, "Trial Explorer Map", 5)],
     [E("compass", 1, 12, 20), MAP(14, "Woodland Explorer Map", 10)],
     [B(7, "item_frame", 1, 12, 15), B(3, WOOLS.map((c) => `${c}_banner`), 1, 12, 15)],
     [B(8, "globe_banner_pattern", 1, 12, 30)],

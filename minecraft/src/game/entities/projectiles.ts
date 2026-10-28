@@ -189,6 +189,8 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
   const owner = ownerEntity(ctx, e.data.owner as Owner);
   const punch = (e.data.punch as number) ?? 0;
   if (h.kind === "player") {
+    const pf = ctx.player as typeof ctx.player & { fireTicks?: number };
+    if (e.data.fire) pf.fireTicks = Math.max(pf.fireTicks ?? 0, 100);
     const fx = b.pos.x - b.vel.x, fz = b.pos.z - b.vel.z;
     const blocked = shieldFaces(ctx.player, fx, fz);
     ctx.player.damageFrom = { x: fx, y: b.pos.y, z: fz };
@@ -363,9 +365,17 @@ export function tickFireball(e: Entity, ctx: GameCtx) {
     if (h.entity) markProjectile(h.entity, e, ctx.time.tick);
     if (small) {
       if (h.entity && !h.entity.data.fireImmune) {
+        const was = h.entity.data._fire, hp = h.entity.health;
         h.entity.data._fire = Math.max((h.entity.data._fire as number) ?? 0, 100);
         ctx.entities.damage(h.entity.id, 5, "fire", owner);
-      } else if (h.kind === "player") ctx.player.damage(5, "fire", owner && owner !== "player" ? owner : undefined);
+        if (h.entity.health >= hp) h.entity.data._fire = was;
+      } else if (h.kind === "player") {
+        const p = ctx.player as typeof ctx.player & { fireTicks?: number };
+        const was = p.fireTicks ?? 0, hp = p.health;
+        p.fireTicks = Math.max(was, 100);
+        p.damage(5, "fire", owner && owner !== "player" ? owner : undefined);
+        if (p.health >= hp) p.fireTicks = was;
+      }
       else if (h.kind === "block" && ctx.rules.mobGriefing) placeFire(ctx, h);
       return;
     }

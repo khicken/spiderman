@@ -166,8 +166,8 @@ export const isPlayerBody = (ctx: GameCtx, body: unknown) => body === ctx.player
 // PlayerApi has no fire field; the player module reads fireTicks when it exists.
 export function setOnFire(ctx: GameCtx, body: unknown, entity: { data: Record<string, unknown> } | null, ticks: number) {
   if (entity) {
-    const cur = typeof entity.data.fireTicks === "number" ? entity.data.fireTicks : 0;
-    entity.data.fireTicks = Math.max(cur, ticks);
+    const cur = typeof entity.data._fire === "number" ? entity.data._fire : 0;
+    entity.data._fire = Math.max(cur, ticks);
   } else if (isPlayerBody(ctx, body)) {
     const p = ctx.player as unknown as { fireTicks?: number };
     p.fireTicks = Math.max(p.fireTicks ?? 0, ticks);

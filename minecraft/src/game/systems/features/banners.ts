@@ -4,6 +4,7 @@ import { CHUNK, metaOf } from "../../contracts";
 import { BLOCKS, blockDef } from "../../blocks/registry";
 import { BH, BW, bannerPixels, type Layer } from "./banner-art";
 import { brightnessAt } from "../../entities/render";
+import { toggleBannerMarker } from "./maps";
 
 interface View {
   group: THREE.Group;
@@ -15,7 +16,7 @@ interface View {
 const tracked = new Map<string, BlockEntityData>();
 const views = new Map<string, View>();
 const near: Entity[] = [];
-let pending: { x: number; y: number; z: number; item: string; patterns: Layer[]; at: number }[] = [];
+let pending: { x: number; y: number; z: number; item: string; patterns: Layer[]; name?: string; at: number }[] = [];
 let scene: THREE.Scene | null = null;
 
 const keyOf = (x: number, y: number, z: number) => `${x},${y},${z}`;
@@ -25,17 +26,25 @@ const colorOf = (name: string) => name.replace(/_wall_banner$|_banner$/, "");
 const BANNER_BEHAVIOR: BlockBehavior = {
   onPlaced(ctx, x, y, z) {
     const held = ctx.inventory.held() as ItemStack | null;
-    const patterns = held?.item.endsWith("_banner") && Array.isArray(held.data?.patterns) ? (held.data!.patterns as Layer[]) : null;
-    if (!patterns?.length) return;
-    const be: BlockEntityData = { x, y, z, type: "banner", data: { patterns } };
+    if (!held?.item.endsWith("_banner")) return;
+    const patterns = Array.isArray(held.data?.patterns) ? (held.data!.patterns as Layer[]) : [];
+    if (!patterns.length && !held.name) return;
+    const be: BlockEntityData = { x, y, z, type: "banner", data: held.name ? { patterns, name: held.name } : { patterns } };
     ctx.world.setBlockEntity(be, x, y, z);
     tracked.set(keyOf(x, y, z), be);
+  },
+  use(ctx, x, y, z, s, held) {
+    if (held?.item !== "filled_map") return false;
+    const be = ctx.world.getBlockEntity(x, y, z);
+    const name = typeof be?.data?.name === "string" ? be.data.name : undefined;
+    return toggleBannerMarker(ctx, held, x, y, z, colorOf(blockDef(s).name), name);
   },
   onRemoved(ctx, x, y, z, s) {
     const k = keyOf(x, y, z);
     const be = tracked.get(k);
     tracked.delete(k);
-    if (be && layersOf(be).length) pending.push({ x, y, z, item: `${colorOf(blockDef(s).name)}_banner`, patterns: layersOf(be), at: ctx.time.tick });
+    const name = typeof be?.data?.name === "string" ? be.data.name : undefined;
+    if (be && (layersOf(be).length || name)) pending.push({ x, y, z, item: `${colorOf(blockDef(s).name)}_banner`, patterns: layersOf(be), name, at: ctx.time.tick });
   },
 };
 
@@ -46,11 +55,12 @@ function attachDrops(ctx: GameCtx) {
   pending = pending.filter((p) => {
     if (ctx.time.tick - p.at > 5) return false;
     ctx.entities.near(p.x + 0.5, p.y + 0.5, p.z + 0.5, 2, near);
-    const e = near.find((o) => o.type === "item" && (o.data.stack as ItemStack | undefined)?.item === p.item && !(o.data.stack as ItemStack).data?.patterns);
+    const e = near.find((o) => o.type === "item" && (o.data.stack as ItemStack | undefined)?.item === p.item && !(o.data.stack as ItemStack).data?.patterns && !(o.data.stack as ItemStack).name);
     near.length = 0;
     if (!e) return true;
     const st = e.data.stack as ItemStack;
-    st.data = { ...st.data, patterns: p.patterns };
+    if (p.patterns.length) st.data = { ...st.data, patterns: p.patterns };
+    if (p.name) st.name = p.name;
     return false;
   });
 }

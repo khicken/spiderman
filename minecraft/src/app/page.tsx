@@ -439,7 +439,7 @@ export default function Page() {
           if (playing && !overlay && !view && !death) gameRef.current?.lock();
         }}
       />
-      {playing && !hideGui && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
+      {playing && !hideGui && !hud?.thirdPerson && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
       <GuiRoot guiScale={settings.guiScale}>
         {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics === "fancy"} />}
         {playing && !hideGui && settings.showSubtitles && <Subtitles />}
@@ -452,9 +452,9 @@ export default function Page() {
             }}
           />
         )}
-        {playing && lockHint && !overlay && !view && !death && !credits && <Text text="Click to play" x={Math.floor(w / guiScale / 2)} y={Math.floor(h / guiScale / 2) + 16} align="center" />}
+        {playing && lockHint && !hideGui && !overlay && !view && !death && !credits && <Text text="Click to play" color={0xa0a0a0} x={Math.floor(w / guiScale / 2)} y={Math.floor(h / guiScale / 2) + 16} align="center" />}
         {playing && debug && hud?.debug && <DebugOverlay lines={hud.debug} width={Math.ceil(w / guiScale)} />}
-        {playing && !death && (
+        {playing && !death && (!hideGui || overlay === "chat" || overlay === "bed") && (
           <div style={{ pointerEvents: overlay === "chat" || overlay === "bed" ? "auto" : "none" }}>
             <Chat
               messages={messages}

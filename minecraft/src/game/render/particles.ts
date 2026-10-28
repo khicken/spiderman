@@ -5,7 +5,7 @@ import { blockDef, IS_FLUID, OPAQUE, SOLID } from "../blocks/registry";
 
 const NX = [1, -1, 0, 0, 0, 0], NY = [0, 0, 1, -1, 0, 0], NZ = [0, 0, 0, 0, 1, -1];
 import { textureLayer } from "../textures";
-import { PARTICLE_PATHS, paintParticleSheet, SPRITE, SPRITE_LAYERS } from "./particle-art";
+import { GLYPHS, PARTICLE_PATHS, paintParticleSheet, SPRITE, SPRITE_LAYERS } from "./particle-art";
 import { tileOr } from "./pack-art";
 import { lightmap } from "../mesh/lightmap";
 
@@ -13,7 +13,7 @@ const LM: [number, number, number] = [1, 1, 1];
 
 type ParticleEvent = Extract<GameEvent, { type: "particles" }>;
 
-const enum Beh { Normal, Portal, Bubble, Drip, Fall }
+const enum Beh { Normal, Portal, Bubble, Drip, Fall, Enchant, Lava }
 const enum Anim { Fixed, Fwd, Rev }
 const COLLIDE = 1, BRIGHT = 2, GROUND = 4, SHRINK = 8;
 const TICK = 1 / 20;
@@ -55,6 +55,9 @@ void main() {
   gl_FragColor = vec4(t.rgb * sRGBTransferEOTF(vec4(vColor.rgb, 1.0)).rgb, a);
   #include <colorspace_fragment>
 }`;
+
+// Emitters mark vanilla happy_villager particles as green dust.
+const HAPPY_DUST = new Set([0x80e040, 0x55ff55]);
 
 const TINTS: Record<string, number> = { birch: 0x80a755, spruce: 0x619961, stem: 0x9fbf3e, redstone: 0xc81010 };
 
@@ -375,6 +378,7 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
         }
         return;
       case "dust":
+        if (e.color !== undefined && HAPPY_DUST.has(e.color)) { happy(e.x, e.y, e.z, n); return; }
         for (let k = 0; k < n; k++) {
           const i = add(e.x + jit(n, 0.5), e.y + jit(n, 0.5), e.z + jit(n, 0.5), 0, 0, 0, true);
           if (i < 0) return;
@@ -398,6 +402,24 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
           sprite(i, SPRITE.gust, 12, Anim.Fwd);
         }
         return;
+      case "happy": happy(e.x, e.y, e.z, n); return;
+      case "sweep": {
+        const i = add(e.x, e.y, e.z, 0, 0, 0, false);
+        if (i < 0) return;
+        const c = rand() * 0.6 + 0.4;
+        p.r[i] = p.g[i] = p.b[i] = c;
+        p.size[i] = 1;
+        p.life[i] = 4;
+        p.flags[i] = BRIGHT;
+        sprite(i, SPRITE.sweep, 8, Anim.Fwd);
+        return;
+      }
+      case "enchant":
+        for (let k = 0; k < n; k++) enchant(e.x, e.y, e.z, (rand() - 0.5) * 4, -rand() - 0.5, (rand() - 0.5) * 4);
+        return;
+      case "lava":
+        for (let k = 0; k < n; k++) lavaPop(e.x + jit(n, 0.6), e.y, e.z + jit(n, 0.6));
+        return;
       case "trial_omen":
         for (let k = 0; k < n; k++) {
           const i = add(e.x + jit(n, 0.8), e.y + jit(n, 0.8), e.z + jit(n, 0.8), 0, 0, 0, true);
@@ -411,6 +433,110 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
         }
         return;
     }
+  }
+
+  // Vanilla SuspendedTownParticle (happy villager) spawned spread inside the block.
+  function happy(x: number, y: number, z: number, n: number) {
+    for (let k = 0; k < n; k++) {
+      const i = add(x + (n > 1 ? (rand() - 0.5) * 0.9 : 0), y + (n > 1 ? (rand() - 0.5) * 0.9 : 0), z + (n > 1 ? (rand() - 0.5) * 0.9 : 0), 0, 0, 0, false);
+      if (i < 0) return;
+      p.vx[i] = gauss() * 0.02; p.vy[i] = gauss() * 0.02; p.vz[i] = gauss() * 0.02;
+      p.size[i] *= rand() * 0.6 + 0.5;
+      p.life[i] = Math.floor(20 / (rand() * 0.8 + 0.2));
+      p.drag[i] = 1;
+      p.flags[i] = 0;
+      sprite(i, SPRITE.happy, 1, Anim.Fixed);
+    }
+  }
+
+  // Vanilla FlyTowardsPositionParticle: starts at (x,y,z)+v and flies to (x,y,z), dipping 1.2 at the end.
+  function enchant(x: number, y: number, z: number, vx: number, vy: number, vz: number) {
+    const i = add(x + vx, y + vy, z + vz, vx, vy, vz, false);
+    if (i < 0) return;
+    p.ox[i] = x; p.oy[i] = y; p.oz[i] = z;
+    p.size[i] = 0.1 * (rand() * 0.5 + 0.2);
+    const f = rand() * 0.6 + 0.4;
+    p.r[i] = 0.9 * f; p.g[i] = 0.9 * f; p.b[i] = f;
+    p.life[i] = Math.floor(rand() * 10) + 30;
+    p.beh[i] = Beh.Enchant;
+    p.flags[i] = BRIGHT;
+    sprite(i, SPRITE.glyph + Math.floor(rand() * GLYPHS), 1, Anim.Fixed);
+  }
+
+  function lavaPop(x: number, y: number, z: number) {
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.vx[i] = (rand() * 2 - 1) * 0.4 * 0.8; p.vy[i] = rand() * 0.4 + 0.05; p.vz[i] = (rand() * 2 - 1) * 0.4 * 0.8;
+    p.size[i] *= rand() * 2 + 0.2;
+    p.life[i] = Math.floor(16 / (rand() * 0.8 + 0.2));
+    p.grav[i] = 0.75;
+    p.drag[i] = 0.999;
+    p.flags[i] = COLLIDE | BRIGHT | SHRINK;
+    p.beh[i] = Beh.Lava;
+    sprite(i, SPRITE.lava, 1, Anim.Fixed);
+  }
+
+  function smokeAt(x: number, y: number, z: number, vx: number, vy: number, vz: number, scale: number) {
+    const i = add(x, y, z, 0, 0, 0, true);
+    if (i < 0) return;
+    p.vx[i] = p.vx[i] * 0.1 + vx; p.vy[i] = p.vy[i] * 0.1 + vy; p.vz[i] = p.vz[i] * 0.1 + vz;
+    const c = rand() * 0.3;
+    p.r[i] = p.g[i] = p.b[i] = c;
+    p.size[i] *= 0.75 * scale;
+    p.life[i] = Math.max(1, Math.floor((8 / (rand() * 0.8 + 0.2)) * scale));
+    p.grav[i] = -0.1;
+    p.drag[i] = 0.96;
+    p.flags[i] = 0;
+    sprite(i, SPRITE.generic, 8, Anim.Rev);
+  }
+
+  function flameAt(x: number, y: number, z: number, soul: boolean, scale: number) {
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.vx[i] = 0; p.vy[i] = 0; p.vz[i] = 0;
+    p.size[i] *= scale;
+    p.life[i] = Math.floor(8 / (rand() * 0.8 + 0.2)) + 4;
+    p.drag[i] = 0.96;
+    p.flags[i] = BRIGHT | SHRINK;
+    sprite(i, soul ? SPRITE.soulFlame : SPRITE.flame, 1, Anim.Fixed);
+  }
+
+  function dustAt(x: number, y: number, z: number, hex: number) {
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.vx[i] = (rand() * 2 - 1) * 0.01; p.vy[i] = (rand() * 2 - 1) * 0.01; p.vz[i] = (rand() * 2 - 1) * 0.01;
+    color(i, hex, rand() * 0.4 + 0.6);
+    p.size[i] *= 0.75;
+    p.life[i] = Math.max(1, Math.floor(8 / (rand() * 0.8 + 0.2)));
+    p.drag[i] = 0.96;
+    p.flags[i] = 0;
+    sprite(i, SPRITE.generic, 8, Anim.Rev);
+  }
+
+  function dripAt(x: number, y: number, z: number, lava: boolean) {
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    color(i, lava ? 0xff4915 : 0x334cff);
+    if (lava) p.flags[i] |= BRIGHT;
+    p.life[i] = 40;
+    p.grav[i] = 0;
+    p.beh[i] = Beh.Drip;
+    sprite(i, SPRITE.dripHang, 1, Anim.Fixed);
+  }
+
+  function portalAt(x: number, y: number, z: number, vx: number, vy: number, vz: number) {
+    const i = add(x, y, z, vx, vy, vz, false);
+    if (i < 0) return;
+    const j = rand() * 0.6 + 0.4;
+    p.r[i] = j * 0.9; p.g[i] = j * 0.3; p.b[i] = j;
+    p.life[i] = Math.floor(rand() * 10) + 40;
+    p.size[i] = 0.1 * (rand() * 0.2 + 0.5);
+    p.beh[i] = Beh.Portal;
+    p.flags[i] = BRIGHT;
+  }
+
+  function gauss() {
+    return Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(Math.PI * 2 * rand());
   }
 
   function rainSplash(x: number, y: number, z: number, water: boolean) {
@@ -477,6 +603,16 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
         p.z[i] = p.oz[i] + p.vz[i] * q;
         continue;
       }
+      if (beh === Beh.Enchant) {
+        const f = 1 - age / p.life[i];
+        let g = 1 - f;
+        g *= g; g *= g;
+        p.x[i] = p.ox[i] + p.vx[i] * f;
+        p.y[i] = p.oy[i] + p.vy[i] * f - g * 1.2;
+        p.z[i] = p.oz[i] + p.vz[i] * f;
+        continue;
+      }
+      if (beh === Beh.Lava && rand() > age / p.life[i]) smokeAt(p.x[i], p.y[i], p.z[i], p.vx[i], p.vy[i], p.vz[i], 1);
       if (beh === Beh.Drip) continue;
       if (beh === Beh.Fall) p.vy[i] -= p.grav[i];
       else p.vy[i] -= 0.04 * p.grav[i];
@@ -573,6 +709,13 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
   return {
     addParticles,
     ambient,
+    smokeAt,
+    flameAt,
+    dustAt,
+    dripAt,
+    portalAt,
+    enchant,
+    lavaPop,
     rainSplash: (x: number, y: number, z: number) => rainSplash(x, y, z, false),
     update,
     setBudget,

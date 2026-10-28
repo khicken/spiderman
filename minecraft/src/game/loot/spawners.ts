@@ -7,6 +7,7 @@ import { findNear } from "../worldgen/structure-grid";
 import { rollLoot } from ".";
 
 const FLYING = new Set(["blaze", "breeze", "vex", "ghast", "phantom", "bat", "allay"]);
+const DARK = new Set(["zombie", "husk", "skeleton", "stray", "spider", "cave_spider"]);
 const FORTRESS_MOBS: [string, number][] = [["blaze", 10], ["zombified_piglin", 5], ["wither_skeleton", 8], ["skeleton", 2], ["magma_cube", 3]];
 
 type D = Record<string, unknown>;
@@ -28,13 +29,14 @@ function near(ctx: GameCtx, type: string, x: number, y: number, z: number, r: nu
   return n;
 }
 
-function spawnAround(ctx: GameCtx, be: BlockEntityData, mob: string, range: number, extra: D = {}): number {
+function spawnAround(ctx: GameCtx, be: BlockEntityData, mob: string, range: number, extra: D = {}, tries = 8): number {
   const flying = FLYING.has(mob);
-  for (let k = 0; k < 8; k++) {
+  for (let k = 0; k < tries; k++) {
     const x = be.x + Math.floor((ctx.random() - ctx.random()) * range);
     const y = be.y + Math.floor(ctx.random() * 3) - 1;
     const z = be.z + Math.floor((ctx.random() - ctx.random()) * range);
     if (!free(ctx, x, y, z, flying)) continue;
+    if (tries === 1 && DARK.has(mob) && ctx.world.getBlockLight(x, y, z) > 11) continue;
     const e = ctx.entities.spawn(mob, x + 0.5, y, z + 0.5, { persistent: false, ...extra });
     if (!e) return -1;
     ctx.emit({ type: "particles", kind: "flame", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 12 });
@@ -43,7 +45,8 @@ function spawnAround(ctx: GameCtx, be: BlockEntityData, mob: string, range: numb
   return -1;
 }
 
-// Vanilla mob spawner: active with a player within 16 blocks, 4 tries per cycle, 200-800 tick delay, at most 6 nearby.
+// Vanilla mob spawner: active with a player within 16 blocks, 4 tries per cycle, 200-800 tick delay after a spawn,
+// at most 6 of the mob within 4 blocks, darkness mobs need block light 11 or less.
 function tickSpawner(ctx: GameCtx, be: BlockEntityData, d: D) {
   const p = ctx.player.body.pos;
   const dx = p.x - be.x - 0.5, dy = p.y - be.y - 0.5, dz = p.z - be.z - 0.5;
@@ -55,9 +58,27 @@ function tickSpawner(ctx: GameCtx, be: BlockEntityData, d: D) {
     return;
   }
   const mob = String(d.mob ?? d.entity ?? "pig");
-  d.delay = 200 + Math.floor(ctx.random() * 601);
-  if (near(ctx, mob, be.x, be.y, be.z, 8) >= 6) return;
-  for (let k = 0; k < 4; k++) spawnAround(ctx, be, mob, 4);
+  let spawned = false;
+  for (let k = 0; k < 4; k++) {
+    if (near(ctx, mob, be.x + 0.5, be.y + 0.5, be.z + 0.5, 4.5) >= 6) break;
+    if (spawnAround(ctx, be, mob, 4, {}, 1) >= 0) spawned = true;
+  }
+  d.delay = spawned ? 200 + Math.floor(ctx.random() * 601) : 1;
+}
+
+// Bad Omen turns into Trial Omen near a trial spawner: 15 minutes per level.
+function trialOmen(ctx: GameCtx): boolean {
+  const fx = ctx.player.effects;
+  const bad = fx.find((e) => e.id === "bad_omen");
+  if (bad) {
+    fx.splice(fx.indexOf(bad), 1);
+    const pl = ctx.player as typeof ctx.player & { addEffect?(id: string, amp: number, ticks: number): void };
+    const ticks = 18000 * (bad.amplifier + 1);
+    if (pl.addEffect) pl.addEffect("trial_omen", 0, ticks);
+    if (!fx.some((e) => e.id === "trial_omen")) fx.push({ id: "trial_omen", amplifier: 0, ticks });
+    ctx.emit({ type: "sound", name: "event.mob_effect.trial_omen", x: ctx.player.body.pos.x, y: ctx.player.body.pos.y, z: ctx.player.body.pos.z });
+  }
+  return fx.some((e) => e.id === "trial_omen");
 }
 
 // Trial spawner: waves of 6 mobs (+2 per extra player), 2 at a time every 40 ticks, then reward and a 30 minute cooldown.
@@ -68,12 +89,22 @@ function tickTrial(ctx: GameCtx, be: BlockEntityData, d: D) {
   const raw = String(d.state ?? "waiting");
   const state = raw === "active" || raw === "ejecting" || raw === "cooldown" ? raw : "waiting";
   const at = { x: be.x + 0.5, y: be.y + 0.5, z: be.z + 0.5 };
+  const watching = dist2 <= 14 * 14 && ctx.player.gameMode !== "creative" && ctx.player.gameMode !== "spectator";
+  if (watching && !d.ominous && trialOmen(ctx)) {
+    d.ominous = true;
+    if (state !== "active") d.state = "waiting";
+    ctx.emit({ type: "sound", name: "block.trial_spawner.ominous_activate", ...at });
+    if (state === "cooldown") return;
+  }
   if (state === "cooldown") {
-    if (t >= num(d.until)) d.state = "waiting";
+    if (t >= num(d.until)) {
+      d.state = "waiting";
+      d.ominous = false;
+    }
     return;
   }
   if (state === "waiting") {
-    if (dist2 > 14 * 14 || ctx.player.gameMode === "creative" || ctx.player.gameMode === "spectator") return;
+    if (!watching) return;
     d.state = "active";
     d.total = 6;
     d.spawned = 0;
@@ -107,7 +138,8 @@ function tickTrial(ctx: GameCtx, be: BlockEntityData, d: D) {
     return;
   }
   if (state === "ejecting" && t >= num(d.next)) {
-    const table = ctx.random() < 0.5 ? "trial_spawner_key" : "trial_spawner_consumables";
+    const r = ctx.random();
+    const table = d.ominous ? (r < 0.3 ? "trial_spawner_ominous_key" : "trial_spawner_ominous") : r < 0.5 ? "trial_spawner_key" : "trial_spawner_consumables";
     for (const s of rollLoot(table, Math.floor(ctx.random() * 0x7fffffff))) ctx.entities.dropItem(s, be.x + 0.5, be.y + 1.2, be.z + 0.5);
     ctx.emit({ type: "sound", name: "block.trial_spawner.eject_item", ...at });
     d.state = "cooldown";

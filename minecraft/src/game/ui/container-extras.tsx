@@ -11,6 +11,18 @@ import { arrowUrl, buttonUrl, pixelUrl } from "./sprites";
 import { TextField, playClick } from "./widgets";
 import { MerchantPanel } from "./merchant-screen";
 import { BeaconExtras } from "./beacon-screen";
+import { BH, BW, bannerPixels, type Layer } from "../systems/features/banner-art";
+import { mapPreviewUrl } from "../systems/features/map-render";
+
+const bannerUrl = (base: string, layers: Layer[], scale: number) => {
+  const px = bannerPixels(base, layers);
+  const w = Math.floor(BW / scale), h = Math.floor(BH / scale);
+  return pixelUrl(`banner:${base}:${scale}:${JSON.stringify(layers)}`, w, h, (x, y) => {
+    const o = (Math.floor((y + 0.5) * scale) * BW + Math.floor((x + 0.5) * scale)) * 4;
+    return (0xff000000 | (px[o] << 16) | (px[o + 1] << 8) | px[o + 2]) >>> 0;
+  });
+};
+const stackLayers = (s: { data?: Record<string, unknown> } | null | undefined): Layer[] => (Array.isArray(s?.data?.patterns) ? (s!.data!.patterns as Layer[]) : []);
 
 export interface ExtrasProps {
   view: ContainerView;
@@ -92,8 +104,24 @@ export function ContainerExtras({ view, placed, onOption, onRename, setTip, setT
           <Box x={120} y={20} w={48} h={56} bg="rgba(0,0,0,0.25)" />
         </>
       );
-    case "cartography_table":
-      return <Box x={67} y={13} w={66} h={66} bg="#4a3b2a" />;
+    case "cartography_table": {
+      const shown = outputs[0]?.slot.stack ?? inputs[0]?.slot.stack;
+      const url = mapPreviewUrl(shown);
+      const n = shown?.count ?? 0;
+      return (
+        <>
+          <Box x={67} y={13} w={66} h={66} bg="#4a3b2a" />
+          {url && n < 2 && <Img src={url} x={68} y={14} w={64} h={64} />}
+          {url && n >= 2 && (
+            <>
+              <Img src={url} x={68} y={14} w={48} h={48} />
+              <Img src={url} x={84} y={30} w={48} h={48} />
+            </>
+          )}
+          {url && shown?.data?.locked ? <Img src={pixelUrl("map_lock", 8, 10, (x, y) => (y < 4 ? ((x === 1 || x === 6) && y > 0) || (y === 0 && x > 1 && x < 6) ? 0xff6a6a6a : 0 : y === 6 && (x === 3 || x === 4) ? 0xff2a2a2a : 0xffb8b8b8))} x={120} y={16} w={8} h={10} /> : null}
+        </>
+      );
+    }
     case "brewing_stand": {
       const brew = p.brew ?? 0;
       const fuel = p.fuel ?? 0;
@@ -148,8 +176,8 @@ export function ContainerExtras({ view, placed, onOption, onRename, setTip, setT
           })}
         </>
       );
-    case "stonecutter":
-    case "loom": {
+    case "loom":
+    case "stonecutter": {
       const stone = view.kind === "stonecutter";
       const cols = 4;
       const bw = stone ? 16 : 14;
@@ -157,8 +185,12 @@ export function ContainerExtras({ view, placed, onOption, onRename, setTip, setT
       const gx = stone ? 52 : 60;
       const gy = stone ? 15 : 13;
       const rows = stone ? 3 : 4;
+      const preview = outputs[0]?.slot.stack ?? null;
       return (
-        <OptionGrid opts={opts} cols={cols} rows={rows} bw={bw} bh={bh} gx={gx} gy={gy} sel={sel} onPick={(i) => { setSel(i); choose(opts[i].id); }} setTip={setTip} />
+        <>
+          <OptionGrid opts={opts} cols={cols} rows={rows} bw={bw} bh={bh} gx={gx} gy={gy} sel={sel} onPick={(i) => { setSel(i); choose(opts[i].id); }} setTip={setTip} />
+          {!stone && preview && <Img src={bannerUrl(preview.item.slice(0, -7), stackLayers(preview), 1)} x={141} y={8} w={20} h={40} />}
+        </>
       );
     }
     case "beacon":
@@ -217,7 +249,13 @@ function OptionGrid({ opts, cols, rows, bw, bh, gx, gy, sel, onPick, setTip }: {
             }}
             style={{ position: "absolute", left: x, top: y, width: bw, height: bh, backgroundImage: `url(${buttonUrl(bw, bh, !o.enabled ? "disabled" : i === sel ? "hover" : "normal")})`, cursor: "pointer" }}
           >
-            {item ? <ItemIcon stack={{ item, count: 1 }} x={(bw - 16) / 2} y={(bh - 16) / 2} count={false} /> : <Text text={o.label.slice(0, 2)} x={2} y={3} />}
+            {item ? (
+              <ItemIcon stack={{ item, count: 1 }} x={(bw - 16) / 2} y={(bh - 16) / 2} count={false} />
+            ) : o.id.startsWith("pattern:") ? (
+              <Img src={bannerUrl("gray", [{ pattern: o.id.slice(8), color: "white" }], 3)} x={(bw - 6) / 2} y={(bh - 13) / 2} w={6} h={13} />
+            ) : (
+              <Text text={o.label.slice(0, 2)} x={2} y={3} />
+            )}
           </div>
         );
       })}

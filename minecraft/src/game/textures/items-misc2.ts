@@ -1,5 +1,6 @@
 import { type Painter, type Px, COLORS, DYE, T, mix, rampOf, set, shade } from "./items-paint";
 import { BOTTLE, DISC_SHAPE, LINGER, SPLASH, bottle } from "./items-shapes";
+import { BANNER_SPRITES, SHERD_MOTIFS, motifAt } from "./motifs";
 
 const POTION_WATER = "#385dc6";
 
@@ -58,11 +59,6 @@ const SHERD = [
   "................",
   "................",
 ];
-const SHERDS = [
-  "angler", "archer", "arms_up", "blade", "brewer", "burn", "danger", "explorer", "flow", "friend", "guster", "heart",
-  "heartbreak", "howl", "miner", "mourner", "plenty", "prize", "scrape", "sheaf", "shelter", "skull", "snort",
-];
-const PATTERNS = ["flower", "creeper", "skull", "mojang", "globe", "piglin", "flow", "guster"];
 
 const CANDLE = [
   "................",
@@ -117,16 +113,19 @@ Object.entries(TRIMS).forEach(([n, c], i) => {
     emblem(p, i, c);
   };
 });
-SHERDS.forEach((n, i) => {
+const motif = (p: Px, rows: readonly string[], c: string, ox: number, oy: number) => {
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (motifAt(rows, x, y)) set(p, ox + x, oy + y, c);
+};
+Object.entries(SHERD_MOTIFS).forEach(([n, rows], i) => {
   MISC2_PAINTERS[`${n}_pottery_sherd`] = (p) => {
     T(p, SHERD, { A: rampOf("#9a5a3a", "#2e140a") }, 280 + i);
-    emblem(p, i, "#4a2414", 3, 4);
+    motif(p, rows, "#4a2414", 3, 4);
   };
 });
-PATTERNS.forEach((n, i) => {
+Object.entries(BANNER_SPRITES).forEach(([n, rows], i) => {
   MISC2_PAINTERS[`${n}_banner_pattern`] = (p) => {
     T(p, TEMPLATE, { A: rampOf("#e8dcc0", "#6a5a40") }, 300 + i);
-    emblem(p, i, "#3a3a3a");
+    motif(p, rows, "#3a3a3a", 4, 4);
   };
 });
 for (const c of COLORS) {

@@ -56,6 +56,7 @@ export function lightPortal(ctx: GameCtx, x: number, y: number, z: number): bool
   if (ctx.world.dim === "end" || PORTAL < 0) return false;
   const p = findPortal(ctx.world, x, y, z);
   if (!p) return false;
+  if (ctx.world.hostAction) return ctx.world.hostAction("portal", x, y, z);
   const dx = p.axis === 1 ? 1 : 0, dz = p.axis === 1 ? 0 : 1;
   const s = stateOf(PORTAL, p.axis);
   for (let h = 0; h < p.height; h++) {
@@ -165,8 +166,12 @@ function ringComplete(w: WorldApi, cx: number, y: number, cz: number): boolean {
   return true;
 }
 
-function completeEndPortal(ctx: GameCtx, x: number, y: number, z: number) {
+export function completeEndPortal(ctx: GameCtx, x: number, y: number, z: number) {
   const w = ctx.world;
+  if (w.hostAction) {
+    w.hostAction("end_portal", x, y, z);
+    return;
+  }
   for (let i = -1; i <= 1; i++) {
     for (const [cx, cz] of [[x - i, z + 2], [x - i, z - 2], [x + 2, z - i], [x - 2, z - i]]) {
       if (!ringComplete(w, cx, y, cz)) continue;

@@ -192,7 +192,8 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
       }
       kind = "chest";
     }
-    const size = SIZES[kind];
+    const entBe = at?.entityId !== undefined ? (ctxOrNull()?.entities.get(at.entityId)?.data.be as BlockEntityData | undefined) : undefined;
+    const size = (kind === "chest" && entBe?.items?.length) || SIZES[kind];
     if (!size) return null;
     const b = bind(kind, at, size);
     if (!b) return null;

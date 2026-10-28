@@ -1,5 +1,5 @@
 import type { SoundGroup } from "../../contracts";
-import { addGrain, addGrains, addNoise, addPartials, addTone, alloc, filter, rand, type FilterType, type Rng } from "./dsp";
+import { addGrain, addGrains, addNoise, addPartials, addTone, alloc, filter, rand, resample, type FilterType, type Rng } from "./dsp";
 import { recipe, type Recipe } from "./voice";
 
 export type BlockAction = "break" | "place" | "step" | "hit" | "fall";
@@ -19,6 +19,7 @@ interface Mat {
   dec?: number;
   grain?: [number, number];
   chunk?: number; // rustle: weight of low discrete crunch grains
+  pitch?: number; // vanilla SoundType pitch, baked in because callers pass only the per-action factor
 }
 
 const MATS: Record<SoundGroup, Mat> = {
@@ -38,7 +39,7 @@ const MATS: Record<SoundGroup, Mat> = {
   cherry_wood: { kind: "knock", f: 290, dec: 0.85, bright: 0.65 },
   bamboo_wood: { kind: "knock", f: 470, dec: 1.2, bright: 0.35 },
   ladder: { kind: "knock", f: 380, dec: 0.7 },
-  metal: { kind: "metal", f: 950, dec: 1 },
+  metal: { kind: "stone", f: 1900, bright: 0.9, body: 0.4, pitch: 1.5 },
   copper: { kind: "metal", f: 620, dec: 0.7, bright: 0.4 },
   anvil: { kind: "metal", f: 480, dec: 2, bright: 0.7, body: 1 },
   heavy_core: { kind: "metal", f: 210, dec: 1.4, bright: 0.3, body: 1.2 },
@@ -54,7 +55,7 @@ const MATS: Record<SoundGroup, Mat> = {
 
 export const SOUND_GROUPS = Object.keys(MATS) as SoundGroup[];
 
-const DUR: Record<BlockAction, number> = { break: 0.45, place: 0.22, step: 0.14, hit: 0.1, fall: 0.25 };
+const DUR: Record<BlockAction, number> = { break: 0.5, place: 0.22, step: 0.24, hit: 0.1, fall: 0.25 };
 
 function burst(d: Float32Array, sr: number, r: Rng, t: number, dur: number, f: number, q: number, amp: number, attack: number, type: FilterType = "bandpass"): void {
   const n = Math.max(16, Math.floor(dur * sr));
@@ -74,7 +75,7 @@ function stone(d: Float32Array, sr: number, r: Rng, m: Mat, a: BlockAction): voi
   const f = m.f * rand(r, 0.9, 1.1);
   addGrain(d, sr, r, { start: 0, amp: 0.9, dur: 0.004, freq: f * 2.4, q: 0.7 });
   addTone(d, sr, { start: 0, dur: 0.05, freq: (t) => f * 0.2 * (1 + 0.6 * Math.exp(-t / 0.004)), amp: 0.3 * (m.body ?? 0.5), decay: 0.01 * dec });
-  const plan: Record<BlockAction, [number, number]> = { break: [0.26, 42], place: [0.09, 13], step: [0.06, 7], hit: [0.045, 5], fall: [0.12, 14] };
+  const plan: Record<BlockAction, [number, number]> = { break: [0.32, 46], place: [0.09, 13], step: [0.1, 12], hit: [0.045, 5], fall: [0.12, 14] };
   const [dur, count] = plan[a];
   addGrains(d, sr, r, {
     start: 0.001, dur: dur * dec, count: Math.round(count * dens), amp: 0.6, freqLo: f * 0.45, freqHi: f * (1.6 + bright * 1.4),
@@ -82,6 +83,10 @@ function stone(d: Float32Array, sr: number, r: Rng, m: Mat, a: BlockAction): voi
   });
   if (a === "break" || a === "fall") {
     addGrains(d, sr, r, { start: 0.01, dur: dur * 0.8, count: Math.round(10 * dens), amp: 0.35, freqLo: f * 0.18, freqHi: f * 0.5, q: 1.3, grainLo: 0.01, grainHi: 0.025, shape: 1.6 });
+  }
+  if (a === "step") {
+    const t2 = rand(r, 0.06, 0.1);
+    addGrains(d, sr, r, { start: t2, dur: 0.08 * dec, count: Math.round(8 * dens), amp: 0.3, freqLo: f * 0.4, freqHi: f * 1.8, q: 1.4, grainLo: 0.002, grainHi: 0.012, shape: 1.4 });
   }
   if (a === "break") {
     const t2 = rand(r, 0.12, 0.17);
@@ -95,7 +100,7 @@ function rustle(d: Float32Array, sr: number, r: Rng, m: Mat, a: BlockAction): vo
   const lo = m.lo ?? m.f * 0.4;
   const hi = m.hi ?? m.f * 2.5;
   const chunk = m.chunk ?? 0;
-  const plan: Record<BlockAction, [number, number, number]> = { break: [3, 0.1, 30], place: [2, 0.08, 22], step: [2, 0.05, 14], hit: [1, 0.05, 10], fall: [2, 0.08, 24] };
+  const plan: Record<BlockAction, [number, number, number]> = { break: [3, 0.11, 30], place: [2, 0.08, 22], step: [2, 0.085, 18], hit: [1, 0.05, 10], fall: [2, 0.08, 24] };
   const [bursts, len, count] = plan[a];
   let t = 0;
   for (let b = 0; b < bursts; b++) {
@@ -218,7 +223,7 @@ function chainSound(d: Float32Array, sr: number, r: Rng, m: Mat, a: BlockAction)
 
 function glass(d: Float32Array, sr: number, r: Rng, m: Mat, a: BlockAction): void {
   if (a !== "break") {
-    stone(d, sr, r, { kind: "stone", f: m.f, bright: 1, body: 0.15, dec: 0.8 }, a);
+    stone(d, sr, r, MATS.stone, a);
     return;
   }
   burst(d, sr, r, 0, 0.06, 4500, 0.5, 1, 0.0005);
@@ -243,7 +248,7 @@ export function renderBlock(group: SoundGroup, action: BlockAction, r: Rng, sr: 
   const tail = m.kind === "chime" ? 1.4 : m.kind === "metal" ? 0.9 : m.kind === "glass" ? 0.5 : m.kind === "squish" ? 0.4 : 0.15;
   const d = alloc(DUR[action] + tail, sr);
   KIND_FN[m.kind](d, sr, r, m, action);
-  return d;
+  return m.pitch ? resample(d, m.pitch) : d;
 }
 
 // Raw sample loudness: callers apply the vanilla volume factors (step 0.15, hit 0.25, fall 0.5).

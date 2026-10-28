@@ -91,7 +91,7 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudP
         </>
       )}
 
-      {survival && (
+      {!spectator && (
         <>
           {state.mountJump !== undefined ? (
             <>
@@ -101,14 +101,16 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudP
               </div>
             </>
           ) : (
-            <>
-              <img alt="" src={barUrl("xp_bg", 182, 0x2a2a2a, 0x202020, 0x181818, 20)} width={182} height={5} style={abs(hx, height - 29, 182, 5, { imageRendering: "pixelated" })} />
-              <div style={abs(hx, height - 29, Math.floor(state.xpProgress * 183), 5, { overflow: "hidden" })}>
-                <img alt="" src={barUrl("xp_fill", 182, 0xa0ff60, 0x80ff20, 0x4c9a12, 20)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
-              </div>
-            </>
+            survival && (
+              <>
+                <img alt="" src={barUrl("xp_bg", 182, 0x2a2a2a, 0x202020, 0x181818, 20)} width={182} height={5} style={abs(hx, height - 29, 182, 5, { imageRendering: "pixelated" })} />
+                <div style={abs(hx, height - 29, Math.floor(state.xpProgress * 183), 5, { overflow: "hidden" })}>
+                  <img alt="" src={barUrl("xp_fill", 182, 0xa0ff60, 0x80ff20, 0x4c9a12, 20)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
+                </div>
+              </>
+            )
           )}
-          {state.xpLevel > 0 && state.mountJump === undefined && <XpLevel level={state.xpLevel} x={cx} y={height - 35} />}
+          {survival && state.xpLevel > 0 && state.mountJump === undefined && <XpLevel level={state.xpLevel} width={width} y={height - 35} />}
           <StatusBars state={state} width={width} height={height} />
         </>
       )}
@@ -135,6 +137,7 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudP
       {state.bossBars.map((b, i) => {
         const [fg, bg] = BOSS[b.color] ?? BOSS.pink;
         const y = 12 + i * 19;
+        if (i > 0 && y >= height / 3) return null; // vanilla stops once a bar reaches a third of the screen
         return (
           <div key={b.id}>
             <Text text={b.name} x={cx} y={y - 9} align="center" />
@@ -152,9 +155,9 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudP
   );
 }
 
-function XpLevel({ level, x, y }: { level: number; x: number; y: number }) {
+function XpLevel({ level, width, y }: { level: number; width: number; y: number }) {
   const s = String(level);
-  const lx = x - Math.floor(textWidth(s) / 2);
+  const lx = Math.floor((width - textWidth(s)) / 2);
   return (
     <>
       {[
@@ -210,6 +213,11 @@ export function DebugOverlay({ lines, width }: { lines: Record<string, string>; 
   }
   left.push(...extra);
   for (const list of [left, right]) for (let i = 0; i < list.length; i++) list[i] ??= "";
+  // Narrow windows: cut a right line short where it would run into the left line on the same row.
+  for (let i = 0; i < right.length; i++) {
+    const room = width - 4 - (left[i] ? textWidth(left[i]) + 8 : 0);
+    if (right[i] && textWidth(right[i]) > room) right[i] = fitText(right[i], room);
+  }
   const col = (list: string[], side: "l" | "r") =>
     list.map((t, i) => {
       if (!t) return null;
@@ -218,7 +226,7 @@ export function DebugOverlay({ lines, width }: { lines: Record<string, string>; 
       const y = 2 + i * 9;
       return (
         <div key={`${side}${i}`}>
-          <div style={abs(x - 1, y - 1, w + 1, 9, { background: "rgba(80,80,80,0.565)" })} />
+          <div style={abs(x - 1, y - 1, w + 2, 9, { background: "rgba(80,80,80,0.565)" })} />
           <Text text={t} color={0xe0e0e0} shadow={false} x={x} y={y} />
         </div>
       );
@@ -229,6 +237,12 @@ export function DebugOverlay({ lines, width }: { lines: Record<string, string>; 
       {col(right, "r")}
     </>
   );
+}
+
+function fitText(t: string, room: number): string {
+  let s = t;
+  while (s && textWidth(s + "...") > room) s = s.slice(0, -1).replace(/§$/, "");
+  return s ? s + "..." : "";
 }
 
 // Rendered outside GuiRoot: a fixed or transformed ancestor isolates blending, and difference needs the game canvas as backdrop.

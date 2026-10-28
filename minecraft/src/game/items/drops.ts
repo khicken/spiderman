@@ -91,6 +91,7 @@ const RULES: Record<string, Rule> = {
   gilded_blackstone: (c) => (c.silk ? selfItem(c) : c.random() < at(FLINT_CHANCE, c.fortune) ? one("gold_nugget", randInt(c.random, 2, 5)) : selfItem(c)),
   ender_chest: (c) => (c.silk ? selfItem(c) : one("obsidian", 8)),
   bookshelf: (c) => (c.silk ? selfItem(c) : one("book", 3)),
+  decorated_pot: (c) => (["sword", "axe", "pickaxe", "shovel", "hoe"].includes(toolKind(c.tool) ?? "") || c.tool?.item === "trident" || c.tool?.item === "mace" ? [] : selfItem(c)),
   clay: (c) => (c.silk ? selfItem(c) : one("clay_ball", 4)),
   campfire: (c) => (c.silk ? selfItem(c) : one("charcoal", 2)),
   soul_campfire: (c) => (c.silk ? selfItem(c) : one("soul_soil")),

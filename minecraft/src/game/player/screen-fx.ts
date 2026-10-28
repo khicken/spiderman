@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { ItemMeshes } from "./item-mesh";
+import { fireTextures } from "../entities/fire-overlay";
 
 const DIST = 0.2;
 const D = Math.PI / 180;
@@ -28,11 +29,11 @@ function scopeTexture(): THREE.CanvasTexture | null {
 
 export interface ScreenFx {
   root: THREE.Group;
-  update(camera: THREE.PerspectiveCamera, spyglass: boolean, totemTicks: number, pt: number): void;
+  update(camera: THREE.PerspectiveCamera, spyglass: boolean, totemTicks: number, pt: number, fire?: boolean): void;
   dispose(): void;
 }
 
-// Camera-space overlays drawn with the hand: the spyglass scope mask and the totem of undying pop.
+// Camera-space overlays drawn with the hand: the spyglass scope mask, the totem of undying pop and the burning overlay.
 export function createScreenFx(items: ItemMeshes): ScreenFx {
   const root = new THREE.Group();
   const tex = scopeTexture();
@@ -49,11 +50,34 @@ export function createScreenFx(items: ItemMeshes): ScreenFx {
   root.add(scope);
   const totem = new THREE.Group();
   root.add(totem);
+  // Vanilla ScreenEffectRenderer.renderFire: two mirrored fire_1 quads at z -0.5, shifted 0.24 sideways and 0.3 down, turned 10 degrees.
+  const fire = new THREE.Group();
+  let fireMat: THREE.MeshBasicMaterial | null = null;
+  const firePlane = new THREE.PlaneGeometry(1, 1);
+  const fireUv = firePlane.getAttribute("uv");
+  for (let i = 0; i < fireUv.count; i++) fireUv.setX(i, 1 - fireUv.getX(i));
+  firePlane.translate(0, 0, -0.5);
+  fire.visible = false;
+  root.add(fire);
   let totemAdded = false;
 
   return {
     root,
-    update(camera, spyglass, totemTicks, pt) {
+    update(camera, spyglass, totemTicks, pt, burning = false) {
+      fire.visible = burning;
+      if (burning) {
+        const map = fireTextures()[1];
+        if (!fireMat) {
+          fireMat = new THREE.MeshBasicMaterial({ map, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
+          for (let i = 0; i < 2; i++) {
+            const m = new THREE.Mesh(firePlane, fireMat);
+            m.position.set(-(i * 2 - 1) * 0.24, -0.3, 0);
+            m.rotation.y = (i * 2 - 1) * 10 * D;
+            m.renderOrder = 99;
+            fire.add(m);
+          }
+        }
+      }
       const h = 2 * DIST * Math.tan((((camera.userData.handFov as number | undefined) ?? camera.fov) * D) / 2);
       const w = h * camera.aspect;
       scope.visible = spyglass;
@@ -84,6 +108,8 @@ export function createScreenFx(items: ItemMeshes): ScreenFx {
     },
     dispose() {
       plane.dispose();
+      firePlane.dispose();
+      fireMat?.dispose();
       scopeMat.dispose();
       side.dispose();
       tex?.dispose();

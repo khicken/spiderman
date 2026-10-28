@@ -4,6 +4,7 @@ import { applyPhysics, canSee, knockBody, playerTargetable, rotlerp, yawTo } fro
 import { explodeAt } from "../explosion";
 import { hurtAmount, nearby, num, particles, sound } from "./brain";
 import { dragonModel } from "./looks-dragon";
+import { crystalModel } from "./crystal-look";
 import { END_STATE, EXIT_Y, GATEWAY_Y, gatewaySlot } from "../../systems/end/state";
 import { buildExitPortal, buildGateway, exitPortalLit } from "../../systems/end/exit";
 
@@ -270,64 +271,6 @@ function crystalTick(e: Entity, _ctx: GameCtx): void {
   const beam = e.data.beam as number[] | undefined;
   if (beam && num(e, "_beamT") < e.age - 20) e.data.beam = undefined;
   if (beam) e.data._beamT = e.age;
-}
-
-function crystalModel(): MobModel {
-  const root = new THREE.Group();
-  const glass = new THREE.MeshLambertMaterial({ color: 0xd8d8f0, transparent: true, opacity: 0.45, depthWrite: false });
-  const core = new THREE.MeshLambertMaterial({ color: 0xf060c0 });
-  const beamMat = new THREE.MeshBasicMaterial({ color: 0xd8a0ff, transparent: true, opacity: 0.8 });
-  core.userData.glow = true;
-  beamMat.userData.glow = true;
-  const geo = new THREE.BoxGeometry(1, 1, 1);
-  const outer = new THREE.Mesh(geo, glass);
-  const inner = new THREE.Mesh(geo, glass);
-  const heart = new THREE.Mesh(geo, core);
-  outer.scale.setScalar(0.875);
-  inner.scale.setScalar(0.765);
-  heart.scale.setScalar(0.5);
-  const spin = new THREE.Group();
-  spin.add(outer, inner, heart);
-  root.add(spin);
-  const beam = new THREE.Mesh(geo, beamMat);
-  root.add(beam);
-  const base = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x404040 }));
-  base.scale.set(2, 0.5, 2);
-  base.position.y = 0.25;
-  root.add(base);
-  const local = new THREE.Vector3();
-  const world = new THREE.Vector3();
-  return {
-    root,
-    animate(e, pt) {
-      const age = e.age + pt;
-      const bob = Math.sin(age * 0.2) / 2 + 0.5;
-      spin.position.y = 1.2 + (bob * bob + bob) * 0.4;
-      outer.rotation.set(age * 0.05, age * 0.06, 0);
-      inner.rotation.set(-age * 0.07, age * 0.04, age * 0.05);
-      heart.rotation.set(age * 0.03, -age * 0.08, 0);
-      base.visible = e.data.showBottom !== false;
-      const bp = e.data.beam as number[] | undefined;
-      beam.visible = !!bp;
-      if (bp) {
-        world.set(bp[0], bp[1], bp[2]);
-        root.updateMatrixWorld();
-        local.copy(world);
-        root.worldToLocal(local);
-        local.y -= spin.position.y;
-        beam.position.set(local.x * 0.5, spin.position.y + local.y * 0.5, local.z * 0.5);
-        beam.scale.set(0.1, 0.1, local.length());
-        beam.lookAt(world);
-      }
-    },
-    dispose() {
-      geo.dispose();
-      glass.dispose();
-      core.dispose();
-      beamMat.dispose();
-      (base.material as THREE.Material).dispose();
-    },
-  };
 }
 
 function fireballTick(e: Entity, ctx: GameCtx): void {

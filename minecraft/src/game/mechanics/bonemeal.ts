@@ -127,6 +127,11 @@ function growHead(ctx: GameCtx, x: number, y: number, z: number, s: BlockState, 
 
 // Returns true when the bone meal is used up, which matches vanilla isValidBonemealTarget.
 export function applyBoneMeal(ctx: GameCtx, x: number, y: number, z: number, s: BlockState): boolean {
+  const fwd = ctx.world.hostAction;
+  return fwd ? fwd("bone_meal", x, y, z, () => boneMeal(ctx, x, y, z, s)) : boneMeal(ctx, x, y, z, s);
+}
+
+function boneMeal(ctx: GameCtx, x: number, y: number, z: number, s: BlockState): boolean {
   const w = ctx.world;
   const d = blockDef(s);
   const n = d.name;

@@ -36,7 +36,8 @@ const fade = (ageMs: number) => {
 };
 
 export function Chat({ messages, open, initial = "", onSend, onClose, complete, textOpacity = 1, bgOpacity = 0.5, lineSpacing = 0, chatWidth = WIDTH, keepOpen }: ChatProps) {
-  const lineH = Math.round(LINE * (1 + lineSpacing));
+  const lineH = Math.floor(LINE * (1 + lineSpacing));
+  const textY = lineH + Math.round(-8 * (lineSpacing + 1) + 4 * lineSpacing);
   const { width, height } = useGui();
   const [value, setValue] = useState(initial);
   const [scroll, setScroll] = useState(0);
@@ -147,7 +148,7 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
           const y = bottom - (i + 1) * lineH;
           return (
             <div key={l.key} style={{ position: "absolute", left: 0, top: y, width: chatWidth + 12, height: lineH, background: `rgba(0,0,0,${bgOpacity * l.alpha})` }}>
-              <Text text={l.text} color={l.color} amp x={4} y={lineH - 8} opacity={l.alpha * textOpacity} />
+              <Text text={l.text} color={l.color} amp x={4} y={textY} opacity={l.alpha * (textOpacity * 0.9 + 0.1)} />
             </div>
           );
         })}

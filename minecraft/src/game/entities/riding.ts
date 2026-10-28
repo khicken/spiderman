@@ -2,6 +2,7 @@ import type { Entity, GameCtx } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { blockBelow } from "../player/physics";
 import { rotlerp } from "./ai";
+import { mobDef } from "./registry";
 
 // Control the player writes each tick into the ridden entity's data._ctl. Entities tick first, so it lags one tick.
 export interface RideInput {
@@ -93,4 +94,96 @@ export function boostFactor(e: Entity, ctx: GameCtx) {
 
 export function holdsItem(ctx: GameCtx, item: string) {
   return ctx.inventory.held()?.item === item || ctx.inventory.slots[40]?.item === item;
+}
+
+// Mob passengers: a mob with data.mount set to a vehicle id sits in that vehicle's seat and skips its own AI.
+export interface SeatSpec {
+  seats: number;
+  // Seat i of n: [height above vehicle feet, forward offset]. The player always takes seat 0.
+  at(v: Entity, i: number, n: number, passenger: Entity | null): [number, number];
+}
+
+const SEATS: Record<string, SeatSpec> = {};
+const NOT_ANIMAL = new Set(["villager", "wandering_trader", "iron_golem", "snow_golem", "allay"]);
+
+// Vanilla seats move instances of Animal 0.2 forward.
+export function isAnimal(e: Entity) {
+  return mobDef(e.type)?.category === "passive" && !NOT_ANIMAL.has(e.type);
+}
+const crowd: Entity[] = [];
+const crowdOut: Entity[] = [];
+
+export function registerSeats(type: string, spec: SeatSpec) {
+  SEATS[type] = spec;
+}
+
+export function mobPassengers(ctx: GameCtx, v: Entity, out: Entity[]) {
+  out.length = 0;
+  const p = v.body.pos;
+  ctx.entities.near(p.x, p.y, p.z, 4, crowd);
+  for (const o of crowd) if (o.data.mount === v.id && !o.dead) out.push(o);
+  crowd.length = 0;
+  out.sort((a, b) => a.id - b.id);
+  return out;
+}
+
+function riderCount(ctx: GameCtx, v: Entity, mobs: Entity[]) {
+  return mobs.length + (isRidden(ctx, v) ? 1 : 0);
+}
+
+export function hasRoom(ctx: GameCtx, v: Entity) {
+  const s = SEATS[v.type];
+  return !!s && riderCount(ctx, v, mobPassengers(ctx, v, crowdOut)) < s.seats;
+}
+
+export function mountMob(ctx: GameCtx, e: Entity, v: Entity) {
+  if (e === v || e.dead || v.dead || e.data.mount !== undefined || e.data.leash !== undefined || e.age < ((e.data._boardCd as number) ?? 0) || !hasRoom(ctx, v)) return false;
+  e.data.mount = v.id;
+  return true;
+}
+
+// Vanilla boardingCooldown: 60 ticks before the mob can board again.
+export function dismountMob(e: Entity) {
+  e.data.mount = undefined;
+  e.data._boardCd = e.age + 60;
+}
+
+// Player seat for player/riding.ts: [height above vehicle feet, forward offset].
+export function playerSeat(ctx: GameCtx, v: Entity, base: number): [number, number] {
+  const s = SEATS[v.type];
+  if (!s) return [base, 0];
+  return s.at(v, 0, riderCount(ctx, v, mobPassengers(ctx, v, crowdOut)), null);
+}
+
+const seated: Entity[] = [];
+
+// Returns true while e rides a vehicle; the caller then skips AI and physics.
+export function seatTick(e: Entity, ctx: GameCtx): boolean {
+  const id = e.data.mount;
+  if (typeof id !== "number") return false;
+  const v = ctx.entities.get(id);
+  const s = v && !v.dead ? SEATS[v.type] : undefined;
+  if (!v || !s || e.data.leash !== undefined) {
+    dismountMob(e);
+    return false;
+  }
+  const mobs = mobPassengers(ctx, v, seated);
+  const pl = isRidden(ctx, v) ? 1 : 0;
+  const i = mobs.indexOf(e) + pl;
+  const n = mobs.length + pl;
+  seated.length = 0;
+  if (i >= s.seats) {
+    dismountMob(e);
+    return false;
+  }
+  const [dy, fwd] = s.at(v, i, n, e);
+  const b = e.body;
+  b.pos.set(v.body.pos.x - Math.sin(v.yaw) * fwd, v.body.pos.y + dy, v.body.pos.z - Math.cos(v.yaw) * fwd);
+  b.vel.set(0, 0, 0);
+  b.fallDistance = 0;
+  b.onGround = true;
+  e.yaw = v.yaw;
+  e.headYaw = rotlerp(e.headYaw, v.yaw, 0.2);
+  e.data._pa = e.age;
+  return true;
 }

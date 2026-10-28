@@ -3,7 +3,7 @@ import { FLICKER } from "./materials";
 
 // CPU twin of the chunk shader lightmap, so entities and particles match the blocks they stand on.
 // Returns sRGB 0..1 multipliers in out.
-const L = { daylight: 1, gamma: 0.5, nightVision: 0, ambient: 0, end: 0 };
+const L = { daylight: 1, gamma: 0.5, nightVision: 0, ambient: 0, end: 0, pulse: 0, dark: 0 };
 
 export function syncLightmap(u: ChunkUniforms) {
   L.daylight = u.uDaylight.value;
@@ -11,6 +11,8 @@ export function syncLightmap(u: ChunkUniforms) {
   L.nightVision = u.uNightVision?.value ?? 0;
   L.ambient = u.uDimLight?.value.x ?? 0;
   L.end = u.uDimLight?.value.y ?? 0;
+  L.pulse = u.uDarkness?.value.x ?? 0;
+  L.dark = u.uDarkness?.value.y ?? 0;
 }
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -36,7 +38,8 @@ export function lightmap(sky: number, block: number, out: [number, number, numbe
     const m = Math.max(r, g, b, 0.001);
     r += (r / m - r) * L.nightVision; g += (g / m - g) * L.nightVision; b += (b / m - b) * L.nightVision;
   }
-  const gm = L.gamma;
+  r = clamp01(r - L.pulse); g = clamp01(g - L.pulse); b = clamp01(b - L.pulse);
+  const gm = Math.max(0, L.gamma - L.dark);
   const ng = (c: number) => { const i = 1 - clamp01(c); return c + (1 - i * i * i * i - c) * gm; };
   r = ng(r); g = ng(g); b = ng(b);
   out[0] = clamp01(r + (0.75 - r) * 0.04);

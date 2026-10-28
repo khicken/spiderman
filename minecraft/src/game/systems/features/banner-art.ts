@@ -1,17 +1,11 @@
 import { DYE_RGB, type Dye } from "../../entities/passive/common";
+import { BANNER_SPRITES, motifAt } from "../../textures/motifs";
 
 export const BW = 20;
 export const BH = 40;
 
-const CREEPER = ["........", ".XX..XX.", ".XX..XX.", "...XX...", "..XXXX..", "..XXXX..", "..X..X..", "........"];
-const SKULL = ["..XXXX..", ".XXXXXX.", "XX..XX.X", "XX..XX.X", ".XXXXXX.", "..X.X.X.", "........", "X......X"];
-const PIGLIN = ["........", "..XXXX..", ".XXXXXX.", ".X.XX.X.", ".XXXXXX.", "..X..X..", "..XXXX..", "........"];
-const MOJANG = ["........", "XX....XX", "XXX..XXX", "XX.XX.XX", "XX....XX", "XX....XX", "XX....XX", "........"];
-const GUSTER = ["...XX...", "..X..X..", ".X.XX.X.", ".X.X..X.", ".X..XX..", "..X.....", "...XXXX.", "........"];
-
 function sprite(rows: string[], x: number, y: number): number {
-  const sx = Math.floor((x - 2) / 2), sy = Math.floor((y - 12) / 2);
-  return sy >= 0 && sy < 8 && sx >= 0 && sx < 8 && rows[sy][sx] === "X" ? 1 : 0;
+  return motifAt(rows, Math.floor((x - 2) / 2), Math.floor((y - 12) / 2)) ? 1 : 0;
 }
 
 // Alpha 0..1 of one banner pattern layer at pixel (x, y) of the 20x40 face, following the vanilla pattern shapes.
@@ -46,7 +40,7 @@ export function patternAlpha(p: string, x: number, y: number): number {
     case "triangle_top": return y <= 12 - Math.abs(cx) * 1.3 ? 1 : 0;
     case "triangles_bottom": return y >= 35 + Math.abs((x % 5) - 2) ? 1 : 0;
     case "triangles_top": return y <= 4 - Math.abs((x % 5) - 2) ? 1 : 0;
-    case "circle": return cx * cx + cy * cy < 26 ? 1 : 0;
+    case "circle": return cx * cx + cy * cy < 34 ? 1 : 0;
     case "rhombus": return Math.abs(cx) / 6.5 + Math.abs(cy) / 12 < 1 ? 1 : 0;
     case "border": return x < 2 || x > 17 || y < 2 || y > 37 ? 1 : 0;
     case "curly_border": return x < 1 || x > 18 || y < 1 || y > 38 || ((x < 3 || x > 16 || y < 3 || y > 36) && (x + y) % 2 === 0) ? 1 : 0;
@@ -67,11 +61,11 @@ export function patternAlpha(p: string, x: number, y: number): number {
       const a = Math.atan2(cy, cx);
       return r < 8 && Math.abs(((r - a * 1.2) % 3.2 + 3.2) % 3.2 - 1.6) < 0.7 ? 1 : 0;
     }
-    case "creeper": return sprite(CREEPER, x, y);
-    case "skull": return sprite(SKULL, x, y);
-    case "piglin": return sprite(PIGLIN, x, y);
-    case "mojang": return sprite(MOJANG, x, y);
-    case "guster": return sprite(GUSTER, x, y);
+    case "creeper": return sprite(BANNER_SPRITES.creeper, x, y);
+    case "skull": return sprite(BANNER_SPRITES.skull, x, y);
+    case "piglin": return sprite(BANNER_SPRITES.piglin, x, y);
+    case "mojang": return sprite(BANNER_SPRITES.mojang, x, y);
+    case "guster": return sprite(BANNER_SPRITES.guster, x, y);
     default: return 0;
   }
 }

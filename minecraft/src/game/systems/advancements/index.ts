@@ -100,10 +100,12 @@ function entered(ctx: GameCtx, from: Dim3) {
 function loadProgress(raw: unknown): Progress {
   const out: Progress = {};
   for (const [id, v] of Object.entries((raw ?? {}) as Record<string, unknown>)) {
+    // Unknown ids (custom/... or from a newer version) are kept as stored so a later save does not drop them.
     if (typeof v === "number") {
       const a = BY_ID.get(id);
       if (a) grantAll(out, a, v);
-    } else if (v && typeof v === "object" && BY_ID.has(id)) {
+      else out[id] = { c: {}, done: v };
+    } else if (v && typeof v === "object") {
       const st = v as AdvState;
       out[id] = { c: { ...(st.c ?? {}) }, ...(st.done ? { done: st.done } : {}) };
     }

@@ -80,7 +80,8 @@ export function knockBody(body: { vel: THREE.Vector3; onGround: boolean }, dx: n
 
 // Vanilla MeleeAttackGoal: in melee range, line of sight from eye to eye, 20 tick cooldown.
 // Hits e.data._target, or the player when no target is set. Returns true on a hit.
-export function meleeAttack(e: Entity, ctx: GameCtx, damage: number, cooldown = 20) {
+// knock is the attacker's knockback attribute; Mob.doHurtTarget pushes the target by half of it along the attack.
+export function meleeAttack(e: Entity, ctx: GameCtx, damage: number, cooldown = 20, knock = 0) {
   const cd = (e.data._atk as number) || 0;
   if (cd > e.age) return false;
   const t = (e.data._target as Target) ?? "player";
@@ -107,15 +108,21 @@ export function meleeAttack(e: Entity, ctx: GameCtx, damage: number, cooldown = 
     const pl = ctx.player as GameCtx["player"] & { invulnerable?: number };
     const fresh = (pl.invulnerable ?? 0) <= 10;
     ctx.player.damage(damage, "mob", e);
-    if (pl.invulnerable === undefined || (fresh && pl.invulnerable === 20)) knockBody(ctx.player.body, dx, dz, 0.4, playerKbResist(ctx));
+    if (pl.invulnerable === undefined || (fresh && pl.invulnerable === 20)) {
+      knockBody(ctx.player.body, dx, dz, 0.4, playerKbResist(ctx));
+      if (knock > 0) knockBody(ctx.player.body, dx, dz, knock * 0.5, playerKbResist(ctx));
+    }
     alertPets(ctx, e.id);
   } else {
+    const o = ctx.entities.get(t);
+    const hp = o?.health ?? 0;
     ctx.entities.damage(t, damage, "mob", e);
+    if (knock > 0 && o && o.health < hp) ctx.entities.knockback(t, dx, dz, knock * 0.5);
   }
   return true;
 }
 
-function playerKbResist(ctx: GameCtx) {
+export function playerKbResist(ctx: Pick<GameCtx, "inventory">) {
   let r = 0;
   for (let i = 36; i <= 39; i++) {
     const s = ctx.inventory.slots[i];

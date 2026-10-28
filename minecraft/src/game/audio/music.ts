@@ -1,5 +1,5 @@
 import { makeRng, midiHz, rand } from "./synth/dsp";
-import { composePiece, type MusicEvent, type MusicKind } from "./synth/music-synth";
+import { composePiece, NETHER_MOODS, type MusicEvent, type MusicKind } from "./synth/music-synth";
 import { renderImpulse, renderPiano } from "./synth/piano";
 import { pickPackClip, type PackLookup } from "./pack-sounds";
 
@@ -23,6 +23,7 @@ const PAD_WAVE: Record<MusicKind, OscillatorType> = { menu: "triangle", overworl
 // Seconds of silence between tracks: vanilla minDelay..maxDelay, game sets shortened from 10-20 min to 1-5 min.
 const GAP: Record<MusicKind, [number, number]> = { menu: [1, 30], overworld: [60, 300], creative: [60, 180], underwater: [60, 300], nether: [60, 300], end: [60, 300], credits: [0, 0] };
 const REPLACES: Record<MusicKind, boolean> = { menu: true, overworld: false, creative: false, underwater: false, nether: true, end: true, credits: true };
+const NETHER_FILTER_HZ: Record<string, number> = { crimson_forest: 4200, warped_forest: 7000, soul_sand_valley: 3800, basalt_deltas: 3500 };
 const PACK_EVENTS: Record<MusicKind, string[]> = {
   menu: ["music.menu"],
   overworld: ["music.game"],
@@ -56,6 +57,7 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
 
   const pianoCache = new Map<number, AudioBuffer>();
   let kind: MusicSetting = "none";
+  let biome = "nether_wastes";
   let current: Piece | null = null;
   let stream: { src: AudioBufferSourceNode; out: GainNode; kind: MusicKind } | null = null;
   const fading: Piece[] = [];
@@ -125,8 +127,12 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
     }
   }
 
+  function packEvents(k: MusicKind): string[] {
+    return k === "nether" ? [`music.nether.${biome}`] : PACK_EVENTS[k];
+  }
+
   function startStream(k: MusicKind): boolean {
-    for (const ev of PACK_EVENTS[k]) {
+    for (const ev of packEvents(k)) {
       const clip = pickPackClip(pack, ev);
       if (!clip) continue;
       const out = ctx.createGain();
@@ -150,11 +156,12 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
 
   function startPiece(k: MusicKind): void {
     if (startStream(k)) return;
-    const { events, length } = composePiece(k, rng);
+    const nether = k === "nether" ? NETHER_MOODS[biome] : undefined;
+    const { events, length } = composePiece(k, rng, nether);
     const out = ctx.createGain();
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = FILTER_HZ[k];
+    filter.frequency.value = (k === "nether" && NETHER_FILTER_HZ[biome]) || FILTER_HZ[k];
     filter.connect(out).connect(input);
     const start = ctx.currentTime + 3;
     out.gain.setValueAtTime(0, ctx.currentTime);
@@ -234,7 +241,7 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
       if (k === kind) return;
       const prev = kind;
       kind = k;
-      if (k !== "none") for (const ev of PACK_EVENTS[k]) pickPackClip(pack, ev);
+      if (k !== "none") for (const ev of packEvents(k)) pickPackClip(pack, ev);
       const playing = current?.kind ?? stream?.kind ?? null;
       const now = ctx.currentTime;
       if (k === "none") {
@@ -247,6 +254,10 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
       if (k === "menu" || k === "credits") nextStart = now + (k === "menu" ? rand(rng, 0.5, 2) : 0.5);
       else if (prev === "none" || prev === "menu") nextStart = now + rand(rng, 5, 15);
       else nextStart = Math.min(Math.max(nextStart, now + 5), now + rand(rng, 5, 20));
+    },
+    // Vanilla picks the next nether track from the current biome and never cuts the playing one.
+    setBiome(b: string): void {
+      if (NETHER_MOODS[b]) biome = b;
     },
     fadeAll(): void {
       stopCurrent(2.5);

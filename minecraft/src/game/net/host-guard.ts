@@ -1,6 +1,6 @@
-// Per remote player: message rate limits and the guarded-item ledger the host checks client inventories against.
+// Per remote player: message rate limits and the item ledger the host checks client inventories against.
 import type { BlockState, ItemStack } from "../contracts";
-import { addCounts, beCounts, breakDrops, clampSave, excessOf, guarded, invCounts, stackKey, type Counts } from "./inv-guard";
+import { addCounts, beCounts, beStacks, breakDrops, clampSave, excessOf, guarded, invCounts, stackKey, useKey, usedOf, type Counts } from "./inv-guard";
 
 export const RATES = {
   set: [20, 200],
@@ -10,6 +10,8 @@ export const RATES = {
   drop: [20, 64],
   chat: [2, 6],
   open: [4, 12],
+  skin: [0.2, 3],
+  cheap: [1, 64], // cheap items gained in ways the host does not model: flower pots, cauldrons, lecterns
 } as const satisfies Record<string, readonly [perSecond: number, burst: number]>;
 export type RateKind = keyof typeof RATES;
 
@@ -30,6 +32,7 @@ export interface SaveCheck {
   stale: boolean;
   save: unknown;
   clamped: boolean;
+  used: Counts; // by useKey: eaten, drunk or otherwise gone, not dropped or stored
 }
 
 export function createGuard(save: unknown, xpTotal: number) {
@@ -44,6 +47,21 @@ export function createGuard(save: unknown, xpTotal: number) {
   let xpCap = Math.max(0, xpTotal);
   let deathXp = true;
   const breaks: Break[] = [];
+  const moved: Counts = new Map();
+  let cheapAt = -1;
+  let cheapTokens: number = RATES.cheap[1];
+
+  // Spends the cheap-item budget; false when it is too small for n.
+  function cheap(n: number, now: number): boolean {
+    const [rate, burst] = RATES.cheap;
+    if (cheapAt >= 0) cheapTokens = Math.min(burst, cheapTokens + ((now - cheapAt) / 1000) * rate);
+    cheapAt = now;
+    if (cheapTokens < n) return false;
+    cheapTokens -= n;
+    return true;
+  }
+
+  const away = (s: ItemStack, n = s.count) => moved.set(useKey(s), (moved.get(useKey(s)) ?? 0) + n);
 
   const pending = (upTo = Infinity) => {
     const m: Counts = new Map(base);
@@ -91,51 +109,85 @@ export function createGuard(save: unknown, xpTotal: number) {
     },
     gave(stack: ItemStack): number {
       seq++;
-      const k = stackKey(stack);
-      if (guarded(k)) log.push({ seq, key: k, n: stack.count });
+      log.push({ seq, key: stackKey(stack), n: stack.count });
       return seq;
     },
     // A client inventory that has seen host events up to `at`.
-    check(s: unknown, at: number, exempt: boolean): SaveCheck {
-      if (!(at >= wholeSeq)) return { stale: true, save: null, clamped: false };
+    check(s: unknown, at: number, exempt: boolean, now = performance.now()): SaveCheck {
+      if (!(at >= wholeSeq)) return { stale: true, save: null, clamped: false, used: new Map() };
       let out = s;
       let clamped = false;
       if (!exempt) {
         const extra = excessOf(pending(at), last, s);
+        for (const [k, n] of extra) if (!guarded(k) && cheap(n, now)) extra.delete(k);
         if (extra.size) {
           out = clampSave(s, extra);
           clamped = true;
         }
       }
+      const used = usedOf(last, out);
+      for (const [k, n] of moved) {
+        const left = (used.get(k) ?? 0) - n;
+        if (left > 0) used.set(k, left);
+        else used.delete(k);
+      }
+      moved.clear();
       base = invCounts(out);
       last = out;
       log = log.filter((e) => e.seq > at);
-      return { stale: false, save: out, clamped };
+      return { stale: false, save: out, clamped, used };
+    },
+    // Takes n of an item the client is about to use up for a host action.
+    take(item: string, n = 1): boolean {
+      return spend(item, n);
+    },
+    has: (item: string) => (pending().get(item) ?? 0) > 0,
+    // A placed block uses up its item; cheap ones may come from the budget.
+    place(item: string, now = performance.now()): boolean {
+      return spend(item, 1) || (!guarded(item) && cheap(1, now));
     },
 
     broke(state: BlockState, held: string | null, x: number, y: number, z: number, tick: number, xp: number) {
       while (breaks.length && (breaks.length > 32 || tick - breaks[0].tick > BREAK_TICKS)) breaks.shift();
       breaks.push({ x, y, z, tick, items: breakDrops(state, held), xp });
     },
-    drop(stack: ItemStack, x: number, y: number, z: number, tick: number, exempt: boolean): boolean {
+    // A drop comes from a block the client just broke, else from its inventory.
+    drop(stack: ItemStack, x: number, y: number, z: number, tick: number, exempt: boolean, now = performance.now()): boolean {
       const k = stackKey(stack);
-      if (exempt || !guarded(k)) return true;
+      if (exempt) return true;
       for (const b of breaks) {
         const have = b.items.get(k) ?? 0;
         if (have < stack.count || tick - b.tick > BREAK_TICKS || Math.abs(b.x + 0.5 - x) > 2 || Math.abs(b.y + 0.5 - y) > 2 || Math.abs(b.z + 0.5 - z) > 2) continue;
         b.items.set(k, have - stack.count);
         return true;
       }
-      return spend(k, stack.count);
+      if (spend(k, stack.count) || (!guarded(k) && cheap(stack.count, now))) {
+        away(stack);
+        return true;
+      }
+      return false;
     },
-    // Moving guarded items into a block entity spends them, taking them out gives them back.
-    blockEntity(before: unknown, after: unknown, exempt: boolean): boolean {
+    // Moving items into a block entity spends them, taking them out gives them back.
+    blockEntity(before: unknown, after: unknown, exempt: boolean, now = performance.now()): boolean {
       const diff = beCounts(after);
       addCounts(diff, beCounts(before), -1);
       if (exempt) return true;
       const avail = pending();
-      for (const [k, n] of diff) if (n > 0 && (avail.get(k) ?? 0) < n) return false;
+      let short = 0;
+      for (const [k, n] of diff) {
+        const miss = n - Math.max(0, avail.get(k) ?? 0);
+        if (n <= 0 || miss <= 0) continue;
+        if (guarded(k)) return false;
+        short += miss;
+      }
+      if (short && !cheap(short, now)) return false;
       for (const [k, n] of diff) base.set(k, (base.get(k) ?? 0) - n);
+      for (const st of beStacks(after)) {
+        const n = diff.get(stackKey(st)) ?? 0;
+        if (n <= 0) continue;
+        away(st, Math.min(st.count, n));
+        diff.set(stackKey(st), n - Math.min(st.count, n));
+      }
       return true;
     },
 

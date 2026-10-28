@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { ItemStack } from "../../contracts";
+import { DYE_RGB, type Dye } from "../../entities/passive/common";
 import { MAP_BASE, SHADE } from "./map-colors";
 import { mapById, type MapData } from "./maps";
 
@@ -15,6 +16,7 @@ interface Entry {
 }
 
 const entries = new Map<number, Entry>();
+const previews = new Map<number, { version: number; url: string }>();
 let paper: ImageData | null = null;
 
 export function setMapViewer(x: number, z: number, yaw: number, dim: string) {
@@ -65,16 +67,34 @@ function draw(e: Entry, m: MapData) {
     g.fillStyle = "#8b1a1a";
     g.fillRect(mx - 2, mz - 2, 5, 5);
   }
+  for (const b of m.banners ?? []) {
+    const bx = Math.round((b.x + 0.5 - m.cx) / s + 64 + BORDER), bz = Math.round((b.z + 0.5 - m.cz) / s + 64 + BORDER);
+    const c = DYE_RGB[b.color as Dye] ?? 0xffffff;
+    g.fillStyle = "#3a2a1a";
+    g.fillRect(bx - 3, bz - 4, 1, 8);
+    g.fillRect(bx - 3, bz - 4, 7, 1);
+    g.fillStyle = `#${c.toString(16).padStart(6, "0")}`;
+    g.fillRect(bx - 2, bz - 3, 5, 5);
+    g.fillRect(bx - 1, bz + 2, 3, 1);
+  }
   if (viewer.dim !== m.dim) return;
-  let px = (viewer.x - m.cx) / s + 64, pz = (viewer.z - m.cz) / s + 64;
-  const off = px < 0 || px > 127 || pz < 0 || pz > 127;
-  px = Math.max(0, Math.min(127, px)) + BORDER;
-  pz = Math.max(0, Math.min(127, pz)) + BORDER;
+  const fx = (viewer.x - m.cx) / s, fz = (viewer.z - m.cz) / s;
+  const off = Math.abs(fx) > 63 || Math.abs(fz) > 63;
+  // Vanilla: off-map dot within 320 map pixels; past that only explorer maps keep a smaller dot.
+  const far = Math.abs(fx) >= 320 || Math.abs(fz) >= 320;
+  if (off && far && !m.marker) return;
+  const px = Math.max(-63, Math.min(63, fx)) + 64 + BORDER;
+  const pz = Math.max(-63, Math.min(63, fz)) + 64 + BORDER;
   g.save();
   g.translate(px, pz);
   if (off) {
+    const r = far ? 1.5 : 2.5;
     g.fillStyle = "#fff";
-    g.fillRect(-2, -2, 4, 4);
+    g.strokeStyle = "#222";
+    g.beginPath();
+    g.arc(0, 0, r, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
   } else {
     g.rotate(-viewer.yaw);
     g.beginPath();
@@ -121,4 +141,22 @@ export function mapTexture(stack: ItemStack | null | undefined): THREE.Texture |
 export function clearMapTextures() {
   for (const e of entries.values()) e.tex.dispose();
   entries.clear();
+  previews.clear();
+}
+
+
+// Data URL of a filled map's colors for 2D screens such as the cartography table.
+export function mapPreviewUrl(stack: ItemStack | null | undefined): string | null {
+  if (typeof document === "undefined" || stack?.item !== "filled_map") return null;
+  const id = typeof stack.data?.map === "number" ? stack.data.map : -1;
+  const m = mapById(id);
+  if (!m) return null;
+  const hit = previews.get(id);
+  if (hit && hit.version === m.version) return hit.url;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = SIZE;
+  draw({ canvas, tex: null as unknown as THREE.CanvasTexture, version: 0, drawn: 0 }, m);
+  const url = canvas.toDataURL();
+  previews.set(id, { version: m.version, url });
+  return url;
 }

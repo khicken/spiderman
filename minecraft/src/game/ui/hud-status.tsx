@@ -31,68 +31,87 @@ export interface StatusProps {
   height: number;
 }
 
+// Vanilla Gui.renderPlayerHealth: hearts blink for 20 ticks after damage (10 after healing while invulnerable),
+// and the health lost in the last second stays drawn as lighter hearts.
 export function StatusBars({ state, width, height }: StatusProps) {
   const left = Math.floor(width / 2 - 91);
   const right = Math.floor(width / 2 + 91);
   const top = height - 39;
-  const absorbEffect = state.effects.find((e) => e.id === "absorption");
-  const absorb = absorbEffect ? (absorbEffect.amplifier + 1) * 4 : 0;
+  const survival = state.gameMode === "survival" || state.gameMode === "adventure";
+  const absorb = Math.ceil(state.absorption ?? 0);
   const regen = state.effects.some((e) => e.id === "regeneration");
   const hungerFx = state.effects.some((e) => e.id === "hunger");
   const health = Math.ceil(state.health);
   const low = health + absorb <= 4;
 
-  const prev = useRef(health);
-  const [blinkUntil, setBlinkUntil] = useState(0);
-  useEffect(() => {
-    if (health < prev.current) setBlinkUntil(performance.now() + 1000);
-    prev.current = health;
-  }, [health]);
-  const blinking = blinkUntil > 0 && performance.now() < blinkUntil;
-  const tick = useTicks(low || regen || blinking || state.saturation <= 0);
-
-  const maxHp = Math.max(state.maxHealth, health);
-  const maxHearts = Math.ceil(maxHp / 2);
-  const absorbHearts = Math.ceil(absorb / 2);
-  const rows = Math.ceil((maxHp + absorb) / 2 / 10);
-  const rowH = Math.max(10 - (rows - 2), 3);
-  const regenIdx = regen ? tick % Math.ceil(maxHp + 5) : -1;
-  const kind: HeartKind = state.poisoned ? "poisoned" : state.withered ? "withered" : state.frozen ? "frozen" : "normal";
-  const blinkOn = blinking && Math.floor(tick / 3) % 2 === 0;
+  const now = performance.now();
+  const hp = useRef({ last: health, blinkUntil: 0, changedAt: 0, hurtAt: -Infinity, display: health });
+  const h = hp.current;
+  if (health !== h.last) {
+    if (health < h.last) {
+      h.blinkUntil = now + 1000;
+      h.hurtAt = now;
+    } else if (now - h.hurtAt < 1000) h.blinkUntil = now + 500;
+    h.changedAt = now;
+    h.last = health;
+  }
+  if (now - h.changedAt > 1000) {
+    h.display = health;
+    h.changedAt = now;
+  }
+  const blinkLeft = h.blinkUntil - now;
+  const tick = useTicks(survival && (low || regen || blinkLeft > 0 || state.saturation <= 0 || h.display !== health));
+  const blinking = blinkLeft > 0 && Math.floor(blinkLeft / 150) % 2 === 1;
+  const display = h.display;
 
   const out: React.ReactNode[] = [];
-  for (let i = maxHearts + absorbHearts - 1; i >= 0; i--) {
-    const x = left + (i % 10) * 8;
-    let y = top - Math.floor(i / 10) * rowH;
-    if (low) y += Math.floor(rand(tick * 312871 + i) * 2);
-    if (i < maxHearts && i === regenIdx) y -= 2;
-    out.push(<Icon key={`c${i}`} url={heartUrl("normal", "empty", state.hardcore, blinkOn)} x={x} y={y} />);
-    if (i >= maxHearts) {
-      const a = (i - maxHearts) * 2;
-      out.push(<Icon key={`h${i}`} url={heartUrl("absorbing", a + 1 < absorb ? "full" : "half", state.hardcore)} x={x} y={y} />);
-    } else if (i * 2 < health) {
-      out.push(<Icon key={`h${i}`} url={heartUrl(kind, i * 2 + 1 < health ? "full" : "half", state.hardcore)} x={x} y={y} />);
+  let rows = 1;
+  let rowH = 10;
+  if (survival) {
+    const maxHp = Math.max(state.maxHealth, display, health);
+    const maxHearts = Math.ceil(maxHp / 2);
+    const absorbHearts = Math.ceil(absorb / 2);
+    rows = Math.ceil((maxHp + absorb) / 2 / 10);
+    rowH = Math.max(10 - (rows - 2), 3);
+    const regenIdx = regen ? tick % Math.ceil(maxHp + 5) : -1;
+    const kind: HeartKind = state.poisoned ? "poisoned" : state.withered ? "withered" : state.frozen ? "frozen" : "normal";
+    for (let i = maxHearts + absorbHearts - 1; i >= 0; i--) {
+      const x = left + (i % 10) * 8;
+      let y = top - Math.floor(i / 10) * rowH;
+      if (low) y += Math.floor(rand(tick * 312871 + i) * 2);
+      if (i < maxHearts && i === regenIdx) y -= 2;
+      const hp2 = i * 2;
+      out.push(<Icon key={`c${i}`} url={heartUrl("normal", "empty", state.hardcore, blinking)} x={x} y={y} />);
+      if (i >= maxHearts) {
+        const a = hp2 - maxHearts * 2;
+        if (a < absorb) out.push(<Icon key={`a${i}`} url={heartUrl(kind === "withered" ? kind : "absorbing", a + 1 === absorb ? "half" : "full", state.hardcore)} x={x} y={y} />);
+      }
+      if (blinking && hp2 < display) out.push(<Icon key={`b${i}`} url={heartUrl(kind, hp2 + 1 === display ? "half" : "full", state.hardcore, true)} x={x} y={y} />);
+      if (hp2 < health) out.push(<Icon key={`h${i}`} url={heartUrl(kind, hp2 + 1 === health ? "half" : "full", state.hardcore)} x={x} y={y} />);
     }
   }
 
   const armor = state.armor;
-  if (armor > 0) {
+  if (survival && armor > 0) {
     const ay = top - (rows - 1) * rowH - 10;
-    for (let i = 0; i < 10; i++) out.push(<Icon key={`a${i}`} url={armorUrl(i * 2 + 1 < armor ? "full" : i * 2 + 1 === armor ? "half" : "empty")} x={left + i * 8} y={ay} />);
+    for (let i = 0; i < 10; i++) out.push(<Icon key={`r${i}`} url={armorUrl(i * 2 + 1 < armor ? "full" : i * 2 + 1 === armor ? "half" : "empty")} x={left + i * 8} y={ay} />);
   }
 
+  // Vanilla renderVehicleHealth: heart count follows the mount's max health (capped at 30), shown in every game mode.
   let rightRows = 1;
-  if (state.mountHealth !== undefined) {
+  const mountMax = state.mountMaxHealth ?? state.mountHealth;
+  if (state.mountHealth !== undefined && mountMax !== undefined) {
     const mh = Math.ceil(state.mountHealth);
-    const mHearts = Math.min(Math.ceil(mh / 2), 30);
+    const mHearts = Math.min(Math.floor((mountMax + 0.5) / 2), 30);
     rightRows = Math.ceil(mHearts / 10);
-    for (let i = 0; i < Math.max(mHearts, 1); i++) {
+    for (let i = 0; i < mHearts; i++) {
       const x = right - (i % 10) * 8 - 9;
       const y = top - Math.floor(i / 10) * 10;
-      out.push(<Icon key={`mc${i}`} url={heartUrl("normal", "empty")} x={x} y={y} />);
-      if (i * 2 < mh) out.push(<Icon key={`m${i}`} url={heartUrl("normal", i * 2 + 1 < mh ? "full" : "half")} x={x} y={y} />);
+      out.push(<Icon key={`mc${i}`} url={heartUrl("vehicle", "empty")} x={x} y={y} />);
+      if (i * 2 + 1 < mh) out.push(<Icon key={`m${i}`} url={heartUrl("vehicle", "full")} x={x} y={y} />);
+      else if (i * 2 + 1 === mh) out.push(<Icon key={`m${i}`} url={heartUrl("vehicle", "half")} x={x} y={y} />);
     }
-  } else {
+  } else if (survival) {
     const food = state.food;
     for (let i = 0; i < 10; i++) {
       const x = right - i * 8 - 9;
@@ -104,12 +123,12 @@ export function StatusBars({ state, width, height }: StatusProps) {
     }
   }
 
-  if (state.underwater || state.air < 300) {
-    const air = Math.max(0, state.air);
+  if (survival && (state.underwater || state.air < 300)) {
+    const air = Math.max(0, Math.min(300, state.air));
     const full = Math.ceil(((air - 2) * 10) / 300);
     const popping = Math.ceil((air * 10) / 300) - full;
     const by = top - rightRows * 10;
-    for (let i = 0; i < full + popping; i++) out.push(<Icon key={`b${i}`} url={bubbleUrl(i >= full)} x={right - i * 8 - 9} y={by} />);
+    for (let i = 0; i < full + popping; i++) out.push(<Icon key={`o${i}`} url={bubbleUrl(i >= full)} x={right - i * 8 - 9} y={by} />);
   }
 
   return <>{out}</>;

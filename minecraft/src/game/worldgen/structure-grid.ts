@@ -129,7 +129,7 @@ export const STRUCTS: StructDef[] = [
   },
   { name: "stronghold", dim: "overworld", salt: 0, spacing: 0, sep: 0, reach: 4, check: () => true },
   {
-    name: "fortress", dim: "nether", salt: 30084232, spacing: 27, sep: 4, reach: 6, pick: fortressPick,
+    name: "fortress", dim: "nether", salt: 30084232, spacing: 27, sep: 4, reach: 9, pick: fortressPick,
     check: (s, x, z, o) => ((o.y = 48 + (hash32(s, x, z, 0xf048) % 23)), (o.biome = netherGen(s).biomeAt(x, z)), true),
   },
   {

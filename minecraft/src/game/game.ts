@@ -26,6 +26,7 @@ import { loadEntities, saveEntities, saveMeta, type WorldMeta } from "./world/sa
 import { findSpawn } from "./worldgen";
 import type { GameInternals, NetLink } from "./net";
 import type { LanOptions } from "./net/host";
+import { setPortalSpin } from "./player/effects-fx";
 
 export type GamePhase = "loading" | "playing";
 
@@ -579,14 +580,14 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         const pos = player.body.pos;
         const isDark = dim === "end" || (dim === "overworld" && world.getSkyLight(Math.floor(pos.x), Math.floor(pos.y + 1), Math.floor(pos.z)) < 8);
         if (isDark !== dark) dark = isDark;
-        audio.setAmbient({ dark, rain: dim === "overworld" ? time.rain : 0 });
+        audio.setAmbient({ dark, rain: dim === "overworld" ? time.rain : 0, world });
         audio.setBiomeAmbient(dim === "nether" ? world.getBiome(Math.floor(pos.x), Math.floor(pos.z)).name : null);
         if (!paused) audio.setMusic(dim === "nether" ? "nether" : dim === "end" ? "end" : player.gameMode === "creative" ? "creative" : player.air < 300 ? "underwater" : "overworld");
         ui.hud(hudState());
         const wantLock = !touch && input.enabled && !input.pointerLocked;
         if (!wantLock) unlockedAt = 0;
         else if (!unlockedAt) unlockedAt = now;
-        const hint = wantLock && now - unlockedAt > 400;
+        const hint = wantLock && now - unlockedAt > 400 && !input.lockPending;
         if (hint !== lockHint) ui.lockHint?.((lockHint = hint));
       }
       if (now > saveAt) {
@@ -607,6 +608,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     const p = player.body.pos;
     const inside = idOf(world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) === portalId || idOf(world.getBlock(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z))) === portalId;
     portalFx = inside ? Math.min(1, portalFx + 0.0125) : Math.max(0, portalFx - 0.05);
+    setPortalSpin(portalFx);
   }
 
   function lightAtEye(): number {
@@ -636,7 +638,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   function hudState(): HudState {
     const inv = inventory;
     const held = inv.held();
-    const p = player as typeof player & { frozenTicks?: number };
+    const p = player as typeof player & { frozenTicks?: number; absorption?: number };
     const bossBars: HudState["bossBars"] = [];
     for (const e of entities.all()) {
       const b = e.data.bossbar as HudState["bossBars"][number] | undefined;
@@ -660,7 +662,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       hardcore: meta.hardcore,
       poisoned: player.effects.some((e) => e.id === "poison"),
       withered: player.effects.some((e) => e.id === "wither"),
-      frozen: (p.frozenTicks ?? 0) > 0,
+      frozen: (p.frozenTicks ?? 0) >= 140,
+      absorption: p.absorption,
       bossBars,
       heldName: held ? held.name ?? (isPotionItem(held.item) ? potionItemName(held.item, potionOf(held)) : itemDef(held.item)?.displayName ?? held.item) : undefined,
       underwater: player.air < 300,
@@ -672,7 +675,10 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       portal: portalFx,
       light: lightAtEye(),
       mountHealth: player.mountHealth(),
+      mountMaxHealth: player.vehicle != null ? entities.get(player.vehicle)?.maxHealth : undefined,
       mountJump: player.mountJump(),
+      mountJumpCooldown: player.vehicle != null && Number(entities.get(player.vehicle)?.data.dashCd ?? 0) > 0,
+      thirdPerson: player.thirdPerson,
     };
     if (debugOn) h.debug = debugLines();
     return h;
@@ -696,7 +702,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     const bx = Math.floor(pos.x), by = Math.floor(pos.y), bz = Math.floor(pos.z);
     const dir = player.lookDir();
     const f = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 1 : 3) : dir.z > 0 ? 2 : 0;
-    const yawDeg = ((((-player.yaw * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
+    const yawDeg = ((((180 - (player.yaw * 180) / Math.PI) % 360) + 540) % 360) - 180;
     const biome = world.getBiomeAt?.(bx, by, bz) ?? world.getBiome(bx, bz);
     const info = renderer.renderer.info;
     const t = player.target;
@@ -916,6 +922,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         player.pitch = (pitchDeg * Math.PI) / 180;
       },
       cmd: (line: string) => runCommand(ctx, line),
+      dim: (d: Dim, x: number, y: number, z: number) => queued.push({ type: "change_dim", dim: d, x, y, z }),
       block: (x: number, y: number, z: number) => blockDef(world.getBlock(x, y, z)).name,
       fps: () => fps,
       caveCull: CAVE_CULL,

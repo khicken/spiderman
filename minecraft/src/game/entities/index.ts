@@ -13,11 +13,12 @@ import { tickBobber } from "./fishing";
 import { tickEnderEye, tickTrident } from "./trident";
 import { explodeAt } from "./explosion";
 import { createSpawner, despawns } from "./spawning";
-import { baseTick, rollDrops, deathSound, hurtSound, ambientTick, stepSounds } from "./living";
+import { baseTick, isBurning, rollDrops, deathSound, hurtSound, ambientTick, stepSounds } from "./living";
 import { createViews } from "./visuals";
 import { advKill } from "../systems/advancements/hooks";
 import { leadInteract } from "../systems/features/leads";
 import { mobEffectDeath, mobEffectHurt } from "../systems/brewing/effects";
+import { seatTick } from "./riding";
 
 const MISC_SIZE: Record<string, [number, number]> = {
   item: [0.25, 0.25],
@@ -363,7 +364,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     e.data._xpDrop = byPlayer;
     if (!isBaby(e) && def.drops) {
       const looting = attacker === "player" ? ctx.inventory.held()?.ench?.looting ?? 0 : 0;
-      for (const s of rollDrops(def.drops, ctx, looting, ((e.data._fire as number) ?? 0) > 0)) dropItem(s, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
+      const smelts = attacker === "player" && (ctx.inventory.held()?.ench?.fire_aspect ?? 0) > 0;
+      for (const s of rollDrops(def.drops, ctx, looting, isBurning(e) || smelts)) dropItem(s, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
     }
     if (e.data.saddle) dropItem({ item: "saddle", count: 1 }, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
     if (attacker && attacker !== "player" && attacker.data.owner === "player" && e.data.owner !== "player") e.data._xpDrop = true;
@@ -440,6 +442,10 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     baseTick(e, ctx, def);
     if (e.dead) return;
     ambientTick(e, ctx, def);
+    if (seatTick(e, ctx)) {
+      walkAnim(e);
+      return;
+    }
     def.tick(e, ctx);
     if (e.data._pa !== e.age && !e.dead) applyPhysics(e, ctx);
     walkAnim(e);

@@ -48,13 +48,18 @@ const ROD: Displays = { fp: [0, 90, 25, 0, 1.6, 0.8, 0.68], tp: [0, 90, 55, 0, 4
 const BOW: Displays = { fp: [0, -90, 25, 1.13, 3.2, 1.13, 0.68], tp: [-80, 260, -40, -1, -2, 2.5, 0.9] };
 const CROSSBOW: Displays = { fp: [-90, 0, -35, 1.13, 3.2, 1.13, 0.68], tp: [-90, 0, -60, 2, 0.1, -3, 0.9] };
 const BLOCK: Displays = { fp: [0, 45, 0, 0, 0, 0, 0.4], tp: [75, 45, 0, 0, 2.5, 0, 0.375] };
-const SHIELD: Displays = { fp: [0, 180, 5, 4, -5, -6, 0.75], tp: [0, 90, 0, -1, 6, -4, 1] };
+// Vanilla shield.json and shield_blocking.json, per hand: the builtin model is not symmetric, so left values are their own.
+const SHIELD_R: Displays = { fp: [0, 180, 5, -10, 2, -10, 1.25], tp: [0, 90, 0, 10, 6, -4, 1] };
+const SHIELD_L: Displays = { fp: [0, 180, 5, 10, 0, -10, 1.25], tp: [0, 90, 0, 10, 6, 12, 1] };
+const BLOCKING_R: Displays = { fp: [0, 180, -5, -15, 5, -11, 1.25], tp: [45, 135, 0, 3.51, 11, -2, 1] };
+const BLOCKING_L: Displays = { fp: [0, 180, -5, 5, 5, -11, 1.25], tp: [45, 135, 0, 13.51, 3, 5, 1] };
+const shieldDisplays = (i: number, blocking: boolean) => (blocking ? (i > 0 ? BLOCKING_R : BLOCKING_L) : i > 0 ? SHIELD_R : SHIELD_L);
 const HANDHELD_ITEMS = new Set(["stick", "bone", "blaze_rod", "breeze_rod", "bamboo", "mace", "debug_stick", "trident"]);
 const ROD_ITEMS = new Set(["fishing_rod", "carrot_on_a_stick", "warped_fungus_on_a_stick"]);
 
-export function itemDisplays(key: string, kind: ItemKind): Displays {
+export function itemDisplays(key: string, kind: ItemKind, i = 1, blocking = false): Displays {
   if (kind === "block") return BLOCK;
-  if (kind === "shield") return SHIELD;
+  if (kind === "shield") return shieldDisplays(i, blocking);
   const name = key.replace(/[@#].*$/, "");
   if (name.startsWith("bow")) return BOW;
   if (name.startsWith("crossbow")) return CROSSBOW;
@@ -80,10 +85,14 @@ export function heldKey(s: ItemStack | null, u: UseState | null | undefined, use
   return k;
 }
 
-const display = (d: Display, i: number) => {
+// shield: vanilla BlockEntityWithoutLevelRenderer draws the shield model through translate(-0.5) and scale(1, -1, -1).
+const display = (d: Display, i: number, shield = false) => {
   T((i * d[3]) / 16, d[4] / 16, d[5] / 16);
   RXYZ(d[0], i * d[1], i * d[2]);
   S(d[6], d[6], d[6]);
+  if (!shield) return;
+  T(-0.5, -0.5, -0.5);
+  S(1, -1, -1);
 };
 
 // Vanilla ItemInHandLayer: the item hangs from the hand of a third-person arm; i is 1 right, -1 left.
@@ -91,6 +100,7 @@ export function createHeldSlot(items: ItemMeshes, i: number) {
   const holder = new THREE.Group();
   holder.matrixAutoUpdate = false;
   let shown: string | null = null;
+  let shownBlocking = false;
   let arm: THREE.Object3D | null = null;
   return {
     set(a: THREE.Object3D | null, stack: ItemStack | null, use?: UseState | null, useTicks = 0) {
@@ -100,16 +110,20 @@ export function createHeldSlot(items: ItemMeshes, i: number) {
         if (a) a.add(holder);
       }
       const name = heldKey(stack, use, useTicks);
-      if (name === shown) return;
-      shown = name;
-      holder.clear();
+      const blocking = use?.kind === "shield";
+      if (name === shown && blocking === shownBlocking) return;
+      shownBlocking = blocking;
       const md = name ? items.model(name) : null;
+      if (name !== shown) {
+        holder.clear();
+        if (md) holder.add(md.create());
+      }
+      shown = name;
       if (!md || !name) return;
-      holder.add(md.create());
       m.identity();
       T(i / 16, -10 / 16, -1 / 16);
       RX(-90);
-      display(itemDisplays(name, md.kind).tp, i);
+      display(itemDisplays(name, md.kind, i, blocking).tp, i, md.kind === "shield");
       holder.matrix.copy(m);
     },
     dispose() {
@@ -138,6 +152,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   root.add(armHolder, itemHolder);
   let shown: string | null = null;
   let shownFp: Display = GENERATED.fp;
+  let shownShield = false;
   const tp = createHeldSlot(items, 1);
 
   const setItem = (name: string | null) => {
@@ -145,6 +160,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     shown = name;
     itemHolder.clear();
     const md = name ? items.model(name) : null;
+    shownShield = md?.kind === "shield";
     if (md && name) {
       shownFp = itemDisplays(name, md.kind).fp;
       itemHolder.add(md.create());
@@ -170,7 +186,8 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   const armTransform = (equip: number, i: number) => T(i * 0.56, -0.52 - equip * 0.6, -0.72);
 
   // Vanilla ItemInHandRenderer.renderArmWithItem; i is 1 for the right hand and -1 for the left.
-  function itemMatrix(f: HandFrame, i: number, u: UseState | null, swing: number, equip: number, d: Display, holder: THREE.Object3D) {
+  function itemMatrix(f: HandFrame, i: number, u: UseState | null, swing: number, equip: number, d: Display, holder: THREE.Object3D, shield = false) {
+    if (shield) d = shieldDisplays(i, u?.kind === "shield").fp;
     m.copy(f.bob);
     if (u && (u.kind === "eat" || u.kind === "drink")) {
       const rem = u.total - f.useTicks + 1;
@@ -208,8 +225,6 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       RY(i * -45);
     } else if (u && u.kind === "shield") {
       armTransform(equip, i);
-      T(i * -0.32, 0.3, 0.05);
-      RY(i * -8);
     } else if (u && u.kind === "brush") {
       armTransform(equip, i);
       const h = 1 - ((f.useTicks % 10) + 1) / 10;
@@ -230,7 +245,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       RX(Math.sin(g * Math.PI) * -80);
       RY(i * -45);
     }
-    display(d, i);
+    display(d, i, shield);
     holder.matrix.copy(m);
   }
 
@@ -239,11 +254,13 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   root.add(offHolder);
   let offShown: string | null = null;
   let offFp: Display = GENERATED.fp;
+  let offShield = false;
   const setOff = (key: string | null) => {
     if (key === offShown) return;
     offShown = key;
     offHolder.clear();
     const md = key ? items.model(key) : null;
+    offShield = md?.kind === "shield";
     if (md && key) {
       offFp = itemDisplays(key, md.kind).fp;
       offHolder.add(md.create());
@@ -321,13 +338,13 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
         if (f.off) oneHandedMap(f, 1, f.swingOff ? 0 : f.swing, f.equip, mapMain);
         else twoHandedMap(f);
       } else if (empty) armMatrix(f);
-      else itemMatrix(f, 1, mainUse, mainUse || f.swingOff ? 0 : f.swing, f.equip, shownFp, itemHolder);
+      else itemMatrix(f, 1, mainUse, mainUse || f.swingOff ? 0 : f.swing, f.equip, shownFp, itemHolder, shownShield);
       const offUse = f.use && f.use.hand === "off" ? f.use : null;
       setOff(heldKey(f.off ?? null, offUse, f.useTicks));
       offHolder.visible = !!offShown && !offTex && !(mainTex && !f.off);
       const offSwing = f.swingOff ? f.swing : 0, offEquip = f.offEquip ?? 0;
       if (offTex) oneHandedMap(f, -1, offSwing, offEquip, mapOff);
-      else if (offHolder.visible) itemMatrix(f, -1, offUse, offUse ? 0 : offSwing, offEquip, offFp, offHolder);
+      else if (offHolder.visible) itemMatrix(f, -1, offUse, offUse ? 0 : offSwing, offEquip, offFp, offHolder, offShield);
     },
     setThirdPerson(arm, stack, use, useTicks) {
       tp.set(arm, stack, use, useTicks);

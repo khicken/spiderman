@@ -1,5 +1,6 @@
 // Vanilla-like bitmap font: 8 rows per glyph (rows 0-6 above the baseline, row 7 descender), advance = width + 1.
-import { activePacks, packImage, packVersion, type Img } from "../packs";
+import { activePacks, packVersion } from "../packs";
+import { packGlyphs } from "../packs/font";
 
 const URLS = new Map<string, { url: string; width: number; height: number }>();
 
@@ -107,7 +108,9 @@ export const LINE_HEIGHT = 9;
 
 export interface Glyph {
   width: number;
-  rows: Uint8Array; // GLYPH_ROWS * width, 1 = ink
+  rows: Uint8Array; // (h ?? GLYPH_ROWS) * width, 1 = ink
+  h?: number;
+  y?: number; // first row offset; pack glyphs taller than 8 rows start above row 0
 }
 
 export const GLYPHS: Record<string, Glyph> = {};
@@ -122,39 +125,18 @@ for (const [ch, src] of Object.entries(G)) {
 GLYPHS[" "] = { width: 3, rows: new Uint8Array(GLYPH_ROWS * 3) };
 
 const CLAUDE_GLYPHS: Record<string, Glyph> = { ...GLYPHS };
-let packGlyphs: Record<string, Glyph> | null = null;
+let packFont: Map<string, Glyph> | null = null;
 let fontV = 0;
 
-// Vanilla textures/font/ascii.png: 16x16 cells, char code = row * 16 + column, width = last inked column + 1.
 function loadPackFont() {
   fontV = packVersion();
   URLS.clear();
-  const img = activePacks().length ? packImage("font/ascii") : null;
-  packGlyphs = img ? glyphsFromSheet(img) : null;
-}
-
-export function glyphsFromSheet(img: Img): Record<string, Glyph> {
-  const out: Record<string, Glyph> = {};
-  const cw = img.w / 16, ch = img.h / 16, k = cw / 8;
-  const ink = (x: number, y: number) => img.data[(Math.floor(y) * img.w + Math.floor(x)) * 4 + 3] > 127;
-  for (let code = 33; code < 127; code++) {
-    const ox = (code % 16) * cw, oy = Math.floor(code / 16) * ch;
-    let last = -1;
-    for (let x = 0; x < cw; x++) for (let y = 0; y < ch; y++) if (ink(ox + x, oy + y)) last = Math.max(last, x);
-    if (last < 0) continue;
-    const width = Math.max(1, Math.ceil((last + 1) / k));
-    const rows = new Uint8Array(GLYPH_ROWS * width);
-    for (let gy = 0; gy < GLYPH_ROWS; gy++)
-      for (let gx = 0; gx < width; gx++) if (ink(ox + gx * k + k / 2, oy + gy * k + k / 2)) rows[gy * width + gx] = 1;
-    out[String.fromCharCode(code)] = { width, rows };
-  }
-  out[" "] = CLAUDE_GLYPHS[" "];
-  return out;
+  packFont = activePacks().length ? packGlyphs() : null;
 }
 
 export function glyphOf(ch: string): Glyph {
   if (fontV !== packVersion()) loadPackFont();
-  return packGlyphs?.[ch] ?? CLAUDE_GLYPHS[ch] ?? CLAUDE_GLYPHS["?"];
+  return packFont?.get(ch) ?? CLAUDE_GLYPHS[ch] ?? CLAUDE_GLYPHS["?"];
 }
 
 
@@ -270,12 +252,13 @@ export function rasterText(text: string, color = 0xffffff, shadow = true, amp = 
       for (let ch of r.text) {
         if (r.obfuscated && ch !== " ") ch = OBF[Math.floor(Math.random() * OBF.length)];
         const g = glyphOf(ch);
-        for (let gy = 0; gy < GLYPH_ROWS; gy++) {
-          const slant = r.italic ? (gy < 3 ? 1 : 0) : 0;
+        const gh = g.h ?? GLYPH_ROWS, oy = g.y ?? 0;
+        for (let gy = 0; gy < gh; gy++) {
+          const slant = r.italic ? (gy + oy < 3 ? 1 : 0) : 0;
           for (let gx = 0; gx < g.width; gx++) {
             if (!g.rows[gy * g.width + gx]) continue;
-            put(x + gx + dx + slant, gy + dy, c);
-            if (r.bold) put(x + gx + dx + slant + 1, gy + dy, c);
+            put(x + gx + dx + slant, gy + oy + dy, c);
+            if (r.bold) put(x + gx + dx + slant + 1, gy + oy + dy, c);
           }
         }
         x += advance(ch, r.bold);

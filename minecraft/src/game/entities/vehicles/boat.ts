@@ -4,7 +4,8 @@ import { blockDef } from "../../blocks/registry";
 import { blockBelow, moveBody, type MoveOpts } from "../../player/physics";
 import { isWater } from "../ai";
 import { rig, wrap, setRot, type VPart } from "../rig";
-import { rider, mountPlayer } from "../riding";
+import { rider, mountPlayer, mountMob, registerSeats, hasRoom, isAnimal } from "../riding";
+import { mobDef } from "../registry";
 import { blockCube, blockStateOfItem } from "../block-cube";
 import { boatSkin } from "./art";
 
@@ -106,6 +107,39 @@ function landFriction(ctx: GameCtx, e: Entity) {
   return blockDef(blockBelow(ctx.world, e.body)).slipperiness ?? 0.6;
 }
 
+// Vanilla Boat.getPassengerAttachmentPoint: with two riders the driver sits 0.2 forward and the other 0.6 back; animals sit 0.2 further forward.
+function boatSeat(seats: number) {
+  return {
+    seats,
+    at(v: Entity, i: number, n: number, p: Entity | null): [number, number] {
+      let fwd = 0;
+      if (n > 1) fwd = i === 0 ? 0.2 : -0.6;
+      if (p && isAnimal(p)) fwd += 0.2;
+      return [p ? 0.1 : -0.45, fwd];
+    },
+  };
+}
+registerSeats("boat", boatSeat(2));
+registerSeats("chest_boat", boatSeat(1));
+
+const touching: Entity[] = [];
+
+// Vanilla Boat.tick: when no player steers, mobs narrower than the boat that touch it climb in.
+function pickUp(e: Entity, ctx: GameCtx) {
+  if (rider(ctx, e) || !hasRoom(ctx, e)) return;
+  const b = e.body;
+  ctx.entities.near(b.pos.x, b.pos.y, b.pos.z, 2.5, touching);
+  for (const o of touching) {
+    const def = mobDef(o.type);
+    if (o === e || o.dead || !def || def.category === "misc" || def.category === "water" || o.body.width >= b.width) continue;
+    const reach = (b.width + o.body.width) / 2 + 0.2;
+    if (Math.abs(o.body.pos.x - b.pos.x) > reach || Math.abs(o.body.pos.z - b.pos.z) > reach) continue;
+    if (o.body.pos.y > b.pos.y + b.height || o.body.pos.y + o.body.height < b.pos.y - 0.01) continue;
+    if (mountMob(ctx, o, e) && !hasRoom(ctx, e)) break;
+  }
+  touching.length = 0;
+}
+
 function tick(e: Entity, ctx: GameCtx) {
   e.data._pa = e.age;
   e.data.amphibious = true;
@@ -162,6 +196,7 @@ function tick(e: Entity, ctx: GameCtx) {
   e.data._drot = rot;
   e.headYaw = e.yaw;
   moveBody(ctx.world, b, opts);
+  pickUp(e, ctx);
   if (inWater && Math.hypot(b.vel.x, b.vel.z) > 0.2 && e.age % 3 === 0) ctx.emit({ type: "particles", kind: "splash", x: b.pos.x, y: surface, z: b.pos.z, count: 2 });
 }
 
@@ -193,7 +228,7 @@ function boatDef(chest: boolean): MobDef {
         ctx.inventory.open("chest", { x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z, entityId: e.id });
         return true;
       }
-      return mountPlayer(ctx, e);
+      return hasRoom(ctx, e) && mountPlayer(ctx, e);
     },
   };
 }

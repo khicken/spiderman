@@ -40,7 +40,7 @@ export function bobMatrix(p: PlayerState, pt: number, bobbing: boolean, out: THR
     out.multiply(tmp.makeRotationZ(-f * 14 * D));
     out.multiply(tmp.makeRotationY(p.hurtDir * D));
   }
-  if (bobbing && !p.flying) {
+  if (bobbing) {
     const g = p.walkDist - p.prevWalkDist;
     const h = -(p.walkDist + g * pt);
     const i = lerp(p.prevBob, p.bob, pt);
@@ -126,6 +126,7 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
   const fluid = fluidAt(ctx.world, eye.x, eye.y, eye.z);
   const powder = blockIds.powder >= 0 && idOf(ctx.world.getBlock(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z))) === blockIds.powder;
   ctx.renderer.setUnderwater(p.gameMode === "spectator" ? "none" : fluid ?? (powder ? "powder_snow" : "none"));
+  ctx.audio.setUnderwater?.(p.gameMode !== "spectator" && fluid === "water");
   let fov = p.fov * lerp(p.prevFovMod, p.fovMod, pt);
   if (fluid) fov *= 0.85714287;
   cam.userData.handFov = fluid ? 70 * 0.85714287 : 70;

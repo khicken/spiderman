@@ -108,16 +108,19 @@ export function enchantTargets(item: string): Set<EnchantTarget> {
 function setEffect(ctx: GameCtx, eff: Effect): boolean {
   const list = ctx.player.effects;
   const cur = list.find((e) => e.id === eff.id);
-  if (!cur) {
-    list.push(eff);
-    return true;
-  }
-  if (eff.amplifier > cur.amplifier || (eff.amplifier === cur.amplifier && eff.ticks > cur.ticks)) {
+  if (!cur) list.push(eff);
+  else if (eff.amplifier > cur.amplifier || (eff.amplifier === cur.amplifier && eff.ticks > cur.ticks)) {
     cur.amplifier = eff.amplifier;
     cur.ticks = eff.ticks;
-    return true;
-  }
-  return false;
+  } else return false;
+  const p = ctx.player as typeof ctx.player & { absorption?: number };
+  if (eff.id === "absorption" && p.absorption !== undefined) p.absorption = Math.max(p.absorption, 4 * (eff.amplifier + 1));
+  return true;
+}
+
+function clearAbsorption(ctx: GameCtx) {
+  const p = ctx.player as typeof ctx.player & { absorption?: number };
+  if (p.absorption !== undefined && !ctx.player.effects.some((e) => e.id === "absorption")) p.absorption = 0;
 }
 
 function giveStack(ctx: GameCtx, stack: ItemStack) {
@@ -412,10 +415,12 @@ const COMMANDS: Cmd[] = [
           const i = ctx.player.effects.findIndex((x) => x.id === e);
           if (i < 0) return fail("Target doesn't have the requested effect");
           ctx.player.effects.splice(i, 1);
+          clearAbsorption(ctx);
           return [`Removed effect ${EFFECTS[e].name} from ${playerName}`];
         }
         if (!ctx.player.effects.length) return fail("Target has no effects to remove");
         ctx.player.effects.length = 0;
+        clearAbsorption(ctx);
         return [`Removed every effect from ${playerName}`];
       }
       if (sub !== "give" || !b[0]) return fail("Unknown or incomplete command, see below for error");

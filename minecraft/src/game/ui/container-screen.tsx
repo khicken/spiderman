@@ -15,13 +15,17 @@ import { maxStack } from "../items/registry";
 import type { EmptySlotKind } from "./sprites";
 import { ContainerExtras } from "./container-extras";
 import { CreativeScreen, type CreativeProps } from "./creative-screen";
-import { RecipeBookPanel, recipeButtonUrl } from "./recipe-book";
+import { GhostOverlay, RecipeBookPanel, recipeButtonUrl } from "./recipe-book";
+import { bookTypeOf, type GhostSlot } from "../systems/features/recipe-book";
 
-const BOOK_KEY = "mc-recipe-book";
-const BOOK_BUTTON: Partial<Record<string, [number, number]>> = { inventory: [104, 61], crafting_table: [5, 34] };
-function bookStored(): boolean {
+const BOOK_BUTTON: Partial<Record<string, [number, number]>> = { inventory: [104, 61], crafting_table: [5, 34], furnace: [20, 34], blast_furnace: [20, 34], smoker: [20, 34] };
+const bookKey = (kind: string) => {
+  const t = bookTypeOf(kind as ContainerView["kind"]);
+  return t === "crafting" ? "mc-recipe-book" : `mc-recipe-book:${t}`;
+};
+function bookStored(kind: string): boolean {
   try {
-    return localStorage.getItem(BOOK_KEY) === "1";
+    return localStorage.getItem(bookKey(kind)) === "1";
   } catch {
     return false;
   }
@@ -75,15 +79,19 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
   dragRef.current = drag;
   const cursorRef = useRef(view.cursor);
   cursorRef.current = view.cursor;
-  const [book, setBook] = useState(bookStored);
+  const [book, setBook] = useState(() => bookStored(view.kind));
+  const [ghost, setGhost] = useState<GhostSlot[] | null>(null);
   const bookAt = BOOK_BUTTON[view.kind];
   const bookOpen = book && !!bookAt;
-  const left = Math.floor((width - L.w) / 2) + (bookOpen && width >= 379 ? 77 : 0);
+  // Vanilla RecipeBookComponent.updateScreenPosition; below 379 px the book covers the screen instead.
+  const narrow = width < 379;
+  const left = bookOpen && !narrow ? 177 + Math.trunc((width - L.w - 200) / 2) : Math.floor((width - L.w) / 2);
   const top = Math.floor((height - L.h) / 2);
   const toggleBook = () => {
     setBook(!book);
+    setGhost(null);
     try {
-      localStorage.setItem(BOOK_KEY, book ? "0" : "1");
+      localStorage.setItem(bookKey(view.kind), book ? "0" : "1");
     } catch {}
   };
 
@@ -161,6 +169,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
   const down = (index: number) => (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (ghost?.some((g) => g.index === index)) setGhost(null);
     const kind = clickKindOf(e);
     if ((kind === "left" || kind === "right") && view.cursor && !dragRef.current) {
       const d: Drag = { mode: kind, slots: [index], start: index };
@@ -190,7 +199,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
       onContextMenu={(e) => e.preventDefault()}
       style={{ position: "absolute", left: 0, top: 0, width, height, background: "linear-gradient(rgba(16,16,16,0.75), rgba(16,16,16,0.82))", pointerEvents: "auto" }}
     >
-      <div style={{ position: "absolute", left, top, width: L.w, height: L.h }}>
+      <div style={{ position: "absolute", left, top, width: L.w, height: L.h, visibility: bookOpen && narrow ? "hidden" : undefined }}>
         {bg ? (
           <>
             <Img src={bg.url} x={0} y={0} w={L.w} h={bg.split ?? L.h} />
@@ -212,7 +221,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
         {title}
         {L.invLabel && <Text text="Inventory" color={0x404040} shadow={false} x={L.invLabel[0]} y={L.invLabel[1]} />}
         {bookAt && (
-          <div style={{ position: "absolute", left: bookAt[0], top: bookAt[1], width: 20, height: 18, cursor: "pointer" }} onMouseDown={(e) => e.stopPropagation()} onClick={toggleBook}>
+          <div style={{ position: "absolute", left: bookAt[0], top: bookAt[1], width: 20, height: 18, cursor: "pointer", visibility: "visible", zIndex: 1 }} onMouseDown={(e) => e.stopPropagation()} onClick={toggleBook}>
             <Img src={recipeButtonUrl()} x={0} y={0} w={20} h={18} />
           </div>
         )}
@@ -234,8 +243,9 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
             onDown={down(p.slot.index)}
           />
         ))}
+        {bookOpen && ghost && <GhostOverlay ghost={ghost} placed={placed} />}
       </div>
-      {bookOpen && <RecipeBookPanel view={view} x={left - 149} y={Math.floor((height - 166) / 2)} setTip={setExtraTip} />}
+      {bookOpen && <RecipeBookPanel view={view} x={Math.trunc((width - 147) / 2) - (narrow ? 0 : 86)} y={Math.trunc((height - 166) / 2)} setTip={setExtraTip} setGhost={setGhost} />}
       <PointerLayer cursor={preview ? preview.cursor : view.cursor} tip={drag ? [] : tip} setCursor={setCursor} setTip={setTip} />
     </div>
   );

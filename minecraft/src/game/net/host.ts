@@ -1,12 +1,15 @@
 import * as THREE from "three";
 import type { BlockState, DamageSource, Dim, Entity, EntityApi, EntitySave, GameCtx, GameEvent, GameMode, ItemStack, PlayerApi } from "../contracts";
-import { MAX_Y, MIN_Y, idOf } from "../contracts";
+import { MAX_Y, MIN_Y, idOf, metaOf } from "../contracts";
 import { BLOCKS } from "../blocks/registry";
 import type { PlayerPicker } from "../entities";
 import { createInventory } from "../items";
 import { SLEEP_RULE } from "../mechanics/interact";
+import { applyBoneMeal, boneMealEffects } from "../mechanics/bonemeal";
+import { completeEndPortal, lightPortal } from "../mechanics/portal";
+import { itemDef } from "../items/registry";
 import { makeBody } from "../player/physics";
-import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND } from "../player/stats";
+import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, STEW_EFFECTS } from "../player/stats";
 import { mobDef } from "../entities/registry";
 import { createGuard, type Guard, type RateKind } from "./host-guard";
 import { boxDistSq } from "../entities/geom";
@@ -18,12 +21,14 @@ import { packChunk } from "./codec";
 import { closeDim, openDim, tickDim, type DimState } from "./host-dims";
 import { createTracker, type EntityTracker } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
-import { playerName, skinOf } from "./profile";
+import { playerName } from "./profile";
 import { cleanName, F, MAX_PLAYERS, PROTOCOL, int, isDim, newRoomCode, num, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type PlayerRecord, type PlayerSnap } from "./protocol";
 import { createTransport, type Transport } from "./transport";
 import { createAvatars } from "./avatars";
 import { setAdvancementSink } from "../systems/advancements";
-import { exhaust, healBy, hostDamage, newHealth, resetHealth, tickHealth, type Health, type HealthOwner } from "./host-health";
+import { claimEffects, eatCredit, exhaust, foodDelta, grantEffect, healBy, hostDamage, newHealth, resetHealth, tickHealth, type Health, type HealthOwner } from "./host-health";
+import { cleanLook, localLook, type Look } from "./skins";
+import { guarded, type Counts } from "./inv-guard";
 
 export interface LanOptions {
   gameMode: GameMode;
@@ -35,8 +40,11 @@ interface Remote {
   num: number;
   name: string;
   skin: 0 | 1;
+  look: Look | null;
   dim: Dim;
   pos: THREE.Vector3;
+  speed: number; // blocks per second, decaying peak of recent moves
+  pair: { id: number; x: number; y: number; z: number; tick: number } | null; // last paid placement: a door or bed places a free second half
   yaw: number;
   pitch: number;
   f: number;
@@ -64,13 +72,33 @@ const SOUND_RANGE = 48;
 const TICKED = new Set(["furnace", "lit_furnace", "blast_furnace", "lit_blast_furnace", "smoker", "lit_smoker", "brewing_stand", "hopper"]);
 const CHUNKS_PER_TICK = 6;
 const MAX_RD = 8;
-const REACH = 12;
 const key = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
 const clampRd = (r: number) => Math.max(2, Math.min(MAX_RD, r | 0));
 const MAX_REQS = (2 * MAX_RD + 3) ** 2;
 // Mobs a survival player can make without a spawn egg: golems, the wither, infested blocks, portals, oozing, mob buckets.
 const SURVIVAL_MOBS = new Set(["iron_golem", "snow_golem", "wither", "silverfish", "zombified_piglin", "slime", "cod", "salmon", "pufferfish", "tropical_fish", "axolotl", "tadpole"]);
 const MAX_BE_JSON = 64 * 1024;
+// The item a block placement uses up, when the edit puts a new block where air, fluid or a replaceable plant was.
+// A solid block turned into another (stripping, tilling, carving, potting) is free when the names share a word.
+function placedItem(was: BlockState, now: BlockState): string | null {
+  const from = BLOCKS[idOf(was)], to = BLOCKS[idOf(now)];
+  if (!to || idOf(now) === 0 || idOf(now) === idOf(was)) return null;
+  const item = to.item === null ? null : to.item ?? to.name;
+  if (!item || !itemDef(item)) return null;
+  if (idOf(was) === 0 || from?.replaceable || guarded(item)) return item;
+  const words = new Set(from?.name.split("_"));
+  return TILLED.has(to.name) || to.name.split("_").some((w) => words.has(w)) ? null : item;
+}
+const TILLED = new Set(["farmland", "dirt_path", "dirt", "coarse_dirt", "mud"]);
+
+const CAKE = new Set(["cake", "candle_cake"]);
+// A cake bite: a cake or candle cake turned into a cake with more bites, or eaten up.
+function ateCake(was: BlockState, now: BlockState) {
+  const from = BLOCKS[idOf(was)];
+  if (!from || !(CAKE.has(from.name) || from.tags?.includes("candle_cakes"))) return false;
+  if (idOf(now) === 0) return from.name === "cake" && metaOf(was) >= 6;
+  return BLOCKS[idOf(now)]?.name === "cake" && (from.name !== "cake" || metaOf(now) === metaOf(was) + 1);
+}
 const itemName = (v: unknown): string | null => (typeof v === "string" && v.length <= 64 ? v : null);
 const blockAt = (m: { x: unknown; y: unknown; z: unknown }) => int(m.x) !== null && int(m.y, MIN_Y, MAX_Y) !== null && int(m.z) !== null;
 const nearPos = (r: { pos: THREE.Vector3 }, m: { x: unknown; y: unknown; z: unknown }, d: number) => {
@@ -89,6 +117,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   const remotes = new Map<string, Remote>();
   const dims = new Map<Dim, DimState>();
   const avatars = createAvatars(() => g.ctx);
+  const hostLook = localLook();
   let nextNum = 1;
   let tick = 0;
   let origin: Remote | null = null;
@@ -218,6 +247,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       },
       respawn() {},
       addEffect(id: string, amp: number, ticks: number) {
+        grantEffect(r.hp, id, amp, ticks);
         send(r, { t: "effect", id, amp, ticks });
       },
     };
@@ -315,7 +345,30 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       send(r, { t: "setinv", inv: c.save, seq: r.guard.whole(c.save) });
     }
     r.record.inventory = c.save;
+    consumed(r, c.used);
     return c.save;
+  }
+
+  // Food and drinks that left the inventory: the host grants their hunger, effects and instant healing.
+  function consumed(r: Remote, used: Counts) {
+    const h = r.hp;
+    for (const [k, n] of used) {
+      const [item, sub] = k.split(":");
+      const food = itemDef(item)?.food;
+      for (let i = 0; i < Math.min(n, 64); i++) {
+        if (food) {
+          eatCredit(h, food.hunger, food.saturation);
+          for (const fx of food.effects ?? []) grantEffect(h, fx.effect, fx.amplifier, Math.round(fx.seconds * 20));
+        }
+        if (item === "potion")
+          for (const [id, sec, amp] of POTIONS[sub] ?? []) {
+            if (id === "instant_health") healBy(r.owner, 4 << amp);
+            else grantEffect(h, id, amp, Math.round(sec * 20));
+          }
+        const stew = item === "suspicious_stew" ? STEW_EFFECTS[sub] : undefined;
+        if (stew) grantEffect(h, stew[0], 0, Math.round(stew[1] * 20));
+      }
+    }
   }
 
   function limited(r: Remote, k: RateKind) {
@@ -323,8 +376,9 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   }
 
   // Vanilla ServerPlayer.canInteractWithBlock: block range plus a 1 block buffer, eye to the block box.
-  function reachesBlock(r: Remote, x: number, y: number, z: number) {
-    const range = (r.proxy.gameMode === "creative" ? BLOCK_REACH + CREATIVE_REACH_BONUS : BLOCK_REACH) + 1;
+  // slack: the client acts from where its previous move left it, a tick behind at speed.
+  function reachesBlock(r: Remote, x: number, y: number, z: number, slack = 0) {
+    const range = (r.proxy.gameMode === "creative" ? BLOCK_REACH + CREATIVE_REACH_BONUS : BLOCK_REACH) + 1 + slack;
     const ex = r.pos.x, ey = r.pos.y + (r.f & F.sneak ? EYE_SNEAK : EYE_STAND), ez = r.pos.z;
     const dx = Math.max(x - ex, 0, ex - x - 1), dy = Math.max(y - ey, 0, ey - y - 1), dz = Math.max(z - ez, 0, ez - z - 1);
     return dx * dx + dy * dy + dz * dz <= range * range;
@@ -397,7 +451,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     const sp = meta.spawn ?? { ...findSpawn(meta.seed), y: 80 };
     const pos = saved?.pos ? new THREE.Vector3(saved.pos[0], saved.pos[1], saved.pos[2]) : new THREE.Vector3(sp.x + 0.5, sp.y, sp.z + 0.5);
     const r: Remote = {
-      peer, num: nextNum++, name, skin: skinOf(name), dim: record.dim, pos, yaw: 0, pitch: 0, f: 0, sw: 0,
+      peer, num: nextNum++, name, skin: 0, look: null, dim: record.dim, pos, speed: 0, pair: null, yaw: 0, pitch: 0, f: 0, sw: 0,
       eq: { held: null, off: null, armor: [null, null, null, null] }, center: null, reqs: new Map(), tracker: createTracker(),
       inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), moveTick: tick, joinedAt: performance.now(), dimTick: tick,
       hp: newHealth(), owner: null!, guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
@@ -428,6 +482,9 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       t: "welcome", v: PROTOCOL, you: r.num, hostName, worldName: meta.name, seed: meta.seed, rules: { ...meta.rules, cheats: opts.cheats }, cheats: opts.cheats,
       gameMode: opts.gameMode, spawn: sp, time: { t: "time", tick: tm.tick, dayTime: tm.dayTime, day: tm.day, rain: tm.rain, thunder: tm.thunder }, save: record.player ? record : undefined,
     });
+    const looks = [{ id: 0, look: hostLook }];
+    for (const o of remotes.values()) if (o.look && o !== r) looks.push({ id: o.num, look: o.look });
+    send(r, { t: "skins", list: looks });
     say(`§e${name} joined the game`);
   }
 
@@ -448,11 +505,23 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     meta.players[r.name] = { dim: r.dim, player, inventory: r.record.inventory ?? r.inv.save(), adv: r.record.adv };
   }
 
+  function paid(r: Remote, item: string, s: number, x: number, y: number, z: number) {
+    const p = r.pair;
+    if (p && p.id === idOf(s) && tick - p.tick <= 2 && Math.abs(p.x - x) + Math.abs(p.y - y) + Math.abs(p.z - z) <= 2) {
+      r.pair = null;
+      return true;
+    }
+    if (!r.guard.place(item)) return false;
+    r.pair = { id: idOf(s), x, y, z, tick };
+    return true;
+  }
+
+  const inReach = (r: Remote, x: number, y: number, z: number) => reachesBlock(r, x, y, z, 0.5 + Math.min(4, r.speed * 0.1));
+
   // Right after a dimension change the client builds its arrival portal before its first move arrives.
   function nearEye(r: Remote, x: number, y: number, z: number) {
     if (tick - r.dimTick < 200 && r.center && Math.abs((x >> 4) - r.center.cx) <= 2 && Math.abs((z >> 4) - r.center.cz) <= 2) return true;
-    const dx = x + 0.5 - r.pos.x, dy = y + 0.5 - (r.pos.y + 1.6), dz = z + 0.5 - r.pos.z;
-    return dx * dx + dy * dy + dz * dz <= REACH * REACH;
+    return inReach(r, x, y, z);
   }
 
   // Vanilla ServerPlayer.canInteractWithEntity: entity range plus a 1 block buffer, eye to hit box.
@@ -488,6 +557,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
           send(r, { t: "tp", x: r.pos.x, y: r.pos.y, z: r.pos.z });
           return;
         }
+        r.speed = Math.max(r.speed * 0.9, (Math.hypot(x - r.pos.x, y - r.pos.y, z - r.pos.z) * 20) / ticks);
         r.pos.set(x, y, z);
         r.yaw = num(m.yaw) ?? r.yaw;
         r.pitch = num(m.pitch, -2, 2) ?? r.pitch;
@@ -528,14 +598,35 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (!w || m.dim !== r.dim || !blockAt(m) || int(m.s, 0, 0xffff) === null) return;
         if (limited(r, "set") || !nearEye(r, m.x, m.y, m.z) || !BLOCKS[idOf(m.s)]) return correct(r, w, m.x, m.y, m.z);
         const was = w.getBlock(m.x, m.y, m.z);
+        const item = placedItem(was, m.s);
+        if (item && !exempt(r) && tick - r.dimTick >= 200 && !paid(r, item, m.s, m.x, m.y, m.z)) {
+          r.guard.strike(performance.now(), 2);
+          return correct(r, w, m.x, m.y, m.z);
+        }
         withPlayer(r, (c) => c.world.setBlock(m.x, m.y, m.z, m.s as BlockState, m.f | 0));
         if (w.getBlock(m.x, m.y, m.z) !== m.s) correct(r, w, m.x, m.y, m.z);
+        else if (ateCake(was, m.s)) eatCredit(r.hp, 2, 0.4);
         else if (idOf(was) !== 0 && idOf(was) !== idOf(m.s)) r.guard.broke(was, r.eq.held, m.x, m.y, m.z, tick, BLOCKS[idOf(was)]?.xp?.[1] ?? 0);
+        return;
+      }
+      case "act": {
+        const w = worldOf(r.dim);
+        if (!w || m.dim !== r.dim || !blockAt(m) || limited(r, "set")) return;
+        if (!inReach(r, m.x, m.y, m.z)) return r.guard.strike(performance.now(), 5);
+        const free = exempt(r);
+        if (m.kind === "bone_meal") {
+          if (!free && !r.guard.take("bone_meal")) return correct(r, w, m.x, m.y, m.z);
+          withPlayer(r, (c) => {
+            if (applyBoneMeal(c, m.x, m.y, m.z, c.world.getBlock(m.x, m.y, m.z))) boneMealEffects(c, m.x, m.y, m.z);
+          });
+        } else if (m.kind === "portal") {
+          if (free || r.guard.has("flint_and_steel") || r.guard.has("fire_charge")) withPlayer(r, (c) => lightPortal(c, m.x, m.y, m.z));
+        } else if (m.kind === "end_portal") withPlayer(r, (c) => completeEndPortal(c, m.x, m.y, m.z));
         return;
       }
       case "be": {
         const w = worldOf(r.dim);
-        if (!w || m.dim !== r.dim || !blockAt(m) || !nearEye(r, m.x, m.y, m.z)) return;
+        if (!w || m.dim !== r.dim || !blockAt(m) || !inReach(r, m.x, m.y, m.z)) return;
         if (m.be !== null && (typeof m.be !== "object" || JSON.stringify(m.be).length > MAX_BE_JSON)) return;
         if (limited(r, "set") || !r.guard.blockEntity(w.getBlockEntity(m.x, m.y, m.z), m.be, exempt(r))) {
           r.guard.strike(performance.now(), 5);
@@ -548,7 +639,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       }
       case "wl": {
         const w = worldOf(r.dim);
-        if (!w || m.dim !== r.dim || !blockAt(m) || !nearEye(r, m.x, m.y, m.z)) return;
+        if (!w || m.dim !== r.dim || !blockAt(m) || !inReach(r, m.x, m.y, m.z)) return;
         withPlayer(r, (c) => c.world.setWaterlogged?.(m.x, m.y, m.z, !!m.on));
         return;
       }
@@ -636,6 +727,14 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         clientMode(r, pl.gameMode);
         return;
       }
+      case "skin": {
+        if (limited(r, "skin")) return;
+        r.look = cleanLook(m.look);
+        r.skin = r.look.slim ? 1 : 0;
+        avatars.look(r.num, r.look);
+        all({ t: "skins", list: [{ id: r.num, look: r.look }] });
+        return;
+      }
       case "chat": {
         if (limited(r, "chat")) return;
         const text = String(m.text).slice(0, 256);
@@ -662,14 +761,13 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (c && n !== null) hostDamage(r.owner, c, n, m.source, undefined, null);
         return;
       }
+      // Healing comes only from what the host saw: regeneration it granted, potions it saw drunk, natural regen.
       case "delta": {
         const h = r.hp;
         const dh = num(m.hp, -1e6, 1e6) ?? 0, df = num(m.food, -40, 40) ?? 0, ds = num(m.sat, -40, 40) ?? 0;
         if (h.dead) return;
-        if (dh > 0) healBy(r.owner, dh);
-        else if (dh < 0) h.health = Math.max(0, h.health + dh);
-        h.food = Math.max(0, Math.min(20, h.food + df));
-        h.saturation = Math.max(0, Math.min(h.food, h.saturation + ds));
+        if (dh < 0) h.health = Math.max(0, h.health + dh);
+        if (foodDelta(h, df, ds) || dh > 0) h.sent = "";
         if (h.health <= 0) {
           h.dead = true;
           send(r, { t: "die", source: "generic" });
@@ -681,10 +779,8 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         return;
       case "pst": {
         const h = r.hp;
-        h.effects = Array.isArray(m.eff) ? m.eff.slice(0, 64).filter((e) => Array.isArray(e) && typeof e[0] === "string").map((e) => [e[0], e[1] | 0] as [string, number]) : [];
-        h.absorption = num(m.abs, 0, 100) ?? 0;
-        h.maxHealth = num(m.max, 1, 1024) ?? 20;
-        h.health = Math.min(h.health, h.maxHealth);
+        const eff = Array.isArray(m.eff) ? m.eff.slice(0, 64).filter((e) => Array.isArray(e) && typeof e[0] === "string").map((e) => [e[0], e[1] | 0] as [string, number]) : [];
+        claimEffects(h, eff, num(m.abs, 0, 100) ?? 0, num(m.max, 1, 1024) ?? 20);
         h.blocking = !!m.block;
         clientMode(r, m.gm);
         return;
@@ -826,7 +922,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     const anim = (p as unknown as { attackAnim: number }).attackAnim ?? 0;
     if (anim > 0 && (prevAnim === 0 || anim < prevAnim)) hostSw++;
     prevAnim = anim;
-    const list: PlayerSnap[] = [{ id: 0, name: hostName, dim: g.dim, x: p.body.pos.x, y: p.body.pos.y, z: p.body.pos.z, yaw: p.yaw, pitch: p.pitch, f: hostFlags(), sw: hostSw, eq: hostEquip(), skin: skinOf(hostName) }];
+    const list: PlayerSnap[] = [{ id: 0, name: hostName, dim: g.dim, x: p.body.pos.x, y: p.body.pos.y, z: p.body.pos.z, yaw: p.yaw, pitch: p.pitch, f: hostFlags(), sw: hostSw, eq: hostEquip(), skin: hostLook.slim ? 1 : 0 }];
     for (const r of remotes.values()) list.push({ id: r.num, name: r.name, dim: r.dim, x: r.pos.x, y: r.pos.y, z: r.pos.z, yaw: r.yaw, pitch: r.pitch, f: r.f, sw: r.sw, eq: r.eq, skin: r.skin });
     return list;
   }
@@ -993,6 +1089,10 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     command(line) {
       return social(line, hostName);
     },
+    debug: () => ({
+      remotes: [...remotes.values()].map((r) => ({ name: r.name, x: r.pos.x, y: r.pos.y, z: r.pos.z, hp: r.hp.health, food: r.hp.food, effects: r.hp.effects, look: r.look })),
+      avatars: avatars.list(),
+    }),
     players() {
       const list: PlayerListEntry[] = [{ id: 0, name: hostName, ping: 0 }];
       for (const r of remotes.values()) list.push({ id: r.num, name: r.name, ping: t.direct(r.peer) ? 20 : 150 });

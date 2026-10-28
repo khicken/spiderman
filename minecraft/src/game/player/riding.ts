@@ -1,6 +1,6 @@
 import type { Entity, GameCtx } from "../contracts";
 import { mobDef } from "../entities/registry";
-import type { RideInput } from "../entities/riding";
+import { playerSeat, type RideInput } from "../entities/riding";
 import type { InputApi } from "./input";
 import { bodyBox, noCollision } from "./physics";
 import { EYE_STAND, HEIGHT_STAND } from "./stats";
@@ -88,15 +88,16 @@ export function createRiding() {
       ctl.pitch = p.pitch;
       ctl.jumpCharge = jumpCharge;
       v.data._ctl = ctl;
-      const seat = seatOf(v);
+      const [seat, fwd] = playerSeat(ctx, v, seatOf(v));
+      const fx = -Math.sin(v.yaw) * fwd, fz = -Math.cos(v.yaw) * fwd;
       const b = p.body;
       b.height = HEIGHT_STAND;
       p.eyeHeight = EYE_STAND;
       p.sneaking = false;
       p.sprinting = false;
       p.flying = false;
-      p.prevPos.set((v.data._px as number) ?? v.body.pos.x, ((v.data._py as number) ?? v.body.pos.y) + seat, (v.data._pz as number) ?? v.body.pos.z);
-      b.pos.set(v.body.pos.x, v.body.pos.y + seat, v.body.pos.z);
+      p.prevPos.set(((v.data._px as number) ?? v.body.pos.x) + fx, ((v.data._py as number) ?? v.body.pos.y) + seat, ((v.data._pz as number) ?? v.body.pos.z) + fz);
+      b.pos.set(v.body.pos.x + fx, v.body.pos.y + seat, v.body.pos.z + fz);
       b.vel.set(0, 0, 0);
       b.fallDistance = 0;
       b.onGround = v.body.onGround;

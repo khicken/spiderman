@@ -83,7 +83,7 @@ function containerSheet(kind: keyof typeof LAYOUTS): Img {
     draw(() => flameUrl(0), 56, 36);
     draw(() => arrowUrl(0, 24, 16), 79, 34);
   }
-  const sheet = newImg(256, 256);
+  const sheet = newImg(kind === "villager" ? 512 : 256, 256);
   if (kind === "large_chest") {
     over(sheet, crop(panel, 0, 0, L.w, L.h - 97), 0, 0);
     over(sheet, crop(panel, 0, L.h - 97, L.w, 96), 0, 126);
@@ -213,6 +213,9 @@ export async function exportClaudePack(opts: { sounds?: boolean } = {}): Promise
     const sheets: [string, keyof typeof LAYOUTS][] = [
       ["inventory", "inventory"], ["crafting_table", "crafting_table"], ["furnace", "furnace"], ["blast_furnace", "blast_furnace"],
       ["smoker", "smoker"], ["shulker_box", "shulker_box"], ["dispenser", "dispenser"], ["hopper", "hopper"], ["generic_54", "large_chest"],
+      ["crafter", "crafter"], ["anvil", "anvil"], ["enchanting_table", "enchanting_table"], ["brewing_stand", "brewing_stand"],
+      ["grindstone", "grindstone"], ["stonecutter", "stonecutter"], ["smithing", "smithing_table"], ["loom", "loom"],
+      ["cartography_table", "cartography_table"], ["villager", "villager"], ["beacon", "beacon"],
     ];
     for (const [name, kind] of sheets) images.push([`${T}gui/container/${name}.png`, containerSheet(kind)]);
     images.push([`${T}font/ascii.png`, fontSheet()]);

@@ -1,6 +1,7 @@
 // Wire protocol between the host (runs the world) and clients. JSON messages carry a `t` tag.
 // Binary messages start with one kind byte (BIN). The host is authoritative; clients send requests.
-import type { BlockEntityData, BlockState, ClickKind, ContainerKind, ContainerView, DamageSource, Dim, GameMode, ItemStack, Rules } from "../contracts";
+import type { BlockEntityData, BlockState, ClickKind, ContainerKind, ContainerView, DamageSource, Dim, GameMode, HostAction, ItemStack, Rules } from "../contracts";
+import type { Look } from "./skins";
 
 export const PROTOCOL = 1;
 export const MAX_PLAYERS = 8;
@@ -91,6 +92,8 @@ export type ClientMsg =
   | { t: "set"; dim: Dim; x: number; y: number; z: number; s: BlockState; f: number }
   | { t: "be"; dim: Dim; x: number; y: number; z: number; be: BlockEntityData | null }
   | { t: "wl"; dim: Dim; x: number; y: number; z: number; on: boolean }
+  | { t: "act"; dim: Dim; kind: HostAction; x: number; y: number; z: number }
+  | { t: "skin"; look: Look }
   | { t: "spawn"; type: string; x: number; y: number; z: number; vel: [number, number, number]; yaw: number; pitch: number; data: Record<string, unknown> }
   | { t: "drop"; stack: ItemStack; x: number; y: number; z: number; vel?: [number, number, number] }
   | { t: "dropxp"; n: number; x: number; y: number; z: number }
@@ -123,6 +126,7 @@ export type HostMsg =
   | { t: "blocks"; dim: Dim; list: number[]; be?: { x: number; y: number; z: number; be: BlockEntityData | null }[] }
   | { t: "ents"; spawn?: EntSpawn[]; gone?: number[]; data?: [number, Record<string, unknown>][]; clear?: boolean }
   | { t: "players"; list: PlayerSnap[] }
+  | { t: "skins"; list: { id: number; look: Look }[] }
   | { t: "list"; list: PlayerListEntry[] }
   | { t: "chat"; text: string; color?: string }
   | { t: "sound"; name: string; x?: number; y?: number; z?: number; volume?: number; pitch?: number }

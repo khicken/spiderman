@@ -119,7 +119,25 @@ function mixColors(base: number | undefined, dyes: string[]): number {
 
 type Special = (items: ItemStack[]) => ItemStack | null;
 
+const isBanner = (s: ItemStack) => s.item.endsWith("_banner") && !s.item.endsWith("_wall_banner");
+const layersOf = (s: ItemStack) => (Array.isArray(s.data?.patterns) ? (s.data!.patterns as unknown[]) : []);
+
 const SPECIALS: Special[] = [
+  (items) => {
+    if (items.length !== 2) return null;
+    const shield = items.find((s) => s.item === "shield");
+    const banner = items.find(isBanner);
+    if (!shield || !banner || shield.data?.banner) return null;
+    const out = copyStack(shield, 1);
+    out.data = { ...out.data, banner: banner.item.slice(0, -7), patterns: layersOf(banner) };
+    return out;
+  },
+  (items) => {
+    const filled = items.filter((s) => s.item === "filled_map");
+    const blank = items.filter((s) => s.item === "map").length;
+    if (filled.length !== 1 || blank < 1 || blank + 1 !== items.length) return null;
+    return { ...copyStack(filled[0], blank + 1) };
+  },
   (items) => {
     if (items.length !== 2 || items[0].item !== items[1].item || items[0].count !== 1 || items[1].count !== 1) return null;
     const max = maxDurability(items[0].item);
@@ -189,6 +207,30 @@ const SPECIALS: Special[] = [
   },
 ];
 
+// Vanilla DecoratedPotRecipe: top, left, right and bottom slots are the back, left, right and front faces.
+function decoratedPot(grid: (ItemStack | null)[]): ItemStack {
+  const sherds = [1, 3, 5, 7].map((i) => grid[i]?.item ?? "brick");
+  return sherds.every((s) => s === "brick") ? { item: "decorated_pot", count: 1 } : { item: "decorated_pot", count: 1, data: { sherds } };
+}
+
+function extendMap(grid: (ItemStack | null)[], width: number): ItemStack | null {
+  if (width !== 3) return null;
+  const map = grid[4];
+  if (map?.item !== "filled_map" || map.data?.locked) return null;
+  for (let i = 0; i < 9; i++) if (i !== 4 && grid[i]?.item !== "paper") return null;
+  const scale = Number(map.data?.scale ?? 0);
+  return scale < 4 ? { ...copyStack(map, 1), data: { ...map.data, scale: scale + 1 } } : null;
+}
+
+// Vanilla BannerDuplicateRecipe: the patterned banner stays in the grid.
+function duplicateBanner(grid: (ItemStack | null)[], items: ItemStack[]): CraftMatch | null {
+  if (items.length !== 2 || !items.every(isBanner) || items[0].item !== items[1].item) return null;
+  const src = items.find((s) => layersOf(s).length), dst = items.find((s) => !layersOf(s).length);
+  if (!src || !dst) return null;
+  const out = copyStack(src, 1);
+  return { result: out, consume: grid.map((s) => (s && s.count > 0 && s !== src ? 1 : 0)) };
+}
+
 function tippedArrow(grid: (ItemStack | null)[], width: number): ItemStack | null {
   if (width !== 3) return null;
   const center = grid[4];
@@ -205,8 +247,12 @@ export function matchCrafting(grid: (ItemStack | null)[], width: 2 | 3): CraftMa
   for (const s of grid) if (s && s.count > 0) items.push(s);
   for (const r of CRAFT_RECIPES) {
     const ok = r.type === "shaped" ? matchShaped(r, grid, width, b) : matchShapeless(r, items);
-    if (ok) return { result: { ...r.result }, consume };
+    if (ok) return { result: r.result.item === "decorated_pot" && width === 3 ? decoratedPot(grid) : { ...r.result }, consume };
   }
+  const ext = extendMap(grid, width);
+  if (ext) return { result: ext, consume };
+  const dup = duplicateBanner(grid, items);
+  if (dup) return dup;
   const arrow = tippedArrow(grid, width);
   if (arrow) return { result: arrow, consume };
   for (const sp of SPECIALS) {
@@ -283,7 +329,7 @@ export function recipeCounts() {
   for (const f of cutters) cut += stonecutterOptions(f).length;
   return {
     crafting: CRAFT_RECIPES.length,
-    special: SPECIALS.length + 1,
+    special: SPECIALS.length + 3,
     smelting: SMELT_RECIPES.length,
     blasting: SMELT_RECIPES.filter((r) => r.blast).length,
     smoking: SMELT_RECIPES.filter((r) => r.food).length,

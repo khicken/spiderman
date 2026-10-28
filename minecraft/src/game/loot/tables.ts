@@ -321,8 +321,8 @@ export const LOOT: Record<string, Table> = {
     ]),
   ],
   trial_spawner_key: [P(1, 1, [["trial_key", 1]])],
+  trial_spawner_ominous_key: [P(1, 1, [["ominous_trial_key", 1]])],
   trial_spawner_ominous: [
-    P(1, 1, [["ominous_trial_key", 1]]),
     P(1, 1, [["cooked_beef", 3, 2, 4], ["baked_potato", 3, 3, 6], ["golden_carrot", 2, 1, 3], ["potion", 1, 1, 1, "potion:strength"], ["wind_charge", 2, 1, 3]]),
   ],
 };

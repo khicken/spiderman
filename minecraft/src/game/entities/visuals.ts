@@ -8,12 +8,15 @@ import { orbIcon } from "./items";
 import { extraView } from "./visuals-extra";
 import { arrowGeometry, arrowMaterial, orbTextures, disposeMisc } from "./misc-art";
 import { createShadows, shadowRadius } from "./shadows";
+import { createFlames, disposeFlames, type Flames } from "./fire-overlay";
+import { isBurning } from "./living";
 
 interface View {
   group: THREE.Group;
   model?: MobModel;
   tag?: { sprite: THREE.Sprite; dispose(): void };
   tagText?: string;
+  flames?: Flames;
   key: string;
   seen: number;
   baby: boolean;
@@ -202,7 +205,7 @@ export function createViews(getCtx: () => GameCtx) {
       const hy = en.headYaw;
       en.headYaw = lerpAngle((en.data._phy as number) ?? hy, hy, pt) - yaw + en.yaw;
       model.animate(en, pt, walk, phase);
-      if (skinMat) syncPackSkin(en.type, model.root, skinMat);
+      if (skinMat) syncPackSkin(en.type, model.root, skinMat, en);
       en.headYaw = hy;
       shadeModel(model, getCtx(), en);
       const flash = (en.data.flash as number) ?? 0;
@@ -254,6 +257,7 @@ export function createViews(getCtx: () => GameCtx) {
 
   function destroy(id: number, v: View) {
     v.group.parent?.remove(v.group);
+    if (v.flames) v.flames.mesh.parent?.remove(v.flames.mesh);
     if (v.model) {
       forgetModel(v.model.root);
       v.model.dispose();
@@ -292,6 +296,7 @@ export function createViews(getCtx: () => GameCtx) {
         let v = views.get(e.id);
         if (dx * dx + dz * dz > max * max) {
           if (v) v.group.visible = false;
+          if (v?.flames) v.flames.mesh.visible = false;
           if (v) v.seen = frameNo;
           continue;
         }
@@ -311,6 +316,14 @@ export function createViews(getCtx: () => GameCtx) {
         v.seen = frameNo;
         v.group.visible = true;
         v.update(e, pt, x, y, z);
+        if (v.model) {
+          const burning = isBurning(e);
+          if (burning && !v.flames) {
+            v.flames = createFlames();
+            scene.add(v.flames.mesh);
+          }
+          v.flames?.update(burning, x, y, z, e.body.width, e.body.height, ctx.renderer.camera);
+        }
         const d2 = dx * dx + dz * dz + (y - camPos.y) * (y - camPos.y);
         if (d2 < 256 && !e.dead && !invisible(e)) {
           const r = shadowRadius(e.type, e.body.width) * (v.baby ? 0.5 : 1);
@@ -333,6 +346,7 @@ export function createViews(getCtx: () => GameCtx) {
     dispose() {
       for (const [id, v] of views) destroy(id, v);
       shadows.dispose();
+      disposeFlames();
       disposeCaches();
       disposeMisc();
     },

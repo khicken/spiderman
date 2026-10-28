@@ -38,6 +38,13 @@ const COATS: Record<string, Coat> = {
 
 export const CAT_VARIANTS = Object.keys(COATS).filter((k) => k !== "ocelot");
 
+// Vanilla Cat.finalizeSpawn: swamp huts give all_black; elsewhere all_black spawns only under a full moon.
+function catVariant(ctx: GameCtx, e: Entity) {
+  if (e.data.swamp) return "all_black";
+  const pool = ctx.time.day % 8 === 0 ? CAT_VARIANTS : CAT_VARIANTS.filter((v) => v !== "all_black");
+  return pool[Math.floor(ctx.random() * pool.length)];
+}
+
 function paintFeline(p: Pix, c: Coat) {
   const B = [c.base, shade(c.base, 0.94), shade(c.base, 1.04)];
   const head = p.fillCuboid(0, 0, 5, 4, 5, B);
@@ -188,7 +195,7 @@ export const CAT: MobDef = {
   sounds: { ambient: "entity.cat.stray_ambient", hurt: "entity.cat.hurt", death: "entity.cat.death" },
   createModel: () => felineModel(false),
   tick(e, ctx) {
-    if (!e.data.variant) e.data.variant = e.data.swamp ? "all_black" : CAT_VARIANTS[Math.floor(ctx.random() * CAT_VARIANTS.length)];
+    if (!e.data.variant) e.data.variant = catVariant(ctx, e);
     const tame = isTame(e);
     const speed = num(e, "_speed", 0.3);
     if (tame && ctx.random() < 0.002) sound(ctx, e, ctx.random() < 0.25 ? "entity.cat.purreow" : "entity.cat.purr", 0.6);

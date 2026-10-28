@@ -80,6 +80,7 @@ uniform float uNightVision;
 uniform vec3 uFogColor;
 uniform vec3 uSkyTint;
 uniform vec2 uDimLight;
+uniform vec2 uDarkness;
 uniform float uFlicker;
 #ifdef HELD
 uniform vec2 uHeldLight;
@@ -142,8 +143,9 @@ void main() {
   }
   light = clamp(light, 0.0, 1.0);
   light = mix(light, light / max(max(light.r, light.g), max(light.b, 0.001)), uNightVision);
-  vec3 inv = 1.0 - clamp(light, 0.0, 1.0);
-  light = mix(light, 1.0 - inv * inv * inv * inv, uGamma);
+  light = clamp(light - uDarkness.x, 0.0, 1.0);
+  vec3 inv = 1.0 - light;
+  light = mix(light, 1.0 - inv * inv * inv * inv, max(0.0, uGamma - uDarkness.y));
   light = mix(light, vec3(0.75), 0.04);
   col *= clamp(light, 0.0, 1.0) * vShade;
   col = toLinear(col);
@@ -180,6 +182,7 @@ export function createChunkUniforms(): ChunkUniforms {
     uSkyFogEnd: { value: 192 },
     uSkyMix: { value: 0 },
     uDimLight: { value: new THREE.Vector2(0, 0) },
+    uDarkness: { value: new THREE.Vector2(0, 0) },
   };
 }
 

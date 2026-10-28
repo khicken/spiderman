@@ -296,6 +296,7 @@ export interface ChunkUniforms {
   uSkyFogEnd?: { value: number };
   uSkyMix?: { value: number }; // 0 plain fog color, 1 sky dome color
   uDimLight?: { value: THREE.Vector2 }; // x dimension ambient light, y 1 for the End fixed lightmap
+  uDarkness?: { value: THREE.Vector2 }; // darkness effect: x light pulse subtracted, y blend that cancels the brightness option
 }
 
 // ---------- Block entities ----------
@@ -348,7 +349,7 @@ export interface Body {
 export type DamageSource =
   | "generic" | "fall" | "lava" | "fire" | "drown" | "starve" | "void" | "cactus"
   | "explosion" | "mob" | "player" | "arrow" | "suffocate" | "magic" | "wither"
-  | "lightning" | "freeze" | "thorns" | "mace" | "fly_into_wall" | "trident";
+  | "lightning" | "freeze" | "thorns" | "mace" | "fly_into_wall" | "trident" | "sonic_boom";
 
 export interface EntityHit {
   id: number;
@@ -419,7 +420,7 @@ export interface MobDef {
 // Block sounds use the SoundGroup: "block.<group>.<break|place|step|hit|fall>".
 export type GameEvent =
   | { type: "sound"; name: string; x?: number; y?: number; z?: number; volume?: number; pitch?: number }
-  | { type: "particles"; kind: "block" | "smoke" | "flame" | "explosion" | "splash" | "bubble" | "heart" | "angry" | "crit" | "portal" | "drip" | "note" | "dust" | "gust" | "trial_omen"; x: number; y: number; z: number; count?: number; state?: BlockState; color?: number }
+  | { type: "particles"; kind: "block" | "smoke" | "flame" | "explosion" | "splash" | "bubble" | "heart" | "angry" | "crit" | "portal" | "drip" | "note" | "dust" | "gust" | "trial_omen" | "happy" | "sweep" | "enchant" | "lava"; x: number; y: number; z: number; count?: number; state?: BlockState; color?: number }
   | { type: "block_changed"; x: number; y: number; z: number; from: BlockState; to: BlockState }
   | { type: "open_container"; kind: ContainerKind; x?: number; y?: number; z?: number; entityId?: number }
   | { type: "close_container" }
@@ -564,6 +565,9 @@ export const SET_NO_LIGHT = 2;
 export const SET_NO_DROP = 4;
 export const SET_DEFAULT = SET_NOTIFY;
 
+// Multi-block edits a multiplayer client asks the host to run instead of sending each block.
+export type HostAction = "bone_meal" | "portal" | "end_portal";
+
 export interface WorldApi {
   dim: Dim;
   seed: number;
@@ -583,6 +587,8 @@ export interface WorldApi {
   setBlockEntity(be: BlockEntityData | null, x: number, y: number, z: number): void;
   isWaterlogged?(x: number, y: number, z: number): boolean;
   setWaterlogged?(x: number, y: number, z: number, on: boolean): boolean;
+  // Multiplayer client only: runs predict with writes muted, then sends the action to the host when predict is true.
+  hostAction?(kind: HostAction, x: number, y: number, z: number, predict?: () => boolean): boolean;
   meshInput(cx: number, sy: number, cz: number): MeshInput | null; // null when the section is empty or neighbors are missing
   on(fn: (e: ChunkEvent) => void): () => void;
   // Load and unload chunks around the center. Call each frame.
@@ -653,6 +659,7 @@ export interface EntityApi {
 export interface AudioApi {
   play(name: string, x?: number, y?: number, z?: number, volume?: number, pitch?: number): void;
   setListener(pos: THREE.Vector3, yaw: number, pitch: number): void;
+  setUnderwater?(on: boolean): void;
   setVolume(master: number, music: number, sfx: number): void;
   setMusic(kind: "menu" | "overworld" | "creative" | "underwater" | "nether" | "end" | "none"): void;
   playRecord?(id: string, disc: string, x: number, y: number, z: number, seconds: number): void;
@@ -751,8 +758,11 @@ export interface HudState {
   withered: boolean;
   frozen: boolean;
   mountHealth?: number;
+  mountMaxHealth?: number; // sets the number of vehicle hearts
+  absorption?: number; // absorption health points
   mountJump?: number; // 0..1 horse jump bar charge
-  bossBars: { id: string; name: string; progress: number; color: string }[];
+  mountJumpCooldown?: boolean; // camel dash cooldown
+  bossBars: { id: string; name: string; progress: number; color: string; notches?: 6 | 10 | 12 | 20 }[];
   debug?: Record<string, string>; // F3 lines
   heldName?: string; // shows above the hotbar on change
   underwater: boolean;
@@ -764,4 +774,5 @@ export interface HudState {
   freeze?: number; // 0..1 powder snow overlay
   portal?: number; // 0..1 nether portal swirl
   light?: number; // 0..1 brightness at the eye, for the vignette
+  thirdPerson?: 0 | 1 | 2; // F5 camera, hides the crosshair
 }

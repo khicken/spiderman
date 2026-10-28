@@ -11,10 +11,12 @@ const LYDIAN = [0, 2, 4, 6, 7, 9, 11];
 const MIXO = [0, 2, 4, 5, 7, 9, 10];
 const DORIAN = [0, 2, 3, 5, 7, 9, 10];
 const AEOLIAN = [0, 2, 3, 5, 7, 8, 10];
+const PHRYGIAN = [0, 1, 3, 5, 7, 8, 10];
+const HARMONIC = [0, 2, 3, 5, 7, 8, 11];
 
 type Accomp = "arp" | "block" | "drone" | "waltz";
 
-interface Mood {
+export interface Mood {
   modes: number[][];
   roots: number[];
   bpm: [number, number];
@@ -36,6 +38,15 @@ export const MOODS: Record<MusicKind, Mood> = {
   nether: { modes: [AEOLIAN, DORIAN], roots: [38, 40, 41, 43], bpm: [52, 62], meters: [4], density: 0.35, mel: [50, 72], accomp: ["drone", "block"], pad: 1, length: [120, 180], minor: true, rests: 0.35 },
   end: { modes: [AEOLIAN, DORIAN], roots: [45, 47, 49], bpm: [48, 56], meters: [4, 3], density: 0.25, mel: [67, 91], accomp: ["drone"], pad: 1, length: [110, 170], minor: true, rests: 0.4 },
   credits: { modes: [MAJOR, LYDIAN], roots: [50, 53, 55], bpm: [64, 72], meters: [4], density: 0.6, mel: [62, 86], accomp: ["arp"], pad: 0.5, length: [200, 260], minor: false, rests: 0.1 },
+};
+
+// Vanilla gives each nether biome its own music pool; these are original moods per biome.
+export const NETHER_MOODS: Record<string, Mood> = {
+  nether_wastes: MOODS.nether,
+  crimson_forest: { modes: [PHRYGIAN, HARMONIC], roots: [36, 38, 39], bpm: [60, 70], meters: [4], density: 0.45, mel: [48, 70], accomp: ["block", "drone"], pad: 0.9, length: [120, 180], minor: true, rests: 0.25 },
+  warped_forest: { modes: [DORIAN, LYDIAN], roots: [43, 45, 46], bpm: [50, 58], meters: [3, 4], density: 0.3, mel: [57, 81], accomp: ["arp", "drone"], pad: 0.9, length: [120, 180], minor: true, rests: 0.35 },
+  soul_sand_valley: { modes: [AEOLIAN, PHRYGIAN], roots: [37, 40, 42], bpm: [44, 52], meters: [4], density: 0.2, mel: [55, 79], accomp: ["drone"], pad: 1, length: [110, 170], minor: true, rests: 0.5 },
+  basalt_deltas: { modes: [HARMONIC, PHRYGIAN], roots: [34, 36, 38], bpm: [56, 66], meters: [4], density: 0.4, mel: [46, 68], accomp: ["block"], pad: 1, length: [120, 180], minor: true, rests: 0.3 },
 };
 
 const MAJOR_NEXT: Record<number, [number, number][]> = {
@@ -133,8 +144,8 @@ function vary(r: Rng, m: Motif): Motif {
   return { rhythm: m.rhythm, durs: m.durs, steps };
 }
 
-export function composePiece(kind: MusicKind, r: Rng): { events: MusicEvent[]; length: number } {
-  const m = MOODS[kind];
+export function composePiece(kind: MusicKind, r: Rng, mood?: Mood): { events: MusicEvent[]; length: number } {
+  const m = mood ?? MOODS[kind];
   const key: Key = { root: pick(r, m.roots), mode: pick(r, m.modes) };
   const meter = pick(r, m.meters);
   const beat = 60 / rand(r, m.bpm[0], m.bpm[1]);

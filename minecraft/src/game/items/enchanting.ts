@@ -11,7 +11,7 @@ export class JavaRandom {
     this.setSeed(seed);
   }
   setSeed(seed: number) {
-    const s = Math.floor(Math.abs(seed));
+    const s = ((Math.floor(seed) % 2 ** 48) + 2 ** 48) % 2 ** 48;
     this.lo = (s % 0x1000000) ^ 0xece66d;
     this.hi = (Math.floor(s / 0x1000000) % 0x1000000) ^ 0x5de;
   }
@@ -117,8 +117,8 @@ export function selectEnchantments(r: JavaRandom, item: string, cost: number): {
   return out;
 }
 
-export function enchantList(item: string, seed: number, slot: number, cost: number): { id: string; level: number }[] {
-  const r = new JavaRandom(seed + slot);
+export function enchantList(item: string, seed: number, slot: number, cost: number, r = new JavaRandom(seed + slot)): { id: string; level: number }[] {
+  r.setSeed(seed + slot);
   const list = selectEnchantments(r, item, cost);
   if (item === "book" && list.length > 1) list.splice(r.nextInt(list.length), 1);
   return list;
@@ -139,8 +139,8 @@ export function enchantOffers(s: ItemStack | null, shelves: number, seed: number
   });
   return costs.map((cost, k) => {
     if (!cost) return { cost: 0, clue: null };
-    const list = enchantList(s!.item, seed, k, cost);
-    const clue = list.length ? list[new JavaRandom(seed + k).nextInt(list.length)] : null;
+    const list = enchantList(s!.item, seed, k, cost, r);
+    const clue = list.length ? list[r.nextInt(list.length)] : null;
     return { cost, clue };
   });
 }

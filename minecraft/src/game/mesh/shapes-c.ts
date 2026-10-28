@@ -256,6 +256,7 @@ function stonecutter() {
 }
 
 function pot() {
+  if (M.meta & 4) return;
   setFLBlock(M.id, 0, TEX);
   const side = FL[0], base = FL[2];
   box(1, 0, 1, 15, 16, 15, 63 & ~U);

@@ -5,7 +5,7 @@ import type { Recipe } from "./voice";
 const pop: Gen = (r, sr) => {
   const d = alloc(0.12, sr);
   const f = rand(r, 0.95, 1.05);
-  addTone(d, sr, { dur: 0.1, freq: (t) => (500 + 1300 * Math.exp(-t / 0.012)) * f, amp: 1, attack: 0.001, decay: 0.022 });
+  addTone(d, sr, { dur: 0.1, freq: (t) => (260 + 680 * Math.exp(-t / 0.012)) * f, amp: 1, attack: 0.001, decay: 0.022 });
   return d;
 };
 
@@ -33,16 +33,17 @@ const levelup: Gen = (r, sr) => {
 const eat: Gen = (r, sr) => {
   const d = alloc(0.25, sr);
   addGrains(d, sr, r, { start: 0, dur: 0.12, count: 22, amp: 0.8, freqLo: 700, freqHi: 3500, q: 1.2, grainLo: 0.004, grainHi: 0.025, shape: 1.3 });
-  addTone(d, sr, { dur: 0.08, freq: 160, amp: 0.3, decay: 0.02 });
+  addTone(d, sr, { start: rand(r, 0, 0.03), dur: 0.08, freq: rand(r, 120, 200), amp: rand(r, 0.15, 0.35), decay: 0.02 });
   return d;
 };
 
 const gulp: Gen = (r, sr) => {
   const d = alloc(0.3, sr);
   addNoise(d, r, 0.6, 0, Math.floor(0.2 * sr));
-  filter(d, "lowpass", 300, 6, sr, 900);
+  filter(d, "lowpass", rand(r, 250, 350), 6, sr, rand(r, 750, 1050));
   for (let i = 0; i < d.length; i++) d[i] *= Math.exp(-i / (0.07 * sr)) * Math.min(1, i / (0.01 * sr));
-  addTone(d, sr, { start: 0.03, dur: 0.12, freq: (t) => 220 + t * 2500, amp: 0.5, decay: 0.04 });
+  const f0 = rand(r, 180, 260), rise = rand(r, 2000, 3000);
+  addTone(d, sr, { start: rand(r, 0.02, 0.05), dur: 0.12, freq: (t) => f0 + t * rise, amp: 0.5, decay: 0.04 });
   return d;
 };
 
@@ -101,7 +102,7 @@ const ding: Gen = (r, sr) => {
 };
 
 const hit = (f: number, grit: number, dec: number): Gen => (r, sr) => {
-  const d = thud(f, dec, grit)(r, sr);
+  const d = thud(f * rand(r, 0.8, 1.2), dec * rand(r, 0.75, 1.3), grit)(r, sr);
   addGrain(d, sr, r, { start: 0, amp: 0.5, dur: 0.015, freq: 1800, q: 0.8 });
   return d;
 };

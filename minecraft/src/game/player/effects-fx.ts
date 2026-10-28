@@ -11,6 +11,12 @@ export interface EffectView {
 
 const view: EffectView = { nightVision: 0, blindness: 0, darkness: 0, nausea: 0 };
 let nausea = 0;
+let portalSpin = 0;
+
+// Vanilla spinningEffectIntensity: standing in a nether portal warps the view like nausea.
+export function setPortalSpin(v: number): void {
+  portalSpin = v;
+}
 
 const ticksOf = (p: PlayerState, id: string) => p.effects.find((e) => e.id === id)?.ticks ?? 0;
 
@@ -47,6 +53,6 @@ export function effectView(p: PlayerState, pt: number): EffectView {
   view.darkness = dk <= 0 ? 0 : (0.45 * Math.cos(((p.ticks + pt) / 22) * Math.PI) + 0.55) * Math.min(1, dk / 20);
   const want = p.hasEffect("nausea") > 0 ? 1 : 0;
   nausea += (want - nausea) * (want ? 0.02 : 0.05);
-  view.nausea = nausea < 0.01 ? 0 : nausea;
+  view.nausea = Math.max(nausea < 0.01 ? 0 : nausea, portalSpin);
   return view;
 }

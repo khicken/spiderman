@@ -5,6 +5,7 @@ import type { Rules } from "../contracts";
 import { Text, useGui } from "./gui";
 import { Button, ListArea, Screen, Slider, TextField, onOff, useKeyDown } from "./widgets";
 import { playerName, setPlayerNameStored } from "../net/profile";
+import { MAX_PNG, decodePng, localLook, setLocalLook, type Look } from "../net/skins";
 import { KeyBinds } from "./key-binds";
 import { PacksScreen } from "./packs-screen";
 import {
@@ -258,7 +259,50 @@ function SkinPage({ background, onDone }: { background: "menu" | "ingame"; onDon
       <Text text="Multiplayer Name" x={cx - 100} y={Math.floor(height / 6) + 4} color={0xa0a0a0} />
       <TextField x={cx - 100} y={Math.floor(height / 6) + 16} width={200} value={name} onChange={edit} onEnter={onDone} maxLength={16} hint="Player name" autoFocus />
       <Text text={ok ? "Other players see this name." : "Use 3 to 16 letters, digits or _."} x={cx} y={Math.floor(height / 6) + 44} color={ok ? 0x808080 : 0xff5555} align="center" />
+      <SkinChoice cx={cx} y={Math.floor(height / 6) + 64} />
       <Button x={cx - 100} y={height - 27} label="Done" onClick={onDone} />
     </Screen>
+  );
+}
+
+function pickPng(onLoad: (url: string) => void) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/png";
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => typeof r.result === "string" && onLoad(r.result);
+    r.readAsDataURL(f);
+  };
+  input.click();
+}
+
+const KIND_LABEL = { steve: "Steve", alex: "Alex", custom: "Custom" } as const;
+
+function SkinChoice({ cx, y }: { cx: number; y: number }) {
+  const [look, setLook] = useState<Look>(localLook);
+  const [msg, setMsg] = useState("");
+  const save = (l: Look) => {
+    setLook(l);
+    setLocalLook(l);
+    setMsg("Changes show next time you load a world.");
+  };
+  const upload = (w: number, h: number, apply: (url: string) => void) =>
+    pickPng(async (url) => {
+      if (url.length > MAX_PNG || !(await decodePng(url, w, h))) return setMsg(`Use a ${w}x${h} PNG under 30 KB.`);
+      apply(url);
+    });
+  const kinds: Look["kind"][] = look.png ? ["steve", "alex", "custom"] : ["steve", "alex"];
+  const next = kinds[(kinds.indexOf(look.kind) + 1) % kinds.length];
+  return (
+    <>
+      <Button x={cx - 155} y={y} width={150} label={`Skin: ${KIND_LABEL[look.kind]}`} onClick={() => save({ ...look, kind: next, slim: next === "alex" || (next === "custom" && look.slim) })} />
+      <Button x={cx + 5} y={y} width={150} label={`Arms: ${look.slim ? "Slim" : "Classic"}`} disabled={look.kind !== "custom"} onClick={() => save({ ...look, slim: !look.slim })} />
+      <Button x={cx - 155} y={y + 24} width={150} label="Upload Skin..." onClick={() => upload(64, 64, (png) => save({ ...look, kind: "custom", png }))} />
+      <Button x={cx + 5} y={y + 24} width={150} label={look.cape ? "Remove Cape" : "Upload Cape..."} onClick={() => (look.cape ? save({ ...look, cape: undefined }) : upload(64, 32, (cape) => save({ ...look, cape })))} />
+      {msg && <Text text={msg} x={cx} y={y + 52} color={0x808080} align="center" />}
+    </>
   );
 }
