@@ -103,6 +103,8 @@ export function Text({ text, color = 0xffffff, shadow = true, amp = false, x, y,
         opacity,
         pointerEvents: "none",
         maxWidth: "none",
+        marginTop: img.top ? -img.top * scale : undefined,
+        marginBottom: img.height > 9 + img.top ? (9 + img.top - img.height) * scale : undefined,
         ...style,
       }}
     />

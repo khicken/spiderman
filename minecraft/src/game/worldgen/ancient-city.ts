@@ -1,6 +1,7 @@
 import { blockId as I } from "../blocks/registry";
-import { chest, fill, fillFn, frame, put, rnd, S, stairs, type Frame } from "./build";
-import { createRng, type Rng, type Writer } from "./rng";
+import { chest, fill, fillFn, frame, get, put, rnd, S, stairs, type Frame } from "./build";
+import { B } from "./ids";
+import { createRng, idTable, type Rng, type Writer } from "./rng";
 import type { Start } from "./structure-grid";
 
 const BR = I("deepslate_bricks"), CBR = I("cracked_deepslate_bricks"), TL = I("deepslate_tiles"), POL = I("polished_deepslate"), CHIS = I("chiseled_deepslate");
@@ -9,6 +10,9 @@ const SHRIEK = I("sculk_shrieker"), CAT = I("sculk_catalyst"), SLANT = I("soul_l
 const TST = I("deepslate_tile_stairs"), WALL = I("deepslate_brick_wall"), DO = I("dark_oak_planks"), DOL = I("dark_oak_log");
 
 const RX = 44, RZ = 36;
+// sculk_replaceable_world_gen: what a sculk patch may turn into sculk.
+const REPL = idTable(B.stone, B.deepslate, B.tuff, B.granite, B.diorite, B.andesite, B.dirt, B.gravel, BR, CBR, TL, I("cracked_deepslate_tiles"), POL, COB);
+const SOLID = idTable(B.stone, B.deepslate, B.tuff, B.granite, B.diorite, B.andesite, B.dirt, B.gravel, BR, CBR, TL, I("cracked_deepslate_tiles"), POL, COB, SCULK, REIN, CHIS, CAT);
 
 export function ancientCity(w: Writer, s: Start) {
   const r = createRng(s.seed);
@@ -19,13 +23,13 @@ export function ancientCity(w: Writer, s: Start) {
     if (e > 1) return -1;
     const h = Math.round(16 - e * 9 + rnd(f, x, 0, z) * 2);
     if (y > h) return -1;
-    if (y < 0) return y === -1 ? S(rnd(f, x, wy, z) < 0.5 ? SCULK : I("deepslate")) : -1;
+    if (y < 0) return y === -1 ? S(B.deepslate) : -1;
     if (y === 0) {
       const street = Math.abs(a) <= 2 || Math.abs(b) <= 2 || Math.abs(a - b * 0.9) < 1.5;
-      if (street) return S(rnd(f, x, wy, z) < 0.3 ? TL : POL);
-      return rnd(f, x, wy, z) < 0.55 ? S(SCULK) : S(COB);
+      const v = rnd(f, x, wy, z);
+      if (street) return S(v < 0.3 ? TL : POL);
+      return S(v < 0.45 ? COB : v < 0.75 ? BR : v < 0.85 ? CBR : TL);
     }
-    if (y === 1 && rnd(f, x, wy, z) < 0.04 && Math.abs(a) > 3 && Math.abs(b) > 3) return S(VEIN, 1 << 3);
     return 0;
   });
   centerPortal(f, brick);
@@ -38,11 +42,14 @@ export function ancientCity(w: Writer, s: Start) {
     else if (kind === 2) iceBox(f, a, b, brick);
     else campfire(f, pr, a, b);
   });
-  for (let k = 0; k < 24; k++) {
-    const a = r.int(2 * RX - 10) - RX + 5, b = r.int(2 * RZ - 10) - RZ + 5;
-    if ((a * a) / (RX * RX) + (b * b) / (RZ * RZ) > 0.8 || Math.abs(a) <= 2 || Math.abs(b) <= 2) continue;
+  const patches = sculkPatches(f, r);
+  // Template sensors and shriekers (can_summon = true) sit on the patches.
+  for (let k = 0; k < 40; k++) {
+    const [pa, pb, pr] = patches[r.int(patches.length)];
+    const a = pa + r.int(2 * pr + 1) - pr, b = pb + r.int(2 * pr + 1) - pr;
     const roll = r.next();
-    put(f, a, 1, b, S(roll < 0.4 ? SENSOR : roll < 0.7 ? SHRIEK : roll < 0.8 ? CAT : I("candle"), roll >= 0.4 && roll < 0.7 ? 1 : 0));
+    if (get(f, a, 0, b) !== S(SCULK) || get(f, a, 1, b) !== 0) continue;
+    put(f, a, 1, b, roll < 0.55 ? S(SENSOR) : S(SHRIEK, 1));
   }
   for (const [a, b] of [[-6, -6], [6, -6], [-6, 6], [6, 6], [-20, 0], [20, 0], [0, -20], [0, 20]]) {
     fill(f, a, 1, b, a, 3, b, S(WALL));
@@ -126,4 +133,45 @@ function campfire(f: Frame, r: Rng, a: number, b: number) {
   if (r.chance(0.6)) chest(f, a + 2, 1, b + 2, 2, "ancient_city", I("chest"));
   put(f, a - 2, 1, b - 2, S(I("skeleton_skull")));
   put(f, a + 2, 1, b - 2, S(CAT));
+}
+
+// Sculk patches spread from catalysts: exposed blocks near a center turn to sculk, veins fringe the edge and climb walls a little.
+function sculkPatches(f: Frame, r: Rng): [number, number, number][] {
+  const patches: [number, number, number][] = [];
+  while (patches.length < 26) {
+    const a = r.int(2 * RX) - RX, b = r.int(2 * RZ) - RZ;
+    if ((a * a) / (RX * RX) + (b * b) / (RZ * RZ) > 0.85) continue;
+    patches.push([a, b, 4 + r.int(6)]);
+    if (r.chance(0.5)) put(f, a, 0, b, S(CAT));
+  }
+  const w = f.w;
+  const solid = (x: number, y: number, z: number) => {
+    const c = w.get(x, y, z);
+    return c > 0 && SOLID[c & 0xfff] === 1;
+  };
+  const open = (x: number, y: number, z: number) => {
+    const c = w.get(x, y, z);
+    return c === 0 || (c & 0xfff) === VEIN;
+  };
+  let cx = NaN, cz = NaN, d = 9;
+  fillFn(f, -RX, -1, -RZ, RX, 16, RZ, (a, y, b, x, wy, z) => {
+    if (x !== cx || z !== cz) {
+      cx = x;
+      cz = z;
+      d = 9;
+      for (const [pa, pb, pr] of patches) d = Math.min(d, Math.hypot(a - pa, b - pb) / pr);
+      d += (rnd(f, x >> 2, 7, z >> 2) - 0.5) * 0.5 + rnd(f, x, 7, z) * 0.15;
+    }
+    const v = d + Math.max(0, y - 1) * 0.12;
+    if (v > 1.3) return -1;
+    const c = w.get(x, wy, z);
+    if (c > 0 && REPL[c & 0xfff]) {
+      if (v >= 1) return -1;
+      return open(x, wy + 1, z) || open(x + 1, wy, z) || open(x - 1, wy, z) || open(x, wy, z + 1) || open(x, wy, z - 1) ? S(SCULK) : -1;
+    }
+    if (c !== 0 || v < 0.95 - (y > 1 ? 0.4 : 0)) return -1;
+    const wall = solid(x + 1, wy, z) || solid(x - 1, wy, z) || solid(x, wy, z + 1) || solid(x, wy, z - 1);
+    return (solid(x, wy - 1, z) || wall) && rnd(f, x, wy, z) < (wall ? 0.7 : 0.5) ? S(VEIN) : -1;
+  });
+  return patches;
 }

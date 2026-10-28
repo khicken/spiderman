@@ -36,10 +36,20 @@ export function localLook(): Look {
   }
 }
 
+const lookListeners = new Set<(l: Look) => void>();
+
+// Runs fn with the new look each time the skin or cape changes. Returns the unsubscribe.
+export function onLocalLook(fn: (l: Look) => void): () => void {
+  lookListeners.add(fn);
+  return () => lookListeners.delete(fn);
+}
+
 export function setLocalLook(l: Look) {
+  const look = cleanLook(l);
   try {
-    localStorage.setItem(KEY, JSON.stringify(cleanLook(l)));
+    localStorage.setItem(KEY, JSON.stringify(look));
   } catch {}
+  for (const fn of lookListeners) fn(look);
 }
 
 const ALEX = { hair: "#e3913a", hairDark: "#c4762a", shirt: "#5f9e42", shirtDark: "#4d8636", pants: "#6b4a2f", pantsDark: "#5a3d26", eye: "#3a7d3a" };

@@ -46,11 +46,18 @@ export function canSeeSky(ctx: GameCtx, x: number, y: number, z: number) {
   return ctx.world.getSkyLight(Math.floor(x), Math.floor(y), Math.floor(z)) >= 15;
 }
 
-// Vanilla Entity.isInRain: open sky above, raining, and a biome where it rains.
+// Vanilla Level.isRainingAt: open sky above, raining, and rain (not snow) at this height in the biome.
 export function rainAt(ctx: GameCtx, x: number, y: number, z: number) {
   if (ctx.time.rain < 0.2 || ctx.world.dim !== "overworld") return false;
   const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
-  return ctx.world.topY(bx, bz) <= by && ctx.world.getBiome(bx, bz).precipitation === "rain";
+  if (ctx.world.topY(bx, bz) > by) return false;
+  const b = ctx.world.getBiome(bx, bz);
+  return b.precipitation === "rain" && warmEnoughToRain(b.temperature, by);
+}
+
+// Vanilla Biome.getHeightAdjustedTemperature >= 0.15, without the temperature noise term.
+export function warmEnoughToRain(temperature: number, y: number) {
+  return (y > 80 ? temperature - ((y - 80) * 0.05) / 40 : temperature) >= 0.15;
 }
 
 let powderId = -2;

@@ -4,8 +4,9 @@ import { CHUNK, idOf, metaOf, stateOf } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
 import { itemDef, maxStack } from "../../items/registry";
 import { BEHAVIORS } from "../../mechanics/index";
+import { containerChanged } from "../../mechanics/redstone/inventory";
 import { paintBlockTexture } from "../../textures/index";
-import { SHERD_MOTIFS, motifAt } from "../../textures/motifs";
+import { potFacePixels } from "../../textures/items-iso";
 import { brightnessAt } from "../../entities/render";
 
 // Meta bit set on pots drawn here instead of by the chunk mesher, so they can wobble and show sherds.
@@ -77,6 +78,7 @@ export const POT_BEHAVIOR: BlockBehavior = {
     }
     be.items![0] = cur ? { ...cur, count: cur.count + 1 } : { ...held, count: 1 };
     if (ctx.player.gameMode !== "creative") ctx.inventory.removeHeld(1);
+    containerChanged(ctx, x, y, z);
     const full = be.items![0]!.count / maxStack(be.items![0]!.item);
     ctx.emit({ type: "sound", name: "block.decorated_pot.insert", x: sx, y: sy, z: sz, pitch: 0.7 + 0.5 * full });
     wobble(ctx, x, y, z, POSITIVE);
@@ -129,29 +131,6 @@ function scan(ctx: GameCtx) {
 export function tickPots(ctx: GameCtx) {
   settleDrops(ctx);
   if (ctx.time.tick % 40 === 0) scan(ctx);
-}
-
-export function potFacePixels(sherd: string | null): Uint8ClampedArray {
-  const px = paintBlockTexture("decorated_pot_side");
-  const rows = sherd ? SHERD_MOTIFS[sherd] : undefined;
-  if (!rows) return px;
-  const put = (x: number, y: number, c: number) => {
-    const i = (y * 16 + x) * 4;
-    px[i] = (c >> 16) & 255;
-    px[i + 1] = (c >> 8) & 255;
-    px[i + 2] = c & 255;
-  };
-  for (let x = 2; x < 14; x++) {
-    put(x, 2, 0x5a2c18);
-    put(x, 13, 0x5a2c18);
-  }
-  for (let y = 0; y < 8; y++)
-    for (let x = 0; x < 8; x++) {
-      if (!motifAt(rows, x, y)) continue;
-      put(4 + x, 4 + y, 0x3e1c0e);
-      if (y < 7 && !motifAt(rows, x, y + 1)) put(4 + x, 5 + y, 0xc07a52);
-    }
-  return px;
 }
 
 function dataTex(px: Uint8ClampedArray): THREE.DataTexture {

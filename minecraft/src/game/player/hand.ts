@@ -96,6 +96,14 @@ const display = (d: Display, i: number, shield = false) => {
 };
 
 // Vanilla ItemInHandLayer: the item hangs from the hand of a third-person arm; i is 1 right, -1 left.
+export function handItemMatrix(out: THREE.Matrix4, name: string, kind: ItemKind, i: number, blocking = false): THREE.Matrix4 {
+  m.identity();
+  T(i / 16, -10 / 16, -2 / 16);
+  RX(-90);
+  display(itemDisplays(name, kind, i, blocking).tp, i, kind === "shield");
+  return out.copy(m);
+}
+
 export function createHeldSlot(items: ItemMeshes, i: number) {
   const holder = new THREE.Group();
   holder.matrixAutoUpdate = false;
@@ -120,11 +128,7 @@ export function createHeldSlot(items: ItemMeshes, i: number) {
       }
       shown = name;
       if (!md || !name) return;
-      m.identity();
-      T(i / 16, -10 / 16, -1 / 16);
-      RX(-90);
-      display(itemDisplays(name, md.kind, i, blocking).tp, i, md.kind === "shield");
-      holder.matrix.copy(m);
+      handItemMatrix(holder.matrix, name, md.kind, i, blocking);
     },
     dispose() {
       holder.removeFromParent();

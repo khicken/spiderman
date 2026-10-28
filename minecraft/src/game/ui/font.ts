@@ -2,7 +2,7 @@
 import { activePacks, packVersion } from "../packs";
 import { packGlyphs } from "../packs/font";
 
-const URLS = new Map<string, { url: string; width: number; height: number }>();
+const URLS = new Map<string, { url: string; width: number; height: number; top: number }>();
 
 const G: Record<string, string[]> = {
   "!": ["#", "#", "#", "#", "#", "", "#"],
@@ -225,18 +225,30 @@ export interface TextRaster {
   width: number;
   height: number;
   data: Uint8ClampedArray; // RGBA
+  top: number; // rows above the line for glyphs taller than it (vanilla draws them past the line box)
 }
 
 const OBF = "ABCDEFGHJKLMNOPRSTUVWXYZabdeghnopqsuvwxyz0123456789";
 
 export function rasterText(text: string, color = 0xffffff, shadow = true, amp = false): TextRaster {
   const runs = parseRuns(text, color, amp);
-  let w = 0;
-  for (const r of runs) for (const ch of r.text) w += advance(ch, r.bold);
+  const drawn = runs.map((r) => Array.from(r.text, (ch) => (r.obfuscated && ch !== " " ? OBF[Math.floor(Math.random() * OBF.length)] : ch)));
+  let w = 0, minY = 0, maxY = 0;
+  runs.forEach((r, i) => {
+    for (const ch of r.text) w += advance(ch, r.bold);
+    for (const ch of drawn[i]) {
+      const g = glyphOf(ch), oy = g.y ?? 0;
+      if (!g.rows.length) continue;
+      minY = Math.min(minY, oy);
+      maxY = Math.max(maxY, oy + (g.h ?? GLYPH_ROWS) + (shadow ? 1 : 0) - LINE_HEIGHT);
+    }
+  });
   const width = Math.max(1, w + (shadow ? 1 : 0));
-  const height = LINE_HEIGHT;
+  const top = -minY;
+  const height = LINE_HEIGHT + top + maxY;
   const data = new Uint8ClampedArray(width * height * 4);
   const put = (x: number, y: number, c: number) => {
+    y += top;
     if (x < 0 || y < 0 || x >= width || y >= height) return;
     const o = (y * width + x) * 4;
     data[o] = (c >> 16) & 255;
@@ -246,11 +258,10 @@ export function rasterText(text: string, color = 0xffffff, shadow = true, amp = 
   };
   const pass = (dx: number, dy: number, isShadow: boolean) => {
     let x = 0;
-    for (const r of runs) {
+    runs.forEach((r, ri) => {
       const c = isShadow ? shadowOf(r.color) : r.color;
       const startX = x;
-      for (let ch of r.text) {
-        if (r.obfuscated && ch !== " ") ch = OBF[Math.floor(Math.random() * OBF.length)];
+      for (const ch of drawn[ri]) {
         const g = glyphOf(ch);
         const gh = g.h ?? GLYPH_ROWS, oy = g.y ?? 0;
         for (let gy = 0; gy < gh; gy++) {
@@ -267,11 +278,11 @@ export function rasterText(text: string, color = 0xffffff, shadow = true, amp = 
         if (r.underline) put(lx + dx, 8 + dy, c);
         if (r.strike) put(lx + dx, 3 + dy, c);
       }
-    }
+    });
   };
   if (shadow) pass(1, 1, true);
   pass(0, 0, false);
-  return { width, height, data };
+  return { width, height, data, top };
 }
 
 
@@ -286,7 +297,7 @@ export function textImage(text: string, color = 0xffffff, shadow = true, amp = f
   canvas.height = r.height;
   const g = canvas.getContext("2d");
   if (g) g.putImageData(new ImageData(new Uint8ClampedArray(r.data), r.width, r.height), 0, 0);
-  const out = { url: canvas.toDataURL(), width: r.width, height: r.height };
+  const out = { url: canvas.toDataURL(), width: r.width, height: r.height, top: r.top };
   if (URLS.size > 3000) URLS.clear();
   if (!/§k|&k/i.test(text)) URLS.set(key, out);
   return out;

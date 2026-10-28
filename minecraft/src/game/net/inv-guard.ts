@@ -1,6 +1,6 @@
 // Host-side item accounting for remote players. The host tracks every item a client may hold: its last known
 // inventory, host gives, 2x2 crafts and container swaps (bucket fill, empty bowls). Valuable items beyond that are
-// clamped outright; cheap items get a small budget for the block uses the host does not model.
+// clamped outright; cheap items get a small budget for the few block uses the host does not model.
 import type { BlockState, ItemStack } from "../contracts";
 import { computeDrops } from "../items/drops";
 import { CRAFT_RECIPES, ingMatches } from "../items/recipes";

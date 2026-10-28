@@ -35,5 +35,5 @@ export const HUSBANDRY: AdvSpec[] = [
   { id: "husbandry/axolotl_in_a_bucket", title: "The Cutest Predator", desc: "Catch an Axolotl in a Bucket", icon: "axolotl_bucket", parent: "husbandry/tactical_fishing", crit: one(filled("axolotl_bucket")) },
   { id: "husbandry/froglights", title: "With Our Powers Combined!", desc: "Have all Froglights in your inventory", icon: "verdant_froglight", kind: "goal", parent: "husbandry/leash_all_frog_variants", crit: one(hasAll(...FROGLIGHTS)) },
   { id: "husbandry/plant_any_sniffer_seed", title: "Planting the Past", desc: "Plant any Sniffer seed", icon: "pitcher_pod", parent: "husbandry/feed_snifflet", any: true, crit: each(SNIFFER_SEEDS, (c) => on("placed_block", (t) => t.block === c)) },
-  { id: "husbandry/kill_axolotl_target", title: "The Healing Power of Friendship!", desc: "Team up with an axolotl and win a fight", icon: "tropical_fish_bucket", kind: "goal", parent: "husbandry/axolotl_in_a_bucket", crit: one(on("killed_entity", (t) => t.killer === "axolotl")) },
+  { id: "husbandry/kill_axolotl_target", title: "The Healing Power of Friendship!", desc: "Team up with an axolotl and win a fight", icon: "tropical_fish_bucket", kind: "goal", parent: "husbandry/axolotl_in_a_bucket", crit: one(on("effects_changed", (t) => t.source === "axolotl" && t.effects.includes("regeneration"))) },
 ];

@@ -5,6 +5,7 @@ import { SOLID, IS_FLUID, blockByName, blockDef } from "../blocks/registry";
 import { fluidState } from "../blocks/waterlog";
 import { moveBody, blockBelow, blockOn, blockJumpFactor, fallMultiplier, isFree, submergedHeight, type MoveOpts } from "../player/physics";
 import { mobSpeedFactor } from "../systems/brewing/effects";
+import { canSeeSky } from "./light";
 
 // Speeds here are the vanilla movement_speed attribute times the goal modifier (zombie 0.23, cow 0.2).
 // The entity manager ages entities, counts down hurtTicks and calls applyPhysics after MobDef.tick
@@ -384,6 +385,10 @@ export function findPath(ctx: GameCtx, from: Vec3Like, to: Vec3Like, maxNodes = 
 export function followPath(e: Entity, ctx: GameCtx, speed: number) {
   const path = e.data._path as number[] | undefined;
   if (!path) return false;
+  if (e.data._avoidSun && !sunChecked.has(path)) {
+    sunChecked.add(path);
+    trimSunlit(ctx, e, path);
+  }
   let i = (e.data._pi as number) || 0;
   const b = e.body;
   const reach = b.width > 0.75 ? b.width / 2 : 0.75 - b.width / 2;
@@ -420,6 +425,18 @@ export function followPath(e: Entity, ctx: GameCtx, speed: number) {
     }
   }
   return true;
+}
+
+// Vanilla GroundPathNavigation.trimPath with avoidSun: from a shaded spot, the path ends before the first sunlit node.
+const sunChecked = new WeakSet<number[]>();
+function trimSunlit(ctx: GameCtx, e: Entity, path: number[]) {
+  const p = e.body.pos;
+  if (canSeeSky(ctx, p.x, p.y + 0.5, p.z)) return;
+  for (let i = 0; i < path.length; i += 3)
+    if (canSeeSky(ctx, path[i], path[i + 1], path[i + 2])) {
+      path.length = i;
+      return;
+    }
 }
 
 export function clearPath(e: Entity) {

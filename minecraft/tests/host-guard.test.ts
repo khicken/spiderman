@@ -11,11 +11,23 @@ const count = (save: unknown, item: string) => ((save as { slots: ({ item: strin
 
 test("a forged inventory loses the guarded items it never got", () => {
   const g = createGuard(inv({ item: "dirt", count: 5 }), 0);
-  const c = g.check(inv({ item: "dirt", count: 64 }, { item: "diamond", count: 64 }, { item: "diamond_sword", count: 1, ench: { sharpness: 5 } }), 0, false);
+  const c = g.check(inv({ item: "dirt", count: 9 }, { item: "diamond", count: 64 }, { item: "diamond_sword", count: 1, ench: { sharpness: 5 } }), 0, false);
   assert.equal(c.clamped, true);
   assert.equal(count(c.save, "diamond"), 0);
   assert.equal(count(c.save, "diamond_sword"), 0);
-  assert.equal(count(c.save, "dirt"), 64, "a few cheap items fit the budget for block uses the host does not model");
+  assert.equal(count(c.save, "dirt"), 9, "a few cheap items fit the budget for block uses the host does not model");
+});
+
+test("the cheap budget refills at one item per 10 seconds", () => {
+  const g = createGuard(inv(), 0);
+  assert.equal(g.place("dirt", 0), true);
+  for (let i = 0; i < 3; i++) g.place("dirt", 0);
+  assert.equal(g.place("dirt", 0), false, "burst spent");
+  assert.equal(g.place("dirt", 5000), false);
+  assert.equal(g.place("dirt", 10000), true);
+  let got = 0;
+  for (let s = 11; s <= 70; s++) if (g.place("dirt", s * 1000)) got++;
+  assert.ok(got <= 6, `${got} items in a minute`);
 });
 
 test("items the host gave, 2x2 crafts and creative mode pass", () => {
@@ -41,7 +53,8 @@ test("guarded drops need a broken block or the inventory", () => {
   g.broke(stateOf(blockId("diamond_ore")), "iron_pickaxe", 10, 20, 10, 5, 7);
   assert.equal(g.drop({ item: "diamond", count: 1 }, 10.5, 20.4, 10.6, 6, false), true);
   assert.equal(g.drop({ item: "diamond", count: 1 }, 40, 20, 10, 6, false), false, "far from the broken block");
-  assert.equal(g.drop({ item: "cobblestone", count: 64 }, 0, 64, 0, 6, false), true);
+  assert.equal(g.drop({ item: "cobblestone", count: 4 }, 0, 64, 0, 6, false), true, "cheap drops fit the budget");
+  assert.equal(g.drop({ item: "cobblestone", count: 64 }, 0, 64, 0, 6, false), false);
 });
 
 test("xp cannot rise past what the host granted", () => {
@@ -74,8 +87,8 @@ test("cheap items past the budget are clamped too", () => {
 
 test("eating from a bowl and filling a bucket need no budget", () => {
   const g = createGuard(inv({ item: "mushroom_stew", count: 1 }, { item: "bucket", count: 1 }, { item: "dirt", count: 1 }), 0);
-  g.check(inv({ item: "mushroom_stew", count: 1 }, { item: "bucket", count: 1 }, { item: "dirt", count: 65 }), 0, false, 1000);
-  const c = g.check(inv({ item: "bowl", count: 1 }, { item: "water_bucket", count: 1 }, { item: "dirt", count: 65 }), 0, false, 1000);
+  g.check(inv({ item: "mushroom_stew", count: 1 }, { item: "bucket", count: 1 }, { item: "dirt", count: 5 }), 0, false, 1000);
+  const c = g.check(inv({ item: "bowl", count: 1 }, { item: "water_bucket", count: 1 }, { item: "dirt", count: 5 }), 0, false, 1000);
   assert.equal(c.clamped, false);
   assert.equal(c.used.get("mushroom_stew"), 1);
 });

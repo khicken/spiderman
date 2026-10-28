@@ -15,6 +15,7 @@ const RELAYS = [
 ];
 const STUN = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.cloudflare.com:3478"];
 const SILENT_MS = 12000;
+const EARLY_MAX = 512;
 const K_JSON = 1;
 const K_BIN = 2;
 const enc = new TextEncoder();
@@ -30,6 +31,7 @@ function iceServers(): RTCIceServer[] {
 export interface Transport {
   readonly id: string;
   readonly relayUp: number;
+  readonly relayDown: boolean; // every relay broker failed
   peers(): string[];
   direct(id: string): boolean;
   send(to: string, msg: object): void;
@@ -63,6 +65,9 @@ export async function createTransport(code: string): Promise<Transport> {
     id: selfId,
     get relayUp() {
       return relay.up;
+    },
+    get relayDown() {
+      return relay.down;
     },
     peers: () => [...seen.keys()],
     direct: (id) => rtc.has(id),
@@ -151,6 +156,14 @@ export async function createTransport(code: string): Promise<Transport> {
   });
 
   if (!forced) {
+    try {
+      joinDirect();
+    } catch (e) {
+      console.warn("net: WebRTC unavailable, relay only:", e);
+    }
+  }
+
+  function joinDirect() {
     const r = joinRoom({ appId: APP_ID, password: keys.password, relayConfig: { urls: RELAYS }, rtcConfig: { iceServers: iceServers() } } as never, "mc-" + keys.topic);
     leaveRoom = () => r.leave();
     const j = r.makeAction<never>("j");
@@ -160,14 +173,22 @@ export async function createTransport(code: string): Promise<Transport> {
     binAct = b as unknown as Act;
     const peerOf = (info: { peerId: string } | string) => (typeof info === "string" ? info : info.peerId);
     const bindText = (a: string, b2: string) => enc.encode(`mc-bind|${a}|${b2}`);
-    (j as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) => {
-      const id = rtcId.get(peerOf(info));
-      if (id) recv(id, K_JSON, d);
+    // A peer may bind and send before its id proof is verified here; hold those messages until it is.
+    const early = new Map<string, [number, unknown][]>();
+    const take = (kind: number, d: unknown, info: { peerId: string } | string) => {
+      const peer = peerOf(info);
+      const id = rtcId.get(peer);
+      if (id) return recv(id, kind, d);
+      let q = early.get(peer);
+      if (!q) {
+        if (early.size >= 16) return;
+        early.set(peer, (q = []));
+      }
+      if (q.length < EARLY_MAX) q.push([kind, d]);
     };
-    (b as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) => {
-      const id = rtcId.get(peerOf(info));
-      if (id) recv(id, K_BIN, d instanceof Uint8Array ? d : new Uint8Array(d as ArrayBuffer));
-    };
+    (j as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) => take(K_JSON, d, info);
+    (b as unknown as { onMessage: unknown }).onMessage = (d: unknown, info: { peerId: string } | string) =>
+      take(K_BIN, d instanceof Uint8Array ? d : new Uint8Array(d as ArrayBuffer), info);
     idAct.onMessage = (d: unknown, info: { peerId: string } | string) => {
       const peer = peerOf(info);
       const raw = d instanceof Uint8Array ? d : d instanceof ArrayBuffer ? new Uint8Array(d) : null;
@@ -178,6 +199,8 @@ export async function createTransport(code: string): Promise<Transport> {
         idRtc.set(id, peer);
         rtc.add(id);
         heard(id);
+        for (const [kind, msg] of early.get(peer) ?? []) recv(id, kind, msg);
+        early.delete(peer);
       });
     };
     r.onPeerJoin = (peer: string) => {
@@ -190,6 +213,7 @@ export async function createTransport(code: string): Promise<Transport> {
     };
     r.onPeerLeave = (peer: string) => {
       const id = rtcId.get(peer);
+      early.delete(peer);
       rtcId.delete(peer);
       if (!id) return;
       idRtc.delete(id);

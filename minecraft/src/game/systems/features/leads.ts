@@ -13,11 +13,16 @@ const from = new THREE.Vector3();
 
 type Knot = [number, number, number];
 const knotOf = (e: Entity) => (Array.isArray(e.data.leash) ? (e.data.leash as Knot) : null);
-const leashed = (e: Entity) => e.data.leash === "player" || !!knotOf(e);
+// A mob can hold another mob's lead, like a wandering trader and its llamas: data.leash = { entity: id }.
+const holderOf = (e: Entity) => {
+  const l = e.data.leash as { entity?: unknown } | undefined;
+  return l && typeof l === "object" && !Array.isArray(l) && typeof l.entity === "number" ? l.entity : undefined;
+};
+const leashed = (e: Entity) => e.data.leash === "player" || !!knotOf(e) || holderOf(e) !== undefined;
 
 export function canLeash(e: Entity): boolean {
   const def = mobDef(e.type);
-  if (!def || NOT_LEASHABLE.has(e.type) || e.dead) return false;
+  if (!def || NOT_LEASHABLE.has(e.type) || e.dead || holderOf(e) !== undefined) return false;
   return def.category !== "hostile" || HOSTILE_OK.has(e.type);
 }
 
@@ -84,6 +89,14 @@ function holderPos(ctx: GameCtx, e: Entity, out: THREE.Vector3): boolean {
     const p = ctx.player.body.pos;
     out.set(p.x, p.y + 1.1, p.z);
     return !ctx.player.dead;
+  }
+  const id = holderOf(e);
+  if (id !== undefined) {
+    const h = ctx.entities.get(id);
+    if (!h || h.dead) return false;
+    // Vanilla Entity.getRopeHoldPosition: 0.7 of the holder's eye height.
+    out.set(h.body.pos.x, h.body.pos.y + h.body.height * 0.85 * 0.7, h.body.pos.z);
+    return true;
   }
   const k = knotOf(e);
   if (!k) return false;

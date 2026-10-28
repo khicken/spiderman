@@ -13,6 +13,7 @@ import { portalArrived } from "./mechanics/portal";
 import { buildPortal as forcePortal, forgetPortal, nearestKnown, scanPortal } from "./mechanics/portal-link";
 import { createInput, createPlayer } from "./player";
 import { setKeyBinds } from "./player/input";
+import { attackStats, attackStrength } from "./player/stats";
 import { createTouchControls, isTouchDevice } from "./player/touch";
 import { CAVE_CULL } from "./render/cave-cull";
 import { createRenderer } from "./render";
@@ -27,6 +28,7 @@ import { findSpawn } from "./worldgen";
 import type { GameInternals, NetLink } from "./net";
 import type { LanOptions } from "./net/host";
 import { setPortalSpin } from "./player/effects-fx";
+import { vehicleInventoryKey } from "./entities/riding";
 
 export type GamePhase = "loading" | "playing";
 
@@ -119,12 +121,14 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     if (was) route({ type: "close_container" });
   };
 
+  const worldSpawn = { x: 0, y: 80, z: 0 };
   function buildStage(d: Dim) {
     dim = d;
     const taken = net?.adoptWorld?.(d) ?? null;
     adopted = !!taken;
     world = taken?.world ?? createWorld({ seed: meta.seed, dim: d, worldId: meta.id, behaviors: BEHAVIORS, getCtx: () => net?.ctxFor?.(d) ?? ctx, remote: net?.remoteWorld?.(d) });
     ctx.world = world;
+    world.spawn = worldSpawn;
     renderer = createRenderer(canvas, world);
     ctx.renderer = renderer;
     renderer.resize(window.innerWidth, window.innerHeight);
@@ -191,6 +195,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   net?.attach?.(internals);
   const sp = findSpawn(meta.seed);
   if (!meta.spawn) meta.spawn = { x: sp.x, y: 80, z: sp.z };
+  meta.worldSpawn = Object.assign(worldSpawn, meta.worldSpawn ?? { x: sp.x, y: 80, z: sp.z });
   if (!hasSave) player.spawn = { ...meta.spawn };
 
   let phase: GamePhase = "loading";
@@ -214,7 +219,6 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         audio.play(e.name, e.x, e.y, e.z, e.volume, e.pitch);
         return;
       case "particles":
-        if (settings.particles === "minimal" ? Math.random() < 0.9 : settings.particles === "decreased" && Math.random() < 0.5) return;
         renderer?.addParticles(e);
         return;
       case "block_changed": {
@@ -264,6 +268,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   const offAction = input.onAction((a) => {
     if (a === "inventory") {
       if (player.dead) return;
+      const mount = player.vehicle != null ? ctx.entities.get(player.vehicle) : undefined;
+      if (mount && vehicleInventoryKey(ctx, mount)) return;
       inventory.open(player.gameMode === "creative" ? "creative" : "inventory");
       return;
     }
@@ -285,8 +291,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   });
 
   function applySettings() {
-    const quality: Quality = touch ? "low" : settings.graphics === "fancy" ? "high" : "medium";
-    renderer.setOptions({ fov: settings.fov, quality, clouds: settings.clouds, brightness: settings.brightness });
+    const quality: Quality = touch ? "low" : settings.graphics !== "fast" ? "high" : "medium";
+    renderer.setOptions({ fov: settings.fov, quality, clouds: settings.clouds, brightness: settings.brightness, biomeBlend: settings.biomeBlend, particles: settings.particles });
     renderer.setRenderDistance(settings.renderDistance);
     audio.setVolume(settings.master, settings.volumes?.music ?? settings.music, 1);
     if (settings.volumes) audio.setCategories(settings.volumes);
@@ -376,6 +382,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     } else if (arrival === "spawn") {
       const [sx, sy, sz] = safeSpot(tx, tz);
       if (!hasSave && player.spawn.y === 80) player.spawn = { x: sx, y: sy, z: sz };
+      if (!hasSave && worldSpawn.y === 80) Object.assign(worldSpawn, { x: sx, y: sy, z: sz });
       meta.spawn = { ...player.spawn };
       player.teleport(sx + 0.5, sy, sz + 0.5);
     } else {
@@ -679,6 +686,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       mountJump: player.mountJump(),
       mountJumpCooldown: player.vehicle != null && Number(entities.get(player.vehicle)?.data.dashCd ?? 0) > 0,
       thirdPerson: player.thirdPerson,
+      attack: attackStrength((player as typeof player & { attackTicker: number }).attackTicker, attackStats(held).speed),
     };
     if (debugOn) h.debug = debugLines();
     return h;

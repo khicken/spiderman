@@ -1,6 +1,6 @@
 import { equipMob } from "../armor-layer";
 import type { Entity, GameCtx, MobDef } from "../../contracts";
-import { applyPhysics, canSee, clearPath, idleLook, lookAt, meleeAttack, moveTo } from "../ai";
+import { applyPhysics, canSee, clearPath, idleLook, lookAt, meleeAttack, moveTo, skyDarken } from "../ai";
 import {
   addEffect, avoid, burnInDaylight, chase, fleeSun, diffId, hurtAmount, idle, naturalSpawn, discard, num, shootArrow, sound, strafe,
   targetInfo, updateTarget,
@@ -81,6 +81,8 @@ function skeletonTick(cfg: BowCfg & { burns: boolean; sword?: boolean; witherHit
     const hurt = hurtAmount(e);
     const speed = 0.25;
     if (cfg.burns) burnInDaylight(e, ctx);
+    // Vanilla RestrictSunGoal: by day and bare-headed, paths stop short of open sky.
+    e.data._avoidSun = cfg.burns && ctx.world.dim === "overworld" && skyDarken(ctx) < 4 && !(e.data.equipment as { head?: unknown } | undefined)?.head && !e.data.helmet;
     if (!cfg.sword && avoid(e, ctx, ["wolf"], 6, speed)) {
       applyPhysics(e, ctx);
       return;
@@ -115,7 +117,7 @@ const BONES: MobDef["drops"] = [{ item: "bone", count: [0, 2] }, { item: "arrow"
 
 function equipmentDrop(e: Entity, ctx: GameCtx, item: string): void {
   const held = (e.data.held as string | undefined) ?? item;
-  if (held && ctx.random() < 0.085) ctx.entities.dropItem({ item: held, count: 1, damage: Math.floor(ctx.random() * 300) }, e.body.pos.x, e.body.pos.y + 0.5, e.body.pos.z);
+  if (held && !e.data.noEquipDrop && ctx.random() < 0.085) ctx.entities.dropItem({ item: held, count: 1, damage: Math.floor(ctx.random() * 300) }, e.body.pos.x, e.body.pos.y + 0.5, e.body.pos.z);
 }
 
 const witherTick = skeletonTick({ type: "wither_skeleton", sound: "entity.wither_skeleton", interval: [20, 40], burns: false, sword: true, witherHit: true });

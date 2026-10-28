@@ -37,7 +37,7 @@ function nameTagSprite(name: string): { sprite: THREE.Sprite; tex: THREE.Texture
   canvas.height = h;
   const g = canvas.getContext("2d")!;
   g.fillStyle = "rgba(0,0,0,0.25)";
-  g.fillRect(0, 0, w, h);
+  g.fillRect(0, r.top, w, h - r.top);
   g.putImageData(new ImageData(r.data as Uint8ClampedArray<ArrayBuffer>, r.width, r.height), 1, 1);
   const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.NearestFilter;
@@ -46,6 +46,8 @@ function nameTagSprite(name: string): { sprite: THREE.Sprite; tex: THREE.Texture
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
   const s = 0.025;
   sprite.scale.set(w * s, h * s, 1);
+  // Glyphs taller than the line poke out above the box; the box stays where a plain name sits.
+  sprite.center.set(0.5, (h - r.top) / 2 / h);
   sprite.renderOrder = 10;
   return { sprite, tex };
 }

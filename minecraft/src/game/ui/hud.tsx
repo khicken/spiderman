@@ -6,9 +6,10 @@ import { textWidth } from "./font";
 import { Text, useGui } from "./gui";
 import { ItemIcon } from "./item-icon";
 import { StatusBars } from "./hud-status";
+import { AttackIndicator } from "./attack-indicator";
 import { HudOverlays } from "./hud-overlays";
 import { EFFECTS } from "./data";
-import { barUrl, hotbarUrl, offhandUrl, panelUrl, pixelUrl, selectionUrl } from "./sprites";
+import { barUrl, hotbarUrl, offhandUrl, packUrl, panelUrl, pixelUrl, selectionUrl } from "./sprites";
 
 export interface TimedText {
   text: string;
@@ -59,6 +60,15 @@ export const effectIcon = (id: string) => {
   });
 };
 
+// Vanilla notched_N_background/progress: N segments split by 1px ticks, drawn over the plain bar.
+const notchUrl = (n: number, progress: boolean) =>
+  packUrl(`gui/sprites/boss_bar/notched_${n}_${progress ? "progress" : "background"}`, 182, 5) ||
+  pixelUrl(`notch:${n}:${progress}`, 182, 5, (x, y) => {
+    if (y === 0 || y === 4) return 0;
+    for (let i = 1; i < n; i++) if (x === Math.round((i * 182) / n)) return progress ? 0xa0ffffff : 0x80000000;
+    return 0;
+  });
+
 const abs = (x: number, y: number, w: number, h: number, extra?: CSSProperties): CSSProperties => ({ position: "absolute", left: x, top: y, width: w, height: h, ...extra });
 
 export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudProps) {
@@ -73,6 +83,7 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudP
     <div style={abs(0, 0, width, height, { pointerEvents: "none" })}>
       <style>{HUD_CSS}</style>
       <HudOverlays state={pumpkin ? { ...state, pumpkin } : state} width={width} height={height} vignette={vignette} />
+      <AttackIndicator state={state} width={width} height={height} />
       {hurtAt !== undefined && (
         <div key={hurtAt} style={abs(0, 0, width, height, { background: "radial-gradient(ellipse at center, transparent 45%, rgba(255,0,0,0.55) 100%)", animation: "mc-hurt 0.5s ease-out forwards" })} />
       )}
@@ -96,9 +107,13 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudP
           {state.mountJump !== undefined ? (
             <>
               <img alt="" src={barUrl("jump_bg", 182, 0x3a3a52, 0x2c2c40, 0x1c1c2a, 0)} width={182} height={5} style={abs(hx, height - 29, 182, 5, { imageRendering: "pixelated" })} />
-              <div style={abs(hx, height - 29, Math.floor(state.mountJump * 183), 5, { overflow: "hidden" })}>
-                <img alt="" src={barUrl("jump_fill", 182, 0x9ab4ff, 0x6a8cf0, 0x3a50a0, 0)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
-              </div>
+              {state.mountJumpCooldown ? (
+                <img alt="" src={barUrl("jump_cooldown", 182, 0x8a5a5a, 0x6e4444, 0x4a2c2c, 0)} width={182} height={5} style={abs(hx, height - 29, 182, 5, { imageRendering: "pixelated" })} />
+              ) : (
+                <div style={abs(hx, height - 29, Math.floor(state.mountJump * 183), 5, { overflow: "hidden" })}>
+                  <img alt="" src={barUrl("jump_fill", 182, 0x9ab4ff, 0x6a8cf0, 0x3a50a0, 0)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
+                </div>
+              )}
             </>
           ) : (
             survival && (
@@ -138,12 +153,15 @@ export function Hud({ state, title, actionBar, hurtAt, pumpkin, vignette }: HudP
         const [fg, bg] = BOSS[b.color] ?? BOSS.pink;
         const y = 12 + i * 19;
         if (i > 0 && y >= height / 3) return null; // vanilla stops once a bar reaches a third of the screen
+        const px = { imageRendering: "pixelated", display: "block", maxWidth: "none" } as const;
         return (
           <div key={b.id}>
             <Text text={b.name} x={cx} y={y - 9} align="center" />
             <img alt="" src={barUrl(`boss_bg_${b.color}`, 182, lighten(bg), bg, bg)} width={182} height={5} style={abs(hx, y, 182, 5, { imageRendering: "pixelated" })} />
+            {b.notches && <img alt="" src={notchUrl(b.notches, false)} width={182} height={5} style={abs(hx, y, 182, 5, { imageRendering: "pixelated" })} />}
             <div style={abs(hx, y, Math.floor(Math.max(0, Math.min(1, b.progress)) * 183), 5, { overflow: "hidden" })}>
-              <img alt="" src={barUrl(`boss_fg_${b.color}`, 182, lighten(fg), fg, fg)} width={182} height={5} style={{ imageRendering: "pixelated", display: "block", maxWidth: "none" }} />
+              <img alt="" src={barUrl(`boss_fg_${b.color}`, 182, lighten(fg), fg, fg)} width={182} height={5} style={px} />
+              {b.notches && <img alt="" src={notchUrl(b.notches, true)} width={182} height={5} style={{ ...px, position: "absolute", left: 0, top: 0 }} />}
             </div>
           </div>
         );

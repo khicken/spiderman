@@ -11,11 +11,13 @@ export interface Frame {
   z: number;
   rot: number;
   seed: number;
+  mir?: boolean; // negate local a before rotating, for pieces built mirrored
 }
 
-export const frame = (w: Writer, x: number, y: number, z: number, rot: number, seed: number): Frame => ({ w, x, y, z, rot: rot & 3, seed });
+export const frame = (w: Writer, x: number, y: number, z: number, rot: number, seed: number, mir = false): Frame => ({ w, x, y, z, rot: rot & 3, seed, mir });
 
 export function wx(f: Frame, a: number, b: number): number {
+  if (f.mir) a = -a;
   switch (f.rot) {
     case 0: return f.x + a;
     case 1: return f.x - b;
@@ -24,6 +26,7 @@ export function wx(f: Frame, a: number, b: number): number {
   }
 }
 export function wz(f: Frame, a: number, b: number): number {
+  if (f.mir) a = -a;
   switch (f.rot) {
     case 0: return f.z + b;
     case 1: return f.z + a;
@@ -33,12 +36,8 @@ export function wz(f: Frame, a: number, b: number): number {
 }
 function la(f: Frame, x: number, z: number): number {
   const dx = x - f.x, dz = z - f.z;
-  switch (f.rot) {
-    case 0: return dx;
-    case 1: return dz;
-    case 2: return -dx;
-    default: return -dz;
-  }
+  const a = f.rot === 0 ? dx : f.rot === 1 ? dz : f.rot === 2 ? -dx : -dz;
+  return f.mir ? -a : a;
 }
 function lb(f: Frame, x: number, z: number): number {
   const dx = x - f.x, dz = z - f.z;
@@ -51,7 +50,7 @@ function lb(f: Frame, x: number, z: number): number {
 }
 
 // Horizontal facing in local space (0 south/+b, 1 west/-a, 2 north/-b, 3 east/+a) to world Horizontal.
-export const hz = (f: Frame, h: number) => (h + f.rot) & 3;
+export const hz = (f: Frame, h: number) => ((f.mir && h & 1 ? h ^ 2 : h) + f.rot) & 3;
 const H2FACE = [4, 1, 5, 0];
 export const faceOf = (f: Frame, h: number) => H2FACE[hz(f, h)];
 

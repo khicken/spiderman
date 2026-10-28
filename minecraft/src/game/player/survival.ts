@@ -6,6 +6,7 @@ import { itemDef } from "../items/registry";
 import { blockIds, blockOn, bodyBox, fallMultiplier, fluidAt } from "./physics";
 import { BYPASS_ARMOR, MAX_AIR, armorReduce, deathMessage, ench, fallDamage, protectionReduce, xpNeeded } from "./stats";
 import type { PlayerState } from "./state";
+import { rainAt } from "../entities/light";
 
 const box = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
 
@@ -371,7 +372,7 @@ function tickEnvironment(p: PlayerState, ctx: GameCtx): void {
   } else if (p.air < MAX_AIR) p.air = Math.min(MAX_AIR, p.air + 4);
 
   if (spectator) return;
-  if (b.inLava && !p.hasEffect("fire_resistance") && !invulnerableMode(p)) {
+  if (b.inLava && !invulnerableMode(p)) {
     p.fireTicks = Math.max(p.fireTicks, 300);
     damage(p, 4, "lava");
   }
@@ -400,16 +401,13 @@ function tickEnvironment(p: PlayerState, ctx: GameCtx): void {
   const onName = blockDef(on).name;
   if (b.onGround && !p.sneaking && onName === "magma_block" && !ench(ctx.inventory.slots[39], "frost_walker")) damage(p, 1, "fire");
 
-  if (b.inWater || (ctx.time.rain > 0 && w.getSkyLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)) >= 15)) {
+  if (b.inWater || rainAt(ctx, b.pos.x, b.pos.y, b.pos.z) || rainAt(ctx, b.pos.x, b.pos.y + b.height, b.pos.z)) {
     if (p.fireTicks > 0) sound(ctx, "entity.generic.extinguish_fire", p, 0.7, 1.6);
     p.fireTicks = 0;
   }
   if (p.fireTicks > 0) {
-    if (p.hasEffect("fire_resistance")) p.fireTicks = Math.max(0, p.fireTicks - 4);
-    else {
-      if (p.fireTicks % 20 === 0) damage(p, 1, "fire");
-      p.fireTicks--;
-    }
+    if (p.fireTicks % 20 === 0 && !b.inLava) damage(p, 1, "fire");
+    p.fireTicks--;
   }
 
   const eyeState = w.getBlock(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));

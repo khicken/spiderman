@@ -4,7 +4,7 @@ import { ANIMATED, paintFrame } from "../textures/animated";
 import { ITEM_TEXTURE_KEYS, paintItemTexture } from "../textures/icons";
 import { glintPixels } from "../textures/items-iso";
 import {
-  BUTTON_PATHS, armorUrl, arrowUrl, barPath, barUrl, bubbleUrl, buttonUrl, claudeSprite, emptySlotUrl, flameUrl, foodPath, foodUrl,
+  BUTTON_PATHS, CONTAINER_ART, armorUrl, arrowUrl, barPath, barUrl, bubbleUrl, buttonUrl, claudeSprite, emptySlotUrl, flameUrl, foodPath, foodUrl,
   heartPath, heartUrl, hotbarUrl, offhandUrl, panelUrl, selectionUrl, sliderTrackUrl, slotUrl, type EmptySlotKind, type HeartKind,
 } from "../ui/sprites";
 import { glyphOf, GLYPH_ROWS } from "../ui/font";
@@ -82,6 +82,14 @@ function containerSheet(kind: keyof typeof LAYOUTS): Img {
   if (kind === "furnace" || kind === "blast_furnace" || kind === "smoker") {
     draw(() => flameUrl(0), 56, 36);
     draw(() => arrowUrl(0, 24, 16), 79, 34);
+  }
+  for (const a of CONTAINER_ART[kind] ?? []) {
+    if (a.url) draw(a.url, a.x, a.y);
+    else {
+      const r = newImg(a.w, a.h), c = a.c ?? 0;
+      for (let i = 0; i < r.data.length; i += 4) r.data.set([(c >> 16) & 255, (c >> 8) & 255, c & 255, c >>> 24], i);
+      over(panel, r, a.x, a.y);
+    }
   }
   const sheet = newImg(kind === "villager" ? 512 : 256, 256);
   if (kind === "large_chest") {

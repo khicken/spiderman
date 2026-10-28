@@ -8,6 +8,7 @@ import { blockCube, blockStateOfItem, isCubeItem, itemSpriteView } from "../bloc
 import { PAINTINGS, paintingTexture, paintingVariant, type PaintingVariant } from "./painting-art";
 import { mapTexture } from "../../systems/features/map-render";
 import { noiseTile, pixBoxes, repeatTexture } from "./pix-box";
+import { frameChanged, syncFrameMarker } from "../item-frame";
 
 const N: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const PX = 1 / 16;
@@ -146,6 +147,7 @@ export function breakHanging(ctx: GameCtx, e: Entity, drop: boolean) {
   if (e.data._remove) return;
   e.dead = true;
   e.data._remove = true;
+  if (isFrame(e)) frameChanged(ctx, e, undefined);
   sound(ctx, e, isFrame(e) ? (e.type === "glow_item_frame" ? "entity.glow_item_frame.break" : "entity.item_frame.break") : "entity.painting.break");
   if (!drop) return;
   frontPoint(e, tmp);
@@ -200,6 +202,7 @@ function tick(e: Entity, ctx: GameCtx) {
     return;
   }
   snapBody(e);
+  if (isFrame(e) && e.age % 20 === 0) syncFrameMarker(e, e.data.item as ItemStack | undefined);
   if (e.age % 100 === 0 && !survives(ctx, e)) breakHanging(ctx, e, true);
 }
 
@@ -219,8 +222,9 @@ function onDeath(e: Entity, ctx: GameCtx) {
       frontPoint(e, tmp);
       ctx.entities.dropItem({ ...item }, tmp.x, tmp.y, tmp.z);
     }
-    e.data.item = undefined;
+    e.data.item = null;
     e.data.rot = 0;
+    frameChanged(ctx, e, undefined);
     sound(ctx, e, e.type === "glow_item_frame" ? "entity.glow_item_frame.remove_item" : "entity.item_frame.remove_item");
     return;
   }
@@ -239,20 +243,24 @@ function onInteract(e: Entity, ctx: GameCtx, held: ItemStack | null): boolean {
       const slot = inv.held() === held ? inv.selected : 40;
       inv.setSlot(slot, held.count > 1 ? { ...held, count: held.count - 1 } : null);
     }
+    frameChanged(ctx, e, e.data.item as ItemStack);
     sound(ctx, e, glow ? "entity.glow_item_frame.add_item" : "entity.item_frame.add_item");
     return true;
   }
   e.data.rot = (((e.data.rot as number) ?? 0) + 1) & 7;
+  frameChanged(ctx, e, e.data.item as ItemStack);
   sound(ctx, e, glow ? "entity.glow_item_frame.rotate_item" : "entity.item_frame.rotate_item");
   return true;
 }
 
-let shared: { border: THREE.BufferGeometry; back: THREE.BufferGeometry; birch: THREE.Texture; frame: THREE.Texture; glow: THREE.Texture } | null = null;
+let shared: { border: THREE.BufferGeometry; back: THREE.BufferGeometry; mapBorder: THREE.BufferGeometry; mapBack: THREE.BufferGeometry; birch: THREE.Texture; frame: THREE.Texture; glow: THREE.Texture } | null = null;
 function art() {
   if (!shared) {
     shared = {
       border: pixBoxes([[-6, -6, 0, -5, 6, 1], [5, -6, 0, 6, 6, 1], [-5, 5, 0, 5, 6, 1], [-5, -6, 0, 5, -5, 1]]),
       back: pixBoxes([[-5, -5, 0, 5, 5, 0.5]]),
+      mapBorder: pixBoxes([[-8, -8, 0, -7, 8, 1], [7, -8, 0, 8, 8, 1], [-7, 7, 0, 7, 8, 1], [-7, -8, 0, 7, -7, 1]]),
+      mapBack: pixBoxes([[-7, -7, 0, 7, 7, 0.5]]),
       birch: repeatTexture(paintBlockTexture("birch_planks")),
       frame: repeatTexture(noiseTile(7, [138, 84, 52], 0.35)),
       glow: repeatTexture(noiseTile(9, [58, 176, 160], 0.35)),
@@ -300,7 +308,11 @@ function frameModel(glow: boolean): () => MobModel {
     const a = art();
     const root = new THREE.Group();
     const frameMats = [lit(a.birch), lit(glow ? a.glow : a.frame)];
-    root.add(new THREE.Mesh(a.border, frameMats[0]), new THREE.Mesh(a.back, frameMats[1]));
+    const plain = [new THREE.Mesh(a.border, frameMats[0]), new THREE.Mesh(a.back, frameMats[1])];
+    // Vanilla swaps to the full-block map frame model while it holds a map.
+    const forMap = [new THREE.Mesh(a.mapBorder, frameMats[0]), new THREE.Mesh(a.mapBack, frameMats[1])];
+    for (const m of forMap) m.visible = false;
+    root.add(...plain, ...forMap);
     const holder = new THREE.Group();
     root.add(holder);
     let key = "";
@@ -313,19 +325,20 @@ function frameModel(glow: boolean): () => MobModel {
       itemMats = [];
     };
     const build = (s: ItemStack) => {
-      const mapTex = mapTexture(s);
+      const mapTex = mapTexture(s, true);
       if (mapTex) {
-        itemMats = [lit(mapTex)];
+        itemMats = [lit(mapTex, 0.5)];
         const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), itemMats[0]);
-        m.position.z = 0.5 * PX + 0.004;
+        m.position.z = PX + 0.002;
         m.userData.ownGeometry = true;
         holder.add(m);
       } else if (isCubeItem(s.item)) {
         const cube = blockCube(blockStateOfItem(s.item));
         itemMats = cube.materials.map(cloneLit);
         const m = new THREE.Mesh(cube.geometry, itemMats);
-        m.scale.setScalar(0.5);
-        m.position.set(0, -0.25, 0.5 * PX + 0.25);
+        // Vanilla block "fixed" display scale 0.5 times the frame's 0.5: a quarter-size cube.
+        m.scale.setScalar(0.25);
+        m.position.set(0, -0.125, 0.5 * PX + 0.125);
         holder.add(m);
       } else {
         const v = itemSpriteView(s.item);
@@ -346,8 +359,10 @@ function frameModel(glow: boolean): () => MobModel {
           key = k;
           clearItem();
           if (s) build(s);
+          for (const m of plain) m.visible = s?.item !== "filled_map";
+          for (const m of forMap) m.visible = s?.item === "filled_map";
         }
-        if (s?.item === "filled_map") mapTexture(s);
+        if (s?.item === "filled_map") mapTexture(s, true);
         const rot = (e.data.rot as number) ?? 0;
         holder.rotation.z = s?.item === "filled_map" ? -(rot % 4) * (Math.PI / 2) : -rot * (Math.PI / 4);
         const br = lightOf(e);

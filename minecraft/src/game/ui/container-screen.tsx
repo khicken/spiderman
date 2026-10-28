@@ -14,6 +14,7 @@ import { canStack } from "../items/stack";
 import { maxStack } from "../items/registry";
 import type { EmptySlotKind } from "./sprites";
 import { ContainerExtras } from "./container-extras";
+import { MountPreview, mountEmpty } from "./horse-screen";
 import { CreativeScreen, type CreativeProps } from "./creative-screen";
 import { GhostOverlay, RecipeBookPanel, recipeButtonUrl } from "./recipe-book";
 import { bookTypeOf, type GhostSlot } from "../systems/features/recipe-book";
@@ -211,6 +212,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
         {view.kind === "inventory" && !bg && <div style={{ position: "absolute", left: 26, top: 8, width: 49, height: 70, background: "#000", boxShadow: "inset 1px 1px 0 #373737, inset -1px -1px 0 #fff" }} />}
         {view.kind === "inventory" && <PlayerDoll x={26} y={8} w={49} h={70} panel={{ left, top }} mouse={mouse} inventory={inventory} />}
         {view.kind === "inventory" && !bg && <Img src={arrowUrl(0, 16, 13)} x={135} y={29} w={16} h={13} />}
+        {view.kind === "horse" && <MountPreview view={view} panel={{ left, top }} mouse={mouse} />}
         {view.kind === "crafting_table" && !bg && <Img src={arrowUrl(0)} x={90} y={35} w={22} h={15} />}
         {(view.kind === "furnace" || view.kind === "blast_furnace" || view.kind === "smoker") && (
           <>
@@ -235,7 +237,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
             frame={!bg}
             stack={preview?.stacks.get(p.slot.index) ?? p.slot.stack}
             disabled={p.slot.disabled}
-            empty={EMPTY_ICON[p.slot.role]}
+            empty={EMPTY_ICON[p.slot.role] ?? mountEmpty(view, p.slot.index)}
             dragged={!!drag && drag.slots.length > 1 && drag.slots.includes(p.slot.index)}
             hovered={hover === p.slot.index}
             onEnter={() => enter(p.slot.index)}

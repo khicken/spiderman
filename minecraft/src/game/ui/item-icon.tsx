@@ -2,12 +2,14 @@
 
 import type { ItemDef, ItemStack } from "../contracts";
 import { itemDef } from "../items/registry";
-import { itemIconUrl, itemSpritePixels, tintedIconUrl } from "../textures/icons";
+import { itemIconUrl, itemSpritePixels, potIconUrl, tintedIconUrl } from "../textures/icons";
+import { SHIELD } from "../textures/items-gear";
 import { dialFrame, dialIconUrl } from "../textures/dials";
 import { isPotionItem, potionItemName, potionOf, potionTooltip, stackPotionColor } from "../items/potions";
 import { textWidth } from "./font";
 import { Text } from "./gui";
 import { packUrl, pixelUrl } from "./sprites";
+import { activeSettings } from "./settings";
 import { BH, BW, bannerPixels, type Layer } from "../systems/features/banner-art";
 import { ENCHANTS, enchantName, titleCase } from "./data";
 import { DISCS, discLabel } from "../systems/blocks-a/discs";
@@ -36,10 +38,31 @@ function bannerIconUrl(stack: ItemStack): string | null {
   });
 }
 
+// Shield sprite with the banner face painted over its plate (rim and face cells x 4..11, y 2..14).
+function shieldIconUrl(stack: ItemStack): string | null {
+  if (stack.item !== "shield" || typeof stack.data?.banner !== "string") return null;
+  const layers = Array.isArray(stack.data.patterns) ? (stack.data.patterns as Layer[]) : [];
+  const base = itemSpritePixels("shield");
+  const face = bannerPixels(stack.data.banner, layers);
+  return pixelUrl(`shield_icon:${stack.data.banner}:${JSON.stringify(layers)}`, 16, 16, (x, y) => {
+    let o = (y * 16 + x) * 4;
+    let src = base;
+    if ("3%".includes(SHIELD[y][x])) {
+      o = (Math.floor(((y - 2 + 0.5) * BH) / 13) * BW + Math.floor(((x - 4 + 0.5) * BW) / 8)) * 4;
+      src = face;
+    }
+    return ((src[o + 3] << 24) | (src[o] << 16) | (src[o + 1] << 8) | src[o + 2]) >>> 0;
+  });
+}
+
+const potSherds = (stack: ItemStack) =>
+  stack.item === "decorated_pot" && Array.isArray(stack.data?.sherds) && stack.data.sherds.length === 4 ? (stack.data.sherds as string[]) : null;
+
 export function ItemIcon({ stack, x, y, count = true }: { stack: ItemStack; x: number; y: number; count?: boolean }) {
   const def = itemDef(stack.item);
   const frame = dialFrame(stack);
-  const url = bannerIconUrl(stack) ?? (isPotionItem(stack.item) ? tintedIconUrl(stack.item, stackPotionColor(stack)) : frame !== null ? dialIconUrl(stack.item, frame) : itemIconUrl(stack.item));
+  const sherds = potSherds(stack);
+  const url = bannerIconUrl(stack) ?? shieldIconUrl(stack) ?? (sherds ? potIconUrl(sherds) : null) ?? (isPotionItem(stack.item) ? tintedIconUrl(stack.item, stackPotionColor(stack)) : frame !== null ? dialIconUrl(stack.item, frame) : itemIconUrl(stack.item));
   const max = maxDurability(def);
   const dmg = stack.damage ?? 0;
   const glint = !!stack.ench && Object.keys(stack.ench).length > 0;
@@ -60,7 +83,8 @@ export function ItemIcon({ stack, x, y, count = true }: { stack: ItemStack; x: n
                 ? `url(${packUrl("misc/enchanted_glint_item")})`
                 : "repeating-linear-gradient(135deg, rgba(160,80,255,0) 0px, rgba(160,80,255,0.55) 8px, rgba(160,80,255,0) 16px)",
               backgroundSize: packUrl("misc/enchanted_glint_item") ? "64px 64px" : undefined,
-              animation: "mc-glint 3s linear infinite",
+              animation: activeSettings().glintSpeed > 0 ? `mc-glint ${1.5 / activeSettings().glintSpeed}s linear infinite` : "none",
+              opacity: Math.min(1, activeSettings().glintStrength / 0.75),
               maskImage: `url(${url})`,
               WebkitMaskImage: `url(${url})`,
               maskSize: "16px 16px",

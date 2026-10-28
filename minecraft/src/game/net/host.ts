@@ -7,6 +7,7 @@ import { createInventory } from "../items";
 import { SLEEP_RULE } from "../mechanics/interact";
 import { applyBoneMeal, boneMealEffects } from "../mechanics/bonemeal";
 import { completeEndPortal, lightPortal } from "../mechanics/portal";
+import { finishBrush } from "../systems/features/archaeology";
 import { itemDef } from "../items/registry";
 import { makeBody } from "../player/physics";
 import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, STEW_EFFECTS } from "../player/stats";
@@ -22,12 +23,12 @@ import { closeDim, openDim, tickDim, type DimState } from "./host-dims";
 import { createTracker, type EntityTracker } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
 import { playerName } from "./profile";
-import { cleanName, F, MAX_PLAYERS, PROTOCOL, int, isDim, newRoomCode, num, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type PlayerRecord, type PlayerSnap } from "./protocol";
+import { cleanName, F, MAX_PLAYERS, PROTOCOL, hostUse, int, isDim, newRoomCode, num, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type PlayerRecord, type PlayerSnap } from "./protocol";
 import { createTransport, type Transport } from "./transport";
 import { createAvatars } from "./avatars";
 import { setAdvancementSink } from "../systems/advancements";
 import { claimEffects, eatCredit, exhaust, foodDelta, grantEffect, healBy, hostDamage, newHealth, resetHealth, tickHealth, type Health, type HealthOwner } from "./host-health";
-import { cleanLook, localLook, type Look } from "./skins";
+import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
 import { guarded, type Counts } from "./inv-guard";
 
 export interface LanOptions {
@@ -117,7 +118,11 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   const remotes = new Map<string, Remote>();
   const dims = new Map<Dim, DimState>();
   const avatars = createAvatars(() => g.ctx);
-  const hostLook = localLook();
+  let hostLook = localLook();
+  const offLook = onLocalLook((l) => {
+    hostLook = l;
+    all({ t: "skins", list: [{ id: 0, look: l }] });
+  });
   let nextNum = 1;
   let tick = 0;
   let origin: Remote | null = null;
@@ -622,12 +627,29 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         } else if (m.kind === "portal") {
           if (free || r.guard.has("flint_and_steel") || r.guard.has("fire_charge")) withPlayer(r, (c) => lightPortal(c, m.x, m.y, m.z));
         } else if (m.kind === "end_portal") withPlayer(r, (c) => completeEndPortal(c, m.x, m.y, m.z));
+        else if (m.kind === "use" || m.kind === "use_off" || m.kind === "brush") {
+          const name = BLOCKS[idOf(w.getBlock(m.x, m.y, m.z))]?.name ?? "";
+          if (m.kind !== "brush" && !hostUse(name)) return r.guard.strike(performance.now(), 5);
+          const inv = m.inv ? takeInv(r, m.inv, m.seq) : null;
+          if (inv) r.inv.load(inv);
+          withPlayer(r, (c) => {
+            const held = m.kind === "use" ? r.inv.held() : m.kind === "use_off" ? r.inv.slots[40] : null;
+            if (m.kind !== "brush") return c.behaviors[name]?.use?.(c, m.x, m.y, m.z, c.world.getBlock(m.x, m.y, m.z), held ?? null);
+            const slot = r.inv.held()?.item === "brush" ? r.inv.selected : r.inv.slots[40]?.item === "brush" ? 40 : -1;
+            if (slot >= 0 || free) finishBrush(c, m.x, m.y, m.z, Math.max(0, slot));
+          });
+          const save = r.inv.save();
+          send(r, { t: "setinv", inv: save, seq: r.guard.whole(save) });
+          if (w.getBlockEntity(m.x, m.y, m.z)) queueBe(r.dim, m.x, m.y, m.z);
+        }
         return;
       }
       case "be": {
         const w = worldOf(r.dim);
         if (!w || m.dim !== r.dim || !blockAt(m) || !inReach(r, m.x, m.y, m.z)) return;
         if (m.be !== null && (typeof m.be !== "object" || JSON.stringify(m.be).length > MAX_BE_JSON)) return;
+        // Brushing loot lives in the block entity, so only the host writes it.
+        if (m.be?.type === "brushable" || w.getBlockEntity(m.x, m.y, m.z)?.type === "brushable") return;
         if (limited(r, "set") || !r.guard.blockEntity(w.getBlockEntity(m.x, m.y, m.z), m.be, exempt(r))) {
           r.guard.strike(performance.now(), 5);
           send(r, { t: "blocks", dim: r.dim, list: [], be: [{ x: m.x, y: m.y, z: m.z, be: w.getBlockEntity(m.x, m.y, m.z) ?? null }] });
@@ -1013,6 +1035,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     tick() {
       if (disposed) return;
       tick++;
+      if (tick === 300 && t.relayDown) g.chat("§eNo relay server reachable. Some players may not join.");
       const ctx = g.ctx as GameCtx & { playerFor?: PlayerPicker };
       ctx.playerFor = picker(g.dim);
       (ctx as GameCtx & { playersAll?: () => PlayerApi[] }).playersAll = () => everyone(g.dim);
@@ -1090,8 +1113,9 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       return social(line, hostName);
     },
     debug: () => ({
-      remotes: [...remotes.values()].map((r) => ({ name: r.name, x: r.pos.x, y: r.pos.y, z: r.pos.z, hp: r.hp.health, food: r.hp.food, effects: r.hp.effects, look: r.look })),
+      remotes: [...remotes.values()].map((r) => ({ name: r.name, x: r.pos.x, y: r.pos.y, z: r.pos.z, hp: r.hp.health, food: r.hp.food, effects: r.hp.effects, look: r.look, direct: t.direct(r.peer) })),
       avatars: avatars.list(),
+      relayUp: t.relayUp,
     }),
     players() {
       const list: PlayerListEntry[] = [{ id: 0, name: hostName, ping: 0 }];
@@ -1101,6 +1125,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     dispose() {
       if (disposed) return;
       disposed = true;
+      offLook();
       all({ t: "bye", reason: "Server closed" });
       for (const r of remotes.values()) store(r);
       remotes.clear();

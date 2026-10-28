@@ -5,7 +5,7 @@ import { animalAI, feed, num, sound, useItem, type AnimalOpts } from "./common";
 import { isBaby } from "../geom";
 import { wander, clearPath } from "../ai";
 import { blockJumpFactor } from "../../player/physics";
-import { rider, mountPlayer, steer, dismountPlayer } from "../riding";
+import { rider, mountPlayer, steer, dismountPlayer, openMount, registerMountInv } from "../riding";
 import { dropContents } from "../vehicles/boat";
 
 type Kind = "horse" | "donkey" | "mule" | "skeleton_horse" | "zombie_horse";
@@ -201,7 +201,11 @@ function horseModel(kind: Kind) {
         if (item !== armorItem && ARMOR_COLOR[item]) {
           armor.root.traverse((o) => {
             const m = (o as { material?: { userData: Record<string, unknown> } }).material;
-            if (m) m.userData.base = ARMOR_COLOR[item];
+            if (!m) return;
+            const b = m.userData.base as { setHex?: (c: number) => void } | undefined;
+            // entities/render.ts converts base to a Color once and caches it.
+            if (b?.setHex) b.setHex(ARMOR_COLOR[item]);
+            else m.userData.base = ARMOR_COLOR[item];
           });
         }
         armorItem = item;
@@ -346,6 +350,7 @@ function horseDef(kind: Kind): MobDef {
     },
     onInteract(e, ctx, held) {
       const item = held?.item;
+      if (ctx.player.sneaking && ctx.player.vehicle !== e.id && openMount(ctx, e)) return true;
       if (item && HEAL[item] !== undefined && (e.health < e.maxHealth || (!e.data.tame && TEMPER[item])) && !(FOOD.includes(item) && e.data.tame && e.health >= e.maxHealth)) {
         if (undead) return false;
         useItem(ctx);
@@ -362,8 +367,7 @@ function horseDef(kind: Kind): MobDef {
         sound(ctx, e, "entity.horse.saddle", 0.5, 1);
         return true;
       }
-      if (kind === "horse" && item?.endsWith("_horse_armor") && e.data.tame && !isBaby(e)) {
-        if (e.data.horseArmor) ctx.entities.dropItem({ item: e.data.horseArmor as string, count: 1 }, e.body.pos.x, e.body.pos.y + 1, e.body.pos.z);
+      if (kind === "horse" && item?.endsWith("_horse_armor") && e.data.tame && !isBaby(e) && !e.data.horseArmor) {
         e.data.horseArmor = item;
         e.data.armor = ARMOR_POINTS[item] ?? 0;
         useItem(ctx);
@@ -375,10 +379,6 @@ function horseDef(kind: Kind): MobDef {
         e.data.be = { x: 0, y: 0, z: 0, type: "chest", items: new Array(15).fill(null), data: { customName: e.data.name ?? names[kind] } };
         useItem(ctx);
         sound(ctx, e, `entity.${kind}.chest`, 1, 1);
-        return true;
-      }
-      if (ctx.player.sneaking && e.data.tame && e.data.chest) {
-        ctx.inventory.open("chest", { x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z, entityId: e.id });
         return true;
       }
       if (undead && !e.data.tame) return false;
@@ -394,6 +394,23 @@ function horseDef(kind: Kind): MobDef {
     },
   };
   return def;
+}
+
+for (const kind of ["horse", "donkey", "mule", "skeleton_horse", "zombie_horse"] as const) {
+  registerMountInv(kind, {
+    canOpen: (e) => e.data.tame === true && !isBaby(e),
+    saddle: true,
+    ...(kind === "horse" && {
+      armor: "horse_armor" as const,
+      isArmor: (item: string) => !!ARMOR_POINTS[item],
+      getArmor: (e: Entity) => (e.data.horseArmor ? { item: e.data.horseArmor as string, count: 1 } : null),
+      setArmor(e: Entity, s: { item: string } | null, ctx: GameCtx) {
+        if (s && s.item !== e.data.horseArmor) sound(ctx, e, "entity.horse.armor", 0.5, 1);
+        e.data.horseArmor = s?.item;
+        e.data.armor = s ? ARMOR_POINTS[s.item] ?? 0 : 0;
+      },
+    }),
+  });
 }
 
 export const HORSE = horseDef("horse");

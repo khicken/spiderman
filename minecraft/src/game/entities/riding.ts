@@ -1,4 +1,4 @@
-import type { Entity, GameCtx } from "../contracts";
+import type { Entity, GameCtx, ItemStack } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { blockBelow } from "../player/physics";
 import { rotlerp } from "./ai";
@@ -103,7 +103,12 @@ export interface SeatSpec {
   at(v: Entity, i: number, n: number, passenger: Entity | null): [number, number];
 }
 
-const SEATS: Record<string, SeatSpec> = {};
+// Mob files register into these tables at import time, possibly inside an import cycle before this
+// module's consts initialize, so the tables hang off a hoisted function instead.
+function tables(): { seats: Record<string, SeatSpec>; inv: Record<string, MountInv> } {
+  const f = tables as unknown as { t?: ReturnType<typeof tables> };
+  return (f.t ??= { seats: {}, inv: {} });
+}
 const NOT_ANIMAL = new Set(["villager", "wandering_trader", "iron_golem", "snow_golem", "allay"]);
 
 // Vanilla seats move instances of Animal 0.2 forward.
@@ -113,8 +118,11 @@ export function isAnimal(e: Entity) {
 const crowd: Entity[] = [];
 const crowdOut: Entity[] = [];
 
+// Vehicles without their own seats (a /ride mount): riders sit on the top of the bounding box.
+const ANY_SEAT: SeatSpec = { seats: 64, at: (v) => [mobDef(v.type)?.seat ?? v.body.height, 0] };
+
 export function registerSeats(type: string, spec: SeatSpec) {
-  SEATS[type] = spec;
+  tables().seats[type] = spec;
 }
 
 export function mobPassengers(ctx: GameCtx, v: Entity, out: Entity[]) {
@@ -132,7 +140,7 @@ function riderCount(ctx: GameCtx, v: Entity, mobs: Entity[]) {
 }
 
 export function hasRoom(ctx: GameCtx, v: Entity) {
-  const s = SEATS[v.type];
+  const s = tables().seats[v.type];
   return !!s && riderCount(ctx, v, mobPassengers(ctx, v, crowdOut)) < s.seats;
 }
 
@@ -150,19 +158,22 @@ export function dismountMob(e: Entity) {
 
 // Player seat for player/riding.ts: [height above vehicle feet, forward offset].
 export function playerSeat(ctx: GameCtx, v: Entity, base: number): [number, number] {
-  const s = SEATS[v.type];
-  if (!s) return [base, 0];
+  const s = tables().seats[v.type];
+  // Vanilla: the top of the vehicle box less the player's 0.6 vehicle attachment.
+  if (!s) return [mobDef(v.type)?.seat === undefined ? Math.max(0, v.body.height - 0.6) : base, 0];
   return s.at(v, 0, riderCount(ctx, v, mobPassengers(ctx, v, crowdOut)), null);
 }
 
 const seated: Entity[] = [];
+// Mobs with a riding pose sit down into the seat like the player's 0.6 vehicle attachment.
+const SITTERS = new Set(["zombie", "husk", "drowned", "zombie_villager", "zombified_piglin", "piglin", "piglin_brute", "skeleton", "stray", "wither_skeleton", "bogged", "pillager", "vindicator", "evoker", "illusioner"]);
 
 // Returns true while e rides a vehicle; the caller then skips AI and physics.
 export function seatTick(e: Entity, ctx: GameCtx): boolean {
   const id = e.data.mount;
   if (typeof id !== "number") return false;
   const v = ctx.entities.get(id);
-  const s = v && !v.dead ? SEATS[v.type] : undefined;
+  const s = v && !v.dead ? tables().seats[v.type] ?? ANY_SEAT : undefined;
   if (!v || !s || e.data.leash !== undefined) {
     dismountMob(e);
     return false;
@@ -178,12 +189,51 @@ export function seatTick(e: Entity, ctx: GameCtx): boolean {
   }
   const [dy, fwd] = s.at(v, i, n, e);
   const b = e.body;
-  b.pos.set(v.body.pos.x - Math.sin(v.yaw) * fwd, v.body.pos.y + dy, v.body.pos.z - Math.cos(v.yaw) * fwd);
+  const sit = SITTERS.has(e.type) ? 0.6 : 0;
+  b.pos.set(v.body.pos.x - Math.sin(v.yaw) * fwd, v.body.pos.y + dy - sit, v.body.pos.z - Math.cos(v.yaw) * fwd);
   b.vel.set(0, 0, 0);
   b.fallDistance = 0;
   b.onGround = true;
   e.yaw = v.yaw;
   e.headYaw = rotlerp(e.headYaw, v.yaw, 0.2);
   e.data._pa = e.age;
+  return true;
+}
+
+// Vanilla HorseInventoryMenu: a saddle slot, a body armor slot, and an optional chest grid.
+export interface MountInv {
+  canOpen(e: Entity): boolean; // AbstractHorse.openCustomInventoryScreen needs a tamed mount
+  saddle?: boolean;
+  armor?: "horse_armor" | "llama_armor";
+  isArmor?(item: string): boolean;
+  getArmor?(e: Entity): ItemStack | null;
+  setArmor?(e: Entity, s: ItemStack | null, ctx: GameCtx): void;
+}
+
+export function registerMountInv(type: string, inv: MountInv) {
+  tables().inv[type] = inv;
+}
+
+export function mountInv(type: string): MountInv | undefined {
+  return tables().inv[type];
+}
+
+// Opens the vehicle's own screen, like sneak-use on a mount or the inventory key while riding one.
+export function openMount(ctx: GameCtx, e: Entity): boolean {
+  if (e.type === "chest_boat") {
+    ctx.inventory.open("chest", { x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z, entityId: e.id });
+    return true;
+  }
+  const inv = tables().inv[e.type];
+  if (!inv || e.dead || !inv.canOpen(e)) return false;
+  ctx.inventory.open("horse", { x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z, entityId: e.id });
+  return true;
+}
+
+
+// Vanilla HasCustomInventoryScreen: the inventory key while riding one opens its screen, or nothing when untamed.
+export function vehicleInventoryKey(ctx: GameCtx, e: Entity): boolean {
+  if (e.type !== "chest_boat" && !tables().inv[e.type]) return false;
+  openMount(ctx, e);
   return true;
 }

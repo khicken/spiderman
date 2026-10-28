@@ -217,7 +217,7 @@ function lantern(t: Tex, glow: readonly Color[]): void {
 def("lantern", (t) => lantern(t, [0xc87a2a, 0xf6b94a, 0xfff2b0]));
 def("soul_lantern", (t) => lantern(t, [0x2a8a9a, 0x5ae0f0, 0xd0ffff]));
 
-function torch(t: Tex, head: readonly Color[], stick: readonly Color[] = [0x5a3e1c, 0x8a6131]): void {
+function torch(t: Tex, head: readonly Color[], stick: readonly Color[] = [0x7a5a2a, 0xa88a52]): void {
   t.clear();
   t.vline(7, 8, 15, stick[1]).vline(8, 8, 15, stick[0]);
   t.rect(7, 6, 2, 2, head[1]).set(7, 6, head[2]).set(8, 7, head[0]);

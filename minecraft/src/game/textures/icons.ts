@@ -4,7 +4,7 @@ import { paintBlockTexture } from "./index";
 import { packItemTile, paintItemTexture, paintTintedItem, hasItemPainter } from "./items";
 import { packVersion } from "../packs";
 import { resize } from "../packs/img";
-import { blockIconPixels, flatBlockSprite, glintPixels, isFlatBlock, scaleSprite } from "./items-iso";
+import { blockIconPixels, flatBlockSprite, glintPixels, isFlatBlock, potIconPixels, scaleSprite } from "./items-iso";
 
 export { paintItemTexture, paintTintedItem, ITEM_TEXTURE_KEYS, DEFAULT_GLINT } from "./items";
 
@@ -25,6 +25,7 @@ export function itemSpritePixels(name: string): Uint8ClampedArray {
 export function itemIconPixels(name: string, size = ICON_SIZE): Uint8ClampedArray {
   const def = itemDef(name);
   const block = !def?.texture ? blockByName(def?.block ?? name) : undefined;
+  if (name === "decorated_pot") return potIconPixels(null, size);
   if (block && !isFlatBlock(block) && !hasItemPainter(name)) return blockIconPixels(block, size);
   const hd = packItemTile(def?.texture ?? name);
   if (hd && hd.w > 16) return resize(hd, size, size).data;
@@ -73,6 +74,17 @@ export function tintedIconUrl(itemName: string, color: number): string {
   let u = URLS.get(k);
   if (!u) {
     u = toCanvas(scaleSprite(paintTintedItem(itemName, color), ICON_SIZE), ICON_SIZE).toDataURL();
+    URLS.set(k, u);
+  }
+  return u;
+}
+
+export function potIconUrl(sherds: readonly string[]): string {
+  checkPacks();
+  const k = `decorated_pot#${sherds.join(",")}`;
+  let u = URLS.get(k);
+  if (!u) {
+    u = toCanvas(potIconPixels(sherds, ICON_SIZE), ICON_SIZE).toDataURL();
     URLS.set(k, u);
   }
   return u;

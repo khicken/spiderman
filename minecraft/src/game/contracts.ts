@@ -133,6 +133,7 @@ export interface DropEntry {
   item: string;
   count?: [number, number];
   chance?: number;
+  group?: string; // entries sharing a group are one-of alternatives: at most one drops, picked by chance
 }
 // undefined drops the block item itself. null drops nothing. "silk" entries need silk touch.
 export type DropSpec = undefined | null | string | DropEntry[];
@@ -439,7 +440,7 @@ export type ContainerKind =
   | "inventory" | "creative" | "crafting_table" | "furnace" | "blast_furnace" | "smoker"
   | "chest" | "large_chest" | "barrel" | "shulker_box" | "ender_chest" | "dispenser" | "dropper"
   | "hopper" | "crafter" | "anvil" | "enchanting_table" | "brewing_stand" | "grindstone"
-  | "stonecutter" | "smithing_table" | "loom" | "cartography_table" | "villager" | "beacon";
+  | "stonecutter" | "smithing_table" | "loom" | "cartography_table" | "villager" | "beacon" | "horse";
 
 export type SlotRole =
   | "storage" | "hotbar" | "armor_head" | "armor_chest" | "armor_legs" | "armor_feet"
@@ -462,6 +463,7 @@ export interface ContainerView {
   progress?: Record<string, number>; // "cook" 0..1, "burn" 0..1, "brew" 0..1, "xp_cost"
   options?: { id: string; label: string; cost?: number; enabled: boolean }[]; // enchant, trade, stonecutter
   merchant?: MerchantView; // villager and wandering trader screen
+  mount?: { type: string; age: number; data: Record<string, unknown> }; // horse screen preview
 }
 
 export interface MerchantView {
@@ -566,7 +568,7 @@ export const SET_NO_DROP = 4;
 export const SET_DEFAULT = SET_NOTIFY;
 
 // Multi-block edits a multiplayer client asks the host to run instead of sending each block.
-export type HostAction = "bone_meal" | "portal" | "end_portal";
+export type HostAction = "bone_meal" | "portal" | "end_portal" | "use" | "use_off" | "brush";
 
 export interface WorldApi {
   dim: Dim;
@@ -577,6 +579,7 @@ export interface WorldApi {
   getBlockLight(x: number, y: number, z: number): number;
   getBiome(x: number, z: number): BiomeDef;
   getBiomeAt?(x: number, y: number, z: number): BiomeDef; // cave biomes underground, else getBiome
+  spawn?: { x: number; y: number; z: number }; // world spawn point, one shared object for every dimension
   topY(x: number, z: number): number;
   isLoaded(x: number, z: number): boolean;
   raycast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, fluids?: boolean): RaycastHit | null;
@@ -677,7 +680,7 @@ export interface RendererApi {
   setTime(dayTicks: number): void; // 0..23999
   setWeather(rain: number, thunder: number): void; // 0..1
   setRenderDistance(chunks: number): void;
-  setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number }): void;
+  setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number; biomeBlend?: number; particles?: "all" | "decreased" | "minimal" }): void;
   setOutline(hit: RaycastHit | null, boxes: Aabb[] | null): void;
   setBreak(hit: RaycastHit | null, progress: number): void;
   setUnderwater(kind: "none" | "water" | "lava" | "powder_snow"): void;
@@ -775,4 +778,5 @@ export interface HudState {
   portal?: number; // 0..1 nether portal swirl
   light?: number; // 0..1 brightness at the eye, for the vignette
   thirdPerson?: 0 | 1 | 2; // F5 camera, hides the crosshair
+  attack?: number; // 0..1 attack cooldown, for the attack indicator
 }

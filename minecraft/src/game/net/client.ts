@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { ClickKind, ContainerView, Dim, Entity, EntityApi, GameEvent, ItemStack } from "../contracts";
+import type { BlockBehavior, ClickKind, ContainerView, Dim, Entity, EntityApi, GameEvent, ItemStack } from "../contracts";
 import type { MirrorEntities } from "../entities";
 import { mobDef } from "../entities/registry";
 import { wakeUp } from "../mechanics/interact";
@@ -14,11 +14,11 @@ import { createAvatars } from "./avatars";
 import { unpackChunk, unpackMoves, type EntMove } from "./codec";
 import { entData } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
-import { BIN, F, PROTOCOL, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type WelcomeMsg } from "./protocol";
+import { BIN, F, PROTOCOL, hostUse, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type WelcomeMsg } from "./protocol";
 import { createTransport, type Transport } from "./transport";
-import { cleanLook, localLook } from "./skins";
+import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
 
-export type JoinStatus = "connecting" | "joining" | "loading";
+export type JoinStatus = "connecting" | "joining" | "loading" | "offline";
 
 export interface ClientLink extends NetLink {
   readonly welcome: WelcomeMsg;
@@ -28,6 +28,7 @@ export interface ClientLink extends NetLink {
 }
 
 const JOIN_TIMEOUT = 30000;
+const SKIN_GAP = 5000;
 // Commands that change the shared world, time or position run on the host against this player's proxy.
 const HOST_COMMANDS = new Set(["time", "weather", "tp", "teleport", "setblock", "fill", "difficulty", "gamerule", "summon", "setworldspawn", "kill", "list", "me", "locate"]);
 const SILENT_MS = 10000;
@@ -41,6 +42,25 @@ const reviveSets = (v: unknown): unknown => {
   for (const k in o) out[k] = reviveSets(o[k]);
   return out;
 };
+
+// Uses of these blocks go to the host with the hand that holds the item; the local run only predicts.
+function hostUses(own: Record<string, BlockBehavior>): Record<string, BlockBehavior> {
+  const out = { ...own };
+  for (const [name, b] of Object.entries(own)) {
+    const use = b.use;
+    if (!use || !hostUse(name)) continue;
+    out[name] = {
+      ...b,
+      use(ctx, x, y, z, s, held) {
+        const inv = ctx.inventory;
+        const hand = held === inv.held() ? "use" : held === inv.slots[40] ? "use_off" : null;
+        const fwd = ctx.world.hostAction;
+        return fwd && hand ? fwd(hand, x, y, z, () => use(ctx, x, y, z, s, held)) : use(ctx, x, y, z, s, held);
+      },
+    };
+  }
+  return out;
+}
 
 export function connectClient(code: string, name: string, rd: number, status?: (s: JoinStatus) => void): { done: Promise<ClientLink>; cancel(): void } {
   let cancelled = false;
@@ -56,10 +76,12 @@ export function connectClient(code: string, name: string, rd: number, status?: (
       }
       status?.("connecting");
       const hello: ClientMsg = { t: "hello", v: PROTOCOL, name, rd };
+      let offline = false;
       tr.onMessage = (from, raw) => {
         const m = raw as HostMsg;
         if (!m || typeof m !== "object") return;
         if (m.t === "host") {
+          offline = false;
           status?.("joining");
           tr.send(from, hello);
         } else if (m.t === "full") {
@@ -73,12 +95,14 @@ export function connectClient(code: string, name: string, rd: number, status?: (
         }
       };
       timer = setInterval(() => {
+        const alone = tr.relayDown && !tr.peers().length;
         if (performance.now() - started > JOIN_TIMEOUT) {
           clearInterval(timer!);
           tr.leave();
-          reject(new Error("Timed out"));
+          reject(new Error(alone ? "No relay server reachable" : "Timed out"));
           return;
         }
+        if (alone !== offline) status?.((offline = alone) ? "offline" : "connecting");
         tr.broadcast(hello);
       }, 1000);
       tr.broadcast(hello);
@@ -125,9 +149,17 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
   const send = (m: ClientMsg) => t.send(hostId, m);
   const advOf = () => ((g?.systemsSave().advancements as { players?: Record<string, unknown> } | undefined)?.players ?? {})[name];
 
+  // The host takes one skin message per 5 s, so changes go out as the latest look at that pace.
+  let lookDue: Look | null = null;
+  let lookAt = 0;
+  const offLook = onLocalLook((l) => {
+    lookDue = l;
+  });
+
   function close(reason: string) {
     if (closed) return;
     closed = true;
+    offLook();
     clearInterval(watch);
     t.leave();
     link.onClose?.(reason);
@@ -434,6 +466,8 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         },
       };
       send({ t: "skin", look: localLook() });
+      lookAt = performance.now();
+      gi.ctx.behaviors = hostUses(gi.ctx.behaviors);
       const rawRespawn = p.respawn.bind(p);
       p.respawn = () => {
         rawRespawn();
@@ -475,6 +509,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         setBlockEntity: (be, x, y, z) => send({ t: "be", dim: d, x, y, z, be: be ? JSON.parse(JSON.stringify(be)) : null }),
         setWaterlogged: (x, y, z, on) => send({ t: "wl", dim: d, x, y, z, on }),
         action(kind, x, y, z, predict) {
+          const before = kind === "bone_meal" || kind === "portal" || kind === "end_portal" ? undefined : inv?.save();
           if (predict) {
             muting = true;
             try {
@@ -483,7 +518,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
               muting = false;
             }
           }
-          send({ t: "act", dim: d, kind, x, y, z });
+          send(before ? { t: "act", dim: d, kind, x, y, z, inv: before, seq: hostSeq } : { t: "act", dim: d, kind, x, y, z });
           return true;
         },
       };
@@ -560,6 +595,11 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     },
     tick() {
       if (!g) return;
+      if (lookDue && performance.now() - lookAt > SKIN_GAP) {
+        send({ t: "skin", look: lookDue });
+        lookDue = null;
+        lookAt = performance.now();
+      }
       applyMoves();
       raw?.tickMirror();
       local = true;
@@ -595,7 +635,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     frame(dt) {
       avatars.frame(dt);
     },
-    debug: () => ({ avatars: avatars.list() }),
+    debug: () => ({ avatars: avatars.list(), direct: t.direct(hostId), relayUp: t.relayUp }),
     say(text) {
       send({ t: "chat", text });
     },
@@ -612,6 +652,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         send({ t: "bye" });
       }
       closed = true;
+      offLook();
       clearInterval(watch);
       avatars.dispose();
       setTimeout(() => t.leave(), 300);

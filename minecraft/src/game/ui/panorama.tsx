@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { PANORAMA_FACES } from "./panorama-faces";
 import { dirtUrl } from "./sprites";
+import { activeSettings } from "./settings";
 
 const CACHE_KEY = "mc-panorama-v2";
 const SPIN_DEG_PER_SEC = 2; // vanilla: 0.1 degrees per tick
@@ -143,7 +144,7 @@ export function Panorama({ blur }: { blur: boolean }) {
             inset: blur ? -24 : 0,
             width: blur ? "calc(100% + 48px)" : "100%",
             height: blur ? "calc(100% + 48px)" : "100%",
-            filter: blur ? "blur(10px)" : undefined,
+            filter: blur && activeSettings().menuBlur > 0 ? `blur(${activeSettings().menuBlur * 2}px)` : undefined,
             opacity: ready ? 1 : 0,
             transition: "opacity 1s",
           }}

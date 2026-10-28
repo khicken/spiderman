@@ -39,6 +39,18 @@ function set(o: number[], x0: number, y0: number, z0: number, x1: number, y1: nu
 
 const box: number[] = [0, 0, 0, 0, 0, 0];
 
+const MONUMENT = RULES.find((r) => r.name === "ocean_monument")!;
+
+export function inMonument(ctx: GameCtx, x: number, y: number, z: number): boolean {
+  if (ctx.world.dim !== "overworld") return false;
+  let hit = false;
+  forStarts(ctx.world.seed, STRUCT.ocean_monument, Math.floor(x / CHUNK), Math.floor(z / CHUNK), (s) => {
+    MONUMENT.box!(s, box);
+    if (x >= box[0] && x <= box[3] && y >= box[1] && y <= box[4] && z >= box[2] && z <= box[5]) hit = true;
+  });
+  return hit;
+}
+
 const picked: StructureSpawn = { mob: "", group: [1, 1] };
 
 export function structureSpawn(ctx: GameCtx, x: number, y: number, z: number): StructureSpawn | null {

@@ -52,7 +52,7 @@ void main() {
 type Flat = THREE.MeshBasicMaterial | THREE.MeshLambertMaterial;
 
 // Swaps materials only for the doll render, so the shared model and item modules never see the GUI shader.
-function createGuiLighting() {
+export function createGuiLighting() {
   const made = new Map<Flat, THREE.ShaderMaterial>();
   const swapped: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
   const lit = (m: THREE.Material): THREE.Material => {
@@ -110,7 +110,7 @@ export interface DollInventory {
 }
 
 let shared: THREE.WebGLRenderer | null | undefined;
-function dollRenderer() {
+export function dollRenderer() {
   if (shared === undefined) {
     try {
       shared = new THREE.WebGLRenderer({ canvas: document.createElement("canvas"), alpha: true, antialias: false });

@@ -2,6 +2,7 @@ import type * as THREE from "three";
 import type { Entity, MobModel } from "../../contracts";
 import { boxModel, type BoxModel, type PartSpec } from "../model";
 import type { Pix } from "./pix";
+import { ridingPose } from "../ride-pose";
 
 // A part in vanilla model space: y points down and the feet sit at y = 24.
 export interface VPart {
@@ -131,6 +132,7 @@ export function wrap(r: Rig, anim: (a: AnimArgs) => void, opts: { scale?: number
       a.pitch = e.pitch;
       resetPose(r);
       anim(a);
+      if (typeof e.data.mount === "number") ridingPose(r.p);
     },
     dispose() {
       r.m.dispose();

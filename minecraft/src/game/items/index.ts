@@ -10,6 +10,7 @@ import { clickMenu, type Menu, type MenuEnv } from "./menu";
 import { containerMenu, crafterMenu, craftingMenu, enderMenu, inventoryMenu, type BoundBE, type MenuDeps } from "./menus";
 import { anvilMenu, brewingMenu, enchantingMenu, furnaceMenu, grindstoneMenu, smithingMenu, stonecutterMenu } from "./menus-station";
 import { merchantMenu } from "./menus-merchant";
+import { horseMenu } from "./menus-horse";
 import { cartographyMenu, loomMenu } from "./menus-loom";
 import { itemDef, maxStack } from "./registry";
 import { canStack, copyStack, maxDurability } from "./stack";
@@ -165,6 +166,7 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
     if (kind === "smithing_table") return smithingMenu(deps, at);
     if (kind === "beacon") return beaconMenu(deps, at);
     if (kind === "villager") return merchantMenu(deps, at);
+    if (kind === "horse") return horseMenu(deps, at);
     if (kind === "loom") return loomMenu(deps, at);
     if (kind === "cartography_table") return cartographyMenu(deps, at);
     if (!at) return null;

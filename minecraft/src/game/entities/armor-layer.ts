@@ -168,20 +168,22 @@ varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const GLINT_FRAG = /* glsl */ `
 uniform float uTime;
+uniform float uStrength;
 uniform sampler2D map;
 varying vec2 vUv;
 void main() {
   if (texture2D(map, vUv).a < 0.1) discard;
   float s = fract((vUv.x * 4.0 + vUv.y * 2.0) * 1.5 - uTime * 0.35);
   float k = smoothstep(0.0, 0.25, s) * smoothstep(0.6, 0.3, s);
-  gl_FragColor = vec4(vec3(0.5, 0.25, 0.8) * k * 0.6, 1.0);
+  gl_FragColor = vec4(vec3(0.5, 0.25, 0.8) * k * 0.6 * uStrength, 1.0);
 }`;
 
 export const GLINT_TIME = { value: 0 };
+export const GLINT_STRENGTH = { value: 1 }; // Glint Strength option over its 0.75 default
 
 export function glintMaterial(map: THREE.Texture): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    uniforms: { uTime: GLINT_TIME, map: { value: map } },
+    uniforms: { uTime: GLINT_TIME, uStrength: GLINT_STRENGTH, map: { value: map } },
     vertexShader: GLINT_VERT,
     fragmentShader: GLINT_FRAG,
     transparent: true,

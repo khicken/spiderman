@@ -7,6 +7,7 @@ import { biomeAtXZ } from "../worldgen";
 import { BIOMES } from "../worldgen/biomes";
 import { EFFECTS, ENCHANTS, enchantName, enchantsConflict, titleCase, type EnchantTarget } from "./data";
 import { advancementCommand, advancementComplete } from "../systems/advancements/command";
+import { rideCommand } from "./ride-command";
 
 let playerName = "Player";
 export const setPlayerName = (n: string) => {
@@ -385,6 +386,7 @@ const COMMANDS: Cmd[] = [
       const pos = a.length >= 3 ? xyz(ctx, a, 0, false) : { x: p.x, y: p.y, z: p.z };
       const s = { x: Math.floor(pos.x), y: Math.floor(pos.y), z: Math.floor(pos.z) };
       ctx.player.spawn = s;
+      if (ctx.world.spawn) Object.assign(ctx.world.spawn, s);
       return [`Set the world spawn point to ${s.x}, ${s.y}, ${s.z} [${Number(a[3] ?? 0).toFixed(1)}]`];
     },
   },
@@ -554,6 +556,13 @@ const COMMANDS: Cmd[] = [
       return [`The nearest minecraft:${name} is at [${s.x}, ${def.dim === "overworld" && s.y >= 50 ? "~" : s.y}, ${s.z}] (${dist} blocks away)`];
     },
     complete: (_c, a) => (a.length <= 1 ? ["biome", "structure"] : a[0] === "biome" ? BIOMES.map((b) => b.name) : STRUCTS.map((d) => d.name)),
+  },
+  {
+    name: "ride",
+    cheat: true,
+    usage: ["/ride <target> mount <vehicle>", "/ride <target> dismount"],
+    run: (ctx, a) => rideCommand(ctx, a, playerName, fail),
+    complete: (_c, a) => (a.length === 2 ? ["dismount", "mount"] : ["@e[limit=1]", "@n", "@s"]),
   },
 ];
 

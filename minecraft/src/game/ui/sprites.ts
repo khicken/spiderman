@@ -436,6 +436,15 @@ const EMPTY_SLOT: Record<string, string[]> = {
     "", "...##########", "...##########", "...##########", "...##########", "...##########", "...##########", "...##########",
     "....########", "....########", ".....######", "......####",
   ],
+  saddle: [
+    "", "", "", "..##.......##", "..###.....###", "...#########", "...#########", "....#######", "....#.....#", "....#.....#", "....#.....#",
+    "...###...###", "...###...###",
+  ],
+  horse_armor: [
+    "", "........##", ".......####", "......######", ".....#######", "...#########", "..####.######", "..##...#######", ".......########",
+    "........#######", ".........######", "..........####",
+  ],
+  llama_armor: ["", "", "", "", "..############", "..############", "..############", "..############", "..############", "..#.#.#.#.#.#"],
 };
 
 export type EmptySlotKind = keyof typeof EMPTY_SLOT;
@@ -513,3 +522,43 @@ export function containerBg(kind: string, w: number, h: number): ContainerBg | n
   }
   return { url: cut(0, 0, w, h) };
 }
+
+export const hasContainerBg = (kind: string) => !!CONTAINER_BG[kind] && activePacks().length > 0 && !!packImage(`gui/container/${CONTAINER_BG[kind]}`);
+
+// A pack's gui/sprites/container/<path> at w x h; "" when no selected pack has it.
+export const containerSprite = (path: string, w: number, h: number) => packUrl(`gui/sprites/container/${path}`, w, h);
+
+// Progress sprite cropped like vanilla: the left cw columns, or ch rows from the top (or bottom when fromBottom).
+export function containerProgress(path: string, w: number, h: number, cw: number, ch: number, fromBottom = false): string {
+  const full = `gui/sprites/container/${path}`;
+  if (capture !== undefined || !activePacks().length || !packImage(full)) return "";
+  return packCrop(full, w, h, cw, ch, fromBottom);
+}
+
+export interface Art {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  c?: number; // 0xAARRGGBB fill
+  url?: () => string;
+}
+
+// Static widgets our panel draws where vanilla's gui/container sheet has them baked in.
+const track = (x: number, y: number, h: number): Art[] => [
+  { x, y, w: 12, h, c: 0xff8b8b8b }, { x, y, w: 12, h: 1, c: 0xff373737 }, { x, y, w: 1, h, c: 0xff373737 },
+  { x, y: y + h - 1, w: 12, h: 1, c: 0xffffffff }, { x: x + 11, y: y + 1, w: 1, h: h - 1, c: 0xffffffff },
+];
+export const CONTAINER_ART: Record<string, Art[]> = {
+  anvil: [{ x: 55, y: 54, w: 13, h: 3, c: 0xff8b8b8b }, { x: 60, y: 49, w: 3, h: 13, c: 0xff8b8b8b }, { x: 100, y: 48, w: 22, h: 15, url: () => arrowUrl(0) }],
+  grindstone: [{ x: 92, y: 35, w: 22, h: 15, url: () => arrowUrl(0) }],
+  smithing_table: [{ x: 68, y: 49, w: 22, h: 15, url: () => arrowUrl(0) }, { x: 120, y: 20, w: 48, h: 56, c: 0x40000000 }],
+  cartography_table: [{ x: 67, y: 13, w: 66, h: 66, c: 0xff4a3b2a }],
+  enchanting_table: [{ x: 60, y: 14, w: 108, h: 57, c: 0xff3f3a30 }],
+  brewing_stand: [
+    { x: 60, y: 44, w: 18, h: 4, c: 0xff373737 }, { x: 97, y: 16, w: 9, h: 28, c: 0xff8b8b8b },
+    { x: 62, y: 33, w: 1, h: 18, c: 0xff555555 }, { x: 113, y: 33, w: 1, h: 18, c: 0xff555555 }, { x: 63, y: 32, w: 51, h: 1, c: 0xff555555 },
+  ],
+  stonecutter: track(119, 15, 54),
+  loom: track(119, 13, 56),
+};

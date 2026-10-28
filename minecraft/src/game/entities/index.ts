@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { DamageSource, Entity, EntityApi, EntityHit, EntitySave, GameCtx, ItemStack, MobDef } from "../contracts";
 import { makeBody } from "../player/physics";
 import { mobDef, isMob } from "./registry";
+import { isHanging } from "./decor/hanging";
 import { segmentBody, isBaby } from "./geom";
 import { applyPhysics, knockBody, alertPets } from "./ai";
 import { tickItem, tickOrb, tickCollected, orbValue } from "./items";
@@ -316,9 +317,11 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     }
     e.data._lastHurt = amount;
     if (fresh) e.data._inv = 20;
-    if (source !== "fall" && source !== "drown" && source !== "starve" && source !== "void" && source !== "magic" && source !== "wither") dealt = armorReduce(e, dealt);
+    if (source !== "fall" && source !== "drown" && source !== "starve" && source !== "void" && source !== "magic" && source !== "wither" && source !== "sonic_boom") dealt = armorReduce(e, dealt);
     const res = e.effects.find((f) => f.id === "resistance");
     if (res) dealt *= Math.max(0, 1 - (res.amplifier + 1) * 0.2);
+    // Vanilla witch_resistant_to damage type tag.
+    if (e.type === "witch" && (source === "magic" || source === "sonic_boom" || source === "thorns")) dealt *= 0.15;
     e.health -= dealt;
     e.data._idle = 0;
     if (e.effects.length && dealt > 0) mobEffectHurt(ctx, e);
@@ -439,7 +442,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
       e.data._remove = true;
       return;
     }
-    baseTick(e, ctx, def);
+    // Vanilla hanging entities are not living: no fire, drowning or suffocation in their wall.
+    if (!isHanging(e.type)) baseTick(e, ctx, def);
     if (e.dead) return;
     ambientTick(e, ctx, def);
     if (seatTick(e, ctx)) {

@@ -8,9 +8,19 @@ let TINTS = new WeakMap<Chunk, Uint32Array>();
 export const resetTints = () => {
   TINTS = new WeakMap();
 };
-const R = 2; // vanilla biome blend 2: a 5x5 average
-const W = 16 + 2 * R;
-const wide = new Uint8Array(W * W);
+let R = 2; // vanilla biome blend 2: a 5x5 average
+let W = 16 + 2 * R;
+let wide = new Uint8Array(W * W);
+// Biome Blend option, 0..7 blocks; true when the radius changed and sections need a remesh.
+export function setBlendRadius(r: number): boolean {
+  r = Math.max(0, Math.min(7, Math.round(r)));
+  if (r === R) return false;
+  R = r;
+  W = 16 + 2 * R;
+  wide = new Uint8Array(W * W);
+  resetTints();
+  return true;
+}
 const sums = new Float64Array(9);
 
 // Grid must hold the 3x3 chunks around the center.

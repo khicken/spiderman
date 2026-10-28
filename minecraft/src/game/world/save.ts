@@ -20,6 +20,7 @@ export interface WorldMeta {
   rain?: number;
   thunder?: number;
   spawn?: { x: number; y: number; z: number };
+  worldSpawn?: { x: number; y: number; z: number };
   icon?: string; // data URL screenshot taken on quit
 }
 

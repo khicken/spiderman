@@ -2,6 +2,7 @@ import type { BlockDef, Shape } from "../contracts";
 import { BLOCK_TEXTURE_KEYS, paintBlockTexture } from "./index";
 import { hasItemPainter, paintItemTexture } from "./items";
 import { rgb } from "./items-paint";
+import { SHERD_MOTIFS, motifAt } from "./motifs";
 
 export type Box = readonly [number, number, number, number, number, number];
 export interface IsoFaces {
@@ -50,10 +51,15 @@ const sy = (x: number, y: number, z: number) => -(-x * SIN * SA + y * COS - z * 
 const dep = (x: number, y: number, z: number) => x * COS * SA + y * SIN + z * COS * SA;
 
 export function renderIso(faces: IsoFaces, boxes: readonly Box[], size: number): Uint8ClampedArray {
+  return renderIsoParts([{ faces, boxes }], size);
+}
+
+// Several boxes with their own faces in one z-buffer. scale and mid frame the model like a GUI display transform.
+export function renderIsoParts(parts: readonly { faces: IsoFaces; boxes: readonly Box[] }[], size: number, scale = 0.625, mid = 0.5): Uint8ClampedArray {
   const out = new Uint8ClampedArray(size * size * 4);
   const zb = new Float32Array(size * size).fill(-1e9);
-  const S = size * 0.625;
-  const cx = size / 2 - S * sx(0.5, 0.5, 0.5), cy = size / 2 - S * sy(0.5, 0.5, 0.5);
+  const S = size * scale;
+  const cx = size / 2 - S * sx(0.5, mid, 0.5), cy = size / 2 - S * sy(0.5, mid, 0.5);
   const face = (
     tex: Uint8ClampedArray, shadeF: number,
     ox: number, oy: number, oz: number, ux: number, uy: number, uz: number, vx: number, vy: number, vz: number,
@@ -87,13 +93,49 @@ export function renderIso(faces: IsoFaces, boxes: readonly Box[], size: number):
         out[k * 4 + 3] = 255;
       }
   };
-  for (const [x0, y0, z0, x1, y1, z1] of boxes) {
-    const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
-    face(faces.top, SHADE_TOP, x0, y1, z0, dx, 0, 0, 0, 0, dz, x0, dx, z0, dz);
-    face(faces.left, SHADE_LEFT, x0, y1, z1, dx, 0, 0, 0, -dy, 0, x0, dx, 1 - y1, dy);
-    face(faces.right, SHADE_RIGHT, x1, y1, z1, 0, 0, -dz, 0, -dy, 0, 1 - z1, dz, 1 - y1, dy);
-  }
+  for (const { faces, boxes } of parts)
+    for (const [x0, y0, z0, x1, y1, z1] of boxes) {
+      const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+      face(faces.top, SHADE_TOP, x0, y1, z0, dx, 0, 0, 0, 0, dz, x0, dx, z0, dz);
+      face(faces.left, SHADE_LEFT, x0, y1, z1, dx, 0, 0, 0, -dy, 0, x0, dx, 1 - y1, dy);
+      face(faces.right, SHADE_RIGHT, x1, y1, z1, 0, 0, -dz, 0, -dy, 0, 1 - z1, dz, 1 - y1, dy);
+    }
   return out;
+}
+
+// Decorated pot side: plain clay, or a sherd motif in a dark frame.
+export function potFacePixels(sherd: string | null): Uint8ClampedArray {
+  const px = new Uint8ClampedArray(paintBlockTexture("decorated_pot_side"));
+  const rows = sherd ? SHERD_MOTIFS[sherd] : undefined;
+  if (!rows) return px;
+  const put = (x: number, y: number, c: number) => {
+    const i = (y * 16 + x) * 4;
+    px[i] = (c >> 16) & 255;
+    px[i + 1] = (c >> 8) & 255;
+    px[i + 2] = c & 255;
+  };
+  for (let x = 2; x < 14; x++) {
+    put(x, 2, 0x5a2c18);
+    put(x, 13, 0x5a2c18);
+  }
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 8; x++) {
+      if (!motifAt(rows, x, y)) continue;
+      put(4 + x, 4 + y, 0x3e1c0e);
+      if (y < 7 && !motifAt(rows, x, y + 1)) put(4 + x, 5 + y, 0xc07a52);
+    }
+  return px;
+}
+
+const sherdFace = (n: string | undefined) => potFacePixels(n?.endsWith("_pottery_sherd") ? n.slice(0, -14) : null);
+
+// Pot body with its neck, front sherd on the left face and right sherd on the right, sherds in recipe order (back, left, right, front).
+export function potIconPixels(sherds: readonly string[] | null, size: number): Uint8ClampedArray {
+  const top = new Uint8ClampedArray(paintBlockTexture("decorated_pot_base"));
+  const plain = potFacePixels(null);
+  const body = { faces: { top, left: sherdFace(sherds?.[3]), right: sherdFace(sherds?.[2]) }, boxes: [b(1, 0, 1, 15, 16, 15)] };
+  const neck = { faces: { top, left: plain, right: plain }, boxes: [b(5, 16, 5, 11, 17, 11), b(4, 17, 4, 12, 20, 12)] };
+  return renderIsoParts([body, neck], size, 0.55, 10 / 16);
 }
 
 export function tintPx(p: Uint8ClampedArray, color: number): Uint8ClampedArray {

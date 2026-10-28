@@ -127,9 +127,9 @@ function felineModel(ocelot: boolean) {
         pos("body", 0, 8, -5);
         pos("head", 0, 11.7, -8);
         pos("tail1", 0, 23, 6);
-        pos("tail2", 0, 22.8, 13.5);
+        pos("tail2", 0, 22, 13.2);
         setRot(r.p.tail1, 1.7278761, 0, 0);
-        setRot(r.p.tail2, 1.7, 0.3, 0);
+        setRot(r.p.tail2, 2.670354, 0, 0);
         setRot(r.p.left_front_leg, -0.15707964, 0, 0);
         setRot(r.p.right_front_leg, -0.15707964, 0, 0);
         pos("left_front_leg", 1.2, 15.8, -7);

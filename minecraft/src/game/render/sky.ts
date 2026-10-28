@@ -44,10 +44,12 @@ void main() {
   } else {
     c = uFog;
   }
-  float dx = d.x * uSunSide;
-  if (uSunrise.a > 0.0 && dx > 0.0) {
-    float r = length(d.yz / dx * 100.0) / 120.0;
-    c = mix(c, uSunrise.rgb, uSunrise.a * max(0.0, 1.0 - r));
+  // Vanilla sunrise fan: apex 100 out on the horizon toward the sun, rim a radius 120 ring tilted 40*a up on that side, alpha a to 0.
+  float a = uSunrise.a;
+  if (a > 0.001) {
+    float k = inversesqrt(max(d.y * d.y / (1600.0 * a * a) + d.z * d.z / 14400.0, 1e-12));
+    float den = 100.0 + k * (d.x * uSunSide - 3.0 * d.y / a);
+    if (den >= 100.0) c = mix(c, uSunrise.rgb, a * (1.0 - 100.0 / den));
   }
   gl_FragColor = sRGBTransferEOTF(vec4(c, 1.0));
   #include <colorspace_fragment>
@@ -213,7 +215,7 @@ export function createSky() {
     const u = domeMat.uniforms;
     (u.uSky.value as THREE.Vector3).set(s.sky[0], s.sky[1], s.sky[2]);
     (u.uFog.value as THREE.Vector3).set(s.fog[0], s.fog[1], s.fog[2]);
-    (u.uSunrise.value as THREE.Vector4).set(s.sunrise[0], s.sunrise[1], s.sunrise[2], s.sunrise[3] * (1 - s.rain));
+    (u.uSunrise.value as THREE.Vector4).set(s.sunrise[0], s.sunrise[1], s.sunrise[2], s.sunrise[3]);
     u.uSunSide.value = s.sunSide;
     u.uFogEnd.value = Math.max(16, s.fogEnd);
     u.uBelow.value = s.below ? 1 : 0;

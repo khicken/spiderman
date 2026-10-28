@@ -1,6 +1,7 @@
-import type { BlockEntityData, GameCtx } from "../contracts";
+import type { BlockEntityData, GameCtx, ItemStack } from "../contracts";
 import { idOf } from "../contracts";
 import { SOLID } from "../blocks/registry";
+import { lineClear } from "../entities/combat";
 import type { SystemPart } from "../systems";
 import { fortressBoxes } from "../worldgen/fortress";
 import { findNear } from "../worldgen/structure-grid";
@@ -12,6 +13,54 @@ const FORTRESS_MOBS: [string, number][] = [["blaze", 10], ["zombified_piglin", 5
 
 type D = Record<string, unknown>;
 const num = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
+
+function weighted<T>(ctx: GameCtx, list: [T, number][]): T {
+  let total = 0;
+  for (const e of list) total += e[1];
+  let roll = ctx.random() * total;
+  for (const [v, w] of list) if ((roll -= w) < 0) return v;
+  return list[list.length - 1][0];
+}
+
+// Vanilla equipment/trial_chamber(_melee|_ranged): helmet and chestplate with a copper trim, plus a weapon; never dropped.
+const ARMOR_SETS: [[string, string], number][] = [[["chainmail", "bolt"], 4], [["iron", "flow"], 2], [["diamond", "flow"], 1]];
+const MELEE_WEAPONS: [string, number][] = [["iron_sword", 6], ["diamond_sword", 1]];
+const MELEE_GEAR = new Set(["zombie", "husk"]);
+const RANGED_GEAR = new Set(["skeleton", "stray", "bogged"]);
+
+export function ominousGear(ctx: GameCtx, mob: string): D {
+  const melee = MELEE_GEAR.has(mob);
+  if (!melee && !RANGED_GEAR.has(mob)) return {};
+  const [mat, pattern] = weighted(ctx, ARMOR_SETS);
+  const trim = { pattern, material: "copper_ingot" };
+  return {
+    equipment: { head: { item: `${mat}_helmet`, count: 1, data: { trim } }, chest: { item: `${mat}_chestplate`, count: 1, data: { trim } } },
+    held: melee ? weighted(ctx, MELEE_WEAPONS) : "bow",
+    noEquipDrop: true,
+  };
+}
+
+// Vanilla spawners/trial_chamber/items_to_drop_when_ominous.
+const lingering = (potion: string): ItemStack => ({ item: "lingering_potion", count: 1, data: { potion } });
+export const OMINOUS_ITEMS: ItemStack[] = [
+  lingering("wind_charged"), lingering("oozing"), lingering("weaving"), lingering("infested"), lingering("strength"), lingering("swiftness"),
+  lingering("slow_falling"), { item: "tipped_arrow", count: 1, data: { potion: "poison" } }, { item: "tipped_arrow", count: 1, data: { potion: "strong_slowness" } },
+  { item: "fire_charge", count: 1 }, { item: "wind_charge", count: 1 },
+];
+const OMINOUS_ITEM_INTERVAL = 160;
+const itemSpawners: { x: number; y: number; z: number; item: ItemStack; at: number }[] = [];
+
+// Vanilla clips from the spawner center with a COLLIDER context; the spawner's own box does not block a ray that starts inside it.
+function spawnerSees(ctx: GameCtx, be: BlockEntityData, tx: number, ty: number, tz: number): boolean {
+  const ox = be.x + 0.5, oy = be.y + 0.5, oz = be.z + 0.5;
+  const dx = tx - ox, dy = ty - oy, dz = tz - oz;
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1e-3) return true;
+  const out = (0.5 / Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz))) * len + 1e-3;
+  if (out >= len) return true;
+  const k = out / len;
+  return lineClear(ctx.world, ox + dx * k, oy + dy * k, oz + dz * k, tx, ty, tz);
+}
 
 function free(ctx: GameCtx, x: number, y: number, z: number, flying: boolean): boolean {
   const w = ctx.world;
@@ -29,13 +78,14 @@ function near(ctx: GameCtx, type: string, x: number, y: number, z: number, r: nu
   return n;
 }
 
-function spawnAround(ctx: GameCtx, be: BlockEntityData, mob: string, range: number, extra: D = {}, tries = 8): number {
+function spawnAround(ctx: GameCtx, be: BlockEntityData, mob: string, range: number, extra: D = {}, tries = 8, los = false): number {
   const flying = FLYING.has(mob);
   for (let k = 0; k < tries; k++) {
     const x = be.x + Math.floor((ctx.random() - ctx.random()) * range);
     const y = be.y + Math.floor(ctx.random() * 3) - 1;
     const z = be.z + Math.floor((ctx.random() - ctx.random()) * range);
     if (!free(ctx, x, y, z, flying)) continue;
+    if (los && !spawnerSees(ctx, be, x + 0.5, y + 0.5, z + 0.5)) continue;
     if (tries === 1 && DARK.has(mob) && ctx.world.getBlockLight(x, y, z) > 11) continue;
     const e = ctx.entities.spawn(mob, x + 0.5, y, z + 0.5, { persistent: false, ...extra });
     if (!e) return -1;
@@ -89,7 +139,8 @@ function tickTrial(ctx: GameCtx, be: BlockEntityData, d: D) {
   const raw = String(d.state ?? "waiting");
   const state = raw === "active" || raw === "ejecting" || raw === "cooldown" ? raw : "waiting";
   const at = { x: be.x + 0.5, y: be.y + 0.5, z: be.z + 0.5 };
-  const watching = dist2 <= 14 * 14 && ctx.player.gameMode !== "creative" && ctx.player.gameMode !== "spectator";
+  const eye = ctx.player.eye();
+  const watching = dist2 <= 14 * 14 && ctx.player.gameMode !== "creative" && ctx.player.gameMode !== "spectator" && !ctx.player.dead && spawnerSees(ctx, be, eye.x, eye.y, eye.z);
   if (watching && !d.ominous && trialOmen(ctx)) {
     d.ominous = true;
     if (state !== "active") d.state = "waiting";
@@ -119,9 +170,14 @@ function tickTrial(ctx: GameCtx, be: BlockEntityData, d: D) {
       return !!e && !e.dead;
     });
     d.alive = alive;
+    if (d.ominous && t >= num(d.nextItem) && dist2 <= 47 * 47) {
+      d.nextItem = t + OMINOUS_ITEM_INTERVAL;
+      placeItemSpawner(ctx);
+    }
     if (num(d.spawned) < num(d.total, 6)) {
       if (alive.length < 2 && t >= num(d.next)) {
-        const id = spawnAround(ctx, be, String(d.mob ?? d.entity ?? "zombie"), 4, { persistent: true, trialSpawner: [be.x, be.y, be.z] });
+        const mob = String(d.mob ?? d.entity ?? "zombie");
+        const id = spawnAround(ctx, be, mob, 4, { persistent: true, trialSpawner: [be.x, be.y, be.z], ...(d.ominous ? ominousGear(ctx, mob) : {}) }, 8, true);
         d.next = t + 40;
         if (id >= 0) {
           alive.push(id);
@@ -144,6 +200,35 @@ function tickTrial(ctx: GameCtx, be: BlockEntityData, d: D) {
     ctx.emit({ type: "sound", name: "block.trial_spawner.eject_item", ...at });
     d.state = "cooldown";
     d.until = t + 36000;
+  }
+}
+
+// Vanilla OminousItemSpawner: appears a few blocks above a player in the fight and releases its item after 60-119 ticks.
+function placeItemSpawner(ctx: GameCtx) {
+  const p = ctx.player.body.pos;
+  const x = Math.floor(p.x), z = Math.floor(p.z), y0 = Math.floor(p.y + ctx.player.body.height);
+  const want = 2 + Math.floor(ctx.random() * 4);
+  let y = y0;
+  while (y < y0 + want && !SOLID[idOf(ctx.world.getBlock(x, y + 1, z))]) y++;
+  const item = OMINOUS_ITEMS[Math.floor(ctx.random() * OMINOUS_ITEMS.length)];
+  itemSpawners.push({ x: p.x, y: y + 0.5, z: p.z, item: { ...item, data: item.data ? { ...item.data } : undefined }, at: ctx.time.tick + 60 + Math.floor(ctx.random() * 60) });
+  ctx.emit({ type: "sound", name: "block.trial_spawner.spawn_item_begin", x: p.x, y: y + 0.5, z: p.z });
+}
+
+const PROJ: Record<string, string> = { lingering_potion: "potion", tipped_arrow: "arrow", arrow: "arrow", wind_charge: "wind_charge", fire_charge: "small_fireball" };
+
+function tickItemSpawners(ctx: GameCtx) {
+  for (let i = itemSpawners.length - 1; i >= 0; i--) {
+    const s = itemSpawners[i];
+    if (ctx.time.tick % 4 === 0) ctx.emit({ type: "particles", kind: "trial_omen", x: s.x, y: s.y, z: s.z, count: 2, color: 0x3fc6d8 });
+    if (ctx.time.tick < s.at) continue;
+    itemSpawners.splice(i, 1);
+    const type = PROJ[s.item.item];
+    const potion = s.item.data?.potion as string | undefined;
+    const e = type ? ctx.entities.spawn(type, s.x, s.y - 0.5, s.z, { item: type === "potion" ? s.item : s.item.item, potion, lingering: s.item.item === "lingering_potion", pickup: false }) : null;
+    if (e) e.body.vel.set(0, type === "small_fireball" ? -0.1 : -1.1, 0);
+    else ctx.entities.dropItem(s.item, s.x, s.y, s.z);
+    ctx.emit({ type: "sound", name: "block.trial_spawner.spawn_item", x: s.x, y: s.y, z: s.z });
   }
 }
 
@@ -177,6 +262,7 @@ function tickFortress(ctx: GameCtx) {
 }
 
 export function createSpawners(): SystemPart {
+  itemSpawners.length = 0;
   return {
     name: "spawners",
     tick(ctx) {
@@ -194,6 +280,7 @@ export function createSpawners(): SystemPart {
           }
         }
       }
+      tickItemSpawners(ctx);
       tickFortress(ctx);
     },
   };

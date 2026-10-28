@@ -10,7 +10,7 @@ import { paintBlockTexture } from "../textures/index";
 import { itemSpritePixels } from "../textures/icons";
 import { dialFrame, paintDial } from "../textures/dials";
 import type { ItemStack } from "../contracts";
-import { GLINT_TIME } from "../entities/armor-layer";
+import { GLINT_STRENGTH, GLINT_TIME } from "../entities/armor-layer";
 import { createShieldModel } from "./shield-model";
 import { packVersion } from "../packs";
 
@@ -24,11 +24,12 @@ export function itemKey(s: ItemStack | null): string | null {
 
 const GLINT_FRAG = /* glsl */ `
 uniform float uTime;
+uniform float uStrength;
 varying vec3 vPos;
 void main() {
   float s = fract((vPos.x * 2.0 + vPos.y) * 1.5 - uTime * 0.35);
   float k = smoothstep(0.0, 0.25, s) * smoothstep(0.6, 0.3, s);
-  gl_FragColor = vec4(vec3(0.5, 0.25, 0.8) * k * 0.7, 1.0);
+  gl_FragColor = vec4(vec3(0.5, 0.25, 0.8) * k * 0.7 * uStrength, 1.0);
 }`;
 const GLINT_VERT = /* glsl */ `
 varying vec3 vPos;
@@ -156,7 +157,7 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
     return t;
   };
 
-  const glintMat = new THREE.ShaderMaterial({ uniforms: { uTime: GLINT_TIME }, vertexShader: GLINT_VERT, fragmentShader: GLINT_FRAG, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthFunc: THREE.LessEqualDepth });
+  const glintMat = new THREE.ShaderMaterial({ uniforms: { uTime: GLINT_TIME, uStrength: GLINT_STRENGTH }, vertexShader: GLINT_VERT, fragmentShader: GLINT_FRAG, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthFunc: THREE.LessEqualDepth });
   const shieldTexs: THREE.Texture[] = [];
 
   function build(key: string): ItemModel | null {

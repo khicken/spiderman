@@ -4,7 +4,7 @@ import { clearPath, distSq, lookAt, moveTo, playerTargetable, wander, type Targe
 import { isBaby, segmentBody } from "../geom";
 import { rig, wrap, quadLegs, look, type VPart } from "../rig";
 import { shootVel, targetInfo } from "../hostile/brain";
-import { isRidden, mountPlayer, dismountPlayer } from "../riding";
+import { isRidden, mountPlayer, dismountPlayer, openMount, registerMountInv, type MountInv } from "../riding";
 import { skin, shade, type Pix } from "./paint";
 import { DYE_RGB, animalAI, dyeOf, feed, num, sound, useItem, type AnimalOpts, type Dye } from "./common";
 import { dropContents } from "../vehicles/boat";
@@ -69,9 +69,10 @@ function llamaModel(trader: boolean): MobModel {
     { name: "right_chest", pivot: [-8.5, 3, 3], box: [-3, 0, 0, 8, 8, 3], uv: [90, 30], rot: [0, Math.PI / 2, 0] },
     { name: "left_chest", pivot: [5.5, 3, 3], box: [-3, 0, 0, 8, 8, 3], uv: [90, 44], rot: [0, Math.PI / 2, 0] },
   ];
-  const key = (e: Entity) => `llama_${(e.data.variant as string) ?? "creamy"}_${trader ? "trader" : (e.data.decor as string) ?? "none"}`;
+  const key = (e: Entity) => `llama_${(e.data.variant as string) ?? "creamy"}_${(e.data.decor as string) ?? (trader ? "trader" : "none")}`;
   const paint = (k: string) => {
-    const [, coat, decor] = k.split("_");
+    const [, coat, ...rest] = k.split("_");
+    const decor = rest.join("_");
     return skin(k, 128, 64, (p) => paintLlama(p, coat, decor));
   };
   const r = rig(paint(trader ? "llama_creamy_trader" : "llama_creamy_none"), parts);
@@ -220,7 +221,6 @@ function llamaDef(trader: boolean): MobDef {
         e.data.variant ??= VARIANTS[Math.floor(r() * VARIANTS.length)];
         e.health = Math.min(e.health, e.data.hp as number);
       }
-      if (e.data.leash !== undefined) e.data.trader = undefined;
       e.maxHealth = e.data.hp as number;
       // Vanilla RunAroundLikeCrazyGoal: each tick a 1 in 50 roll, then tame when random(30) < temper.
       if (isRidden(ctx, e) && !e.data.tamed) {
@@ -241,8 +241,9 @@ function llamaDef(trader: boolean): MobDef {
         return;
       }
       let t = e.data._target as Target;
-      if (trader && t === undefined && typeof e.data.trader === "number") {
-        const tr = ctx.entities.get(e.data.trader as number);
+      const traderId = trader ? (e.data.leash as { entity?: number } | undefined)?.entity : undefined;
+      if (t === undefined && typeof traderId === "number") {
+        const tr = ctx.entities.get(traderId);
         if (tr && !tr.dead && num(tr, "_defend") > 0) t = "player";
       }
       if (t === undefined && e.age % 20 === 0 && ctx.random() < 0.1) {
@@ -269,8 +270,8 @@ function llamaDef(trader: boolean): MobDef {
       }
       e.data._target = undefined;
       if (!isBaby(e) && caravanTick(e, ctx)) return;
-      if (trader && typeof e.data.trader === "number") {
-        const tr = ctx.entities.get(e.data.trader);
+      if (typeof traderId === "number") {
+        const tr = ctx.entities.get(traderId);
         if (tr && !tr.dead && distSq(tr.body.pos, e.body.pos) > 16) {
           followAt(e, ctx, tr, 2.1);
           return;
@@ -280,6 +281,7 @@ function llamaDef(trader: boolean): MobDef {
     },
     onInteract(e, ctx, held) {
       const p = e.body.pos;
+      if (ctx.player.sneaking && !isRidden(ctx, e) && openMount(ctx, e)) return true;
       if (held && HEAL[held.item] && e.health < e.maxHealth && !(held.item === "hay_block" && !isBaby(e) && e.data.tamed && num(e, "breedCd") <= 0)) {
         useItem(ctx);
         e.health = Math.min(e.maxHealth, e.health + HEAL[held.item]);
@@ -287,10 +289,9 @@ function llamaDef(trader: boolean): MobDef {
         sound(ctx, e, "entity.llama.eat");
         return true;
       }
-      if (held?.item.endsWith("_carpet") && e.data.tamed && !trader) {
+      if (held?.item.endsWith("_carpet") && e.data.tamed && !isBaby(e) && !e.data.decor) {
         const dye = dyeOf(held.item.replace("_carpet", "_dye"));
         if (!dye) return false;
-        if (e.data.decor) ctx.entities.dropItem({ item: `${e.data.decor}_carpet`, count: 1 }, p.x, p.y + 1, p.z);
         e.data.decor = dye;
         useItem(ctx);
         sound(ctx, e, "entity.llama.swag");
@@ -302,17 +303,13 @@ function llamaDef(trader: boolean): MobDef {
         sound(ctx, e, "entity.llama.chest", 1, (ctx.random() - ctx.random()) * 0.2 + 1);
         return true;
       }
-      if (ctx.player.sneaking && e.data.tamed && e.data.chest && !isBaby(e)) {
-        ctx.inventory.open("chest", { x: p.x, y: p.y, z: p.z, entityId: e.id });
-        return true;
-      }
       if (feed(e, ctx, def, held, llamaOpts)) return true;
       if (!held && !isBaby(e) && !ctx.player.sneaking) return mountPlayer(ctx, e);
       return false;
     },
     onDeath(e, ctx) {
       const p = e.body.pos;
-      if (e.data.decor && !trader) ctx.entities.dropItem({ item: `${e.data.decor}_carpet`, count: 1 }, p.x, p.y + 1, p.z);
+      if (e.data.decor) ctx.entities.dropItem({ item: `${e.data.decor}_carpet`, count: 1 }, p.x, p.y + 1, p.z);
       if (e.data.chest) {
         ctx.entities.dropItem({ item: "chest", count: 1 }, p.x, p.y + 0.5, p.z);
         dropContents(e, ctx);
@@ -321,6 +318,20 @@ function llamaDef(trader: boolean): MobDef {
   };
   return def;
 }
+
+const llamaInv: MountInv = {
+  canOpen: (e) => e.data.tamed === true && !isBaby(e),
+  armor: "llama_armor",
+  isArmor: (item) => item.endsWith("_carpet"),
+  getArmor: (e) => (e.data.decor ? { item: `${e.data.decor}_carpet`, count: 1 } : null),
+  setArmor(e, s, ctx) {
+    const dye = s ? dyeOf(s.item.replace("_carpet", "_dye")) : undefined;
+    if (dye && dye !== e.data.decor) sound(ctx, e, "entity.llama.swag");
+    e.data.decor = dye ?? undefined;
+  },
+};
+registerMountInv("llama", llamaInv);
+registerMountInv("trader_llama", llamaInv);
 
 export const LLAMA = llamaDef(false);
 export const TRADER_LLAMA = llamaDef(true);

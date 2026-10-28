@@ -23,8 +23,10 @@ function paintPuffer(p: Pix): void {
   p.noise(big.bottom, [0xf2e2b0, 0xe8d49c]);
   eyes(big.front, 1, 2);
   p.rect([big.front[0] + 3, big.front[1] + 6, 2, 1], 0x5a3a10);
-  for (let k = 0; k < 4; k++) for (let x = 0; x < 16; x++) p.px(14 + x, 16 + k, 0xf0ecd8, x % 2 ? 0 : 255);
+  // Spike planes share the 16-24 row band like vanilla's sheet; every other pixel is a gap.
+  for (let y = 16; y < 25; y++) for (let x = 0; x < 32; x++) if (y < 22 || x < 12) p.px(x, y, 0xf0ecd8, (x + y) % 2 ? 0 : 255);
   for (const [u, v] of [[24, 0], [24, 3]]) p.fillCuboid(u, v, 2, 1, 2, [FIN, 0x3c76a0, 0x5c9cc4]);
+  p.noise([0, 0, 6, 3], [FIN, 0x5c9cc4]);
   const mid = p.fillCuboid(12, 22, 5, 5, 5, Y);
   p.noise(mid.bottom, [0xf2e2b0]);
   eyes(mid.front, 0, 1);
@@ -37,25 +39,41 @@ function paintPuffer(p: Pix): void {
   }
 }
 
-const SPIKE = (name: string, z: number, y: number, row: number, tilt: number): VPart =>
-  ({ name, parent: "big", pivot: [0, y, z], box: [-4, y ? -1 : 0, 0, 8, 1, 0], uv: [14, 16 + row], rot: [tilt, 0, 0] });
+const Q = Math.PI / 4;
+const SPIKE = (name: string, parent: string, pivot: VPart["pivot"], box: VPart["box"], uv: VPart["uv"], rx = 0, ry = 0): VPart =>
+  ({ name, parent, pivot, box, uv, rot: [rx, ry, 0] });
 
 const PARTS: VPart[] = [
   { name: "big", pivot: [0, 22, 0], box: [-4, -8, -4, 8, 8, 8], uv: [0, 0] },
-  { name: "big_rfin", parent: "big", pivot: [-4, -7, -1], box: [-2, 0, -1, 2, 1, 2], uv: [24, 0] },
-  { name: "big_lfin", parent: "big", pivot: [4, -7, -1], box: [0, 0, -1, 2, 1, 2], uv: [24, 3] },
-  SPIKE("spike_tf", -4, -8, 0, Math.PI / 4),
-  SPIKE("spike_tb", 4, -8, 1, -Math.PI / 4),
-  SPIKE("spike_bf", -4, 0, 2, -Math.PI / 4),
-  SPIKE("spike_bb", 4, 0, 3, Math.PI / 4),
+  { name: "big_rfin", parent: "big", pivot: [-4, -7, -2], box: [-2, 0, -1, 2, 1, 2], uv: [24, 0] },
+  { name: "big_lfin", parent: "big", pivot: [4, -7, -2], box: [0, 0, -1, 2, 1, 2], uv: [24, 3] },
+  SPIKE("big_tf", "big", [0, -8, -4], [-4, -1, 0, 8, 1, 0], [15, 17], Q),
+  SPIKE("big_tm", "big", [0, -8, 0], [-4, -1, 0, 8, 1, 1], [14, 16]),
+  SPIKE("big_tb", "big", [0, -8, 4], [-4, -1, 0, 8, 1, 0], [23, 18], -Q),
+  SPIKE("big_rf", "big", [-4, 0, -4], [-1, -8, 0, 1, 8, 0], [5, 17], 0, -Q),
+  SPIKE("big_lf", "big", [4, 0, -4], [0, -8, 0, 1, 8, 0], [1, 17], 0, Q),
+  SPIKE("big_bf", "big", [0, 0, -4], [-4, 0, 0, 8, 1, 0], [15, 20], -Q),
+  SPIKE("big_bm", "big", [0, 0, 0], [-4, 0, 0, 8, 1, 0], [15, 20]),
+  SPIKE("big_bb", "big", [0, 0, 4], [-4, 0, 0, 8, 1, 0], [15, 20], Q),
+  SPIKE("big_rb", "big", [-4, 0, 4], [-1, -8, 0, 1, 8, 0], [9, 17], 0, Q),
+  SPIKE("big_lb", "big", [4, 0, 4], [0, -8, 0, 1, 8, 0], [9, 17], 0, -Q),
   { name: "mid", pivot: [0, 22, 0], box: [-2.5, -5, -2.5, 5, 5, 5], uv: [12, 22] },
-  { name: "mid_rfin", parent: "mid", pivot: [-2.5, -4, -1], box: [-2, 0, -1, 2, 1, 2], uv: [24, 0] },
-  { name: "mid_lfin", parent: "mid", pivot: [2.5, -4, -1], box: [0, 0, -1, 2, 1, 2], uv: [24, 3] },
+  { name: "mid_rfin", parent: "mid", pivot: [-2.5, -5, -1.5], box: [-2, 0, 0, 2, 0, 2], uv: [24, 0] },
+  { name: "mid_lfin", parent: "mid", pivot: [2.5, -5, -1.5], box: [0, 0, 0, 2, 0, 2], uv: [24, 3] },
+  SPIKE("mid_tf", "mid", [0, -5, -2.5], [-2.5, -1, 0, 5, 1, 1], [15, 16], Q),
+  SPIKE("mid_tb", "mid", [0, -5, 2.5], [-2.5, -1, -1, 5, 1, 1], [10, 16], -Q),
+  SPIKE("mid_rf", "mid", [-2.5, 0, -2.5], [-1, -5, 0, 1, 5, 1], [8, 16], 0, -Q),
+  SPIKE("mid_rb", "mid", [-2.5, 0, 2.5], [-1, -5, 0, 1, 5, 1], [8, 16], 0, Q),
+  SPIKE("mid_lb", "mid", [2.5, 0, 2.5], [0, -5, 0, 1, 5, 1], [4, 16], 0, -Q),
+  SPIKE("mid_lf", "mid", [2.5, 0, -2.5], [0, -5, 0, 1, 5, 1], [4, 16], 0, Q),
+  SPIKE("mid_bb", "mid", [0.5, 0, 2.5], [0, 0, 0, 1, 1, 1], [8, 22], Q),
+  SPIKE("mid_bf", "mid", [0, 0, -2.5], [-2.5, 0, 0, 5, 1, 1], [17, 21], -Q),
   { name: "small", pivot: [0, 23, 0], box: [-1.5, -2, -1.5, 3, 2, 3], uv: [0, 27] },
   { name: "small_reye", parent: "small", pivot: [0, -2, 0], box: [-1.5, -1, -1.5, 1, 1, 1], uv: [24, 6] },
   { name: "small_leye", parent: "small", pivot: [0, -2, 0], box: [0.5, -1, -1.5, 1, 1, 1], uv: [28, 6] },
-  { name: "small_rfin", parent: "small", pivot: [-1.5, -1, -0.5], box: [-1, 0, -1, 1, 1, 2], uv: [24, 0] },
-  { name: "small_lfin", parent: "small", pivot: [1.5, -1, -0.5], box: [0, 0, -1, 1, 1, 2], uv: [24, 3] },
+  { name: "small_rfin", parent: "small", pivot: [-1.5, -1, -1.5], box: [-1, 0, 0, 1, 0, 2], uv: [25, 0] },
+  { name: "small_lfin", parent: "small", pivot: [1.5, -1, -1.5], box: [0, 0, 0, 1, 0, 2], uv: [25, 0] },
+  { name: "small_tail", parent: "small", pivot: [0, -1, 1.5], box: [-1.5, 0, 0, 3, 0, 3], uv: [-3, 0] },
 ];
 
 function pufferModel() {

@@ -78,7 +78,7 @@ export const sunSide = (angle: number) => (Math.sin(angle * TAU) > 0 ? -1 : 1);
 
 const sunrise: Rgba = [0, 0, 0, 0];
 
-// lookX: camera forward x on the horizontal plane, normalized.
+// lookX: x of the camera look vector (vanilla uses the 3D vector, so looking up weakens the tint).
 export function overworldFog(
   biomeFog: number, sky: Rgb, angle: number, renderChunks: number, lookX: number,
   rain: number, thunder: number, out: Rgb,
@@ -155,9 +155,4 @@ export function fogRange(dim: "overworld" | "nether" | "end", renderBlocks: numb
     out.near = renderBlocks - Math.min(64, Math.max(4, renderBlocks / 10));
   }
   return out;
-}
-
-export function snowsAt(temperature: number, y: number): boolean {
-  const t = temperature - (y > 80 ? ((y - 80) * 0.05) / 30 : 0);
-  return t < 0.15;
 }

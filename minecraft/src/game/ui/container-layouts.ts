@@ -65,6 +65,7 @@ export const LAYOUTS: Record<ContainerKind, Layout> = {
   cartography_table: { w: 176, h: 166, inv: [8, 84], title: [8, 4], invLabel: [8, 72], rest: [[15, 15], [15, 52]], out: [[145, 39]] },
   villager: { w: 276, h: 166, inv: [108, 84], title: "center", invLabel: [107, 72], rest: [[136, 37], [162, 37]], out: [[220, 37]] },
   beacon: { w: 230, h: 219, inv: [36, 137], title: [8, 6], invLabel: null, rest: [[136, 110]] },
+  horse: { w: 176, h: 166, inv: [8, 84], title: [8, 6], invLabel: [8, 72], rest: [] },
 };
 
 export interface PlacedSlot {
@@ -78,8 +79,20 @@ const OUTPUT = new Set<SlotRole>(["craft_output", "smelt_output"]);
 const ARMOR = new Set<SlotRole>(["armor_head", "armor_chest", "armor_legs", "armor_feet"]);
 
 // Player slots go by role; output and fuel go by role; every other slot fills `rest` in view order, then a fallback row.
-export function placeSlots(kind: ContainerKind, groups: { slots: SlotView[] }[]): PlacedSlot[] {
+// Vanilla HorseInventoryScreen: saddle at (8, 18), body armor at (8, 36), chest columns from x 80 in three rows.
+function horseRest(groups: { name?: string; slots: SlotView[] }[]): Pt[] {
+  const out: Pt[] = [];
+  for (const g of groups) {
+    if (g.name === "saddle") out.push([8, 18]);
+    else if (g.name === "horse_armor" || g.name === "llama_armor") out.push([8, 36]);
+    else if (g.name === "chest") out.push(...grid(80, 18, g.slots.length / 3, 3));
+  }
+  return out;
+}
+
+export function placeSlots(kind: ContainerKind, groups: { name?: string; slots: SlotView[] }[]): PlacedSlot[] {
   const L = LAYOUTS[kind];
+  const R = kind === "horse" ? horseRest(groups) : L.rest;
   const out: PlacedSlot[] = [];
   let storage = 0;
   let hotbar = 0;
@@ -104,8 +117,8 @@ export function placeSlots(kind: ContainerKind, groups: { slots: SlotView[] }[])
         out.push({ slot: s, x: p[0], y: p[1], big: L.bigOut });
       } else if (s.role === "fuel" && L.fuel) {
         out.push({ slot: s, x: L.fuel[0], y: L.fuel[1] });
-      } else if (rest < L.rest.length) {
-        const p = L.rest[rest++];
+      } else if (rest < R.length) {
+        const p = R[rest++];
         out.push({ slot: s, x: p[0], y: p[1] });
       } else if (!L.inv || (s.role !== "storage" && s.role !== "hotbar")) {
         out.push({ slot: s, x: 8 + (extra % 9) * 18, y: 18 + Math.floor(extra / 9) * 18 });

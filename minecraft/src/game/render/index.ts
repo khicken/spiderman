@@ -22,7 +22,7 @@ import { FLICKER } from "../mesh/materials";
 import { syncLightmap } from "../mesh/lightmap";
 import { onPacksChanged } from "../packs";
 import { applyColormaps } from "./colormap";
-import { resetTints } from "../world/mesh-input";
+import { resetTints, setBlendRadius } from "../world/mesh-input";
 
 export { QUALITY } from "./quality";
 
@@ -167,8 +167,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     if (dim === "overworld") {
       skyColor(biome.skyColor, angle, r, th, flash, sky3);
       camera.getWorldDirection(_dir);
-      const h = Math.hypot(_dir.x, _dir.z) || 1;
-      overworldFog(biome.fogColor, sky3, angle, renderDistance, _dir.x / h, r, th, fog3);
+      overworldFog(biome.fogColor, sky3, angle, renderDistance, _dir.x, r, th, fog3);
       sunriseColor(angle, sunrise);
       day = flash > 0 ? Math.max(daylight(angle, r, th), flash) : daylight(angle, r, th);
       skyLightTint(angle, r, th, tint3);
@@ -301,7 +300,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     const t1 = performance.now();
     chunks.update(camera);
     const t2 = performance.now();
-    animateTick(world, particles, camera.position.x, camera.position.y, camera.position.z, step, dim === "nether" ? netherSample : undefined);
+    animateTick(world, particles, camera.position.x, camera.position.y, camera.position.z, step, dim === "overworld" ? rain : 0, dim === "nether" ? netherSample : undefined);
     particles.update(step);
 
     renderer.info.reset();
@@ -324,13 +323,15 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     camera.updateProjectionMatrix();
   }
 
-  function setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number }) {
+  function setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number; biomeBlend?: number; particles?: "all" | "decreased" | "minimal" }) {
     camera.fov = o.fov;
+    particles.setStatus(o.particles ?? "all");
     camera.updateProjectionMatrix();
     quality = o.quality;
     cloudsOn = o.clouds;
     const fancy = quality === "high";
-    if (fancy !== GFX.fancyLeaves) {
+    const blend = o.biomeBlend !== undefined && setBlendRadius(o.biomeBlend);
+    if (fancy !== GFX.fancyLeaves || blend) {
       GFX.fancyLeaves = fancy;
       chunks.remeshAll();
     }

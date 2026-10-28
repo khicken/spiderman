@@ -19,7 +19,7 @@ let ctxRef: GameCtx | null = null;
 let travel: { x: number; z: number } | null = null;
 const shots = new Map<number, { crossbow: boolean; types: string[] }>();
 
-installVault();
+installVault(() => playerName);
 
 export const advancementDone = (id: string) => !!prog[id]?.done;
 export const advancementPlayer = () => playerName;

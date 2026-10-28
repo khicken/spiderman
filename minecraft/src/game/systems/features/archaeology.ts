@@ -115,11 +115,22 @@ export function tickBrush(ctx: GameCtx, ticks: number, slot: number): boolean {
   d.resetAt = ctx.time.tick + 40;
   d.count = Number(d.count ?? 0) + 1;
   if (!d.item && be.data?.loot) d.item = rollArchaeology(String(d.loot), ctx.random);
-  if (Number(d.count) >= REQUIRED_BRUSHES) complete(ctx, be, name, hit.face, slot);
-  else {
+  if (Number(d.count) >= REQUIRED_BRUSHES) {
+    const fwd = ctx.world.hostAction;
+    if (fwd) fwd("brush", hit.x, hit.y, hit.z, () => (complete(ctx, be, name, hit.face, slot), true));
+    else complete(ctx, be, name, hit.face, slot);
+  } else {
     tracked.set(`${hit.x},${hit.y},${hit.z}`, be);
     setDusted(ctx, hit.x, hit.y, hit.z, Number(d.count));
   }
+  return true;
+}
+
+// The host's run of a multiplayer client's last stroke: the loot comes from the host's block entity.
+export function finishBrush(ctx: GameCtx, x: number, y: number, z: number, slot: number): boolean {
+  const name = blockDef(ctx.world.getBlock(x, y, z)).name;
+  if (!isBrushable(name)) return false;
+  complete(ctx, entity(ctx, x, y, z, name), name, 2, slot);
   return true;
 }
 

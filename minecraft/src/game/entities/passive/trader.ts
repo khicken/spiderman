@@ -102,7 +102,7 @@ const near: Entity[] = [];
 function spawnLlamas(e: Entity, ctx: GameCtx) {
   for (let i = 0; i < 2; i++) {
     const a = ctx.random() * Math.PI * 2;
-    ctx.entities.spawn("trader_llama", e.body.pos.x + Math.cos(a) * 2, e.body.pos.y, e.body.pos.z + Math.sin(a) * 2, { trader: e.id });
+    ctx.entities.spawn("trader_llama", e.body.pos.x + Math.cos(a) * 2, e.body.pos.y, e.body.pos.z + Math.sin(a) * 2, { leash: { entity: e.id } });
   }
 }
 

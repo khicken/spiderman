@@ -159,15 +159,7 @@ function hunt(e: Entity, ctx: GameCtx) {
     e.yaw = rotlerp(e.yaw, yawTo(dx, dz), 0.4);
     e.headYaw = e.yaw;
   }
-  if (meleeAttack(e, ctx, 2)) {
-    sound(ctx, e, "entity.axolotl.attack");
-    if (o.dead && ctx.player.body.pos.distanceToSquared(b.pos) < 400) {
-      const cur = ctx.player.effects.find((f) => f.id === "regeneration");
-      addEffect(ctx.player.effects, "regeneration", Math.min(2400, (cur?.ticks ?? 0) + 100), 0);
-      const mf = ctx.player.effects.findIndex((f) => f.id === "mining_fatigue");
-      if (mf >= 0) ctx.player.effects.splice(mf, 1);
-    }
-  }
+  if (meleeAttack(e, ctx, 2)) sound(ctx, e, "entity.axolotl.attack");
   return true;
 }
 

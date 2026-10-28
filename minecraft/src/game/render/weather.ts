@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { WorldApi } from "../contracts";
-import { snowsAt } from "./celestial";
+import { warmEnoughToRain } from "../entities/light";
 import { rng } from "./sky-art";
 import { artOr } from "./pack-art";
 
@@ -142,7 +142,7 @@ export function createWeather(scene: THREE.Scene, world: WorldApi, splash: (x: n
         const top = world.topY(x, z) + 1;
         const yb = Math.max(top, by - radius), yt = Math.max(top, by + radius);
         if (yb >= yt) continue;
-        const snow = biome.precipitation === "snow" || snowsAt(biome.temperature, top);
+        const snow = biome.precipitation === "snow" || !warmEnoughToRain(biome.temperature, top);
         cols[n * 4] = x; cols[n * 4 + 1] = z; cols[n * 4 + 2] = yb; cols[n * 4 + 3] = yt - yb;
         const h = Math.imul(x * 3121 + z * 45238971, 0x9e3779b1) >>> 0;
         kinds[n * 2] = snow ? 1 : 0; kinds[n * 2 + 1] = (h % 1000) / 1000;

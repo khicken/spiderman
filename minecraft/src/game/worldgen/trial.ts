@@ -31,11 +31,12 @@ function trialSpawner(f: Frame, a: number, y: number, b: number, mob: string) {
   f.w.blockEntities.push({ x, y: f.y + y, z, type: "trial_spawner", data: { mob, state: "waiting", ominous: false } });
 }
 
-function vault(f: Frame, a: number, y: number, b: number, h: number) {
+function vault(f: Frame, a: number, y: number, b: number, h: number, ominous = false) {
   const x = wx(f, a, b), z = wz(f, a, b);
   if (!f.w.inside(x, z)) return;
   f.w.set(x, f.y + y, z, S(B.vault, faceOf(f, h)));
-  f.w.blockEntities.push({ x, y: f.y + y, z, type: "vault", data: { key: "trial_key", lootTable: "trial_chambers_reward" } });
+  const data = ominous ? { key: "ominous_trial_key", ominous: true, lootTable: "trial_chambers_reward_ominous" } : { key: "trial_key", lootTable: "trial_chambers_reward" };
+  f.w.blockEntities.push({ x, y: f.y + y, z, type: "vault", data });
 }
 
 export function trialChamber(w: Writer, s: Start) {
@@ -52,7 +53,7 @@ export function trialChamber(w: Writer, s: Start) {
   trialSpawner(f, -7, 2, 0, "breeze");
   trialSpawner(f, 7, 2, 0, MOBS[r.int(MOBS.length - 1)]);
   vault(f, -1, 1, 0, 1);
-  vault(f, 1, 1, 0, 3);
+  vault(f, 1, 1, 0, 3, true);
   chest(f, 0, 1, 3, 0, "trial_chambers_intersection", B.barrel, "barrel");
   for (let k = 0; k < 8; k++) {
     const side = r.int(4), t = r.int(2 * R - 3) - R + 2;

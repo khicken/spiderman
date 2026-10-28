@@ -171,13 +171,13 @@ export function tickRaid(ctx: GameCtx, r: RaidState): boolean {
 }
 
 export function raidBar(ctx: GameCtx, r: RaidState): Bar {
-  if (r.status === "victory") return { id: "raid", name: "Raid - Victory", progress: 0, color: "red" };
-  if (r.status === "defeat") return { id: "raid", name: "Raid - Defeat", progress: 0, color: "red" };
+  if (r.status === "victory") return { id: "raid", name: "Raid - Victory", progress: 0, color: "red", notches: 10 };
+  if (r.status === "defeat") return { id: "raid", name: "Raid - Defeat", progress: 0, color: "red", notches: 10 };
   const list = raiders(ctx);
-  if (!list.length) return { id: "raid", name: "Raid", progress: 1 - r.cooldown / COOLDOWN, color: "red" };
+  if (!list.length) return { id: "raid", name: "Raid", progress: 1 - r.cooldown / COOLDOWN, color: "red", notches: 10 };
   const hp = list.reduce((a, e) => a + Math.max(0, e.health), 0);
   const name = list.length <= 2 ? `Raid - Raiders Remaining: ${list.length}` : "Raid";
-  return { id: "raid", name, progress: Math.min(1, hp / Math.max(1, r.waveHealth)), color: "red" };
+  return { id: "raid", name, progress: Math.min(1, hp / Math.max(1, r.waveHealth)), color: "red", notches: 10 };
 }
 
 export function tickOmen(ctx: GameCtx, s: OmenState) {

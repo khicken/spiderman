@@ -74,8 +74,8 @@ function grow(kind: Kind, x: number, y: number, z: number, r: Rng, ground: numbe
     case "birch": return oakTree(x, y, z, BIRCH, 5 + r.int(3));
     case "bee_birch": oakTree(x, y, z, BIRCH, 5 + r.int(3)); return beeNest(x, y + 2, z);
     case "tall_birch": return oakTree(x, y, z, BIRCH, 10 + r.int(5));
-    case "spruce": return spruceTree(x, y, z, 6 + r.int(4));
-    case "pine": return pineTree(x, y, z, 7 + r.int(5));
+    case "spruce": return spruceTree(x, y, z, 5 + r.int(3) + r.int(2));
+    case "pine": return pineTree(x, y, z, 6 + r.int(5));
     case "mega_spruce": return megaSpruce(x, y, z, false);
     case "mega_pine": return megaSpruce(x, y, z, true);
     case "jungle": return jungleTree(x, y, z);

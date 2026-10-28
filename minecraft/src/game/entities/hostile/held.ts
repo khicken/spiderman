@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import type { BlockState, Entity } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
-import { itemDef } from "../../items/registry";
-import { paintItemTexture } from "../../textures/icons";
+import { itemSpritePixels } from "../../textures/icons";
 import { paintBlockTexture } from "../../textures/index";
+import { extrudeSprite } from "../../player/item-mesh";
+import { handItemMatrix } from "../../player/hand";
 import type { Rig } from "./rig";
 
 const textures = new Map<string, THREE.DataTexture>();
@@ -23,22 +24,27 @@ function rgbaTexture(key: string, paint: () => Uint8ClampedArray): THREE.DataTex
   return t;
 }
 
-const planeGeo = new THREE.PlaneGeometry(1, 1);
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+const spriteGeos = new Map<string, THREE.BufferGeometry>();
+
+function spriteGeo(item: string): THREE.BufferGeometry {
+  let g = spriteGeos.get(item);
+  if (!g) spriteGeos.set(item, (g = extrudeSprite(itemSpritePixels(item))));
+  return g;
+}
 
 export interface Held {
   update(e: Entity): void;
 }
 
-// Item sprite in the right hand. e.data.held overrides the default item; "" hides it.
+// Item in the right hand, placed like the player's third-person item. e.data.held overrides the default item; "" hides it.
 export function attachHeld(r: Rig, item?: string): Held | null {
   const arm = r.p.right_arm;
   if (!arm) return null;
-  const mat = new THREE.MeshLambertMaterial({ alphaTest: 0.1, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(planeGeo, mat);
-  mesh.scale.setScalar(0.7);
-  mesh.position.set(1 / 16, -10 / 16, -2 / 16);
-  mesh.rotation.set(0, Math.PI / 2, -Math.PI / 4 + Math.PI);
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const mesh = new THREE.Mesh(spriteGeo("stick"), mat);
+  mesh.matrixAutoUpdate = false;
+  mesh.visible = false;
   arm.add(mesh);
   let shown = "";
   const prevDispose = r.m.dispose;
@@ -53,10 +59,8 @@ export function attachHeld(r: Rig, item?: string): Held | null {
         shown = want;
         mesh.visible = !!want;
         if (want) {
-          const key = itemDef(want)?.texture ?? want;
-          mat.map = rgbaTexture("i:" + key, () => paintItemTexture(key));
-          mat.emissiveMap = mat.map;
-          mat.needsUpdate = true;
+          mesh.geometry = spriteGeo(want);
+          handItemMatrix(mesh.matrix, want, "flat", 1);
         }
       }
     },

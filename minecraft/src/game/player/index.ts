@@ -7,7 +7,7 @@ import type { InputAction, InputApi } from "./input";
 import { createInteraction } from "./interact";
 import { createItemMeshes } from "./item-mesh";
 import { createPlayerModel } from "./model";
-import { createCape, localLook, paintLook } from "../net/skins";
+import { createCape, localLook, onLocalLook, paintLook } from "../net/skins";
 import { applyVanillaMotion, createMotionState, type MotionInput } from "./motion";
 import { blockOn, fluidAt, makeBody, noCollision, bodyBox, type MoveOpts } from "./physics";
 import { EYE_STAND, FLY_SPEED, HEIGHT_STAND, MAX_AIR, SNEAK_MULT, SPRINT_MULT, WALK_SPEED, WIDTH, attackStats, attackStrength, ench } from "./stats";
@@ -23,7 +23,8 @@ import { tickSpin } from "./ranged";
 import { bubbleAmbient } from "../mechanics/bubble";
 import { bedStandSpot } from "../mechanics/interact";
 import { DIAL_STATE } from "../textures/dials";
-import { GLINT_TIME } from "../entities/armor-layer";
+import { GLINT_STRENGTH, GLINT_TIME } from "../entities/armor-layer";
+import { activeSettings } from "../ui/settings";
 import { movingSlowly, updatePose as updatePoseOf, updateSwimming } from "./pose";
 import { createRiding } from "./riding";
 
@@ -249,17 +250,36 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   };
 
   const look = paintLook(localLook());
-  const model = createPlayerModel(look);
+  let model = createPlayerModel(look);
   void look.ready.then(() => {
     model.skin.needsUpdate = true;
   });
-  const cape = look.cape ? createCape(model.model.root, look.cape, look.ready) : null;
+  let cape = look.cape ? createCape(model.model.root, look.cape, look.ready) : null;
   const items = createItemMeshes(() => getCtx().renderer?.scene.userData.chunkUniforms as ChunkUniforms | undefined);
-  const hand = createHand(model, items);
-  const extras = createPlayerExtras(model, items);
+  let hand = createHand(model, items);
+  let extras = createPlayerExtras(model, items);
   const screen = createScreenFx(items);
   const flames = createFlames();
   hand.root.add(screen.root);
+  // A skin change rebuilds the model, arm and cape; frame() puts the new ones in the scene.
+  const offLook = onLocalLook((l) => {
+    const scene = getCtx()?.renderer?.scene;
+    model.model.root.removeFromParent();
+    if (scene?.userData.hand === hand.root) delete scene.userData.hand;
+    hand.dispose();
+    extras.dispose();
+    cape?.dispose();
+    model.dispose();
+    const next = paintLook(l);
+    const m = (model = createPlayerModel(next));
+    void next.ready.then(() => {
+      m.skin.needsUpdate = true;
+    });
+    cape = next.cape ? createCape(m.model.root, next.cape, next.ready) : null;
+    hand = createHand(m, items);
+    extras = createPlayerExtras(m, items);
+    hand.root.add(screen.root);
+  });
   const interaction = createInteraction(p, input);
   const riding = createRiding();
 
@@ -530,7 +550,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
         if (wheel !== 0) ctx.inventory.selected = (((ctx.inventory.selected + wheel) % 9) + 9) % 9;
       } else input.consumeWheel();
       interaction.updateTarget(ctx);
-      updateCamera(p, ctx, pt, bob, viewBobbing, effectView(p, pt).nausea);
+      updateCamera(p, ctx, pt, bob, viewBobbing, effectView(p, pt).nausea * activeSettings().distortion ** 2);
       const light = lightAt(ctx, body.pos.x, body.pos.y + p.eyeHeight, body.pos.z, p.hasEffect("night_vision") > 0);
       const third = p.thirdPerson !== 0 && p.gameMode !== "spectator";
       const root = model.model.root;
@@ -590,7 +610,9 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       flames.update(burning && third, modelPos.x, modelPos.y, modelPos.z, body.width, body.height, ctx.renderer.camera);
       const fxv = effectView(p, pt);
       ctx.renderer.setEffects?.(fxv);
-      GLINT_TIME.value += dt;
+      const vo = activeSettings();
+      GLINT_TIME.value += dt * vo.glintSpeed * 2;
+      GLINT_STRENGTH.value = vo.glintStrength / 0.75;
       hand.update(hf);
     },
     save(): unknown {
@@ -646,6 +668,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     },
     dispose() {
       offAction();
+      offLook();
       const ctx = getCtx();
       model.model.root.removeFromParent();
       if (ctx?.renderer?.scene.userData.hand === hand.root) delete ctx.renderer.scene.userData.hand;

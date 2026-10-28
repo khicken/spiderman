@@ -1,22 +1,36 @@
 // Fallback transport for peers that WebRTC cannot reach: a tiny MQTT 3.1.1 client over WSS
-// to free public brokers. Every message goes to every live broker, the receiver drops repeats.
+// to free public brokers. Every peer listens on every broker it reaches and publishes to the first FANOUT live ones,
+// so a dead broker fails over to the next. The receiver drops repeats.
 // Brokers are public, so each envelope is AES-GCM sealed with the room key and signed by the sender's session key.
 import { PUB_BYTES, ReplayWindow, SIG_BYTES, hex, open as unseal, seal, verifyFrom, type Identity } from "./room-crypto";
 
 // hz: publish budget. EMQX drops messages above about 10 per second per client.
+// Live-probed 2026-10: the first four took 300 KB messages; mosquitto and eclipse did not answer the handshake.
 const BROKERS = [
   { url: "wss://broker.hivemq.com:8884/mqtt", hz: 60 },
-  { url: "wss://test.mosquitto.org:8081/mqtt", hz: 60 },
   { url: "wss://broker.emqx.io:8084/mqtt", hz: 8 },
+  { url: "wss://broker.itdata.nu/mqtt", hz: 20 },
+  { url: "wss://broker-cn.emqx.io:8084/mqtt", hz: 8 },
+  { url: "wss://test.mosquitto.org:8081/mqtt", hz: 60 },
+  { url: "wss://mqtt.eclipseprojects.io/mqtt", hz: 20 },
 ];
+const FANOUT = 3;
 const KEEPALIVE = 30;
 const MAX_SENDERS = 32;
+// Bodies past FRAG bytes go out as parts, so no single publish nears a broker or data channel size limit.
+export const FRAG = 16000;
+export const MAX_PARTS = 64;
+const PART = 255;
+const PART_HEAD = 9;
+const PART_TTL = 20000;
+const PARTS_PER_SENDER = 8;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 export type RelayMsg = (from: string, kind: number, body: Uint8Array) => void;
 export interface Relay {
   readonly up: number; // live brokers
+  readonly down: boolean; // every broker has failed at least once and none is live
   publish(kind: number, body: Uint8Array, lossy: boolean, to?: string): void;
   close(): void;
 }
@@ -36,7 +50,62 @@ function varint(n: number): number[] {
   return o;
 }
 
-type Broker = { url: string; hz: number; ws: WebSocket | null; ok: boolean; tokens: number; at: number; retry: number; buf: Uint8Array };
+type Broker = { url: string; hz: number; ws: WebSocket | null; ok: boolean; failed: boolean; tokens: number; at: number; retry: number; buf: Uint8Array };
+
+// Part: kind, u32 message id, u16 index, u16 count, then the slice.
+export function splitBody(kind: number, body: Uint8Array, id: number): Uint8Array[] {
+  const n = Math.ceil(body.length / FRAG);
+  const out: Uint8Array[] = [];
+  for (let i = 0; i < n; i++) {
+    const slice = body.subarray(i * FRAG, (i + 1) * FRAG);
+    const p = new Uint8Array(PART_HEAD + slice.length);
+    const v = new DataView(p.buffer);
+    p[0] = kind;
+    v.setUint32(1, id >>> 0);
+    v.setUint16(5, i);
+    v.setUint16(7, n);
+    p.set(slice, PART_HEAD);
+    out.push(p);
+  }
+  return out;
+}
+
+// Rebuilds split bodies per sender. Drops malformed parts, messages past MAX_PARTS, and parts older than PART_TTL.
+export function createJoiner() {
+  type Pending = { kind: number; parts: (Uint8Array | undefined)[]; got: number; at: number };
+  const bySender = new Map<string, Map<number, Pending>>();
+  return {
+    push(from: string, p: Uint8Array, now: number): { kind: number; body: Uint8Array } | null {
+      if (p.length < PART_HEAD + 1 || p.length > PART_HEAD + FRAG) return null;
+      const v = new DataView(p.buffer, p.byteOffset, p.byteLength);
+      const id = v.getUint32(1), i = v.getUint16(5), n = v.getUint16(7);
+      if (n < 2 || n > MAX_PARTS || i >= n || (i < n - 1 && p.length !== PART_HEAD + FRAG)) return null;
+      let m = bySender.get(from);
+      if (!m) {
+        if (bySender.size >= MAX_SENDERS) bySender.delete(bySender.keys().next().value!);
+        bySender.set(from, (m = new Map()));
+      }
+      for (const [k, q] of m) if (now - q.at > PART_TTL) m.delete(k);
+      let q = m.get(id);
+      if (!q) {
+        if (m.size >= PARTS_PER_SENDER) m.delete(m.keys().next().value!);
+        m.set(id, (q = { kind: p[0], parts: new Array(n), got: 0, at: now }));
+      }
+      if (q.kind !== p[0] || q.parts.length !== n || q.parts[i]) return null;
+      q.parts[i] = p.slice(PART_HEAD);
+      if (++q.got < n) return null;
+      m.delete(id);
+      const parts = q.parts as Uint8Array[];
+      const body = new Uint8Array(parts.reduce((a, b) => a + b.length, 0));
+      let o = 0;
+      for (const b of parts) {
+        body.set(b, o);
+        o += b.length;
+      }
+      return { kind: q.kind, body };
+    },
+  };
+}
 
 export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg: RelayMsg): Relay {
   const topic = str(`kalebkim-minecraft/v2/${topicId}`);
@@ -44,7 +113,9 @@ export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg
   let inQ: Promise<unknown> = Promise.resolve();
   let outQ: Promise<unknown> = Promise.resolve();
   let closed = false;
-  const brokers: Broker[] = BROKERS.map((b) => ({ ...b, ws: null, ok: false, tokens: b.hz, at: performance.now(), retry: 1000, buf: new Uint8Array(0) }));
+  let partId = 0;
+  const joiner = createJoiner();
+  const brokers: Broker[] = BROKERS.map((b) => ({ ...b, ws: null, ok: false, failed: false, tokens: b.hz, at: performance.now(), retry: 1000, buf: new Uint8Array(0) }));
   const ping = setInterval(() => {
     for (const b of brokers) if (b.ok) send(b, new Uint8Array([0xc0, 0]));
   }, (KEEPALIVE * 1000) / 2);
@@ -59,6 +130,7 @@ export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg
     try {
       ws = new WebSocket(b.url, ["mqtt"]);
     } catch {
+      b.failed = true;
       return later(b);
     }
     b.ws = ws;
@@ -72,6 +144,7 @@ export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg
     ws.onmessage = (ev) => read(b, new Uint8Array(ev.data as ArrayBuffer));
     ws.onclose = () => {
       b.ok = false;
+      b.failed = true;
       b.ws = null;
       later(b);
     };
@@ -130,10 +203,43 @@ export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg
     ivs.add(iv);
     if (ivs.size > 1024) for (const k of ivs) { ivs.delete(k); if (ivs.size <= 768) break; }
     const sealed = m.slice();
-    inQ = inQ.then(() => codec.read(sealed)).then((r) => r && !closed && onMsg(r.from, r.kind, r.body)).catch(() => {});
+    inQ = inQ.then(() => codec.read(sealed)).then((r) => {
+      if (!r || closed) return;
+      if (r.kind !== PART) return onMsg(r.from, r.kind, r.body);
+      const whole = joiner.push(r.from, r.body, performance.now());
+      if (whole) onMsg(r.from, whole.kind, whole.body);
+    }).catch(() => {});
   }
 
   for (const b of brokers) open(b);
+
+  function publish(kind: number, body: Uint8Array, lossy: boolean, to: string) {
+    if (kind !== PART && body.length > FRAG) {
+      if (body.length > FRAG * MAX_PARTS) return console.warn("relay send: too big", body.length);
+      for (const p of splitBody(kind, body, partId++)) publish(PART, p, false, to);
+      return;
+    }
+    const sealed = codec.wire(kind, body, to);
+    outQ = outQ.then(() => sealed).then((msg) => {
+      if (closed) return;
+      const rem = topic.length + msg.length;
+      const head = [0x30, ...varint(rem), ...topic];
+      const pkt = new Uint8Array(head.length + msg.length);
+      pkt.set(head);
+      pkt.set(msg, head.length);
+      const now = performance.now();
+      let sent = 0;
+      for (const b of brokers) {
+        if (!b.ok || sent >= FANOUT) continue;
+        sent++;
+        b.tokens = Math.min(b.hz, b.tokens + ((now - b.at) / 1000) * b.hz);
+        b.at = now;
+        if (lossy && b.tokens < 1) continue;
+        b.tokens -= 1;
+        send(b, pkt);
+      }
+    }).catch((e) => console.warn("relay send:", e));
+  }
 
   return {
     get up() {
@@ -141,25 +247,11 @@ export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg
       for (const b of brokers) if (b.ok) k++;
       return k;
     },
+    get down() {
+      return brokers.every((b) => !b.ok && b.failed);
+    },
     publish(kind, body, lossy, to = "") {
-      const sealed = codec.wire(kind, body, to);
-      outQ = outQ.then(() => sealed).then((msg) => {
-        if (closed) return;
-        const rem = topic.length + msg.length;
-        const head = [0x30, ...varint(rem), ...topic];
-        const pkt = new Uint8Array(head.length + msg.length);
-        pkt.set(head);
-        pkt.set(msg, head.length);
-        const now = performance.now();
-        for (const b of brokers) {
-          if (!b.ok) continue;
-          b.tokens = Math.min(b.hz, b.tokens + ((now - b.at) / 1000) * b.hz);
-          b.at = now;
-          if (lossy && b.tokens < 1) continue;
-          b.tokens -= 1;
-          send(b, pkt);
-        }
-      }).catch((e) => console.warn("relay send:", e));
+      publish(kind, body, lossy, to);
     },
     close() {
       closed = true;

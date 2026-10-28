@@ -18,8 +18,16 @@ const COOKED: Record<string, string> = {
 export function rollDrops(drops: DropEntry[], ctx: GameCtx, looting: number, burning: boolean): ItemStack[] {
   const out: ItemStack[] = [];
   const r = ctx.random;
+  const groups = new Map<string, DropEntry | null>();
   for (const d of drops) {
-    const chance = d.chance ?? 1;
+    if (d.group !== undefined) {
+      if (!groups.has(d.group)) {
+        let roll = r();
+        groups.set(d.group, drops.find((g) => g.group === d.group && (roll -= g.chance ?? 0) < 0) ?? null);
+      }
+      if (groups.get(d.group) !== d) continue;
+    }
+    const chance = d.group !== undefined ? 1 : d.chance ?? 1;
     if (chance < 1 && r() >= chance + 0.01 * looting) continue;
     const [a, b] = d.count ?? [1, 1];
     let n = a + Math.floor(r() * (b - a + 1));

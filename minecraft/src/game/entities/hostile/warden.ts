@@ -142,7 +142,7 @@ function sonicBoom(e: Entity, ctx: GameCtx, t: Target) {
   } else if (typeof t === "number") {
     const o = ctx.entities.get(t);
     const hp = o?.health ?? 0;
-    ctx.entities.damage(t, 10, "magic", e);
+    ctx.entities.damage(t, 10, "sonic_boom", e);
     if (o) {
       hit = o.health < hp;
       body = o.body;

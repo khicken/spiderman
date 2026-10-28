@@ -17,7 +17,7 @@ import { generalRows, itemRows, mobRows } from "../game/systems/features/stats";
 import { AdvancementsScreen } from "../game/ui/advancements-screen";
 import { CreditsScreen } from "../game/ui/credits-screen";
 import { TOAST_MS, Toasts, type ToastEntry } from "../game/ui/toasts";
-import { mergeSettings, setActiveKeys } from "../game/ui/settings";
+import { mergeSettings, setActiveKeys, setActiveSettings } from "../game/ui/settings";
 import { createWorldMeta, listWorlds, loadMeta, saveMeta, type WorldMeta } from "../game/world/save";
 import { HideWhileSigning, SignEditScreen } from "../game/ui/sign-screen";
 import { ConnectingScreen, DirectConnectScreen, DisconnectedScreen, MultiplayerScreen, OpenToLanScreen, PlayerListOverlay } from "../game/ui/multiplayer";
@@ -110,6 +110,7 @@ export default function Page() {
   }, [asleep]);
   const { w, h } = useWindowSize();
   const guiScale = computeGuiScale(settings.guiScale, w, h);
+  setActiveSettings(settings);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -291,7 +292,7 @@ export default function Page() {
     setScreen("connecting");
     void import("../game/net/client").then(({ connectClient }) => {
       const c = connectClient(code, playerName(), Math.min(8, settings.renderDistance), (st) =>
-        setConnectStatus(st === "connecting" ? "Connecting to the server..." : st === "joining" ? "Logging in..." : "Loading terrain..."),
+        setConnectStatus(st === "connecting" ? "Connecting to the server..." : st === "offline" ? "No relay server reachable, retrying..." : st === "joining" ? "Logging in..." : "Loading terrain..."),
       );
       cancelJoin.current = c.cancel;
       c.done.then(
@@ -441,7 +442,7 @@ export default function Page() {
       />
       {playing && !hideGui && !hud?.thirdPerson && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
       <GuiRoot guiScale={settings.guiScale}>
-        {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics === "fancy"} />}
+        {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics !== "fast"} />}
         {playing && !hideGui && settings.showSubtitles && <Subtitles />}
         {credits && (
           <CreditsScreen

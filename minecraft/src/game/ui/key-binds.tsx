@@ -7,7 +7,6 @@ import { Button, Screen, type BackgroundKind } from "./widgets";
 import { ScrollList } from "./options-screen";
 import { DEFAULT_KEYS, KEY_BIND_GROUPS, keyName, type Settings } from "./settings";
 
-const MOUSE_ONLY = new Set(["attack", "use", "pick_block"]);
 const ROW = 20;
 
 export function KeyBinds({ settings, onChange, onDone, background }: { settings: Settings; onChange: (p: Partial<Settings>) => void; onDone: () => void; background: BackgroundKind }) {
@@ -18,14 +17,26 @@ export function KeyBinds({ settings, onChange, onDone, background }: { settings:
 
   useEffect(() => {
     if (!editing) return;
-    const on = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      onChange({ keys: { ...keys, [editing]: e.code === "Escape" ? "" : e.code } });
+    const bind = (code: string) => {
+      onChange({ keys: { ...keys, [editing]: code } });
       setEditing(null);
     };
-    window.addEventListener("keydown", on, true);
-    return () => window.removeEventListener("keydown", on, true);
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      bind(e.code === "Escape" ? "" : e.code);
+    };
+    const onMouse = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      bind(`Mouse${e.button}`);
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("mousedown", onMouse, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("mousedown", onMouse, true);
+    };
   }, [editing, keys, onChange]);
 
   useEffect(() => {
@@ -60,18 +71,18 @@ export function KeyBinds({ settings, onChange, onDone, background }: { settings:
             if ("cat" in r) return <Text key={i} text={r.cat} x={cx} y={y + 10 - 4} align="center" />;
             const code = keys[r.id] ?? "";
             const conflict = !!code && (used.get(code) ?? 0) > 1;
-            const label = editing === r.id ? `§e> §f§n${keyName(code)}§r§e <` : conflict ? `§c${keyName(code)}` : keyName(code);
+            const label = editing === r.id ? `§e> §f§n${keyName(code)}§r§e <` : conflict ? `§c[ §f${keyName(code)}§c ]` : keyName(code);
             return (
               <div key={i}>
                 <Text text={r.label} x={left + 90 - nameW} y={y + 6} />
                 {conflict && editing !== r.id && <div style={{ position: "absolute", left: left + 101, top: y, width: 3, height: 20, background: "#ff5555" }} />}
-                <Button x={left + 105} y={y} width={75} label={label} disabled={MOUSE_ONLY.has(r.id)} onClick={() => setEditing(r.id)} />
+                <Button x={left + 105} y={y} width={75} label={label} onClick={() => setEditing(r.id)} />
                 <Button
                   x={left + 190}
                   y={y}
                   width={50}
                   label="Reset"
-                  disabled={MOUSE_ONLY.has(r.id) || code === DEFAULT_KEYS[r.id]}
+                  disabled={code === DEFAULT_KEYS[r.id]}
                   onClick={() => onChange({ keys: { ...keys, [r.id]: DEFAULT_KEYS[r.id] } })}
                 />
               </div>
@@ -79,7 +90,7 @@ export function KeyBinds({ settings, onChange, onDone, background }: { settings:
           })
         }
       </ScrollList>
-      <Button x={cx - 155} y={height - 27} width={150} label="Reset Keys" onClick={() => onChange({ keys: { ...DEFAULT_KEYS } })} />
+      <Button x={cx - 155} y={height - 27} width={150} label="Reset Keys" disabled={Object.keys(DEFAULT_KEYS).every((id) => keys[id] === DEFAULT_KEYS[id])} onClick={() => onChange({ keys: { ...DEFAULT_KEYS } })} />
       <Button x={cx + 5} y={height - 27} width={150} label="Done" onClick={onDone} />
     </Screen>
   );

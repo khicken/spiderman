@@ -191,7 +191,7 @@ function rareDrop(e: Entity, ctx: GameCtx, extra: string[] = []): void {
   const p = e.body.pos;
   if (ctx.random() < 0.025) ctx.entities.dropItem({ item: pick(ctx, ["iron_ingot", "carrot", "potato"]), count: 1 }, p.x, p.y + 0.5, p.z);
   const held = e.data.held as string;
-  if (held && ctx.random() < 0.085 && !extra.includes(held)) ctx.entities.dropItem({ item: held, count: 1 }, p.x, p.y + 0.5, p.z);
+  if (held && !e.data.noEquipDrop && ctx.random() < 0.085 && !extra.includes(held)) ctx.entities.dropItem({ item: held, count: 1 }, p.x, p.y + 0.5, p.z);
 }
 
 const ZOMBIE_SOUNDS = (s: string) => ({ ambient: s + ".ambient", hurt: s + ".hurt", death: s + ".death", step: s + ".step" });

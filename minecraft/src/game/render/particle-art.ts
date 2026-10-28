@@ -19,9 +19,11 @@ export const SPRITE = {
   soulFlame: 53,
   sweep: 54, // 8 frames
   glyph: 62, // 26 frames, one per letter
+  glitter: 88, // 8 frames, 0 smallest
+  petal: 96,
 } as const;
 export const GLYPHS = 26;
-export const SPRITE_LAYERS = 88;
+export const SPRITE_LAYERS = 97;
 
 type Px = Uint8Array;
 
@@ -165,6 +167,21 @@ export function paintParticleSheet(): Uint8Array {
 
   rows(p, SPRITE.spark, [" w ", "www", " w "], { w: [255, 255, 255] });
   rows(p, SPRITE.pixel, ["ww", "ww"], { w: [255, 255, 255] });
+  for (let k = 0; k < 8; k++) {
+    const r = 1 + (k >> 1);
+    for (let t = -r; t <= r; t++) {
+      const v = Math.abs(t) === r ? 200 : 255;
+      set(p, SPRITE.glitter + k, 7 + t, 7, v, v, v);
+      set(p, SPRITE.glitter + k, 7, 7 + t, v, v, v);
+    }
+    if (k > 3) for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) set(p, SPRITE.glitter + k, 7 + dx, 7 + dy, 255, 255, 255);
+  }
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      const u = (x - 7.5 + (y - 7.5)) * 0.7071, v = (y - 7.5 - (x - 7.5)) * 0.7071;
+      const d = (u * u) / 49 + (v * v) / 16;
+      if (d <= 1) set(p, SPRITE.petal, x, y, d > 0.6 ? 228 : 250, d > 0.6 ? 140 : 190, d > 0.6 ? 180 : 214);
+    }
 
   rows(p, SPRITE.happy, [
     "   g   ",
@@ -246,4 +263,6 @@ export const PARTICLE_PATHS: [number, string][] = [
   [SPRITE.soulFlame, "particle/soul_fire_flame"],
   ...Array.from({ length: 8 }, (_, k) => [SPRITE.sweep + k, `particle/sweep_${k}`] as [number, string]),
   ...Array.from({ length: GLYPHS }, (_, k) => [SPRITE.glyph + k, `particle/sga_${String.fromCharCode(97 + k)}`] as [number, string]),
+  ...Array.from({ length: 8 }, (_, k) => [SPRITE.glitter + k, `particle/glitter_${k}`] as [number, string]),
+  [SPRITE.petal, "particle/cherry_0"],
 ];

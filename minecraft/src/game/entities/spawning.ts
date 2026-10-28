@@ -4,7 +4,8 @@ import { OPAQUE, SOLID, STATE_EMIT, blockByName, blockDef } from "../blocks/regi
 import { fluidState } from "../blocks/waterlog";
 import { allMobs, mobDef } from "./registry";
 import { canSeeSky, isLava, isWater, lightAt, skyDarken } from "./ai";
-import { structureSpawn, type StructureSpawn } from "./structure-spawns";
+import { inMonument, structureSpawn, type StructureSpawn } from "./structure-spawns";
+import { isSlimeChunk } from "./hostile/world";
 
 export type SpawnCat = "hostile" | "passive" | "ambient" | "water" | "water_ambient" | "axolotls" | "underground_water";
 
@@ -220,11 +221,10 @@ export function canSpawnAt(ctx: GameCtx, def: MobDef, x: number, y: number, z: n
     return ANY_LIGHT.has(def.type) || darkEnough(ctx, x, y, z, darken);
   }
   if (def.type === "slime" && w.dim === "overworld") {
-    // Surface slimes only; slime chunks spawn from hostile/world.ts.
+    // Vanilla Slime.checkSlimeSpawnRules: swamp surface by moonlight, or a slime chunk below y 40 at any light.
     const b = biomeAt(ctx, x, y, z);
-    if (b !== "swamp" && b !== "mangrove_swamp") return false;
-    if (y <= 50 || y >= 70 || ctx.random() >= 0.5 || ctx.random() >= MOON_BRIGHTNESS[((ctx.time.day % 8) + 8) % 8]) return false;
-    return lightAt(ctx, x, y, z, darken) <= Math.floor(ctx.random() * 8);
+    if ((b === "swamp" || b === "mangrove_swamp") && y > 50 && y < 70 && ctx.random() < 0.5 && ctx.random() < MOON_BRIGHTNESS[((ctx.time.day % 8) + 8) % 8] && lightAt(ctx, x, y, z, darken) <= Math.floor(ctx.random() * 8)) return true;
+    return ri(ctx, 10) === 0 && isSlimeChunk(w.seed, Math.floor(x / CHUNK), Math.floor(z / CHUNK)) && y < 40;
   }
   if (sp.light === "dark") return darkEnough(ctx, x, y, z, darken);
   if (sp.light === "grass") {
@@ -307,6 +307,13 @@ function pick(ctx: GameCtx, p: Pool): MobDef | null {
 }
 
 const ri = (ctx: GameCtx, n: number) => Math.floor(ctx.random() * n);
+
+// Vanilla isRightDistanceToPlayerAndSpawnPoint: no natural spawns within 24 blocks of the world spawn block center.
+function nearWorldSpawn(s: { x: number; y: number; z: number } | undefined, x: number, y: number, z: number) {
+  if (!s) return false;
+  const dx = s.x + 0.5 - (x + 0.5), dy = s.y + 0.5 - y, dz = s.z + 0.5 - (z + 0.5);
+  return dx * dx + dy * dy + dz * dz < 24 * 24;
+}
 const despawnRange = (cat: SpawnCat | null) => (cat === "water_ambient" ? 64 : 128);
 
 export function createSpawner() {
@@ -335,10 +342,12 @@ export function createSpawner() {
         sz += ri(ctx, 6) - ri(ctx, 6);
         const dx = sx + 0.5 - pp.x, dy = y - pp.y, dz = sz + 0.5 - pp.z;
         const d2 = dx * dx + dy * dy + dz * dz;
-        if (d2 <= 24 * 24 || !w.isLoaded(sx, sz)) continue;
+        if (d2 <= 24 * 24 || !w.isLoaded(sx, sz) || nearWorldSpawn(w.spawn, sx, y, sz)) continue;
         if (!def) {
           over = cat === "hostile" ? structureSpawn(ctx, sx, y, sz) : null;
           pickedGroup = undefined;
+          // Vanilla ocean monument spawn overrides empty the axolotl and glow squid lists.
+          if ((cat === "axolotls" || cat === "underground_water") && inMonument(ctx, sx, y, sz)) break;
           def = over ? mobDef(over.mob) ?? null : pick(ctx, pool(ctx, cat, biomeAt(ctx, sx, y, sz)));
           if (!def) break;
           const [a, b] = over ? over.group : pickedGroup ?? def.spawn!.group;

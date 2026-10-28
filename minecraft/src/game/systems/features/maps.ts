@@ -13,6 +13,7 @@ export interface MapData {
   version: number;
   marker?: { x: number; z: number; kind: string };
   banners?: { x: number; y: number; z: number; color: string; name?: string }[];
+  frames?: Record<string, { x: number; z: number; rot: number }>;
 }
 
 const maps = new Map<number, MapData>();
@@ -237,16 +238,16 @@ function decode(s: string, out: Uint8Array) {
 }
 
 export function saveMaps() {
-  return { next: nextId, maps: [...maps].map(([id, m]) => ({ id, cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: m.locked, marker: m.marker, banners: m.banners, colors: encode(m.colors) })) };
+  return { next: nextId, maps: [...maps].map(([id, m]) => ({ id, cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: m.locked, marker: m.marker, banners: m.banners, frames: m.frames, colors: encode(m.colors) })) };
 }
 
 export function loadMaps(data: unknown) {
   maps.clear();
-  const d = (data ?? {}) as { next?: number; maps?: { id: number; cx: number; cz: number; scale: number; dim: Dim; locked: boolean; marker?: MapData["marker"]; banners?: MapData["banners"]; colors: string }[] };
+  const d = (data ?? {}) as { next?: number; maps?: { id: number; cx: number; cz: number; scale: number; dim: Dim; locked: boolean; marker?: MapData["marker"]; banners?: MapData["banners"]; frames?: MapData["frames"]; colors: string }[] };
   nextId = Number(d.next ?? 0);
   for (const m of d.maps ?? []) {
     const colors = new Uint8Array(128 * 128);
     decode(m.colors ?? "", colors);
-    maps.set(m.id, { cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: !!m.locked, marker: m.marker, banners: m.banners, colors, version: 1 });
+    maps.set(m.id, { cx: m.cx, cz: m.cz, scale: m.scale, dim: m.dim, locked: !!m.locked, marker: m.marker, banners: m.banners, frames: m.frames, colors, version: 1 });
   }
 }

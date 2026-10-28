@@ -116,6 +116,16 @@ function enchantXp(e: Record<string, number>): number {
   return total;
 }
 
+// Vanilla GrindstoneMenu.removeNonCursesFrom: repair cost restarts at 0 and grows once per curse that stays.
+function curseRepairCost(out: ItemStack, curses: Record<string, number>) {
+  let rc = 0;
+  for (let i = Object.keys(curses).length; i > 0; i--) rc = rc * 2 + 1;
+  out.data = { ...out.data };
+  if (rc > 0) out.data.repairCost = rc;
+  else delete out.data.repairCost;
+  if (!Object.keys(out.data).length) delete out.data;
+}
+
 export function grindstoneResult(top: ItemStack | null, bottom: ItemStack | null): GrindResult | null {
   if (!top && !bottom) return null;
   if (top && bottom) {
@@ -127,6 +137,7 @@ export function grindstoneResult(top: ItemStack | null, bottom: ItemStack | null
     if (max - total > 0) out.damage = max - total;
     const curses = { ...curseOnly(top.ench), ...curseOnly(bottom.ench) };
     if (Object.keys(curses).length) out.ench = curses;
+    curseRepairCost(out, curses);
     return { result: out, xpPoints: enchantXp(top.ench ?? {}) + enchantXp(bottom.ench ?? {}) };
   }
   const s = (top ?? bottom)!;
@@ -140,7 +151,7 @@ export function grindstoneResult(top: ItemStack | null, bottom: ItemStack | null
     out = copyStack(s);
     if (Object.keys(curses).length) out.ench = curses;
     else delete out.ench;
-    if (out.data) delete out.data.repairCost;
   }
+  curseRepairCost(out, curses);
   return { result: out, xpPoints: enchantXp(ench) };
 }
