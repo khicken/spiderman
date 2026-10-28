@@ -1,4 +1,4 @@
-import { def, texOf } from "./defs";
+import { def } from "./defs";
 import { S, Tex, makeRng, mix, noiseFill, speckle, type Color } from "./paint";
 
 const STAGES: [string, Color[], Color][] = [
@@ -70,20 +70,30 @@ for (const [pre, c, spot] of STAGES) {
 }
 
 const STEEL = [0x1e2024, 0x2a2d32, 0x363a40, 0x444950, 0x585e66];
-const TRIAL_GLOW = { off: [0x3a3a3a, 0x4a4a4a], on: [0xe8781a, 0xffc04a], ominous: [0x2a7ad8, 0x8ad8ff] };
-function cage(t: Tex, s: number, glow: Color[] | null): void {
+const OMINOUS_STEEL = [0x101418, 0x181e24, 0x20282e, 0x2a343a, 0x3a464c];
+const TRIAL_GLOW = { off: [0x3a3a3a, 0x4a4a4a], on: [0xe8781a, 0xffc04a], ominous: [0x1a9ab0, 0x8af0f8], ominousOff: [0x24343a, 0x2e4248] };
+const TRIM = { normal: [0xb86a3a, 0xe08a5a], ominous: [0x2a6a72, 0x46a0a8] };
+function cage(t: Tex, s: number, glow: Color[] | null, ominous = false): void {
   t.clear();
   const r = makeRng(s);
-  t.border(STEEL[1]).border(STEEL[3], 1);
-  for (const i of [5, 10]) t.vline(i, 0, 15, STEEL[2]).hline(0, 15, i, STEEL[2]);
-  for (const [x, y] of [[0, 0], [13, 0], [0, 13], [13, 13]]) t.rect(x, y, 3, 3, 0xb86a3a).set(x + 1, y + 1, 0xe08a5a);
+  const st = ominous ? OMINOUS_STEEL : STEEL;
+  const trim = ominous ? TRIM.ominous : TRIM.normal;
+  t.border(st[1]).border(st[3], 1);
+  for (const i of [5, 10]) t.vline(i, 0, 15, st[2]).hline(0, 15, i, st[2]);
+  for (const [x, y] of [[0, 0], [13, 0], [0, 13], [13, 13]]) t.rect(x, y, 3, 3, trim[0]).set(x + 1, y + 1, trim[1]);
   if (glow) for (let k = 0; k < 6; k++) t.set(6 + Math.floor(r() * 4), 6 + Math.floor(r() * 4), glow[k % 2]);
 }
-for (const [state, g] of [["inactive", null], ["active", TRIAL_GLOW.on], ["active_ominous", TRIAL_GLOW.ominous]] as const) {
-  def(`trial_spawner_side_${state}`, (t, _r, s) => cage(t, s, g as Color[] | null));
+const TRIAL: [string, Color[] | null, boolean][] = [
+  ["inactive", null, false],
+  ["active", TRIAL_GLOW.on, false],
+  ["inactive_ominous", null, true],
+  ["active_ominous", TRIAL_GLOW.ominous, true],
+];
+for (const [state, g, om] of TRIAL) {
+  def(`trial_spawner_side_${state}`, (t, _r, s) => cage(t, s, g, om));
   def(`trial_spawner_top_${state}`, (t, _r, s) => {
-    cage(t, s, g as Color[] | null);
-    t.rect(6, 6, 4, 4, g ? g[0] : STEEL[0]);
+    cage(t, s, g, om);
+    t.rect(6, 6, 4, 4, g ? g[0] : (om ? OMINOUS_STEEL : STEEL)[0]);
   });
 }
 def("trial_spawner_top_ejecting_reward", (t, _r, s) => {
@@ -91,7 +101,7 @@ def("trial_spawner_top_ejecting_reward", (t, _r, s) => {
   t.rect(5, 5, 6, 6, TRIAL_GLOW.on[1]);
 });
 def("trial_spawner_top_ejecting_reward_ominous", (t, _r, s) => {
-  cage(t, s, TRIAL_GLOW.ominous);
+  cage(t, s, TRIAL_GLOW.ominous, true);
   t.rect(5, 5, 6, 6, TRIAL_GLOW.ominous[1]);
 });
 def("trial_spawner_bottom", (t, _r, s) => {
@@ -99,37 +109,42 @@ def("trial_spawner_bottom", (t, _r, s) => {
   t.border(STEEL[0]);
 });
 
-function vaultBody(t: Tex, s: number): Tex {
-  noiseFill(t, STEEL.slice(1, 4), s, { cells: 4, grain: 0.4 });
-  t.border(STEEL[0]).border(STEEL[4], 1);
-  for (const [x, y] of [[0, 0], [14, 0], [0, 14], [14, 14]]) t.rect(x, y, 2, 2, 0xb86a3a);
+function vaultBody(t: Tex, s: number, ominous = false): Tex {
+  const st = ominous ? OMINOUS_STEEL : STEEL;
+  noiseFill(t, st.slice(1, 4), s, { cells: 4, grain: 0.4 });
+  t.border(st[0]).border(st[4], 1);
+  for (const [x, y] of [[0, 0], [14, 0], [0, 14], [14, 14]]) t.rect(x, y, 2, 2, (ominous ? TRIM.ominous : TRIM.normal)[0]);
   return t;
 }
-const VAULT: [string, Color[]][] = [
-  ["off", TRIAL_GLOW.off],
-  ["on", TRIAL_GLOW.on],
-  ["ejecting", [0xffc04a, 0xfff0b0]],
-  ["off_ominous", TRIAL_GLOW.off],
-  ["on_ominous", TRIAL_GLOW.ominous],
-  ["ejecting_ominous", [0x8ad8ff, 0xe0f8ff]],
+const VAULT: [string, Color[], boolean][] = [
+  ["off", TRIAL_GLOW.off, false],
+  ["on", TRIAL_GLOW.on, false],
+  ["ejecting", [0xffc04a, 0xfff0b0], false],
+  ["off_ominous", TRIAL_GLOW.ominousOff, true],
+  ["on_ominous", TRIAL_GLOW.ominous, true],
+  ["ejecting_ominous", [0x8af0f8, 0xe0ffff], true],
 ];
-for (const [state, g] of VAULT) {
+for (const [state, g, om] of VAULT) {
+  const st = om ? OMINOUS_STEEL : STEEL;
   def(`vault_front_${state}`, (t, _r, s) => {
-    vaultBody(t, s);
-    t.rect(4, 4, 8, 8, STEEL[0]).rect(5, 5, 6, 6, g[0]).rect(7, 6, 2, 3, g[1]).rect(7, 9, 2, 2, STEEL[0]);
+    vaultBody(t, s, om);
+    t.rect(4, 4, 8, 8, st[0]).rect(5, 5, 6, 6, g[0]).rect(7, 6, 2, 3, g[1]).rect(7, 9, 2, 2, st[0]);
   });
   def(`vault_side_${state}`, (t, _r, s) => {
-    vaultBody(t, s);
-    t.rect(3, 6, 10, 4, STEEL[0]).hline(4, 11, 7, g[0]).hline(4, 11, 8, g[1]);
+    vaultBody(t, s, om);
+    t.rect(3, 6, 10, 4, st[0]).hline(4, 11, 7, g[0]).hline(4, 11, 8, g[1]);
   });
 }
-def("vault_top", (t, _r, s) => {
-  vaultBody(t, s);
-  t.rect(5, 5, 6, 6, STEEL[0]).rect(6, 6, 4, 4, STEEL[3]);
-});
-def("vault_top_ominous", (t) => void t.copyFrom(texOf("vault_top")).rect(7, 7, 2, 2, TRIAL_GLOW.ominous[0]));
-def("vault_bottom", (t, _r, s) => void vaultBody(t, s));
-def("vault_bottom_ominous", (t) => void t.copyFrom(texOf("vault_bottom")));
+for (const om of [false, true]) {
+  const st = om ? OMINOUS_STEEL : STEEL;
+  const sfx = om ? "_ominous" : "";
+  def(`vault_top${sfx}`, (t, _r, s) => {
+    vaultBody(t, s, om);
+    t.rect(5, 5, 6, 6, st[0]).rect(6, 6, 4, 4, st[3]);
+    if (om) t.rect(7, 7, 2, 2, TRIAL_GLOW.ominous[0]);
+  });
+  def(`vault_bottom${sfx}`, (t, _r, s) => void vaultBody(t, s, om));
+}
 
 def("heavy_core", (t, _r, s) => {
   noiseFill(t, [0x3a3e46, 0x464b54, 0x515762], s, { cells: 4, grain: 0.4 });

@@ -158,7 +158,7 @@ export function breakBlock(ctx: GameCtx, x: number, y: number, z: number, drop =
   const s = ctx.world.getBlock(x, y, z);
   if (s === AIR) return;
   const d = blockDef(s);
-  if (drop) for (const st of computeDrops(s, null, ctx.random)) ctx.entities.dropItem(st, x + 0.5, y + 0.5, z + 0.5);
+  if (drop && ctx.rules.doTileDrops !== false) for (const st of computeDrops(s, null, ctx.random)) ctx.entities.dropItem(st, x + 0.5, y + 0.5, z + 0.5);
   ctx.emit({ type: "particles", kind: "block", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 12, state: s });
   ctx.emit({ type: "sound", name: `block.${d.sound}.break`, x: x + 0.5, y: y + 0.5, z: z + 0.5 });
   ctx.world.setBlock(x, y, z, AIR, SET_NO_DROP);

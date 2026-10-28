@@ -38,6 +38,7 @@ export interface Settings {
   glintStrength: number; // 0..1
   menuBlur: number; // 0..10 Menu Background Blur
   biomeBlend: number; // 0..7 block radius
+  operatorItemsTab?: boolean;
 }
 
 export const SOUND_CATEGORIES: [SoundCategory, string][] = [
@@ -57,6 +58,7 @@ export const KEY_BIND_GROUPS: [string, [id: string, label: string, code: string]
   ["Movement", [["forward", "Walk Forwards", "KeyW"], ["left", "Strafe Left", "KeyA"], ["back", "Walk Backwards", "KeyS"], ["right", "Strafe Right", "KeyD"], ["jump", "Jump", "Space"], ["sneak", "Sneak", "ShiftLeft"], ["sprint", "Sprint", "ControlLeft"]]],
   ["Gameplay", [["attack", "Attack/Destroy", "Mouse0"], ["use", "Use Item/Place Block", "Mouse2"], ["pick_block", "Pick Block", "Mouse1"]]],
   ["Inventory", [["drop", "Drop Selected Item", "KeyQ"], ["inventory", "Open/Close Inventory", "KeyE"], ["swap_offhand", "Swap Item With Offhand", "KeyF"], ...Array.from({ length: 9 }, (_, i): [string, string, string] => [`hotbar.${i + 1}`, `Hotbar Slot ${i + 1}`, `Digit${i + 1}`])]],
+  ["Creative Mode", [["save_toolbar", "Save Hotbar Activator", "KeyC"], ["load_toolbar", "Load Hotbar Activator", "KeyX"]]],
   ["Multiplayer", [["chat", "Open Chat", "KeyT"], ["command", "Open Command", "Slash"]]],
   ["Miscellaneous", [["advancements", "Advancements", "KeyL"], ["screenshot", "Take Screenshot", "F2"], ["perspective", "Toggle Perspective", "F5"], ["fullscreen", "Toggle Fullscreen", "F11"], ["hide_gui", "Hide GUI", "F1"], ["debug", "Debug Screen", "F3"]]],
 ];

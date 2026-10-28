@@ -102,6 +102,7 @@ G[">"] = mirror(G["<"]);
 G["\\"] = mirror(G["/"]);
 G["]"] = mirror(G["["]);
 G["}"] = mirror(G["{"]);
+G["\u221e"] = ["", "", ".##.##.", "#..#..#", "#..#..#", ".##.##."];
 
 export const GLYPH_ROWS = 8;
 export const LINE_HEIGHT = 9;

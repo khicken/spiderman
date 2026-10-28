@@ -1,4 +1,5 @@
 import { def, texOf } from "./defs";
+import { flamePixels } from "./fire";
 import { S, Tex, makeRng, noiseFill, type Color } from "./paint";
 import { PLANKS, planks } from "./wood";
 import { polished } from "./patterns";
@@ -242,21 +243,6 @@ function campLog(t: Tex, s: number, lit: Color[] | null): void {
 def("campfire_log", (t, _r, s) => campLog(t, s, null));
 def("campfire_log_lit", (t, _r, s) => campLog(t, s, [0xffa020, 0xe86010, 0xffd860]));
 def("soul_campfire_log_lit", (t, _r, s) => campLog(t, s, [0x3ad8e8, 0x1a9aa8, 0xa8f8ff]));
-function flames(t: Tex, r: () => number, c: readonly Color[]): void {
-  t.clear();
-  for (let x = 0; x < S; x++) {
-    const h = 6 + Math.floor(Math.abs(Math.sin(x * 1.3)) * 8 + r() * 3);
-    for (let k = 0; k < h; k++) {
-      const f = k / h;
-      t.set(x, 15 - k, c[Math.min(c.length - 1, Math.floor((1 - f) * c.length * 0.9 + r() * 0.6))]);
-    }
-  }
+for (const [key, n] of [["campfire_fire", 8], ["soul_campfire_fire", 8], ["fire_0", 32], ["fire_1", 32], ["soul_fire_0", 32], ["soul_fire_1", 32]] as const) {
+  def(key, (t) => void t.data.set(flamePixels(key, 0, n)));
 }
-const FIRE = [0xb0300a, 0xe0600e, 0xf09a1a, 0xfcd040, 0xfff0a0];
-const SOUL = [0x0a5a6a, 0x1a9aa8, 0x3ad8e8, 0x8af0f8, 0xe0ffff];
-def("campfire_fire", (t, r) => flames(t, r, FIRE));
-def("soul_campfire_fire", (t, r) => flames(t, r, SOUL));
-def("fire_0", (t, r) => flames(t, r, FIRE));
-def("fire_1", (t, r) => flames(t, r, FIRE));
-def("soul_fire_0", (t, r) => flames(t, r, SOUL));
-def("soul_fire_1", (t, r) => flames(t, r, SOUL));

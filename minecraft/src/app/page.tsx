@@ -6,12 +6,13 @@ import type { GameHandle } from "../game/game";
 import { createAudio, type GameAudio } from "../game/audio";
 import {
   Chat, LeaveBedButton, ContainerScreen, CreateWorldScreen, Crosshair, Text, DEFAULT_SETTINGS, DeathScreen, DebugOverlay, GuiRoot, Hud, LoadingScreen,
-  OptionsScreen, PauseScreen, SelectWorldScreen, TitleScreen, completeCommand, computeGuiScale, setUiClickSound,
+  OptionsScreen, PauseScreen, SelectWorldScreen, TitleScreen, completeCommand, suggestCommand, computeGuiScale, setUiClickSound,
   type ChatMessage, type NewWorldOptions, type Settings, type TimedText, type WorldListEntry,
 } from "../game/ui";
 import { Panorama } from "../game/ui/panorama";
 import { StatisticsScreen } from "../game/ui/menus-extra";
 import { Subtitles } from "../game/ui/subtitles";
+import { showsEffects } from "../game/ui/container-screen";
 import { setSubtitles } from "../game/systems/features/subtitles";
 import { generalRows, itemRows, mobRows } from "../game/systems/features/stats";
 import { AdvancementsScreen } from "../game/ui/advancements-screen";
@@ -186,7 +187,14 @@ export default function Page() {
           title: (text, subtitle) => setTitle({ text, subtitle, at: performance.now() }),
           actionBar: (text) => setActionBar({ text, at: performance.now() }),
           hurt: () => setHurtAt(performance.now()),
-          died: (message) => setDeath(message),
+          died: (message) => {
+            if (!meta.rules.doImmediateRespawn) return setDeath(message);
+            setTimeout(() => {
+              if (meta.hardcore && game) game.ctx.player.gameMode = "spectator";
+              game?.respawn();
+              game?.lock();
+            });
+          },
           toast: (t) => {
             const id = ++msgId.current;
             setToasts((l) => [...l, { ...t, id }]);
@@ -442,7 +450,7 @@ export default function Page() {
       />
       {playing && !hideGui && !hud?.thirdPerson && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
       <GuiRoot guiScale={settings.guiScale}>
-        {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics !== "fast"} />}
+        {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics !== "fast"} hideEffects={!!view && showsEffects(view.kind, Math.ceil(w / guiScale))} />}
         {playing && !hideGui && settings.showSubtitles && <Subtitles />}
         {credits && (
           <CreditsScreen
@@ -463,6 +471,7 @@ export default function Page() {
               keepOpen={overlay === "bed"}
               initial={chatInit}
               complete={(line) => (g ? completeCommand(g.ctx, line) : [])}
+              suggest={(line) => (g ? suggestCommand(g.ctx, line) : { start: line.length, list: [], usage: [] })}
               textOpacity={settings.chatOpacity}
               bgOpacity={settings.chatBackground}
               lineSpacing={settings.chatLineSpacing}
@@ -498,6 +507,7 @@ export default function Page() {
               onOption={(id) => inv.chooseOption(id)}
               advanced={settings.advancedTooltips}
               inventory={inv}
+              effects={hud?.effects}
               creative={
                 view.kind === "creative"
                   ? {

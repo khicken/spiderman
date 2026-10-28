@@ -137,7 +137,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     ctx.emit({ type: "sound", name: `block.${def.sound}.break`, x: x + 0.5, y: y + 0.5, z: z + 0.5, volume: SOUND_VOL, pitch: 0.8 });
     ctx.emit({ type: "particles", kind: "block", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 32, state: s });
     if (!creative) {
-      if (canHarvest(def, held)) {
+      if (canHarvest(def, held) && ctx.rules.doTileDrops !== false) {
         for (const d of computeDrops(s, held, ctx.random)) {
           ctx.entities.dropItem(d, x + 0.5 + (ctx.random() - 0.5) * 0.5, y + 0.5 + (ctx.random() - 0.5) * 0.5 - 0.125, z + 0.5 + (ctx.random() - 0.5) * 0.5);
         }

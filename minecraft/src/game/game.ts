@@ -29,6 +29,7 @@ import type { GameInternals, NetLink } from "./net";
 import type { LanOptions } from "./net/host";
 import { setPortalSpin } from "./player/effects-fx";
 import { vehicleInventoryKey } from "./entities/riding";
+import { entityScreenValid } from "./player/riding";
 
 export type GamePhase = "loading" | "playing";
 
@@ -89,6 +90,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   const time = { tick: meta.tick ?? 0, dayTime: meta.dayTime ?? 0, day: Math.floor((meta.tick ?? 0) / DAY_TICKS), rain: meta.rain ?? 0, thunder: meta.thunder ?? 0 };
   const queued: GameEvent[] = [];
   let containerOpen = false;
+  let containerEntity: number | undefined;
   let disposed = false;
   let paused = false;
   let net: NetLink | null = opts.net ?? null;
@@ -228,6 +230,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       }
       case "open_container":
         containerOpen = true;
+        containerEntity = e.entityId;
         input.enabled = false;
         if (typeof document !== "undefined" && document.pointerLockElement) document.exitPointerLock();
         ui.container(inventory.view());
@@ -456,11 +459,12 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       thundering = time.thunder > 0.5;
       thunderTimer = thundering ? 3600 + Math.floor(Math.random() * 12000) : 12000 + Math.floor(Math.random() * 168000);
     }
-    if (--rainTimer <= 0) {
+    const cycle = meta.rules.doWeatherCycle !== false;
+    if (cycle && --rainTimer <= 0) {
       raining = !raining;
       rainTimer = raining ? 12000 + Math.floor(Math.random() * 12000) : 12000 + Math.floor(Math.random() * 168000);
     }
-    if (--thunderTimer <= 0) {
+    if (cycle && --thunderTimer <= 0) {
       thundering = !thundering;
       thunderTimer = thundering ? 3600 + Math.floor(Math.random() * 12000) : 12000 + Math.floor(Math.random() * 168000);
     }
@@ -486,6 +490,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     hostile.tick(ctx);
     inventory.tick(ctx);
     player.tick(ctx);
+    if (containerOpen && containerEntity !== undefined && !entityScreenValid(player, entities.get(containerEntity))) inventory.close();
     systems.tick();
     net?.tick();
     tickPortalFx();

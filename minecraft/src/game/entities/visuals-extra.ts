@@ -137,7 +137,7 @@ function tridentView(ctx: GameCtx): ExtraView {
     root,
     owned: [mat],
     update(e, _pt, x, y, z) {
-      root.position.set(x, y + 0.25, z);
+      root.position.set(x, y, z);
       root.rotation.y = e.yaw;
       root.rotation.x = e.pitch;
       const glint = e.data.item && (e.data.item as { ench?: Record<string, number> }).ench ? 0.15 * Math.sin(e.age * 0.3) + 0.15 : 0;

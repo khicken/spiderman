@@ -51,7 +51,6 @@ export function tickTrident(e: Entity, ctx: GameCtx): void {
   const len = b.vel.length();
   if (len > 1e-6) {
     origin.copy(b.pos);
-    origin.y += 0.25;
     dir.copy(b.vel).divideScalar(len);
     const hit = ctx.world.raycast(origin, dir, len, false);
     let limit = hit ? hit.dist / len : 1;

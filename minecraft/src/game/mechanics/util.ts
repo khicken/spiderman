@@ -110,6 +110,7 @@ export function dropStack(ctx: GameCtx, stack: ItemStack, x: number, y: number, 
 }
 
 export function dropBlock(ctx: GameCtx, s: BlockState, x: number, y: number, z: number) {
+  if (ctx.rules.doTileDrops === false) return;
   const drops = computeDrops(s, null, ctx.random);
   for (let i = 0; i < drops.length; i++) dropStack(ctx, drops[i], x, y, z);
 }

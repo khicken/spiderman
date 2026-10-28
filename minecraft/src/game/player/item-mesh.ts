@@ -12,6 +12,7 @@ import { dialFrame, paintDial } from "../textures/dials";
 import type { ItemStack } from "../contracts";
 import { GLINT_STRENGTH, GLINT_TIME } from "../entities/armor-layer";
 import { createShieldModel } from "./shield-model";
+import { tridentGeometry } from "../entities/hostile/held";
 import { packVersion } from "../packs";
 
 export function itemKey(s: ItemStack | null): string | null {
@@ -185,6 +186,7 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
       return { kind: "flat", create: () => new THREE.Mesh(geo, flatMat) };
     }
     const name = key;
+    if (name === "trident_in_hand" || name === "trident_throwing") return { kind: "flat", create: () => new THREE.Mesh(tridentGeometry(), flatMat) };
     if (name === "shield" || name.startsWith("shield~")) {
       const [, color, layers] = name.split("~");
       const sm = createShieldModel(color ? { color, patterns: JSON.parse(layers) } : undefined);

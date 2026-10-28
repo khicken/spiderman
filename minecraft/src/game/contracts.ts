@@ -59,6 +59,8 @@ export type Horizontal = 0 | 1 | 2 | 3;
 //  bed:           bits 0-1 facing, bit 2 head part
 //  ladder / wall sign / wall attachments: Horizontal facing
 //  leaves:        bit 0 player placed (no decay)
+//  vault:         bits 0-1 facing (Horizontal), bit 2 active, bit 3 ominous
+//  trial spawner: bits 0-1 0 inactive, 1 active, 2 ejecting reward; bit 3 ominous
 export type Shape =
   | "air"
   | "cube"
@@ -362,6 +364,7 @@ export interface Effect {
   id: string; // "speed", "regeneration", "poison", "wind_charged", "oozing", ...
   amplifier: number;
   ticks: number;
+  ambient?: boolean; // beacon and conduit: other HUD frame, no blinking
 }
 
 // One live entity. The entity manager owns the list.
@@ -494,7 +497,7 @@ export interface InventoryApi {
   chooseOption(id: string): void; // enchant row, trade, stonecutter recipe
   creativeItems(tab: string, search: string): ItemStack[];
   creativeTabs(): { id: string; label: string; icon: string }[];
-  takeCreative(stack: ItemStack, click: ClickKind): void;
+  takeCreative(stack: ItemStack | null, click: ClickKind): void; // null = empty grid slot or the destroy slot
   armorPoints(): number;
   version: number; // increments on every change, for the UI
 }
@@ -724,6 +727,24 @@ export interface Rules {
   doFireTick: boolean;
   randomTickSpeed: number;
   cheats: boolean;
+  // Other vanilla rules (ui/gamerules.ts). Absent in older saves: read as the vanilla default.
+  naturalRegeneration?: boolean;
+  fallDamage?: boolean;
+  fireDamage?: boolean;
+  drowningDamage?: boolean;
+  freezeDamage?: boolean;
+  showDeathMessages?: boolean;
+  doImmediateRespawn?: boolean;
+  doInsomnia?: boolean;
+  doMobLoot?: boolean;
+  doTileDrops?: boolean;
+  doEntityDrops?: boolean;
+  announceAdvancements?: boolean;
+  doWeatherCycle?: boolean;
+  doPatrolSpawning?: boolean;
+  doWardenSpawning?: boolean;
+  disableRaids?: boolean;
+  playersSleepingPercentage?: number;
 }
 
 // Every module gets this object. game.ts creates it and fills each field.

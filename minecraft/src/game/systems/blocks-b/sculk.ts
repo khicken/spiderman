@@ -143,7 +143,7 @@ export function createSculk(cache: BlockCache) {
     }
     const warn = ["entity.warden.nearby_close", "entity.warden.nearby_closer", "entity.warden.nearby_closest"][state.warning - 1];
     if (warn) ctx.emit({ type: "sound", name: warn, x: pp.x, y: pp.y, z: pp.z });
-    if (state.warning < 4 || !mobDef("warden") || ctx.rules.difficulty === "peaceful") return;
+    if (state.warning < 4 || !mobDef("warden") || ctx.rules.difficulty === "peaceful" || ctx.rules.doWardenSpawning === false) return;
     for (const e of ctx.entities.all()) if (e.type === "warden" && !e.dead && e.body.pos.distanceTo(pp) < 48) return;
     const spot = findWardenSpot(ctx, x, y, z);
     if (!spot) return;

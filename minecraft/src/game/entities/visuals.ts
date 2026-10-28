@@ -121,7 +121,7 @@ export function createViews(getCtx: () => GameCtx) {
     v.group.add(m);
     v.group.rotation.order = "YXZ";
     v.update = (en, pt, x, y, z) => {
-      v.group.position.set(x, y + 0.25, z);
+      v.group.position.set(x, y, z);
       v.group.rotation.y = lerpAngle((en.data._pyaw as number) ?? en.yaw, en.yaw, pt);
       v.group.rotation.x = en.pitch;
       const shake = ((en.data.shake as number) ?? 0) - pt;

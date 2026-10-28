@@ -11,6 +11,7 @@ import { CONTAINER_ART, arrowUrl, buttonUrl, containerProgress, containerSprite,
 import { TextField, playClick } from "./widgets";
 import { MerchantPanel } from "./merchant-screen";
 import { BeaconExtras } from "./beacon-screen";
+import { EnchantBook } from "./enchant-book";
 import { BH, BW, bannerPixels, type Layer } from "../systems/features/banner-art";
 import { mapPaperUrl, mapPreviewUrl } from "../systems/features/map-render";
 
@@ -154,7 +155,7 @@ function Widgets({ view, placed, onOption, onRename, setTip, setTyping }: Extras
     case "enchanting_table":
       return (
         <>
-          <ItemIcon stack={{ item: "enchanted_book", count: 1 }} x={28} y={22} count={false} />
+          <EnchantBook item={view.groups.find((g) => g.name === "item")?.slots[0]?.stack ?? null} open={opts.length > 0} />
           {[0, 1, 2].map((i) => {
             const o = opts[i];
             const y = 14 + i * 19;

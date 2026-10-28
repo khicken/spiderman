@@ -1,4 +1,4 @@
-import { chest, faceOf, fill, fillFn, frame, put, rnd, S, wx, wz, type Frame } from "./build";
+import { chest, fill, fillFn, frame, hz, put, rnd, S, wx, wz, type Frame } from "./build";
 import { B } from "./ids";
 import { createRng, type Writer } from "./rng";
 import type { Start } from "./structure-grid";
@@ -27,14 +27,14 @@ function trialSpawner(f: Frame, a: number, y: number, b: number, mob: string) {
   put(f, a, y - 1, b, S(PT));
   const x = wx(f, a, b), z = wz(f, a, b);
   if (!f.w.inside(x, z)) return;
-  f.w.set(x, f.y + y, z, S(B.trial_spawner));
+  f.w.set(x, f.y + y, z, S(B.trial_spawner, 1));
   f.w.blockEntities.push({ x, y: f.y + y, z, type: "trial_spawner", data: { mob, state: "waiting", ominous: false } });
 }
 
 function vault(f: Frame, a: number, y: number, b: number, h: number, ominous = false) {
   const x = wx(f, a, b), z = wz(f, a, b);
   if (!f.w.inside(x, z)) return;
-  f.w.set(x, f.y + y, z, S(B.vault, faceOf(f, h)));
+  f.w.set(x, f.y + y, z, S(B.vault, hz(f, h) | (ominous ? 8 : 0)));
   const data = ominous ? { key: "ominous_trial_key", ominous: true, lootTable: "trial_chambers_reward_ominous" } : { key: "trial_key", lootTable: "trial_chambers_reward" };
   f.w.blockEntities.push({ x, y: f.y + y, z, type: "vault", data });
 }

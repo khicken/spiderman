@@ -215,7 +215,7 @@ function destroyBlocks(ctx: GameCtx, power: number, fire: boolean) {
     }
     const def = blockDef(s);
     if (def.hardness < 0) continue;
-    if (ctx.random() < 1 / power) {
+    if (ctx.random() < 1 / power && ctx.rules.doTileDrops !== false) {
       const tool = def.tool && def.tool !== "shears" ? { item: `netherite_${def.tool}`, count: 1 } : null;
       for (const st of computeDrops(s, tool, ctx.random)) ctx.entities.dropItem(st, x + 0.5, y + 0.5, z + 0.5);
     }

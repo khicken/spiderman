@@ -13,6 +13,6 @@ export { Hud, Crosshair, DebugOverlay, type HudProps, type TimedText } from "./h
 export { ContainerScreen, OUTSIDE, type ContainerScreenProps } from "./container-screen";
 export { type CreativeProps } from "./creative-screen";
 export { ItemIcon, itemName, tooltipLines } from "./item-icon";
-export { runCommand, completeCommand, setPlayerName, enchantTargets, xpForLevel } from "./commands";
+export { runCommand, completeCommand, suggestCommand, setPlayerName, enchantTargets, xpForLevel } from "./commands";
 export { EFFECTS, ENCHANTS, enchantName } from "./data";
 export { textWidth, wrapText, stripCodes, parseRuns, rasterText } from "./font";

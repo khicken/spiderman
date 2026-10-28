@@ -24,7 +24,8 @@ import { bubbleAmbient } from "../mechanics/bubble";
 import { bedStandSpot } from "../mechanics/interact";
 import { DIAL_STATE } from "../textures/dials";
 import { GLINT_STRENGTH, GLINT_TIME } from "../entities/armor-layer";
-import { activeSettings } from "../ui/settings";
+import { activeSettings, keyFor } from "../ui/settings";
+import { toolbarKey } from "../items/creative";
 import { movingSlowly, updatePose as updatePoseOf, updateSwimming } from "./pose";
 import { createRiding } from "./riding";
 
@@ -286,7 +287,11 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
   function onAction(a: InputAction) {
     const ctx = getCtx();
     const inv = ctx.inventory;
-    if (a.startsWith("hotbar:")) return api.selectHotbar(Number(a.slice(7)));
+    if (a.startsWith("hotbar:")) {
+      const i = Number(a.slice(7));
+      if (!toolbarKey(ctx, i, input.isDown(keyFor("load_toolbar")), input.isDown(keyFor("save_toolbar")))) api.selectHotbar(i);
+      return;
+    }
     switch (a) {
       case "perspective":
         p.thirdPerson = ((p.thirdPerson + 1) % 3) as 0 | 1 | 2;
@@ -522,6 +527,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       p.prevBob = p.bob;
       if (p.dead) p.deathTime++;
       if (!p.sleeping && !riding.tick(p, ctx, input)) tickMovement(ctx);
+      else if (p.sleeping) updatePoseOf(p, ctx, false);
       tickSurvival(p, ctx);
       interaction.tick(ctx);
       tickUse(p, ctx, input);
@@ -549,6 +555,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
         const wheel = input.consumeWheel();
         if (wheel !== 0) ctx.inventory.selected = (((ctx.inventory.selected + wheel) % 9) + 9) % 9;
       } else input.consumeWheel();
+      riding.frame(p, ctx, pt);
       interaction.updateTarget(ctx);
       updateCamera(p, ctx, pt, bob, viewBobbing, effectView(p, pt).nausea * activeSettings().distortion ** 2);
       const light = lightAt(ctx, body.pos.x, body.pos.y + p.eyeHeight, body.pos.z, p.hasEffect("night_vision") > 0);
@@ -605,7 +612,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
       const scoping = p.using?.kind === "spyglass" && p.thirdPerson === 0;
       if (scoping) hf.visible = false;
       const burning = p.fireTicks > 0 && p.gameMode !== "spectator";
-      screen.update(ctx.renderer.camera, scoping && !p.dead, p.totemTicks, pt, burning && !third);
+      screen.update(ctx.renderer.camera, scoping && !p.dead, p.totemTicks, pt, burning && !third, effectView(p, pt).confused * (1 - activeSettings().distortion));
       if (flames.mesh.parent !== ctx.renderer.scene) ctx.renderer.scene.add(flames.mesh);
       flames.update(burning && third, modelPos.x, modelPos.y, modelPos.z, body.width, body.height, ctx.renderer.camera);
       const fxv = effectView(p, pt);

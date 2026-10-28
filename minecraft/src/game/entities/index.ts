@@ -365,12 +365,12 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     if (e.effects.length) mobEffectDeath(ctx, e);
     const byPlayer = attacker === "player" || ((e.data._byPlayer as number) ?? 0) > 0;
     e.data._xpDrop = byPlayer;
-    if (!isBaby(e) && def.drops) {
+    if (!isBaby(e) && def.drops && ctx.rules.doMobLoot !== false) {
       const looting = attacker === "player" ? ctx.inventory.held()?.ench?.looting ?? 0 : 0;
       const smelts = attacker === "player" && (ctx.inventory.held()?.ench?.fire_aspect ?? 0) > 0;
       for (const s of rollDrops(def.drops, ctx, looting, isBurning(e) || smelts)) dropItem(s, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
     }
-    if (e.data.saddle) dropItem({ item: "saddle", count: 1 }, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
+    if (e.data.saddle && ctx.rules.doEntityDrops !== false) dropItem({ item: "saddle", count: 1 }, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
     if (attacker && attacker !== "player" && attacker.data.owner === "player" && e.data.owner !== "player") e.data._xpDrop = true;
     if (e.data.name) ctx.emit({ type: "chat", text: `${e.data.name} died`, color: "#aaaaaa" });
   }
@@ -378,7 +378,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
   function finishDeath(e: Entity, ctx: GameCtx, def: MobDef) {
     const p = e.body.pos;
     for (let i = 0; i < 4; i++) ctx.emit({ type: "particles", kind: "smoke", x: p.x + (ctx.random() - 0.5) * e.body.width, y: p.y + ctx.random() * e.body.height, z: p.z + (ctx.random() - 0.5) * e.body.width, count: 5 });
-    if (e.data._xpDrop && def.xp && !isBaby(e)) {
+    if (e.data._xpDrop && def.xp && !isBaby(e) && ctx.rules.doMobLoot !== false) {
       const [a, b] = def.xp;
       dropXp(a + Math.floor(ctx.random() * (b - a + 1)), p.x, p.y + 0.5, p.z);
     }

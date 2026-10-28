@@ -54,6 +54,11 @@ const SHIELD_L: Displays = { fp: [0, 180, 5, 10, 0, -10, 1.25], tp: [0, 90, 0, 1
 const BLOCKING_R: Displays = { fp: [0, 180, -5, -15, 5, -11, 1.25], tp: [45, 135, 0, 3.51, 11, -2, 1] };
 const BLOCKING_L: Displays = { fp: [0, 180, -5, 5, 5, -11, 1.25], tp: [45, 135, 0, 13.51, 3, 5, 1] };
 const shieldDisplays = (i: number, blocking: boolean) => (blocking ? (i > 0 ? BLOCKING_R : BLOCKING_L) : i > 0 ? SHIELD_R : SHIELD_L);
+// Vanilla trident_in_hand.json and trident_throwing.json, per hand like the shield.
+const TRIDENT_R: Displays = { fp: [0, -90, 25, -3, 17, 1, 1], tp: [0, 60, 0, 11, 17, -2, 1] };
+const TRIDENT_L: Displays = { fp: [0, 90, -25, 13, 17, 1, 1], tp: [0, 60, 0, 3, 17, 12, 1] };
+const THROWING_R: Displays = { fp: TRIDENT_R.fp, tp: [0, 90, 180, 8, -17, 9, 1] };
+const THROWING_L: Displays = { fp: TRIDENT_L.fp, tp: [0, 90, 180, 8, -17, -7, 1] };
 const HANDHELD_ITEMS = new Set(["stick", "bone", "blaze_rod", "breeze_rod", "bamboo", "mace", "debug_stick", "trident"]);
 const ROD_ITEMS = new Set(["fishing_rod", "carrot_on_a_stick", "warped_fungus_on_a_stick"]);
 
@@ -61,6 +66,8 @@ export function itemDisplays(key: string, kind: ItemKind, i = 1, blocking = fals
   if (kind === "block") return BLOCK;
   if (kind === "shield") return shieldDisplays(i, blocking);
   const name = key.replace(/[@#].*$/, "");
+  if (name === "trident_in_hand") return i > 0 ? TRIDENT_R : TRIDENT_L;
+  if (name === "trident_throwing") return i > 0 ? THROWING_R : THROWING_L;
   if (name.startsWith("bow")) return BOW;
   if (name.startsWith("crossbow")) return CROSSBOW;
   if (ROD_ITEMS.has(name)) return ROD;
@@ -70,8 +77,9 @@ export function itemDisplays(key: string, kind: ItemKind, i = 1, blocking = fals
 // Vanilla bow and crossbow model overrides: pulling stages while drawn, the loaded sprite when charged.
 export function heldKey(s: ItemStack | null, u: UseState | null | undefined, useTicks: number): string | null {
   const k = itemKey(s);
-  if (!s || !k || (s.item !== "bow" && s.item !== "crossbow")) return k;
+  if (!s || !k || (s.item !== "bow" && s.item !== "crossbow" && s.item !== "trident")) return k;
   const glint = k.endsWith("#glint") ? "#glint" : "";
+  if (s.item === "trident") return (u?.kind === "trident" ? "trident_throwing" : "trident_in_hand") + glint;
   if (s.item === "bow") {
     if (u?.kind !== "bow") return k;
     const p = useTicks / 20;
@@ -266,7 +274,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     const md = key ? items.model(key) : null;
     offShield = md?.kind === "shield";
     if (md && key) {
-      offFp = itemDisplays(key, md.kind).fp;
+      offFp = itemDisplays(key, md.kind, -1).fp;
       offHolder.add(md.create());
     }
   };

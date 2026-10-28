@@ -43,8 +43,8 @@ function trace(e: Entity, ctx: GameCtx, inflate: number): Hit | null {
   const v = b.vel;
   const len = v.length();
   if (len < 1e-6) return null;
+  // Vanilla traces from the entity position, which shooters set to eye height - 0.1.
   origin.copy(b.pos);
-  origin.y += b.height / 2;
   dir.copy(v).multiplyScalar(1 / len);
   let best: Hit | null = null;
   const bh = ctx.world.raycast(origin, dir, len, false);

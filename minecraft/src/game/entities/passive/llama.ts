@@ -304,7 +304,12 @@ function llamaDef(trader: boolean): MobDef {
         return true;
       }
       if (feed(e, ctx, def, held, llamaOpts)) return true;
-      if (!held && !isBaby(e) && !ctx.player.sneaking) return mountPlayer(ctx, e);
+      // Vanilla AbstractChestedHorse.mobInteract: an untamed llama gets angry at any other held item; else any hand rides.
+      if (held && !e.data.tamed && !isRidden(ctx, e)) {
+        sound(ctx, e, "entity.llama.angry");
+        return true;
+      }
+      if (!isBaby(e) && !ctx.player.sneaking) return mountPlayer(ctx, e);
       return false;
     },
     onDeath(e, ctx) {

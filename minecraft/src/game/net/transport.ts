@@ -146,8 +146,8 @@ export async function createTransport(code: string): Promise<Transport> {
     }
   }
 
+  // Relay messages from a WebRTC peer still count: it sends by relay until it has verified our id proof.
   const relay: Relay = createRelay(keys.topic, me, keys.key, (from, kind, body) => {
-    if (rtc.has(from)) return;
     if (kind === K_JSON) {
       try {
         recv(from, K_JSON, JSON.parse(dec.decode(body)));

@@ -243,6 +243,7 @@ function applyEffects(ctx: GameCtx, l: Live) {
   const amp = l.levels >= 4 && data.secondary === data.primary ? 1 : 0;
   add(data.primary, amp, ticks);
   if (l.levels >= 4 && data.secondary && data.secondary !== data.primary) add(data.secondary, 0, ticks);
+  for (const e of p.effects) if (e.ticks === ticks && (e.id === data.primary || e.id === data.secondary)) e.ambient = true;
 }
 
 export const beacons = {

@@ -64,7 +64,7 @@ export function createHostileWorld() {
     const p = ctx.player;
     if (p.sleeping || p.dead) sinceRest = 0;
     else sinceRest++;
-    if (!ctx.rules.doMobSpawning || --phantomTimer > 0) return;
+    if (!ctx.rules.doMobSpawning || ctx.rules.doInsomnia === false || --phantomTimer > 0) return;
     phantomTimer = (60 + Math.floor(ctx.random() * 60)) * 20;
     if (ctx.world.dim !== "overworld" || skyDarken(ctx) < 5 || !playerTargetable(ctx) || diffId(ctx) === 0) return;
     const pos = p.body.pos;
@@ -81,7 +81,7 @@ export function createHostileWorld() {
 
   // Vanilla PatrolSpawner: every 10-11 min by day from day 5, 1 in 5, away from villages; leader plus ceil(regional difficulty) pillagers.
   function patrols(ctx: GameCtx): void {
-    if (!ctx.rules.doMobSpawning || --patrolTimer > 0) return;
+    if (!ctx.rules.doMobSpawning || ctx.rules.doPatrolSpawning === false || --patrolTimer > 0) return;
     patrolTimer = 12000 + Math.floor(ctx.random() * 1200);
     if (ctx.world.dim !== "overworld" || diffId(ctx) === 0 || ctx.time.day < 5 || skyDarken(ctx) >= 4) return;
     if (Math.floor(ctx.random() * 5) !== 0 || ctx.player.gameMode === "spectator" || nearVillagePoi(ctx)) return;

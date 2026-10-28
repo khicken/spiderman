@@ -134,10 +134,18 @@ function hurtSound(source: DamageSource): string {
   return "entity.player.hurt";
 }
 
+// Vanilla Player.isInvulnerableTo: the damage game rules.
+const ruleOff = (ctx: GameCtx, source: DamageSource) =>
+  (source === "fall" && ctx.rules.fallDamage === false) ||
+  (source === "drown" && ctx.rules.drowningDamage === false) ||
+  (source === "freeze" && ctx.rules.freezeDamage === false) ||
+  ((source === "fire" || source === "lava") && ctx.rules.fireDamage === false);
+
 export function damage(p: PlayerState, amount: number, source: DamageSource, attacker?: Entity): void {
   const ctx = p.ctx();
   if (p.dead || amount <= 0) return;
   if (invulnerableMode(p) && source !== "void") return;
+  if (ruleOff(ctx, source)) return;
   if ((source === "fire" || source === "lava") && p.hasEffect("fire_resistance")) return;
   if (p.remote) {
     p.damageFrom = null;
@@ -238,7 +246,7 @@ export function die(p: PlayerState, ctx: GameCtx, source: DamageSource, attacker
   }
   p.effects.length = 0;
   ctx.emit({ type: "player_died", message: msg });
-  ctx.emit({ type: "chat", text: msg });
+  if (ctx.rules.showDeathMessages !== false) ctx.emit({ type: "chat", text: msg });
 }
 
 function spreadCobwebs(ctx: GameCtx, x: number, y: number, z: number): void {
@@ -278,18 +286,19 @@ function tickFood(p: PlayerState, ctx: GameCtx): void {
     else if (diff !== "peaceful") p.food = Math.max(p.food - 1, 0);
   }
   const hurt = p.health > 0 && p.health < p.maxHealth;
-  if (diff === "peaceful") {
+  const regen = ctx.rules.naturalRegeneration !== false;
+  if (diff === "peaceful" && regen) {
     if (hurt && p.ticks % 20 === 0) heal(p, 1);
     if (p.food < 20 && p.ticks % 10 === 0) p.food++;
   }
-  if (p.saturation > 0 && hurt && p.food >= 20) {
+  if (regen && p.saturation > 0 && hurt && p.food >= 20) {
     if (++p.foodTimer >= 10) {
       const f = Math.min(p.saturation, 6);
       heal(p, f / 6);
       addExhaustion(p, f);
       p.foodTimer = 0;
     }
-  } else if (p.food >= 18 && hurt) {
+  } else if (regen && p.food >= 18 && hurt) {
     if (++p.foodTimer >= 80) {
       heal(p, 1);
       addExhaustion(p, 6);

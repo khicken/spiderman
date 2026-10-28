@@ -194,7 +194,7 @@ export function tickOmen(ctx: GameCtx, s: OmenState) {
   }
   if (s.raid || ctx.time.tick % 20 !== 0) return;
   const bad = pl.effects.find((f) => f.id === "bad_omen");
-  if (!bad || !nearVillage(ctx)) return;
+  if (!bad || ctx.rules.disableRaids || !nearVillage(ctx)) return;
   pl.effects.splice(pl.effects.indexOf(bad), 1);
   pl.addEffect?.("raid_omen", bad.amplifier, OMEN_TICKS);
   if (!pl.effects.some((f) => f.id === "raid_omen")) pl.effects.push({ id: "raid_omen", amplifier: bad.amplifier, ticks: OMEN_TICKS });

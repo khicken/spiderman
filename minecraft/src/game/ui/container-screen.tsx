@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ClickKind, ContainerView, ItemStack, SlotRole } from "../contracts";
+import type { ClickKind, ContainerView, Effect, ItemStack, SlotRole } from "../contracts";
 import { Text, useGui } from "./gui";
 import { tooltipLines } from "./item-icon";
 import { LAYOUTS, placeSlots } from "./container-layouts";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
 import { arrowUrl, containerBg, flameUrl, panelUrl } from "./sprites";
+import { EffectList } from "./hud";
 import { useKeyDown } from "./widgets";
 import { PlayerDoll, type DollInventory } from "./player-doll";
 import { keyFor } from "./settings";
@@ -43,6 +44,7 @@ export interface ContainerScreenProps {
   creative?: CreativeProps; // required when view.kind is "creative"
   advanced?: boolean; // F3+H tooltips
   inventory?: DollInventory; // the player preview shows its armor and held items
+  effects?: Effect[];
 }
 
 const EMPTY_ICON: Partial<Record<SlotRole, EmptySlotKind>> = {
@@ -59,12 +61,20 @@ const Img = ({ src, x, y, w, h }: { src: string; x: number; y: number; w: number
   <img alt="" src={src} width={w} height={h} draggable={false} style={{ position: "absolute", left: x, top: y, imageRendering: "pixelated", pointerEvents: "none" }} />
 );
 
+// Vanilla EffectRenderingInventoryScreen: only the inventory and creative screens list effects, right of the panel.
+export function showsEffects(kind: string, width: number): boolean {
+  if (kind === "creative") return width - (Math.floor((width - 195) / 2) + 197) >= 32;
+  if (kind !== "inventory") return false;
+  const left = bookStored(kind) && width >= 379 ? 177 + Math.trunc((width - 376) / 2) : Math.floor((width - 176) / 2);
+  return width - (left + 178) >= 32;
+}
+
 export function ContainerScreen(props: ContainerScreenProps) {
   if (props.view.kind === "creative" && props.creative) return <CreativeScreen {...props} creative={props.creative} />;
   return <SurvivalContainer {...props} />;
 }
 
-function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advanced, inventory }: ContainerScreenProps) {
+function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advanced, inventory, effects }: ContainerScreenProps) {
   const { width, height } = useGui();
   const L = LAYOUTS[view.kind];
   const placed = useMemo(() => placeSlots(view.kind, view.groups), [view.kind, view.groups]);
@@ -247,6 +257,7 @@ function SurvivalContainer({ view, onClick, onClose, onOption, onRename, advance
         ))}
         {bookOpen && ghost && <GhostOverlay ghost={ghost} placed={placed} />}
       </div>
+      {view.kind === "inventory" && effects && !(bookOpen && narrow) && <EffectList effects={effects} x={left + L.w + 2} top={top} width={width} setTip={setExtraTip} />}
       {bookOpen && <RecipeBookPanel view={view} x={Math.trunc((width - 147) / 2) - (narrow ? 0 : 86)} y={Math.trunc((height - 166) / 2)} setTip={setExtraTip} setGhost={setGhost} />}
       <PointerLayer cursor={preview ? preview.cursor : view.cursor} tip={drag ? [] : tip} setCursor={setCursor} setTip={setTip} />
     </div>

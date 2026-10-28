@@ -140,6 +140,22 @@ function pickUp(e: Entity, ctx: GameCtx) {
   touching.length = 0;
 }
 
+// Vanilla Boat.tick: a paddle advances PI/8 per tick while its key is held, else rests at 0, and splashes once per stroke.
+function row(e: Entity, ctx: GameCtx, key: "_rowL" | "_rowR", on: boolean, inWater: boolean) {
+  if (!on) {
+    e.data[key] = 0;
+    return;
+  }
+  const t = (e.data[key] as number) ?? 0;
+  const TAU = Math.PI * 2;
+  if (t % TAU <= Math.PI / 4 && (t + Math.PI / 8) % TAU >= Math.PI / 4) {
+    const b = e.body;
+    const name = inWater ? "entity.boat.paddle_water" : b.onGround ? "entity.boat.paddle_land" : null;
+    if (name) ctx.emit({ type: "sound", name, x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 1, pitch: 0.8 + 0.4 * ctx.random() });
+  }
+  e.data[key] = t + Math.PI / 8;
+}
+
 function tick(e: Entity, ctx: GameCtx) {
   e.data._pa = e.age;
   e.data.amphibious = true;
@@ -184,15 +200,13 @@ function tick(e: Entity, ctx: GameCtx) {
     if (ctl.forward < 0) f -= 0.005;
     b.vel.x += -Math.sin(e.yaw) * f;
     b.vel.z += -Math.cos(e.yaw) * f;
-    const rowing = ctl.forward !== 0 || left || right;
-    if (rowing) {
-      const lOn = (right && !left) || ctl.forward !== 0;
-      const rOn = (left && !right) || ctl.forward !== 0;
-      if (lOn) e.data._rowL = ((e.data._rowL as number) ?? 0) + Math.PI / 8;
-      if (rOn) e.data._rowR = ((e.data._rowR as number) ?? 0) + Math.PI / 8;
-      if (inWater && e.age % 15 === 0) ctx.emit({ type: "sound", name: "entity.boat.paddle_water", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 0.6 });
-    }
-  } else e.yaw += rot * DEG;
+    row(e, ctx, "_rowL", (right && !left) || ctl.forward > 0, inWater);
+    row(e, ctx, "_rowR", (left && !right) || ctl.forward > 0, inWater);
+  } else {
+    e.yaw += rot * DEG;
+    e.data._rowL = 0;
+    e.data._rowR = 0;
+  }
   e.data._drot = rot;
   e.headYaw = e.yaw;
   moveBody(ctx.world, b, opts);

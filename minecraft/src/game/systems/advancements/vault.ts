@@ -1,4 +1,5 @@
-import type { BlockBehavior, GameCtx, ItemStack } from "../../contracts";
+import type { BlockBehavior, BlockEntityData, GameCtx, ItemStack } from "../../contracts";
+import { idOf, metaOf, stateOf } from "../../contracts";
 import { BEHAVIORS } from "../../mechanics";
 import { rollLoot as rollTable } from "../../loot";
 import { advTrigger } from "./bus";
@@ -53,6 +54,27 @@ export function tickVaults(ctx: GameCtx) {
     q.next = ctx.time.tick + 10;
     if (!q.items.length) queue.splice(i, 1);
   }
+  if (ctx.time.tick % 20 === 0 && ctx.world.blockEntitiesIn) {
+    const p = ctx.player.body.pos;
+    const pcx = Math.floor(p.x) >> 4, pcz = Math.floor(p.z) >> 4;
+    for (let cx = pcx - 1; cx <= pcx + 1; cx++)
+      for (let cz = pcz - 1; cz <= pcz + 1; cz++) for (const be of ctx.world.blockEntitiesIn(cx, cz) ?? []) if (be.type === "vault") vaultLook(ctx, be);
+  }
+}
+
+// Vanilla vault: active while an unrewarded player is within 4 blocks (4.5 to stay on). Meta bits are in contracts.ts.
+function vaultLook(ctx: GameCtx, be: BlockEntityData) {
+  const s = ctx.world.getBlock(be.x, be.y, be.z);
+  if (!idOf(s)) return;
+  const data = be.data ?? {};
+  const p = ctx.player.body.pos;
+  const d2 = (p.x - be.x - 0.5) ** 2 + (p.y - be.y - 0.5) ** 2 + (p.z - be.z - 0.5) ** 2;
+  const rewarded = Array.isArray(data.rewardedPlayers) && (data.rewardedPlayers as string[]).includes(who());
+  const on = metaOf(s) & 4 ? d2 <= 4.5 * 4.5 : d2 <= 16;
+  const busy = queue.some((q) => q.x === be.x && q.y === be.y && q.z === be.z);
+  const ominous = data.ominous === true || data.key === "ominous_trial_key";
+  const meta = (metaOf(s) & 3) | ((busy || (on && !rewarded && ctx.player.gameMode !== "spectator")) ? 4 : 0) | (ominous ? 8 : 0);
+  if (meta !== metaOf(s)) ctx.world.setBlock(be.x, be.y, be.z, stateOf(idOf(s), meta), 0);
 }
 
 export function resetVaults() {

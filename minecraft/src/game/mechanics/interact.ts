@@ -143,7 +143,7 @@ const useBed: UseFn = (ctx, x, y, z, s) => {
   }
   p.sleeping = true;
   sleepTick = ctx.time.tick;
-  p.teleport(hx + 0.5, y + 0.5625, hz + 0.5);
+  p.teleport(hx + 0.5, y + 0.6875, hz + 0.5);
   ctx.world.scheduleTick(hx, y, hz, 100);
   return true;
 };
@@ -161,7 +161,7 @@ export const bedScheduledTick: NonNullable<BlockBehavior["scheduledTick"]> = (ct
     ctx.world.scheduleTick(x, y, z, left);
     return;
   }
-  if (!SLEEP_RULE.othersAsleep(ctx)) {
+  if (!SLEEP_RULE.othersAsleep(ctx) || (ctx.rules.playersSleepingPercentage ?? 100) > 100) {
     ctx.world.scheduleTick(x, y, z, 10);
     return;
   }

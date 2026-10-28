@@ -1,5 +1,5 @@
 import type { BlockEntityData, GameCtx, ItemStack } from "../contracts";
-import { idOf } from "../contracts";
+import { idOf, metaOf, stateOf } from "../contracts";
 import { SOLID } from "../blocks/registry";
 import { lineClear } from "../entities/combat";
 import type { SystemPart } from "../systems";
@@ -203,6 +203,14 @@ function tickTrial(ctx: GameCtx, be: BlockEntityData, d: D) {
   }
 }
 
+// The block meta carries the state the mesher draws (see contracts.ts).
+function trialLook(ctx: GameCtx, be: BlockEntityData, d: D) {
+  const s = ctx.world.getBlock(be.x, be.y, be.z);
+  const st = d.state === "cooldown" ? 0 : d.state === "ejecting" ? 2 : 1;
+  const meta = st | (d.ominous ? 8 : 0);
+  if (idOf(s) && metaOf(s) !== meta) ctx.world.setBlock(be.x, be.y, be.z, stateOf(idOf(s), meta), 0);
+}
+
 // Vanilla OminousItemSpawner: appears a few blocks above a player in the fight and releases its item after 60-119 ticks.
 function placeItemSpawner(ctx: GameCtx) {
   const p = ctx.player.body.pos;
@@ -276,7 +284,10 @@ export function createSpawners(): SystemPart {
           if (!list) continue;
           for (const be of list) {
             if (be.type === "spawner") tickSpawner(ctx, be, (be.data ??= {}));
-            else if (be.type === "trial_spawner") tickTrial(ctx, be, (be.data ??= {}));
+            else if (be.type === "trial_spawner") {
+              tickTrial(ctx, be, (be.data ??= {}));
+              trialLook(ctx, be, be.data);
+            }
           }
         }
       }

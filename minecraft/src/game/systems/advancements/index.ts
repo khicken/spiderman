@@ -38,7 +38,7 @@ export function setAdvancementPlayer(name: string) {
 function announce(ctx: GameCtx, a: AdvDef) {
   if (!a.toast) return;
   const verb = a.kind === "challenge" ? "has completed the challenge" : a.kind === "goal" ? "has reached the goal" : "has made the advancement";
-  ctx.emit({ type: "chat", text: `${playerName} ${verb} ${a.kind === "challenge" ? "§5" : "§a"}[${a.title}]` });
+  if (ctx.rules.announceAdvancements !== false) ctx.emit({ type: "chat", text: `${playerName} ${verb} ${a.kind === "challenge" ? "§5" : "§a"}[${a.title}]` });
   ctx.audio.play(a.kind === "challenge" ? "ui.toast.challenge_complete" : "ui.toast.in");
   uiBridge.toast({ title: a.title, icon: a.icon, kind: a.kind });
 }

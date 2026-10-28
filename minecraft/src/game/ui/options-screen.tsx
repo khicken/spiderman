@@ -172,7 +172,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
     { kind: "button", label: `Sneak: ${s.toggleSneak ? "Toggle" : "Hold"}`, onClick: () => onChange({ toggleSneak: !s.toggleSneak }) },
     { kind: "button", label: `Sprint: ${s.toggleSprint ? "Toggle" : "Hold"}`, onClick: () => onChange({ toggleSprint: !s.toggleSprint }) },
     { kind: "button", label: "Auto-Jump: OFF", disabled: true },
-    { kind: "button", label: "Operator Items Tab: OFF", disabled: true },
+    { kind: "button", label: `Operator Items Tab: ${onOff(!!s.operatorItemsTab)}`, onClick: () => onChange({ operatorItemsTab: !s.operatorItemsTab }) },
   ];
 
   const mouse: Item[] = [

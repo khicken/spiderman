@@ -382,7 +382,11 @@ function horseDef(kind: Kind): MobDef {
         return true;
       }
       if (undead && !e.data.tame) return false;
-      if (item && item !== "saddle" && item !== "lead" && !item.endsWith("horse_armor") && HEAL[item] === undefined && !e.data.tame) return false;
+      if (item && HEAL[item] === undefined && !e.data.tame) {
+        e.data._rear = 20;
+        sound(ctx, e, `entity.${kind}.angry`);
+        return true;
+      }
       return mountPlayer(ctx, e);
     },
     onDeath(e, ctx) {
