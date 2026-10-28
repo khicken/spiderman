@@ -71,7 +71,8 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
   const searchRef = useRef<HTMLInputElement | null>(null);
   const isInv = tab === "inventory" || tab === "survival";
   const isSearch = tab === "search";
-  const all = useMemo<(ItemStack | null)[]>(() => (isInv ? [] : tab === "hotbar" ? hotbarTabItems() : creative.items(tab, "")), [creative, tab, isInv]);
+  const hotbarView = tab === "hotbar" ? view : null;
+  const all = useMemo<(ItemStack | null)[]>(() => (isInv ? [] : tab === "hotbar" ? hotbarTabItems() : creative.items(tab, "")), [creative, tab, isInv, hotbarView]);
   const tooltips = useMemo(() => (isSearch ? all.map((s) => (s ? plain(tooltipLines(s)) : "")) : []), [all, isSearch]);
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();

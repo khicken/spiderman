@@ -48,6 +48,7 @@ export const ingMatches = (ing: Ing, st: ItemStack | null) => !!st && ingSet(ing
 export interface CraftMatch {
   result: ItemStack;
   consume: number[];
+  recipe?: number; // CRAFT_RECIPES index; absent for special recipes
 }
 
 function bounds(grid: (ItemStack | null)[], width: number) {
@@ -245,9 +246,10 @@ export function matchCrafting(grid: (ItemStack | null)[], width: 2 | 3): CraftMa
   const items: ItemStack[] = [];
   const consume = grid.map((s) => (s && s.count > 0 ? 1 : 0));
   for (const s of grid) if (s && s.count > 0) items.push(s);
-  for (const r of CRAFT_RECIPES) {
+  for (let i = 0; i < CRAFT_RECIPES.length; i++) {
+    const r = CRAFT_RECIPES[i];
     const ok = r.type === "shaped" ? matchShaped(r, grid, width, b) : matchShapeless(r, items);
-    if (ok) return { result: r.result.item === "decorated_pot" && width === 3 ? decoratedPot(grid) : { ...r.result }, consume };
+    if (ok) return { result: r.result.item === "decorated_pot" && width === 3 ? decoratedPot(grid) : { ...r.result }, consume, recipe: i };
   }
   const ext = extendMap(grid, width);
   if (ext) return { result: ext, consume };

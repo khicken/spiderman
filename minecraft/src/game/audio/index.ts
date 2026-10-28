@@ -337,6 +337,12 @@ export function createAudio(): GameAudio {
     waterLoop = { src, gain };
   }
 
+  function syncWaterLoop(): void {
+    if (paused) return;
+    if (underwater && !waterLoop) startWaterLoop();
+    else if (!underwater && waterLoop) stopWaterLoop(2);
+  }
+
   function stopRain(): void {
     try { rainSrc?.stop(); } catch { /* not playing */ }
     try { rainGain?.disconnect(); } catch { /* gone */ }
@@ -411,6 +417,7 @@ export function createAudio(): GameAudio {
         applyVolumes();
         music.setKind(musicKind);
         warmTimer = setTimeout(warm, 100);
+        syncWaterLoop();
       }
       if (ctx.state === "suspended") void ctx.resume().catch((err) => warnOnce("resume-promise", "audio resume failed", err));
     }),
@@ -469,6 +476,7 @@ export function createAudio(): GameAudio {
       if (!ctx || !sfxMute) return;
       if (on) stopSfx(true);
       sfxMute.gain.setTargetAtTime(on ? 0 : 1, ctx.currentTime, on ? 0.02 : 0.1);
+      syncWaterLoop();
     }),
     setBiomeAmbient: guard("biome-ambient", (biome: string | null) => {
       moodBiome = biome;

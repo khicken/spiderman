@@ -92,7 +92,7 @@ export type ClientMsg =
   | { t: "set"; dim: Dim; x: number; y: number; z: number; s: BlockState; f: number }
   | { t: "be"; dim: Dim; x: number; y: number; z: number; be: BlockEntityData | null }
   | { t: "wl"; dim: Dim; x: number; y: number; z: number; on: boolean }
-  | { t: "act"; dim: Dim; kind: HostAction; x: number; y: number; z: number; inv?: unknown; seq?: number }
+  | { t: "act"; dim: Dim; kind: HostAction; x: number; y: number; z: number; inv?: unknown; seq?: number; face?: number }
   | { t: "skin"; look: Look }
   | { t: "spawn"; type: string; x: number; y: number; z: number; vel: [number, number, number]; yaw: number; pitch: number; data: Record<string, unknown> }
   | { t: "drop"; stack: ItemStack; x: number; y: number; z: number; vel?: [number, number, number] }
@@ -174,7 +174,10 @@ export function cleanName(s: string): string {
 }
 
 // Block uses the host runs for clients, so items going in or out stay on the host's ledger.
-const HOST_USES = new Set(["flower_pot", "cauldron", "water_cauldron", "lava_cauldron", "powder_snow_cauldron", "composter", "decorated_pot", "lectern", "chiseled_bookshelf", "jukebox"]);
+const HOST_USES = new Set([
+  "flower_pot", "cauldron", "water_cauldron", "lava_cauldron", "powder_snow_cauldron", "composter", "decorated_pot", "lectern", "chiseled_bookshelf", "jukebox",
+  "sweet_berry_bush", "cave_vines", "cave_vines_plant", "pumpkin",
+]);
 export const hostUse = (block: string) => HOST_USES.has(block) || block.startsWith("potted_");
 
 export const isDim = (v: unknown): v is Dim => typeof v === "string" && (DIMS as string[]).includes(v);

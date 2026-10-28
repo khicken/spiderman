@@ -352,7 +352,7 @@ export interface Body {
 export type DamageSource =
   | "generic" | "fall" | "lava" | "fire" | "drown" | "starve" | "void" | "cactus"
   | "explosion" | "mob" | "player" | "arrow" | "suffocate" | "magic" | "wither"
-  | "lightning" | "freeze" | "thorns" | "mace" | "fly_into_wall" | "trident" | "sonic_boom";
+  | "lightning" | "freeze" | "thorns" | "mace" | "fly_into_wall" | "trident" | "sonic_boom" | "cramming";
 
 export interface EntityHit {
   id: number;
@@ -594,7 +594,7 @@ export interface WorldApi {
   isWaterlogged?(x: number, y: number, z: number): boolean;
   setWaterlogged?(x: number, y: number, z: number, on: boolean): boolean;
   // Multiplayer client only: runs predict with writes muted, then sends the action to the host when predict is true.
-  hostAction?(kind: HostAction, x: number, y: number, z: number, predict?: () => boolean): boolean;
+  hostAction?(kind: HostAction, x: number, y: number, z: number, predict?: () => boolean, face?: number): boolean;
   meshInput(cx: number, sy: number, cz: number): MeshInput | null; // null when the section is empty or neighbors are missing
   on(fn: (e: ChunkEvent) => void): () => void;
   // Load and unload chunks around the center. Call each frame.
@@ -651,7 +651,7 @@ export interface EntityApi {
   damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
   knockback(id: number, dx: number, dz: number, strength: number): void;
   interact(id: number, held: ItemStack | null): boolean;
-  explode(x: number, y: number, z: number, power: number, fire?: boolean): void;
+  explode(x: number, y: number, z: number, power: number, fire?: boolean, kind?: "block" | "tnt"): void;
   count(category: MobDef["category"]): number;
   tick(ctx: GameCtx): void;
   frame(dt: number, partialTick: number): void;
@@ -745,6 +745,21 @@ export interface Rules {
   doWardenSpawning?: boolean;
   disableRaids?: boolean;
   playersSleepingPercentage?: number;
+  waterSourceConversion?: boolean;
+  lavaSourceConversion?: boolean;
+  maxEntityCramming?: number;
+  spawnRadius?: number;
+  projectilesCanBreakBlocks?: boolean;
+  blockExplosionDropDecay?: boolean;
+  mobExplosionDropDecay?: boolean;
+  tntExplosionDropDecay?: boolean;
+  universalAnger?: boolean;
+  forgiveDeadPlayers?: boolean;
+  enderPearlsVanishOnDeath?: boolean;
+  reducedDebugInfo?: boolean;
+  doLimitedCrafting?: boolean;
+  globalSoundEvents?: boolean;
+  spectatorsGenerateChunks?: boolean;
 }
 
 // Every module gets this object. game.ts creates it and fills each field.

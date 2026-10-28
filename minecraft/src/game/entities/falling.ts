@@ -43,7 +43,7 @@ export function tickTnt(e: Entity, ctx: GameCtx) {
   if (fuse <= 0) {
     e.data._remove = true;
     e.dead = true;
-    explodeAt(ctx, p.x, p.y + 0.0625, p.z, (e.data.power as number) ?? 4, { source: e });
+    explodeAt(ctx, p.x, p.y + 0.0625, p.z, (e.data.power as number) ?? 4, { source: e, kind: "tnt" });
     return;
   }
   if (e.age % 2 === 0) ctx.emit({ type: "particles", kind: "smoke", x: p.x, y: p.y + 0.5, z: p.z, count: 1 });

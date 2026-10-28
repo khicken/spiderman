@@ -112,9 +112,18 @@ const VARIANT_PATHS: Record<string, (v: unknown, e: Entity) => string> = {
   panda: (v) => (str(v, "normal") === "normal" ? "entity/panda/panda" : `entity/panda/${v}_panda`),
 };
 
+// Called per mob per frame: rebuild the string only when an input VARIANT_PATHS reads changes.
+const PATH_CACHE = new WeakMap<Entity, { v: unknown; tame: boolean; angry: boolean; path: string }>();
+
 export function skinPath(type: string, e?: Entity): string | undefined {
   const f = e && VARIANT_PATHS[type];
-  return f ? f(e.data.variant, e) : MOB_SKIN_PATHS[type];
+  if (!f) return MOB_SKIN_PATHS[type];
+  const v = e.data.variant, tame = !!e.data.owner, angry = e.data._target !== undefined;
+  const c = PATH_CACHE.get(e);
+  if (c && c.v === v && c.tame === tame && c.angry === angry) return c.path;
+  const path = f(v, e);
+  PATH_CACHE.set(e, { v, tame, angry, path });
+  return path;
 }
 
 type SkinMat = THREE.MeshLambertMaterial | THREE.MeshBasicMaterial;

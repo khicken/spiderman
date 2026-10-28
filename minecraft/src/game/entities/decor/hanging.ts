@@ -6,7 +6,7 @@ import { paintBlockTexture } from "../../textures/index";
 import { brightnessAt, forgetModel } from "../render";
 import { blockCube, blockStateOfItem, isCubeItem, itemSpriteView } from "../block-cube";
 import { PAINTINGS, paintingTexture, paintingVariant, type PaintingVariant } from "./painting-art";
-import { mapTexture } from "../../systems/features/map-render";
+import { mapDecorTexture, mapTexture } from "../../systems/features/map-render";
 import { noiseTile, pixBoxes, repeatTexture } from "./pix-box";
 import { frameChanged, syncFrameMarker } from "../item-frame";
 
@@ -156,8 +156,11 @@ export function breakHanging(ctx: GameCtx, e: Entity, drop: boolean) {
   ctx.entities.dropItem({ item: e.type, count: 1 }, tmp.x, tmp.y, tmp.z);
 }
 
+// Vanilla only checks survival while ticking; a support cell in a chunk that is not loaded yet reads as air.
 function survives(ctx: GameCtx, e: Entity) {
   const [w, h] = sizeOf(e);
+  const n = N[faceOf(e)];
+  if (!forCells(e, w, h, (x, _y, z) => ctx.world.isLoaded(x, z) && ctx.world.isLoaded(x - n[0], z - n[2]))) return true;
   return fits(ctx, e, w, h);
 }
 
@@ -327,11 +330,15 @@ function frameModel(glow: boolean): () => MobModel {
     const build = (s: ItemStack) => {
       const mapTex = mapTexture(s, true);
       if (mapTex) {
-        itemMats = [lit(mapTex, 0.5)];
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), itemMats[0]);
-        m.position.z = PX + 0.002;
-        m.userData.ownGeometry = true;
-        holder.add(m);
+        const deco = lit(mapTex);
+        deco.transparent = true;
+        itemMats = [lit(mapTex, 0.5), deco];
+        for (let i = 0; i < 2; i++) {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), itemMats[i]);
+          m.position.z = PX + 0.002 + i * 0.001;
+          m.userData.ownGeometry = true;
+          holder.add(m);
+        }
       } else if (isCubeItem(s.item)) {
         const cube = blockCube(blockStateOfItem(s.item));
         itemMats = cube.materials.map(cloneLit);
@@ -362,7 +369,18 @@ function frameModel(glow: boolean): () => MobModel {
           for (const m of plain) m.visible = s?.item !== "filled_map";
           for (const m of forMap) m.visible = s?.item === "filled_map";
         }
-        if (s?.item === "filled_map") mapTexture(s, true);
+        if (s?.item === "filled_map") {
+          // Map textures are replaced after they sit unused, so rebind them.
+          const texs = [mapTexture(s, true), mapDecorTexture(s, true)];
+          itemMats.forEach((mat, i) => {
+            const t = texs[i], lm = mat as THREE.MeshLambertMaterial;
+            lm.visible = !!t;
+            if (t && lm.map !== t) {
+              lm.map = t;
+              lm.needsUpdate = true;
+            }
+          });
+        }
         const rot = (e.data.rot as number) ?? 0;
         holder.rotation.z = s?.item === "filled_map" ? -(rot % 4) * (Math.PI / 2) : -rot * (Math.PI / 4);
         const br = lightOf(e);

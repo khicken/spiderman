@@ -19,7 +19,7 @@ import { CAVE_CULL } from "./render/cave-cull";
 import { createRenderer } from "./render";
 import { createSystems } from "./systems";
 import { uiBridge, type Toast } from "./systems/ui-bridge";
-import { runCommand } from "./ui/commands";
+import { runCommand, setGameMode } from "./ui/commands";
 import { computeGuiScale } from "./ui/gui";
 import type { Settings } from "./ui/settings";
 import { createWorld, type World } from "./world";
@@ -29,6 +29,7 @@ import type { GameInternals, NetLink } from "./net";
 import type { LanOptions } from "./net/host";
 import { setPortalSpin } from "./player/effects-fx";
 import { vehicleInventoryKey } from "./entities/riding";
+import { forgiveDeadPlayer } from "./entities/combat";
 import { entityScreenValid } from "./player/riding";
 
 export type GamePhase = "loading" | "playing";
@@ -245,6 +246,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         ui.hurt();
         return;
       case "player_died":
+        forgiveDeadPlayer(ctx);
         input.enabled = false;
         if (document.pointerLockElement) document.exitPointerLock();
         ui.died(e.message);
@@ -364,6 +366,26 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     }
     const y = world.topY(x, z) + 1;
     return [x, y > MIN_Y ? y : 80, z];
+  }
+
+  // Vanilla spawnRadius: a world-spawn respawn lands on a random standable column within the radius.
+  function scatterSpawn() {
+    const sp = player.spawn as BedSpawn;
+    const r = Math.floor(ctx.rules.spawnRadius ?? 10);
+    if (sp.bed || r <= 1 || player.gameMode === "adventure") return;
+    for (let i = 0; i < 16; i++) {
+      const x = Math.floor(sp.x) + Math.floor(Math.random() * (2 * r + 1)) - r, z = Math.floor(sp.z) + Math.floor(Math.random() * (2 * r + 1)) - r;
+      if (!world.ready(x, z)) continue;
+      // Vanilla getOverworldRespawnPos: the first full block down from the top, unless a fluid comes first.
+      for (let y = world.topY(x, z); y > MIN_Y; y--) {
+        const def = blockDef(world.getBlock(x, y, z));
+        if (def.name === "water" || def.name === "lava" || world.isWaterlogged?.(x, y, z)) break;
+        if (def.solid && def.shape === "cube") {
+          if (blockDef(world.getBlock(x, y + 1, z)).solid || blockDef(world.getBlock(x, y + 2, z)).solid) break;
+          return player.teleport(x + 0.5, y + 1, z + 0.5);
+        }
+      }
+    }
   }
 
   function arrive() {
@@ -536,6 +558,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     }
     try {
       if (phase === "loading") {
+        chunkCenter.x = target.x;
+        chunkCenter.z = target.z;
         world.update(target.x, target.z, settings.renderDistance);
         renderer.camera.position.set(target.x, Number.isFinite(target.y) ? target.y + 1.6 : 100, target.z);
         renderer.render(dt);
@@ -573,7 +597,12 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       systems.frame(dt);
       net?.frame(dt);
       const p2 = performance.now();
-      world.update(player.body.pos.x, player.body.pos.z, settings.renderDistance);
+      // Vanilla spectatorsGenerateChunks off: a spectator is no chunk ticket source, so the loaded area stays put.
+      if (player.gameMode !== "spectator" || ctx.rules.spectatorsGenerateChunks !== false) {
+        chunkCenter.x = player.body.pos.x;
+        chunkCenter.z = player.body.pos.z;
+      }
+      world.update(chunkCenter.x, chunkCenter.z, settings.renderDistance);
       const p3 = performance.now();
       renderer.setTime(time.day * DAY_TICKS + time.dayTime);
       renderer.setWeather(time.rain, time.thunder);
@@ -613,6 +642,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
 
   let debugOn = false;
+  const chunkCenter = { x: 0, z: 0 };
   let portalFx = 0;
   const portalId = blockId("nether_portal");
 
@@ -764,6 +794,12 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       out["r:14"] = `Sections: ${rs.visible}/${rs.sections} visible, ${rs.pages} pages ${Math.round((rs.verts / 1e6) * 10) / 10}M verts`;
       out["r:15"] = `Mesh: ${rs.queued} queued, ${rs.inFlight} in ${rs.workers} workers, ${rs.results} to upload`;
     }
+    // Vanilla showOnlyReducedInfo: no coordinates, facing, biome or targeted block.
+    if (ctx.rules.reducedDebugInfo) {
+      for (let i = 7; i <= 13; i++) delete out[`l:${i}`];
+      out["l:7"] = `Chunk-relative: ${bx & 15} ${by & 15} ${bz & 15}`;
+      return out;
+    }
     if (t) {
       const def = blockDef(t.state);
       out["r:16"] = "";
@@ -840,6 +876,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     command(line: string): string[] {
       return net?.command?.(line) ?? runCommand(ctx, line);
     },
+    setGameMode: (m: Parameters<typeof setGameMode>[1]) => setGameMode(ctx, m),
     clickSlot: (i: number, c: Parameters<typeof inventory.clickSlot>[1]) => inventory.clickSlot(i, c),
     closeContainer() {
       inventory.close();
@@ -874,6 +911,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         player.spawn = { x: wx, y: wy, z: wz };
       }
       player.respawn();
+      scatterSpawn();
       resume();
     },
     save,

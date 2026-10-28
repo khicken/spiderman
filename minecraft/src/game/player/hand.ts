@@ -3,7 +3,7 @@ import type { ItemStack } from "../contracts";
 import { itemKey, type ItemMeshes, type ItemKind } from "./item-mesh";
 import type { PlayerModel } from "./model";
 import type { UseState } from "./state";
-import { mapTexture } from "../systems/features/map-render";
+import { mapDecorTexture, mapPlayerMarker, mapTexture } from "../systems/features/map-render";
 import { itemDef } from "../items/registry";
 
 const D = Math.PI / 180;
@@ -285,9 +285,17 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     mesh.matrixAutoUpdate = false;
     mesh.visible = false;
     root.add(mesh);
+    // Children: player marker sprite, then the decoration layer.
+    for (let i = 0; i < 2; i++) {
+      const layer = new THREE.Mesh(mapGeo, new THREE.MeshBasicMaterial({ fog: false, transparent: true }));
+      layer.matrixAutoUpdate = false;
+      layer.matrix.makeTranslation(0, 0, 0.0005);
+      mesh.add(layer);
+    }
     return mesh;
   };
   const mapMain = mapMesh(), mapOff = mapMesh();
+  const markerScale = new THREE.Vector3();
 
   // Vanilla ItemInHandRenderer.calculateMapTilt: looking down raises the map flat in both hands.
   function twoHandedMap(f: HandFrame) {
@@ -315,14 +323,28 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     mesh.matrix.copy(m);
   }
 
-  function showMap(mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>, tex: THREE.Texture | null, light: number) {
+  function showMap(mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>, tex: THREE.Texture | null, light: number, stack?: ItemStack | null) {
     mesh.visible = !!tex;
     if (!tex) return;
-    if (mesh.material.map !== tex) {
-      mesh.material.map = tex;
-      mesh.material.needsUpdate = true;
+    const c = Math.max(0.25, Math.min(1, light));
+    setMap(mesh.material, tex, c);
+    const [marker, deco] = mesh.children as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[];
+    const decoTex = mapDecorTexture(stack);
+    deco.visible = !!decoTex;
+    if (decoTex) setMap(deco.material, decoTex, c);
+    const mk = mapPlayerMarker(stack);
+    marker.visible = !!mk;
+    if (!mk) return;
+    setMap(marker.material, mk.tex, c);
+    marker.matrix.makeRotationZ(mk.rot).scale(markerScale.set(mk.size, mk.size, 1)).setPosition(mk.x * MAP_SIZE, mk.y * MAP_SIZE, 0.001);
+  }
+
+  function setMap(mat: THREE.MeshBasicMaterial, tex: THREE.Texture, c: number) {
+    if (mat.map !== tex) {
+      mat.map = tex;
+      mat.needsUpdate = true;
     }
-    mesh.material.color.setScalar(Math.max(0.25, Math.min(1, light)));
+    mat.color.setScalar(c);
   }
 
   return {
@@ -336,8 +358,8 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
         return;
       }
       const mainTex = mapTexture(f.stack), offTex = mapTexture(f.off);
-      showMap(mapMain, mainTex, f.light);
-      showMap(mapOff, offTex, f.light);
+      showMap(mapMain, mainTex, f.light, f.stack);
+      showMap(mapOff, offTex, f.light, f.off);
       model.setLight(f.light, false);
       items.setLight(f.light);
       const mainUse = f.use && f.use.hand === "main" ? f.use : null;
@@ -363,8 +385,10 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     },
     dispose() {
       mapGeo.dispose();
-      mapMain.material.dispose();
-      mapOff.material.dispose();
+      for (const mesh of [mapMain, mapOff]) {
+        mesh.material.dispose();
+        for (const c of mesh.children) ((c as THREE.Mesh).material as THREE.Material).dispose();
+      }
       root.clear();
       tp.dispose();
     },

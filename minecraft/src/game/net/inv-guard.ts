@@ -5,6 +5,7 @@ import type { BlockState, ItemStack } from "../contracts";
 import { computeDrops } from "../items/drops";
 import { CRAFT_RECIPES, ingMatches } from "../items/recipes";
 import type { CraftRecipe } from "../items/recipe-dsl";
+import { STEW_EFFECTS } from "../player/stats";
 
 export type Counts = Map<string, number>;
 
@@ -16,14 +17,33 @@ const VALUABLE = new Set([
 
 const isStack = (v: unknown): v is ItemStack => !!v && typeof v === "object" && typeof (v as ItemStack).item === "string" && typeof (v as ItemStack).count === "number";
 
-export function stackKey(s: ItemStack): string {
-  const ench = s.item === "enchanted_book" ? (s.data?.stored as Record<string, number> | undefined) : s.ench;
-  if (!ench || !Object.keys(ench).length) return s.item;
-  return `${s.item}#${Object.keys(ench).sort().map((k) => `${k}=${ench[k]}`).join(",")}`;
+const POTION_ITEMS = new Set(["potion", "splash_potion", "lingering_potion", "tipped_arrow"]);
+
+// The effect a suspicious stew gives: crafted stews carry it in data.effects.
+function stewEffect(s: ItemStack): string {
+  const fx = s.data?.effects;
+  if (Array.isArray(fx) && Array.isArray(fx[0])) return String(fx[0][0]);
+  const flower = s.data?.flower;
+  if (typeof flower === "string" && Object.hasOwn(STEW_EFFECTS, flower)) return STEW_EFFECTS[flower][0];
+  return String(s.data?.effect ?? "");
 }
 
+// Potions, tipped arrows and stews differ by their data, so the ledger counts each kind apart.
+function dataKey(s: ItemStack): string {
+  if (POTION_ITEMS.has(s.item)) return `${s.item}:${String(s.data?.potion ?? "water")}`;
+  if (s.item === "suspicious_stew") return `suspicious_stew:${stewEffect(s)}`;
+  return s.item;
+}
+
+export function stackKey(s: ItemStack): string {
+  const ench = s.item === "enchanted_book" ? (s.data?.stored as Record<string, number> | undefined) : s.ench;
+  if (!ench || !Object.keys(ench).length) return dataKey(s);
+  return `${dataKey(s)}#${Object.keys(ench).sort().map((k) => `${k}=${ench[k]}`).join(",")}`;
+}
+
+// Only a water bottle can be made outside a host-run brewing stand or crafting table.
 export function guarded(key: string): boolean {
-  if (key.includes("#")) return true;
+  if (key.includes("#") || (key.includes(":") && key !== "potion:water")) return true;
   return VALUABLE.has(key) || key.startsWith("diamond_") || key.startsWith("netherite_") || key.endsWith("_spawn_egg");
 }
 
@@ -47,11 +67,7 @@ export const invCounts = (save: unknown) => itemCounts(lists(save).flat());
 export const beCounts = (be: unknown) => itemCounts(beStacks(be));
 
 // What eating or drinking a stack does: potions and suspicious stews differ by their data.
-export function useKey(s: ItemStack): string {
-  if (s.item === "potion") return `potion:${String(s.data?.potion ?? "water")}`;
-  if (s.item === "suspicious_stew") return `suspicious_stew:${String(s.data?.flower ?? s.data?.effect ?? "")}`;
-  return s.item;
-}
+export const useKey = dataKey;
 
 // Items by useKey that left the inventory between two saves.
 export function usedOf(prev: unknown, next: unknown): Counts {
@@ -70,7 +86,7 @@ const BUCKETS = ["water_bucket", "lava_bucket", "milk_bucket", "powder_snow_buck
 const SWAPS: Record<string, string[]> = {
   bucket: BUCKETS,
   water_bucket: FISH,
-  glass_bottle: ["potion", "honey_bottle", "experience_bottle", "dragon_breath"],
+  glass_bottle: ["potion:water", "honey_bottle", "dragon_breath"],
   map: ["filled_map"],
   writable_book: ["written_book"],
   ...Object.fromEntries(BUCKETS.map((b) => [b, ["bucket"]])),
@@ -106,6 +122,7 @@ function take(pool: Map<string, number>, ing: string, n: number, dry: boolean): 
 }
 
 function craftCredit(key: string, deficit: number, pool: Map<string, number>): number {
+  if (key.startsWith("suspicious_stew:")) return stewCredit(key.slice(16), deficit, pool);
   for (const r of small) {
     if (r.result.item !== key) continue;
     const crafts = Math.ceil(deficit / r.result.count);
@@ -118,6 +135,17 @@ function craftCredit(key: string, deficit: number, pool: Map<string, number>): n
     return deficit;
   }
   return 0;
+}
+
+// A 2x2 stew craft: bowl, both mushrooms and a flower that gives this effect.
+function stewCredit(effect: string, deficit: number, pool: Map<string, number>): number {
+  const flowers = Object.keys(STEW_EFFECTS).filter((f) => STEW_EFFECTS[f][0] === effect);
+  for (let made = 0; made < deficit; made++) {
+    const flower = flowers.find((f) => (pool.get(f) ?? 0) > 0);
+    if (!flower || !["bowl", "red_mushroom", "brown_mushroom"].every((n) => (pool.get(n) ?? 0) > 0)) return made;
+    for (const n of ["bowl", "red_mushroom", "brown_mushroom", flower]) pool.set(n, pool.get(n)! - 1);
+  }
+  return deficit;
 }
 
 // Items the client holds beyond what it may hold: allowance plus 2x2 crafts and swaps from what it used up.

@@ -47,10 +47,11 @@ const ORES: OreDef[] = [
   { ore: B.diamond_ore, deep: B.deepslate_diamond_ore, count: 4, size: 8, h: ["t", -144, 16], air: 1 },
   { ore: B.lapis_ore, deep: B.deepslate_lapis_ore, count: 2, size: 7, h: ["t", -32, 32], air: 0 },
   { ore: B.lapis_ore, deep: B.deepslate_lapis_ore, count: 4, size: 7, h: ["u", -64, 64], air: 1 },
-  { ore: I("infested_stone"), deep: I("infested_deepslate"), count: 14, size: 9, h: ["u", -64, 63], air: 0, only: (b) => MOUNTAIN.has(b) },
   { ore: B.emerald_ore, deep: B.deepslate_emerald_ore, count: 100, size: 3, h: ["t", -16, 480], air: 0, only: (b) => MOUNTAIN.has(b) },
   { ore: B.copper_ore, deep: B.deepslate_copper_ore, count: 16, size: 10, h: ["t", -16, 112], air: 0, only: (_b, c) => c !== CAVE_DRIPSTONE },
   { ore: B.copper_ore, deep: B.deepslate_copper_ore, count: 16, size: 20, h: ["t", -16, 112], air: 0, only: (_b, c) => c === CAVE_DRIPSTONE },
+  // Last so the ores above keep their seeds (0x0e00 + index) in existing worlds.
+  { ore: I("infested_stone"), deep: I("infested_deepslate"), count: 14, size: 9, h: ["u", -64, 63], air: 0, only: (b) => MOUNTAIN.has(b) },
 ];
 
 const STONE_T = idTable(B.stone);

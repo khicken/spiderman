@@ -50,6 +50,7 @@ const TRUSTED = new Set(["resistance", "fire_resistance", "regeneration", "absor
 const CLAIM_SLACK = 40;
 
 export function grantEffect(h: Health, id: string, amp: number, ticks: number) {
+  if (!(amp >= 0 && amp <= 255)) return;
   const g = h.granted.get(id);
   h.granted.set(id, { amp: Math.max(amp, g?.amp ?? 0), until: Math.max(g?.until ?? 0, h.now + ticks) });
   if (id === "absorption") h.absorption = Math.max(h.absorption, 4 * (amp + 1));
@@ -62,7 +63,7 @@ const grantedAmp = (h: Health, id: string) => {
 
 // What the client says it has, cut down to what the host granted.
 export function claimEffects(h: Health, eff: [string, number][], abs: number, max: number) {
-  h.effects = eff.filter(([id, amp]) => !TRUSTED.has(id) || amp <= grantedAmp(h, id));
+  h.effects = eff.filter(([id, amp]) => amp >= 0 && amp <= 255 && (!TRUSTED.has(id) || amp <= grantedAmp(h, id)));
   h.absorption = Math.min(h.absorption, abs, grantedAmp(h, "absorption") >= 0 ? 4 * (grantedAmp(h, "absorption") + 1) : 0);
   const boost = h.effects.find(([id]) => id === "health_boost");
   h.maxHealth = Math.min(max, boost ? 20 + 4 * (boost[1] + 1) : 20);
@@ -183,7 +184,8 @@ export function tickHealth(o: HealthOwner, ctx: GameCtx, rules: Rules, tick: num
   if (!h.dead) {
     // Vanilla MobEffect ticks for the effects the host acts on.
     for (const [id, a] of h.effects) {
-      const k = 50 >> a;
+      if (!(a >= 0)) continue;
+      const k = a > 5 ? 0 : 50 >> a;
       if (id === "regeneration" && (k <= 0 || tick % k === 0)) healBy(o, 1);
       if (id === "saturation") {
         h.food = Math.min(20, h.food + a + 1);

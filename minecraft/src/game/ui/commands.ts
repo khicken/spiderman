@@ -9,6 +9,7 @@ import { breakBlock } from "../mechanics/util";
 import { EFFECTS, ENCHANTS, enchantName, enchantsConflict, titleCase, type EnchantTarget } from "./data";
 import { advancementCommand } from "../systems/advancements/command";
 import { rideCommand } from "./ride-command";
+import { nbtToData, parseSnbt } from "./snbt";
 import { selectTargets, targetName, type Target } from "./selector";
 import { parseBlockState, type ParsedBlock } from "./block-states";
 import { GAMERULES, RULE_NAMES, getRule, ruleMax, ruleMin, setRule } from "./gamerules";
@@ -81,6 +82,12 @@ const nameOf = (t: Target) => targetName(t, playerName);
 const many = (list: Target[], one: string, n: string) => (list.length === 1 ? one.replace("%s", nameOf(list[0])) : n.replace("%s", String(list.length)));
 
 const MODES: GameMode[] = ["survival", "creative", "adventure", "spectator"];
+
+export function setGameMode(ctx: GameCtx, m: GameMode): void {
+  ctx.player.gameMode = m;
+  if (m === "survival" || m === "adventure") ctx.player.flying = false;
+  if (m === "spectator") ctx.player.flying = true;
+}
 const DIFFS: Rules["difficulty"][] = ["peaceful", "easy", "normal", "hard"];
 const TIMES: Record<string, number> = { day: 1000, noon: 6000, night: 13000, midnight: 18000 };
 
@@ -304,9 +311,7 @@ const COMMANDS: Cmd[] = [
       if (!m) return fail(`Unknown game mode: ${a[0]}`);
       if (a[1] !== undefined) players(ctx, a[1]);
       if (ctx.player.gameMode === m) return [];
-      ctx.player.gameMode = m;
-      if (m === "survival" || m === "adventure") ctx.player.flying = false;
-      if (m === "spectator") ctx.player.flying = true;
+      setGameMode(ctx, m);
       return [`Set own game mode to ${titleCase(m)} Mode`];
     },
   },
@@ -476,7 +481,13 @@ const COMMANDS: Cmd[] = [
       const hasPos = isCoord(a[1]);
       const { x, y, z } = hasPos ? xyz(ctx, a, 1, true) : { x: p.x, y: p.y, z: p.z };
       if (y < -2.0e7 || Math.abs(x) > 3.0e7 || Math.abs(z) > 3.0e7) return fail("Invalid position for summon");
-      const e = ctx.entities.spawn(type, x, y, z, summonData(a.slice(hasPos ? 4 : 1).join(" ")));
+      let data: Record<string, unknown> | undefined;
+      try {
+        data = summonData(type, a.slice(hasPos ? 4 : 1).join(" "));
+      } catch (err) {
+        return fail((err as Error).message);
+      }
+      const e = ctx.entities.spawn(type, x, y, z, data);
       if (!e) return fail(type === "player" ? "Unable to summon entity" : `Can't find element 'minecraft:${raw}' of type 'minecraft:entity_type'`);
       return [`Summoned new ${nameOf(e)}`];
     },
@@ -757,16 +768,10 @@ export function completeCommand(ctx: GameCtx, line: string): string[] {
 
 export const COMMAND_NAMES = COMMANDS.map((c) => c.name);
 
-// Flat key:value pairs from SNBT, e.g. {VillagerData:{profession:"minecraft:librarian",level:3}}.
-function summonData(snbt: string): Record<string, unknown> | undefined {
-  if (!snbt.trim().startsWith("{")) return undefined;
-  const out: Record<string, unknown> = {};
-  for (const m of snbt.matchAll(/(\w+)\s*:\s*"?([\w.:-]+)"?/g)) {
-    const v = m[2].replace(/^minecraft:/, "");
-    out[m[1]] = /^-?\d+(\.\d+)?[bsLfd]?$/.test(v) ? parseFloat(v) : v === "true" || v === "1b" ? true : v === "false" ? false : v;
-  }
-  if (out.NoAI) out.noAI = true;
-  if (out.Age !== undefined && Number(out.Age) < 0) out.grow = Number(out.Age);
-  return out;
+function summonData(type: string, snbt: string): Record<string, unknown> | undefined {
+  if (!snbt.trim()) return undefined;
+  const tag = parseSnbt(snbt);
+  if (!tag || typeof tag !== "object" || Array.isArray(tag)) throw new Error("Expected compound tag");
+  return nbtToData(type, tag);
 }
 

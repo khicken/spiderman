@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ContainerView, HudState } from "../game/contracts";
 import type { GameHandle } from "../game/game";
 import { createAudio, type GameAudio } from "../game/audio";
@@ -10,6 +10,7 @@ import {
   type ChatMessage, type NewWorldOptions, type Settings, type TimedText, type WorldListEntry,
 } from "../game/ui";
 import { Panorama } from "../game/ui/panorama";
+import type { CreativeProps } from "../game/ui/creative-screen";
 import { StatisticsScreen } from "../game/ui/menus-extra";
 import { Subtitles } from "../game/ui/subtitles";
 import { showsEffects } from "../game/ui/container-screen";
@@ -169,6 +170,7 @@ export default function Page() {
     const canvas = canvasRef.current;
     let game: GameHandle | null = null;
     let cancelled = false;
+    let respawnTimer: ReturnType<typeof setTimeout> | undefined;
     void import("../game/game").then(({ startGame }) => {
       if (cancelled) return;
       game = startGame(canvas, {
@@ -189,8 +191,9 @@ export default function Page() {
           hurt: () => setHurtAt(performance.now()),
           died: (message) => {
             if (!meta.rules.doImmediateRespawn) return setDeath(message);
-            setTimeout(() => {
-              if (meta.hardcore && game) game.ctx.player.gameMode = "spectator";
+            clearTimeout(respawnTimer);
+            respawnTimer = setTimeout(() => {
+              if (meta.hardcore) game?.setGameMode("spectator");
               game?.respawn();
               game?.lock();
             });
@@ -238,6 +241,7 @@ export default function Page() {
     });
     return () => {
       cancelled = true;
+      clearTimeout(respawnTimer);
       game?.dispose();
       gameRef.current = null;
     };
@@ -369,6 +373,22 @@ export default function Page() {
   });
   const g = gameRef.current;
   const inv = g?.ctx.inventory;
+  // Stable so the creative screen keeps its item and tooltip memos across HUD updates.
+  const isCreative = view?.kind === "creative";
+  const creative = useMemo<CreativeProps | undefined>(
+    () =>
+      inv && isCreative
+        ? {
+            tabs: inv.creativeTabs(),
+            items: (tab, search) => inv.creativeItems(tab, search),
+            onTake: (stack, click) => inv.takeCreative(stack, click),
+            onDestroy: (all) => {
+              if (all) for (let i = 0; i < 41; i++) inv.setSlot(i, null);
+            },
+          }
+        : undefined,
+    [inv, isCreative],
+  );
 
   if (!mounted) return <main />;
   if (screen !== "game") {
@@ -508,18 +528,7 @@ export default function Page() {
               advanced={settings.advancedTooltips}
               inventory={inv}
               effects={hud?.effects}
-              creative={
-                view.kind === "creative"
-                  ? {
-                      tabs: inv.creativeTabs(),
-                      items: (tab, search) => inv.creativeItems(tab, search),
-                      onTake: (stack, click) => inv.takeCreative(stack, click),
-                      onDestroy: (all) => {
-                        if (all) for (let i = 0; i < 41; i++) inv.setSlot(i, null);
-                      },
-                    }
-                  : undefined
-              }
+              creative={creative}
             />
           </div>
         )}
@@ -531,7 +540,7 @@ export default function Page() {
               score={g?.ctx.player.xpTotal ?? 0}
               hardcore={meta?.hardcore}
               onRespawn={() => {
-                if (meta?.hardcore && g) g.ctx.player.gameMode = "spectator";
+                if (meta?.hardcore) g?.setGameMode("spectator");
                 gameRef.current?.respawn();
                 setDeath(null);
                 gameRef.current?.lock();

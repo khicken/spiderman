@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { DamageSource, Entity, EntityApi, EntityHit, EntitySave, GameCtx, ItemStack, MobDef } from "../contracts";
 import { makeBody } from "../player/physics";
 import { mobDef, isMob } from "./registry";
+import "./mob-list";
 import { isHanging } from "./decor/hanging";
 import { segmentBody, isBaby } from "./geom";
 import { applyPhysics, knockBody, alertPets } from "./ai";
@@ -20,6 +21,7 @@ import { advKill } from "../systems/advancements/hooks";
 import { leadInteract } from "../systems/features/leads";
 import { mobEffectDeath, mobEffectHurt } from "../systems/brewing/effects";
 import { seatTick } from "./riding";
+import { linksFromSave, linksToSave } from "./links";
 
 const MISC_SIZE: Record<string, [number, number]> = {
   item: [0.25, 0.25],
@@ -446,15 +448,45 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     if (!isHanging(e.type)) baseTick(e, ctx, def);
     if (e.dead) return;
     ambientTick(e, ctx, def);
+    // Vanilla NoAI mobs skip AI and movement, gravity included.
+    if (e.data.noAI) return walkAnim(e);
     if (seatTick(e, ctx)) {
+      // Vanilla passengers keep their AI (a zombie in a boat still attacks); only the seat moves them.
+      const x = b.pos.x, y = b.pos.y, z = b.pos.z, yaw = e.yaw;
+      def.tick(e, ctx);
+      if (!e.dead && e.data.mount !== undefined) {
+        b.pos.set(x, y, z);
+        b.vel.set(0, 0, 0);
+        b.onGround = true;
+        b.fallDistance = 0;
+        e.yaw = yaw;
+      }
       walkAnim(e);
       return;
     }
     def.tick(e, ctx);
     if (e.data._pa !== e.age && !e.dead) applyPhysics(e, ctx);
+    if (!e.dead) cramming(e, ctx);
     walkAnim(e);
     stepSounds(e, ctx, def);
     spawner.despawn(ctx, e, def);
+  }
+
+  // Vanilla LivingEntity.pushEntities: more than maxEntityCramming - 1 overlapping pushables hurt 1 in 4 ticks.
+  const crammed: Entity[] = [];
+  function cramming(e: Entity, ctx: GameCtx) {
+    const max = ctx.rules.maxEntityCramming ?? 24;
+    if (max <= 0 || e.data.mount !== undefined) return;
+    const b = e.body;
+    near(b.pos.x, b.pos.y + b.height / 2, b.pos.z, b.width + b.height + 1, crammed);
+    let n = 0;
+    for (const o of crammed) {
+      if (o === e || o.dead || o.data.mount !== undefined || !mobDef(o.type) || isHanging(o.type)) continue;
+      const ob = o.body, w = (b.width + ob.width) / 2;
+      if (Math.abs(ob.pos.x - b.pos.x) < w && Math.abs(ob.pos.z - b.pos.z) < w && ob.pos.y < b.pos.y + b.height && b.pos.y < ob.pos.y + ob.height) n++;
+    }
+    crammed.length = 0;
+    if (n > max - 1 && ctx.random() < 0.25) damage(e.id, 6, "cramming");
   }
 
   function walkAnim(e: Entity) {
@@ -493,8 +525,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     damage,
     knockback,
     interact,
-    explode(x, y, z, power, fire) {
-      explodeAt(getCtx(), x, y, z, power, { fire });
+    explode(x, y, z, power, fire, kind) {
+      explodeAt(getCtx(), x, y, z, power, { fire, kind });
     },
     count(category) {
       let n = 0;
@@ -544,9 +576,10 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     },
     save() {
       const out: EntitySave[] = [];
-      for (const e of list) {
-        if (e.dead || e.data._remove) continue;
-        const data = stripData(e.data);
+      const kept = list.filter((e) => !e.dead && !e.data._remove);
+      const copies = kept.map((e) => ({ e, data: stripData(e.data) }));
+      linksToSave(new Map(kept.map((e) => [e.id, e])), copies);
+      for (const { e, data } of copies) {
         if (isMob(e.type)) {
           data.health = e.health;
           if (e.effects.length) data.effects = e.effects.map((f) => ({ ...f }));
@@ -564,6 +597,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
       for (const e of list) e.data._remove = true;
       purge();
       views.clear();
+      const loaded: Entity[] = [];
       for (const s of saves) {
         if (s.type === "__spawned") {
           spawner.visited.clear();
@@ -575,12 +609,14 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
         if (!isMob(s.type)) delete data.age;
         const e = spawn(s.type, s.x, s.y, s.z, { ...data, yaw: s.yaw });
         if (!e) continue;
+        loaded.push(e);
         e.age = age;
         if (typeof s.yaw === "number") {
           e.yaw = s.yaw;
           e.headYaw = s.yaw;
         }
       }
+      linksFromSave(loaded);
       rebuildGrid();
     },
     dispose() {

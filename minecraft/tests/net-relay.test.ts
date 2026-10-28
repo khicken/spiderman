@@ -60,6 +60,7 @@ test("the joiner drops malformed, oversized, duplicate and stale parts", () => {
 
 // An in-memory MQTT 3.1.1 broker per URL that drops publishes past BROKER_LIMIT bytes.
 const down = new Set<string>();
+let reach: Set<string> | null = null; // when set, new sockets reach only these brokers
 const subs = new Map<string, Set<FakeSocket>>();
 class FakeSocket {
   binaryType = "arraybuffer";
@@ -68,7 +69,8 @@ class FakeSocket {
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
   constructor(readonly url: string) {
-    setTimeout(() => (down.has(url) ? this.onclose?.() : this.onopen?.()), 5);
+    const off = down.has(url) || (reach !== null && !reach.has(url));
+    setTimeout(() => (off ? this.onclose?.() : this.onopen?.()), 5);
   }
   private deliver(b: number[] | Uint8Array) {
     const a = Uint8Array.from(b);
@@ -111,6 +113,24 @@ test("relay delivers a max size skin through brokers that cap message size, and 
   assert.equal(got[0].from, a.id);
   assert.equal(dec.decode(got[0].body), dec.decode(body));
   assert.equal(dec.decode(got[1].body), '{"t":"chat"}');
+  ra.close();
+  rb.close();
+});
+
+test("a peer that reaches only the last live broker still hears the sender", async () => {
+  down.clear();
+  const { key, topic } = await roomKeys(newRoomCode());
+  const [a, b] = await Promise.all([newIdentity(), newIdentity()]);
+  const got: string[] = [];
+  const ra = createRelay(topic, a, key, () => {});
+  reach = new Set(["wss://test.mosquitto.org:8081/mqtt"]);
+  const rb = createRelay(topic, b, key, (_from, _kind, body) => got.push(dec.decode(body)));
+  reach = null;
+  await wait(100);
+  assert.equal(rb.up, 1);
+  ra.publish(1, enc.encode('{"t":"hello"}'), false);
+  for (let i = 0; i < 50 && !got.length; i++) await wait(20);
+  assert.deepEqual(got, ['{"t":"hello"}']);
   ra.close();
   rb.close();
 });

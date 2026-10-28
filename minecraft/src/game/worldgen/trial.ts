@@ -35,7 +35,7 @@ function vault(f: Frame, a: number, y: number, b: number, h: number, ominous = f
   const x = wx(f, a, b), z = wz(f, a, b);
   if (!f.w.inside(x, z)) return;
   f.w.set(x, f.y + y, z, S(B.vault, hz(f, h) | (ominous ? 8 : 0)));
-  const data = ominous ? { key: "ominous_trial_key", ominous: true, lootTable: "trial_chambers_reward_ominous" } : { key: "trial_key", lootTable: "trial_chambers_reward" };
+  const data = ominous ? { key: "ominous_trial_key", ominous: true, lootTable: "trial_chambers_reward_ominous" } : { key: "trial_key", ominous: false, lootTable: "trial_chambers_reward" };
   f.w.blockEntities.push({ x, y: f.y + y, z, type: "vault", data });
 }
 

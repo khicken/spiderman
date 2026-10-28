@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Entity, GameCtx, MobDef, MobModel } from "../../contracts";
+import { globalSound } from "../../mechanics/util";
 import { applyPhysics, canSee, knockBody, playerTargetable, rotlerp, yawTo } from "../ai";
 import { explodeAt } from "../explosion";
 import { hurtAmount, nearby, num, particles, sound } from "./brain";
@@ -55,7 +56,7 @@ function dyingTick(e: Entity, ctx: GameCtx): void {
   const p = b.pos;
   if (t >= 180 && t <= 200) particles(ctx, "explosion", p.x + (ctx.random() - 0.5) * 8, p.y + 2 + (ctx.random() - 0.5) * 4, p.z + (ctx.random() - 0.5) * 8, 1);
   if (t > 150 && t % 5 === 0) ctx.entities.dropXp(Math.floor(total * 0.08), p.x, p.y, p.z);
-  if (t === 1) sound(ctx, e, "entity.ender_dragon.death", 1000);
+  if (t === 1) globalSound(ctx, "entity.ender_dragon.death", p.x, p.y, p.z, 5);
   if (t < 200) return;
   ctx.entities.dropXp(Math.floor(total * 0.2), p.x, p.y, p.z);
   if (ctx.world.dim === "end") {

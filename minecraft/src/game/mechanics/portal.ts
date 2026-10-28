@@ -1,7 +1,7 @@
 import type { BlockBehavior, BlockState, GameCtx, WorldApi } from "../contracts";
 import { AIR, SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
-import { idn, isPlayerBody, sound, st } from "./util";
+import { globalSound, idn, isPlayerBody, sound, st } from "./util";
 import { rememberPortal } from "./portal-link";
 
 const OBSIDIAN = idn("obsidian");
@@ -177,7 +177,7 @@ export function completeEndPortal(ctx: GameCtx, x: number, y: number, z: number)
       if (!ringComplete(w, cx, y, cz)) continue;
       const portal = st("end_portal");
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) w.setBlock(cx + a, y, cz + b, portal, SET_NOTIFY);
-      ctx.emit({ type: "sound", name: "block.end_portal.spawn", x: cx + 0.5, y: y + 0.5, z: cz + 0.5, volume: 1 });
+      globalSound(ctx, "block.end_portal.spawn", cx + 0.5, y + 0.5, cz + 0.5);
       return;
     }
   }

@@ -11,6 +11,7 @@ export interface ExplodeOpts {
   knockback?: number; // multiplier, default 1
   source?: Entity | "player";
   wind?: boolean; // wind burst: toggles doors, levers, buttons; gust particles
+  kind?: "block" | "mob" | "tnt"; // picks the *ExplosionDropDecay rule, default block
 }
 
 const ray = new THREE.Vector3();
@@ -109,7 +110,7 @@ export function explodeAt(ctx: GameCtx, x: number, y: number, z: number, power: 
   collectBlocks(ctx, x, y, z, power);
   hurtEntities(ctx, x, y, z, power, doDamage, kbMul, o.source);
   if (wind) toggleBlocks(ctx);
-  else if (breakBlocks) destroyBlocks(ctx, power, o.fire === true);
+  else if (breakBlocks) destroyBlocks(ctx, power, o.fire === true, dropDecay(ctx, o.kind ?? "block"));
   if (wind) {
     ctx.emit({ type: "particles", kind: "gust", x, y, z, count: power > 2 ? 12 : 6 });
     ctx.emit({ type: "sound", name: "entity.wind_charge.wind_burst", x, y, z, volume: 1, pitch: 0.9 + r() * 0.2 });
@@ -191,7 +192,12 @@ function blastProtection(inv: GameCtx["inventory"]) {
   return Math.min(1, lvl * 0.15);
 }
 
-function destroyBlocks(ctx: GameCtx, power: number, fire: boolean) {
+function dropDecay(ctx: GameCtx, kind: "block" | "mob" | "tnt"): boolean {
+  if (kind === "tnt") return ctx.rules.tntExplosionDropDecay === true;
+  return (kind === "mob" ? ctx.rules.mobExplosionDropDecay : ctx.rules.blockExplosionDropDecay) !== false;
+}
+
+function destroyBlocks(ctx: GameCtx, power: number, fire: boolean, decay: boolean) {
   const w = ctx.world;
   const { tnt, fire: fireId } = tntId();
   const n = hitList.length / 3;
@@ -215,7 +221,7 @@ function destroyBlocks(ctx: GameCtx, power: number, fire: boolean) {
     }
     const def = blockDef(s);
     if (def.hardness < 0) continue;
-    if (ctx.random() < 1 / power && ctx.rules.doTileDrops !== false) {
+    if ((!decay || ctx.random() < 1 / power) && ctx.rules.doTileDrops !== false) {
       const tool = def.tool && def.tool !== "shears" ? { item: `netherite_${def.tool}`, count: 1 } : null;
       for (const st of computeDrops(s, tool, ctx.random)) ctx.entities.dropItem(st, x + 0.5, y + 0.5, z + 0.5);
     }
@@ -260,7 +266,7 @@ function toggleBlocks(ctx: GameCtx) {
 // Mob explosions (creeper, ghast fireball) leave blocks alone when mobGriefing is off.
 export function mobExplode(ctx: GameCtx, e: Entity, x: number, y: number, z: number, power: number, fire = false) {
   const grief = ctx.rules.mobGriefing;
-  explodeAt(ctx, x, y, z, power, { fire: fire && grief, breakBlocks: grief, source: e });
+  explodeAt(ctx, x, y, z, power, { fire: fire && grief, breakBlocks: grief, source: e, kind: "mob" });
 }
 
 export function windBurst(ctx: GameCtx, x: number, y: number, z: number, breeze: boolean, source?: Entity | "player") {

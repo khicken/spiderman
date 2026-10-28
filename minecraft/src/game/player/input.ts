@@ -238,7 +238,11 @@ export function createInput(canvas: HTMLElement): InputApi {
   function onMouseDown(e: MouseEvent) {
     if (!enabled) return;
     e.preventDefault();
-    if (!locked()) api.requestLock();
+    if (!locked()) {
+      api.requestLock();
+      // Vanilla: the click that grabs the mouse does not attack or use.
+      if (!lockFailed) return;
+    }
     const c = `Mouse${e.button}`;
     down(c, bindOf(c), ctrl(e));
   }
@@ -259,14 +263,19 @@ export function createInput(canvas: HTMLElement): InputApi {
   const LOCK_RETRY_MS = 1600;
   let lockAt = -Infinity;
   let lockTimer: ReturnType<typeof setTimeout> | undefined;
+  let lockFailed = false;
+  const lockFail = () => {
+    lockFailed = true;
+    retryLock();
+  };
   function tryLock() {
     lockTimer = undefined;
     if (locked() || !enabled) return;
     try {
       const r = (canvas as HTMLElement & { requestPointerLock(o?: unknown): Promise<void> | void }).requestPointerLock();
-      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(retryLock);
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(lockFail);
     } catch {
-      retryLock(); // Headless browsers have no pointer lock.
+      lockFail(); // Headless browsers have no pointer lock.
     }
   }
   function retryLock() {

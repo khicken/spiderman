@@ -131,6 +131,23 @@ export function playerKbResist(ctx: Pick<GameCtx, "inventory">) {
   return Math.min(1, r);
 }
 
+const NEUTRAL = new Set(["wolf", "bee", "enderman", "zombified_piglin", "iron_golem", "polar_bear", "piglin", "piglin_brute"]);
+
+// Vanilla NeutralMob.playerDied: with forgiveDeadPlayers, mobs angry at the player calm down unless universalAnger keeps them angry.
+export function forgiveDeadPlayer(ctx: GameCtx) {
+  if (ctx.rules.forgiveDeadPlayers === false || ctx.rules.universalAnger === true) return;
+  for (const e of ctx.entities.all()) {
+    if (e.dead || !NEUTRAL.has(e.type)) continue;
+    if (e.type === "bee") e.data.anger = 0;
+    if (e.data._target !== "player") continue;
+    e.data._target = undefined;
+    e.data._hurtBy = undefined;
+    e.data.angry = false;
+    e.data._anger = 0;
+    e.data._angerT = 0;
+  }
+}
+
 // Tamed wolves go after whatever hurt or was hurt by their owner.
 export function alertPets(ctx: GameCtx, targetId: number) {
   const target = ctx.entities.get(targetId);

@@ -55,7 +55,7 @@ function hostUses(own: Record<string, BlockBehavior>): Record<string, BlockBehav
         const inv = ctx.inventory;
         const hand = held === inv.held() ? "use" : held === inv.slots[40] ? "use_off" : null;
         const fwd = ctx.world.hostAction;
-        return fwd && hand ? fwd(hand, x, y, z, () => use(ctx, x, y, z, s, held)) : use(ctx, x, y, z, s, held);
+        return fwd && hand ? fwd(hand, x, y, z, () => use(ctx, x, y, z, s, held), ctx.player.target?.face) : use(ctx, x, y, z, s, held);
       },
     };
   }
@@ -508,7 +508,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         setBlock: (x, y, z, s, f) => send({ t: "set", dim: d, x, y, z, s, f }),
         setBlockEntity: (be, x, y, z) => send({ t: "be", dim: d, x, y, z, be: be ? JSON.parse(JSON.stringify(be)) : null }),
         setWaterlogged: (x, y, z, on) => send({ t: "wl", dim: d, x, y, z, on }),
-        action(kind, x, y, z, predict) {
+        action(kind, x, y, z, predict, face) {
           const before = kind === "bone_meal" || kind === "portal" || kind === "end_portal" ? undefined : inv?.save();
           if (predict) {
             muting = true;
@@ -518,7 +518,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
               muting = false;
             }
           }
-          send(before ? { t: "act", dim: d, kind, x, y, z, inv: before, seq: hostSeq } : { t: "act", dim: d, kind, x, y, z });
+          send(before ? { t: "act", dim: d, kind, x, y, z, inv: before, seq: hostSeq, face } : { t: "act", dim: d, kind, x, y, z });
           return true;
         },
       };

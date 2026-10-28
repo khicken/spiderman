@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Effect, Entity, GameCtx, ItemStack } from "../contracts";
 import { AIR, Face, idOf } from "../contracts";
-import { blockByName, OPAQUE } from "../blocks/registry";
+import { blockByName, blockDef, OPAQUE } from "../blocks/registry";
 import { segmentBody, bodiesTouch } from "./geom";
 import { explodeAt, mobExplode, windBurst } from "./explosion";
 import { isMob } from "./registry";
@@ -10,6 +10,8 @@ import { hitTarget } from "../mechanics/redstone";
 import { shieldFaces } from "../player/survival";
 import { advTrigger } from "../systems/advancements/bus";
 import { markProjectile } from "../systems/advancements/hooks";
+import { shatterPot } from "../systems/features/pots";
+import { breakBlock } from "../mechanics/util";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -30,6 +32,16 @@ interface Hit {
 }
 
 const hit: Hit = { kind: "block", t: 1 };
+
+// Vanilla Projectile.mayBreak and onProjectileHit for chorus flowers, decorated pots and pointed dripstone.
+export function projectileBreaks(ctx: GameCtx, e: Entity, x: number, y: number, z: number, speed = 0) {
+  if (ctx.rules.projectilesCanBreakBlocks === false) return;
+  if (typeof e.data.owner === "number" && !ctx.rules.mobGriefing) return;
+  const name = blockDef(ctx.world.getBlock(x, y, z)).name;
+  if (name === "chorus_flower") breakBlock(ctx, x, y, z, true);
+  else if (name === "decorated_pot") shatterPot(ctx, x, y, z);
+  else if (name === "pointed_dripstone" && e.type === "trident" && speed > 0.6) breakBlock(ctx, x, y, z, true);
+}
 
 function ownerEntity(ctx: GameCtx, o: Owner): Entity | "player" | undefined {
   if (o === "player") return "player";
@@ -164,6 +176,7 @@ function stick(e: Entity, ctx: GameCtx, h: Hit) {
   e.data.crit = false;
   ctx.emit({ type: "sound", name: "entity.arrow.hit", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 1, pitch: 1.2 / (ctx.random() * 0.2 + 0.9) });
   hitTarget(ctx, h.bx!, h.by!, h.bz!, b.pos.x, b.pos.y, b.pos.z, h.face ?? Face.Up, true);
+  projectileBreaks(ctx, e, h.bx!, h.by!, h.bz!);
   if (e.data.owner === "player" && blockByName("target")?.id === idOf(ctx.world.getBlock(h.bx!, h.by!, h.bz!))) {
     const pp = ctx.player.body.pos;
     advTrigger({ t: "target_hit", signal: ctx.world.getBlock(h.bx!, h.by!, h.bz!) >>> 12, distance: Math.hypot(pp.x - b.pos.x, pp.y - b.pos.y, pp.z - b.pos.z) });
@@ -266,7 +279,7 @@ export function tickThrown(e: Entity, ctx: GameCtx) {
   b.vel.multiplyScalar(inWater(ctx, e) ? 0.8 : 0.99);
   b.vel.y -= e.type === "potion" ? 0.05 : e.type === "experience_bottle" ? 0.07 : 0.03;
   if (e.age > 1200 || b.pos.y < -128) e.data._remove = true;
-  if (e.type === "ender_pearl" && e.data.owner === "player" && ctx.player.dead) e.data._remove = true;
+  if (e.type === "ender_pearl" && e.data.owner === "player" && ctx.player.dead && ctx.rules.enderPearlsVanishOnDeath !== false) e.data._remove = true;
 }
 
 function impact(e: Entity, ctx: GameCtx, h: Hit) {
@@ -276,6 +289,7 @@ function impact(e: Entity, ctx: GameCtx, h: Hit) {
     const blaze = h.entity.type === "blaze" && e.type === "snowball";
     ctx.entities.damage(h.entity.id, blaze ? 3 : 0, e.type === "snowball" ? "generic" : "generic", owner);
   } else if (h.kind === "player") ctx.player.damage(0, "generic", owner && owner !== "player" ? owner : undefined);
+  else if (h.kind === "block" && (e.type === "snowball" || e.type === "egg")) projectileBreaks(ctx, e, h.bx!, h.by!, h.bz!);
   if (e.type === "potion" && e.data.lingering) {
     ctx.emit({ type: "sound", name: "entity.splash_potion.break", x: p.x, y: p.y, z: p.z });
     ctx.entities.spawn("area_effect_cloud", p.x, Math.floor(p.y + 0.1), p.z, { potion: e.data.potion, color: e.data.color });
@@ -363,6 +377,7 @@ export function tickFireball(e: Entity, ctx: GameCtx) {
     advance(e, h.t);
     e.data._remove = true;
     if (h.entity) markProjectile(h.entity, e, ctx.time.tick);
+    if (h.kind === "block") projectileBreaks(ctx, e, h.bx!, h.by!, h.bz!);
     if (small) {
       if (h.entity && !h.entity.data.fireImmune) {
         const was = h.entity.data._fire, hp = h.entity.health;

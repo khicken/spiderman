@@ -15,9 +15,6 @@ export function entityTypes(): string[] {
   return [...out].sort();
 }
 
-// Vanilla id for our internal entity type names.
-export const vanillaType = (t: string) => (t === "xp_orb" ? "experience_orb" : t);
-
 export const targetName = (t: Target, player: string) => (t === "player" ? player : (t.data.name as string | undefined) ?? mobDef(t.type)?.displayName ?? titleCase(t.type));
 
 export const looksLikeSelector = (s: string) => s.startsWith("@") || /^[A-Za-z0-9_]{1,16}$/.test(s) && !/^[-+]?\d/.test(s);
@@ -147,7 +144,7 @@ export function selectTargets(ctx: GameCtx, s: string | undefined, player: strin
         break;
       case "gamemode": {
         if (!["survival", "creative", "adventure", "spectator"].includes(v)) return fail(`Invalid or unknown game mode '${v}'`);
-        tests.push((e) => (e === "player" && ctx.player.gameMode === v) !== not);
+        tests.push((e) => e === "player" && (ctx.player.gameMode === v) !== not);
         break;
       }
       case "level": {

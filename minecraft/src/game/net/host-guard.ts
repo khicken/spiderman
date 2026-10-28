@@ -11,7 +11,7 @@ export const RATES = {
   chat: [2, 6],
   open: [4, 12],
   skin: [0.2, 3],
-  cheap: [0.1, 4], // cheap items gained in ways the host does not model, such as berry bushes
+  cheap: [0.1, 4], // cheap items gained in ways the host does not model
 } as const satisfies Record<string, readonly [perSecond: number, burst: number]>;
 export type RateKind = keyof typeof RATES;
 
@@ -142,9 +142,11 @@ export function createGuard(save: unknown, xpTotal: number) {
       return spend(item, n);
     },
     has: (item: string) => (pending().get(item) ?? 0) > 0,
-    // A placed block uses up its item; cheap ones may come from the budget.
+    // A placed block uses up its item; cheap ones may come from the budget. Planted food was not eaten.
     place(item: string, now = performance.now()): boolean {
-      return spend(item, 1) || (!guarded(item) && cheap(1, now));
+      if (!spend(item, 1) && (guarded(item) || !cheap(1, now))) return false;
+      away({ item, count: 1 });
+      return true;
     },
 
     broke(state: BlockState, held: string | null, x: number, y: number, z: number, tick: number, xp: number) {

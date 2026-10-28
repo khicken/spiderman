@@ -117,7 +117,7 @@ export function tickBrush(ctx: GameCtx, ticks: number, slot: number): boolean {
   if (!d.item && be.data?.loot) d.item = rollArchaeology(String(d.loot), ctx.random);
   if (Number(d.count) >= REQUIRED_BRUSHES) {
     const fwd = ctx.world.hostAction;
-    if (fwd) fwd("brush", hit.x, hit.y, hit.z, () => (complete(ctx, be, name, hit.face, slot), true));
+    if (fwd) fwd("brush", hit.x, hit.y, hit.z, () => (complete(ctx, be, name, hit.face, slot), true), hit.face);
     else complete(ctx, be, name, hit.face, slot);
   } else {
     tracked.set(`${hit.x},${hit.y},${hit.z}`, be);
@@ -127,10 +127,10 @@ export function tickBrush(ctx: GameCtx, ticks: number, slot: number): boolean {
 }
 
 // The host's run of a multiplayer client's last stroke: the loot comes from the host's block entity.
-export function finishBrush(ctx: GameCtx, x: number, y: number, z: number, slot: number): boolean {
+export function finishBrush(ctx: GameCtx, x: number, y: number, z: number, slot: number, face = 2): boolean {
   const name = blockDef(ctx.world.getBlock(x, y, z)).name;
   if (!isBrushable(name)) return false;
-  complete(ctx, entity(ctx, x, y, z, name), name, 2, slot);
+  complete(ctx, entity(ctx, x, y, z, name), name, Number.isInteger(face) && face >= 0 && face < 6 ? face : 2, slot);
   return true;
 }
 

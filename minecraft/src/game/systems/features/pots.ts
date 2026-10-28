@@ -8,6 +8,7 @@ import { containerChanged } from "../../mechanics/redstone/inventory";
 import { paintBlockTexture } from "../../textures/index";
 import { potFacePixels } from "../../textures/items-iso";
 import { brightnessAt } from "../../entities/render";
+import { breakBlock } from "../../mechanics/util";
 
 // Meta bit set on pots drawn here instead of by the chunk mesher, so they can wobble and show sherds.
 export const POT_DRAWN = 4;
@@ -20,6 +21,8 @@ interface View {
   texs: THREE.Texture[];
   shades: number[];
   key: string;
+  state: number;
+  sherds: unknown;
 }
 
 const tracked = new Map<string, BlockEntityData>();
@@ -29,10 +32,21 @@ const near: Entity[] = [];
 let pending: { x: number; y: number; z: number; sherds: string[] | null; shatter: boolean; at: number }[] = [];
 let scene: THREE.Scene | null = null;
 let seenTick = -1, seenAt = 0;
+let hitByProjectile = false;
 
 const keyOf = (x: number, y: number, z: number) => `${x},${y},${z}`;
 const sherdsOf = (data: Record<string, unknown> | undefined): string[] | null =>
   Array.isArray(data?.sherds) && data!.sherds.length === 4 ? (data!.sherds as string[]) : null;
+
+// Vanilla DecoratedPotBlock.onProjectileHit: the pot cracks and drops its sherds.
+export function shatterPot(ctx: GameCtx, x: number, y: number, z: number) {
+  hitByProjectile = true;
+  try {
+    breakBlock(ctx, x, y, z, false);
+  } finally {
+    hitByProjectile = false;
+  }
+}
 
 export const breaksPot = (tool: ItemStack | null) =>
   !!tool && (tool.item === "trident" || tool.item === "mace" || !!itemDef(tool.item)?.tags?.some((t) => BREAKS_POT.has(t)));
@@ -90,7 +104,7 @@ export const POT_BEHAVIOR: BlockBehavior = {
     tracked.delete(k);
     wobbles.delete(k);
     const survival = ctx.player.gameMode === "survival" || ctx.player.gameMode === "adventure";
-    pending.push({ x, y, z, sherds: be ? sherdsOf(be.data) : null, shatter: survival && breaksPot(ctx.inventory.held()), at: ctx.time.tick });
+    pending.push({ x, y, z, sherds: be ? sherdsOf(be.data) : null, shatter: hitByProjectile || (survival && breaksPot(ctx.inventory.held())), at: ctx.time.tick });
   },
 };
 
@@ -197,7 +211,7 @@ function build(be: BlockEntityData, meta: number): View {
   const group = new THREE.Group();
   group.position.set(be.x + 0.5, be.y, be.z + 0.5);
   group.add(body);
-  return { group, mats, texs, shades, key: "" };
+  return { group, mats, texs, shades, key: "", state: -1, sherds: undefined };
 }
 
 function dropView(k: string) {
@@ -240,24 +254,35 @@ export function framePots(ctx: GameCtx) {
     scene = sc;
   }
   const p = ctx.player.body.pos;
-  for (const [k, be] of tracked) {
-    const s = ctx.world.getBlock(be.x, be.y, be.z);
+  for (const [k, old] of tracked) {
+    const s = ctx.world.getBlock(old.x, old.y, old.z);
     const isPot = blockDef(s).name === "decorated_pot";
-    const far = (be.x - p.x) ** 2 + (be.z - p.z) ** 2 > 96 * 96;
-    if (!isPot || ctx.world.getBlockEntity(be.x, be.y, be.z) !== be || far || !(metaOf(s) & POT_DRAWN)) {
+    const far = (old.x - p.x) ** 2 + (old.z - p.z) ** 2 > 96 * 96;
+    // Multiplayer clients get a new block entity object on every host update.
+    const be = isPot ? ctx.world.getBlockEntity(old.x, old.y, old.z) : undefined;
+    if (be && be !== old) tracked.set(k, be);
+    if (!isPot || !be || far || !(metaOf(s) & POT_DRAWN)) {
       dropView(k);
       if (!isPot) tracked.delete(k);
       continue;
     }
-    const vk = `${s}:${JSON.stringify(be.data?.sherds ?? null)}`;
+    const sherds = be.data?.sherds ?? null;
     let v = views.get(k);
-    if (v && v.key !== vk) {
-      dropView(k);
-      v = undefined;
+    if (v && (v.state !== s || v.sherds !== sherds)) {
+      const vk = `${s}:${JSON.stringify(sherds)}`;
+      if (v.key !== vk) {
+        dropView(k);
+        v = undefined;
+      } else {
+        v.state = s;
+        v.sherds = sherds;
+      }
     }
     if (!v) {
       v = build(be, metaOf(s));
-      v.key = vk;
+      v.key = `${s}:${JSON.stringify(sherds)}`;
+      v.state = s;
+      v.sherds = sherds;
       sc.add(v.group);
       views.set(k, v);
     }

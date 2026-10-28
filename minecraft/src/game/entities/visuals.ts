@@ -9,7 +9,7 @@ import { extraView } from "./visuals-extra";
 import { arrowGeometry, arrowMaterial, orbTextures, disposeMisc } from "./misc-art";
 import { createShadows, shadowRadius } from "./shadows";
 import { activeSettings } from "../ui/settings";
-import { createFlames, disposeFlames, type Flames } from "./fire-overlay";
+import { createFlames, type Flames } from "./fire-overlay";
 import { isBurning } from "./living";
 
 interface View {
@@ -349,7 +349,6 @@ export function createViews(getCtx: () => GameCtx) {
     dispose() {
       for (const [id, v] of views) destroy(id, v);
       shadows.dispose();
-      disposeFlames();
       disposeCaches();
       disposeMisc();
     },

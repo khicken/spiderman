@@ -107,6 +107,9 @@ function recipesFor(type: BookType): BookRecipe[] {
 const byKey = (key: string) => (key[0] === "c" ? crafts() : smelts())[Number(key.slice(1))];
 
 const unlocked = new Set<string>();
+export const craftUnlocked = (recipe: number) => unlocked.has(`c${recipe}`);
+// Bumped on every unlock change so book results can be memoized.
+let unlockVersion = 0;
 let ctxRef: (() => GameCtx) | null = null;
 const probe: ItemStack = { item: "", count: 1 };
 
@@ -117,6 +120,7 @@ export function setRecipeCtx(get: () => GameCtx) {
 function unlock(r: BookRecipe, fresh: BookRecipe[]) {
   if (unlocked.has(r.key)) return;
   unlocked.add(r.key);
+  unlockVersion++;
   fresh.push(r);
 }
 
@@ -210,7 +214,16 @@ export interface BookEntry {
   count: number;
 }
 
+let tabsMemo: { view: ContainerView; version: number; out: BookTab[] } | null = null;
+let entriesMemo: { view: ContainerView; version: number; tab: BookTab; craftableOnly: boolean; search: string; out: BookEntry[] } | null = null;
+
 export function bookTabs(view: ContainerView): BookTab[] {
+  if (tabsMemo?.view === view && tabsMemo.version === unlockVersion) return tabsMemo.out;
+  tabsMemo = { view, version: unlockVersion, out: scanTabs(view) };
+  return tabsMemo.out;
+}
+
+function scanTabs(view: ContainerView): BookTab[] {
   const type = bookTypeOf(view.kind);
   if (!type) return [];
   const gw = view.kind === "inventory" ? 2 : 3;
@@ -220,6 +233,13 @@ export function bookTabs(view: ContainerView): BookTab[] {
 
 // Vanilla RecipeBookComponent.updateCollections: recipes with the same result share one button.
 export function bookEntries(view: ContainerView, tab: BookTab, craftableOnly: boolean, search: string): BookEntry[] {
+  const m = entriesMemo;
+  if (m && m.view === view && m.version === unlockVersion && m.tab === tab && m.craftableOnly === craftableOnly && m.search === search) return m.out;
+  entriesMemo = { view, version: unlockVersion, tab, craftableOnly, search, out: scanEntries(view, tab, craftableOnly, search) };
+  return entriesMemo.out;
+}
+
+function scanEntries(view: ContainerView, tab: BookTab, craftableOnly: boolean, search: string): BookEntry[] {
   const type = bookTypeOf(view.kind);
   if (!type) return [];
   const gw = view.kind === "inventory" ? 2 : 3;
@@ -336,6 +356,7 @@ export function saveRecipes(): string[] {
 
 export function loadRecipes(data: unknown) {
   unlocked.clear();
+  unlockVersion++;
   const names = new Set(Array.isArray(data) ? (data as string[]) : []);
   for (const r of [...crafts(), ...smelts()]) if (names.has(r.unlockName)) unlocked.add(r.key);
 }

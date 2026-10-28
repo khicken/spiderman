@@ -7,6 +7,10 @@ import { advTrigger } from "./bus";
 const queue: { x: number; y: number; z: number; items: ItemStack[]; next: number }[] = [];
 let who = () => "Player";
 
+// Old saves mark a looted vault with rewarded: true and no player names, so it stays looted for everyone.
+const isRewarded = (data: Record<string, unknown>) =>
+  data.rewarded === true || (Array.isArray(data.rewardedPlayers) && (data.rewardedPlayers as string[]).includes(who()));
+
 // Vanilla vault: each player can unlock it once (rewarded_players); it keeps the key and ejects its loot one stack at a time.
 const useVault: NonNullable<BlockBehavior["use"]> = (ctx, x, y, z, _s, held) => {
   const w = ctx.world;
@@ -14,8 +18,8 @@ const useVault: NonNullable<BlockBehavior["use"]> = (ctx, x, y, z, _s, held) => 
   const data = (be.data ??= {});
   const key = (data.key as string) ?? (data.ominous ? "ominous_trial_key" : "trial_key");
   if (held?.item !== key) return false;
-  const rewarded = Array.isArray(data.rewardedPlayers) ? (data.rewardedPlayers as string[]) : data.rewarded === true ? ["Player"] : [];
-  if (rewarded.includes(who()) || queue.some((q) => q.x === x && q.y === y && q.z === z)) {
+  const rewarded = Array.isArray(data.rewardedPlayers) ? (data.rewardedPlayers as string[]) : [];
+  if (isRewarded(data) || queue.some((q) => q.x === x && q.y === y && q.z === z)) {
     ctx.emit({ type: "sound", name: "block.vault.insert_item_fail", x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     return true;
   }
@@ -69,7 +73,7 @@ function vaultLook(ctx: GameCtx, be: BlockEntityData) {
   const data = be.data ?? {};
   const p = ctx.player.body.pos;
   const d2 = (p.x - be.x - 0.5) ** 2 + (p.y - be.y - 0.5) ** 2 + (p.z - be.z - 0.5) ** 2;
-  const rewarded = Array.isArray(data.rewardedPlayers) && (data.rewardedPlayers as string[]).includes(who());
+  const rewarded = isRewarded(data);
   const on = metaOf(s) & 4 ? d2 <= 4.5 * 4.5 : d2 <= 16;
   const busy = queue.some((q) => q.x === be.x && q.y === be.y && q.z === be.z);
   const ominous = data.ominous === true || data.key === "ominous_trial_key";

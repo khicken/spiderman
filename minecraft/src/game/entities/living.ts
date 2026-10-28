@@ -44,13 +44,17 @@ function pitch(e: Entity, ctx: GameCtx) {
 }
 
 export function hurtSound(e: Entity, ctx: GameCtx, def: MobDef) {
+  const name = def.sounds?.hurt ?? "entity.generic.hurt";
+  if (!name) return;
   const p = e.body.pos;
-  ctx.emit({ type: "sound", name: def.sounds?.hurt ?? "entity.generic.hurt", x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
+  ctx.emit({ type: "sound", name, x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
 }
 
 export function deathSound(e: Entity, ctx: GameCtx, def: MobDef) {
+  const name = def.sounds?.death ?? "entity.generic.death";
+  if (!name) return;
   const p = e.body.pos;
-  ctx.emit({ type: "sound", name: def.sounds?.death ?? "entity.generic.death", x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
+  ctx.emit({ type: "sound", name, x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
 }
 
 export function ambientTick(e: Entity, ctx: GameCtx, def: MobDef) {

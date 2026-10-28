@@ -15,8 +15,7 @@ interface Avatar {
   hand: HandView;
   off: ReturnType<typeof createHeldSlot>;
   armor: ArmorLayer;
-  tag: THREE.Sprite;
-  tagTex: THREE.Texture;
+  tag: NameTag;
   pos: THREE.Vector3;
   yaw: number;
   bodyYaw: number;
@@ -29,27 +28,59 @@ interface Avatar {
   cape: Cape | null;
 }
 
-function nameTagSprite(name: string): { sprite: THREE.Sprite; tex: THREE.Texture } {
+interface NameTag {
+  group: THREE.Group;
+  through: THREE.Sprite;
+  front: THREE.Sprite;
+}
+
+// Vanilla renderNameTag: a see-through pass (black box at 25% alpha, text at 0x20FFFFFF) drawn over blocks,
+// then white text that blocks hide. Sneaking draws only the first pass, depth tested.
+function nameTag(name: string): NameTag {
   const r = rasterText(name, 0xffffff, false);
   const w = r.width + 2, h = r.height + 1;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const g = canvas.getContext("2d")!;
-  g.fillStyle = "rgba(0,0,0,0.25)";
-  g.fillRect(0, r.top, w, h - r.top);
-  g.putImageData(new ImageData(r.data as Uint8ClampedArray<ArrayBuffer>, r.width, r.height), 1, 1);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-  const s = 0.025;
-  sprite.scale.set(w * s, h * s, 1);
-  // Glyphs taller than the line poke out above the box; the box stays where a plain name sits.
-  sprite.center.set(0.5, (h - r.top) / 2 / h);
-  sprite.renderOrder = 10;
-  return { sprite, tex };
+  const sprite = (box: boolean, alpha: number, depthTest: boolean, order: number) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d")!;
+    if (box) {
+      g.fillStyle = "rgba(0,0,0,0.25)";
+      g.fillRect(0, r.top, w, h - r.top);
+    }
+    const text = new Uint8ClampedArray(r.data);
+    for (let i = 3; i < text.length; i += 4) text[i] = Math.round(text[i] * alpha);
+    const t = document.createElement("canvas");
+    t.width = r.width;
+    t.height = r.height;
+    t.getContext("2d")!.putImageData(new ImageData(text, r.width, r.height), 0, 0);
+    g.drawImage(t, 1, 1);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest, fog: false, toneMapped: false }));
+    const s = 0.025;
+    sp.scale.set(w * s, h * s, 1);
+    // Glyphs taller than the line poke out above the box; the box stays where a plain name sits.
+    sp.center.set(0.5, (h - r.top) / 2 / h);
+    sp.renderOrder = order;
+    return sp;
+  };
+  const group = new THREE.Group();
+  const through = sprite(true, 0x20 / 255, false, 10);
+  const front = sprite(false, 1, true, 11);
+  group.add(through, front);
+  return { group, through, front };
+}
+
+function sneakTag(t: NameTag, sneak: boolean) {
+  const m = t.through.material as THREE.SpriteMaterial;
+  if (m.depthTest !== sneak) {
+    m.depthTest = sneak;
+    m.needsUpdate = true;
+  }
+  t.front.visible = !sneak;
 }
 
 const lerpAngle = (a: number, b: number, t: number) => {
@@ -84,20 +115,23 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
     const hand = createHand(model, meshes());
     const off = createHeldSlot(meshes(), -1);
     const armor = createArmorLayer(model.model.parts, true);
-    const { sprite, tex } = nameTagSprite(s.name);
-    sprite.position.set(0, 2.1, 0);
-    model.model.root.add(sprite);
+    const tag = nameTag(s.name);
+    tag.group.position.set(0, 2.1, 0);
+    model.model.root.add(tag.group);
     getCtx().renderer.scene.add(model.model.root);
     model.model.root.userData.shadowRadius = 0.5;
     model.model.root.scale.setScalar(0.9375);
-    return { snap: s, model, hand, off, armor, tag: sprite, tagTex: tex, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0, cape };
+    return { snap: s, model, hand, off, armor, tag, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0, cape };
   }
 
   function free(a: Avatar) {
     a.model.model.root.removeFromParent();
-    a.tag.removeFromParent();
-    (a.tag.material as THREE.SpriteMaterial).dispose();
-    a.tagTex.dispose();
+    a.tag.group.removeFromParent();
+    for (const sp of [a.tag.through, a.tag.front]) {
+      const m = sp.material as THREE.SpriteMaterial;
+      m.map?.dispose();
+      m.dispose();
+    }
     a.armor.dispose();
     a.cape?.dispose();
     a.hand.dispose();
@@ -190,7 +224,8 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
         });
         root.rotation.order = "YXZ";
         root.rotation.x = sleep ? -Math.PI / 2 : (s.f & F.swim) !== 0 ? Math.PI / 2 - a.pitch : 0;
-        a.tag.position.y = sleep ? 0.3 : sneak ? 1.95 : 2.1;
+        a.tag.group.position.y = sleep ? 0.3 : sneak ? 1.95 : 2.1;
+        sneakTag(a.tag, sneak);
         const light = brightnessAt(ctx, a.pos.x, a.pos.y + 1, a.pos.z);
         const hurt = a.hurt > 0;
         a.model.setLight(light, hurt);

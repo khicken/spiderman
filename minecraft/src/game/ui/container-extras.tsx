@@ -16,9 +16,10 @@ import { BH, BW, bannerPixels, type Layer } from "../systems/features/banner-art
 import { mapPaperUrl, mapPreviewUrl } from "../systems/features/map-render";
 
 const bannerUrl = (base: string, layers: Layer[], scale: number) => {
-  const px = bannerPixels(base, layers);
+  let px: Uint8ClampedArray | null = null;
   const w = Math.floor(BW / scale), h = Math.floor(BH / scale);
   return pixelUrl(`banner:${base}:${scale}:${JSON.stringify(layers)}`, w, h, (x, y) => {
+    px ??= bannerPixels(base, layers);
     const o = (Math.floor((y + 0.5) * scale) * BW + Math.floor((x + 0.5) * scale)) * 4;
     return (0xff000000 | (px[o] << 16) | (px[o + 1] << 8) | px[o + 2]) >>> 0;
   });

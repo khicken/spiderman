@@ -48,13 +48,14 @@ export function crystalModel(): MobModel {
   m.root.add(beam);
   const local = new THREE.Vector3();
   const world = new THREE.Vector3();
+  const parts = [outer, inner, heart];
   return {
     root: m.root,
     animate(e, pt) {
       const age = e.age + pt;
       const bob = Math.sin(age * 0.2) / 2 + 0.5;
       const y = 1.2 + (bob * bob + bob) * 0.4;
-      for (const o of [outer, inner, heart]) o.position.y = y;
+      for (const o of parts) o.position.y = y;
       outer.rotation.set(age * 0.05, age * 0.06, 0);
       inner.rotation.set(-age * 0.07, age * 0.04, age * 0.05);
       heart.rotation.set(age * 0.03, -age * 0.08, 0);

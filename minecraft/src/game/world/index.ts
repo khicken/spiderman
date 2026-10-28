@@ -30,7 +30,7 @@ export interface RemoteLink {
   setBlock(x: number, y: number, z: number, s: BlockState, flags: number): void;
   setBlockEntity(be: BlockEntityData | null, x: number, y: number, z: number): void;
   setWaterlogged(x: number, y: number, z: number, on: boolean): void;
-  action?(kind: HostAction, x: number, y: number, z: number, predict?: () => boolean): boolean;
+  action?(kind: HostAction, x: number, y: number, z: number, predict?: () => boolean, face?: number): boolean;
 }
 
 export interface KeepCenter {
@@ -456,7 +456,7 @@ export function createWorld(opts: WorldOpts): World {
       return true;
     },
     hostAction: remote?.action
-      ? (kind, x, y, z, predict) =>
+      ? (kind, x, y, z, predict, face) =>
           remote.action!(kind, x, y, z, predict && (() => {
             muted = true;
             try {
@@ -464,7 +464,7 @@ export function createWorld(opts: WorldOpts): World {
             } finally {
               muted = false;
             }
-          }))
+          }), face)
       : undefined,
     meshInput: (cx, sy, cz) => buildMeshInput(store, cx, sy, cz, hasSky),
     on(fn) {

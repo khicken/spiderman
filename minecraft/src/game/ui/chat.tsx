@@ -48,12 +48,14 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
   const draft = useRef("");
   const tab = useRef<{ base: string; start: number; list: string[]; i: number } | null>(null);
   const [sel, setSel] = useState(0);
+  const [quiet, setQuiet] = useState(false);
   const input = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (open) {
       setValue(initial);
       histPos.current = -1;
+      setQuiet(false);
       setScroll(0);
       requestAnimationFrame(() => input.current?.focus());
     }
@@ -82,12 +84,13 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
       if (el) el.setSelectionRange(el.value.length, el.value.length);
     });
 
-  const sug = open && suggest && value.startsWith("/") ? suggest(value) : null;
+  const sug = open && suggest && !quiet && value.startsWith("/") ? suggest(value) : null;
   const shown = tab.current ? tab.current.list : sug?.list ?? [];
   const pick = tab.current ? tab.current.i : Math.min(sel, Math.max(0, shown.length - 1));
 
   const edit = (v: string) => {
     tab.current = null;
+    setQuiet(false);
     setSel(0);
     setValue(v);
   };
@@ -104,6 +107,7 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
       else {
         setValue("");
         histPos.current = -1;
+        setQuiet(false);
       }
     } else if (e.key === "Escape") onClose();
     else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && shown.length) {
@@ -131,13 +135,17 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
         histPos.current = p;
         setValue(h[p]);
       }
+      tab.current = null;
+      setQuiet(true);
       setCaretEnd();
     } else if (e.key === "Tab") {
       e.preventDefault();
-      if (sug) {
+      const cur = quiet && suggest && value.startsWith("/") ? suggest(value) : sug;
+      setQuiet(false);
+      if (cur) {
         if (!tab.current) {
-          if (!sug.list.length) return;
-          tab.current = { base: value, start: sug.start, list: sug.list, i: pick };
+          if (!cur.list.length) return;
+          tab.current = { base: value, start: cur.start, list: cur.list, i: quiet ? 0 : pick };
         } else tab.current.i = (tab.current.i + (e.shiftKey ? tab.current.list.length - 1 : 1)) % tab.current.list.length;
         const t = tab.current;
         setValue(value.slice(0, t.start) + t.list[t.i]);

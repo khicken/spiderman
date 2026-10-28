@@ -3,6 +3,7 @@ import { paintBlockTexture } from "../textures";
 import { ANIMATED, paintFrame } from "../textures/animated";
 
 // The fire_0 and fire_1 sprites as vertical frame strips, animated at one frame per tick like the block.
+// Shared with the player overlay and screen effect, so these live for the whole session and are never disposed.
 let strips: THREE.DataTexture[] | null = null;
 let mats: THREE.MeshBasicMaterial[] | null = null;
 const geos = new Map<number, THREE.BufferGeometry>();
@@ -92,13 +93,4 @@ export function createFlames(): Flames {
       mesh.rotation.set(0, euler.y, 0);
     },
   };
-}
-
-export function disposeFlames() {
-  for (const g of geos.values()) g.dispose();
-  geos.clear();
-  for (const m of mats ?? []) m.dispose();
-  for (const t of strips ?? []) t.dispose();
-  mats = null;
-  strips = null;
 }

@@ -115,6 +115,15 @@ export function dropBlock(ctx: GameCtx, s: BlockState, x: number, y: number, z: 
   for (let i = 0; i < drops.length; i++) dropStack(ctx, drops[i], x, y, z);
 }
 
+// Vanilla globalLevelEvent: with globalSoundEvents the player hears it 2 blocks away toward the source, else it plays at the source.
+export function globalSound(ctx: GameCtx, name: string, x: number, y: number, z: number, volume = 1) {
+  if (ctx.rules.globalSoundEvents === false) return ctx.emit({ type: "sound", name, x, y, z, volume });
+  const p = ctx.player.body.pos, ey = p.y + 1.62;
+  const dx = x - p.x, dy = y - ey, dz = z - p.z, d = Math.hypot(dx, dy, dz);
+  const k = d > 2 ? 2 / d : 1;
+  ctx.emit({ type: "sound", name, x: p.x + dx * k, y: ey + dy * k, z: p.z + dz * k, volume });
+}
+
 export function breakBlock(ctx: GameCtx, x: number, y: number, z: number, drop: boolean) {
   const s = ctx.world.getBlock(x, y, z);
   if (isAir(s)) return;

@@ -33,6 +33,7 @@ const FLOORS: Record<string, string[]> = {
   turtle: ["sand"],
   ocelot: ["grass_block", "jungle_leaves", "oak_leaves"],
 };
+const STRIDE = 4;
 const MOON_BRIGHTNESS = [1, 0.75, 0.5, 0.25, 0, 0.25, 0.5, 0.75];
 
 export function spawnCat(def: MobDef): SpawnCat | null {
@@ -442,7 +443,10 @@ export function createSpawner() {
         if (cat === "hostile" && ctx.rules.difficulty === "peaceful") continue;
         if (cat === "passive" && !passive) continue;
         const cap = Math.floor(CAPS[cat] * scale * capMul);
-        for (let i = 0; i < chunkX.length && counts[cat] < cap; i++) attempt(ctx, cat, cap, darken, chunkX[i], chunkZ[i]);
+        if (counts[cat] >= cap) continue;
+        // Minor categories try a rotating quarter of the chunks each tick to keep the tick cheap.
+        const step = cat === "hostile" || cat === "passive" ? 1 : STRIDE;
+        for (let i = step === 1 ? 0 : ctx.time.tick % step; i < chunkX.length && counts[cat] < cap; i += step) attempt(ctx, cat, cap, darken, chunkX[i], chunkZ[i]);
       }
     },
     despawn(ctx: GameCtx, e: Entity, def: MobDef) {

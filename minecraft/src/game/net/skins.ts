@@ -84,17 +84,35 @@ export function paintAlex(img: Canvas) {
   }
 }
 
+// Width and height from the PNG header, read before decoding so a huge image never decodes.
+export function pngSize(url: string): [number, number] | null {
+  let b: string;
+  try {
+    b = atob(url.slice(PNG.length, PNG.length + 32));
+  } catch {
+    return null;
+  }
+  const sig = "\x89PNG\r\n\x1a\n";
+  if (b.length < 24 || b.slice(0, 8) !== sig || b.slice(12, 16) !== "IHDR") return null;
+  const u32 = (i: number) => ((b.charCodeAt(i) << 24) | (b.charCodeAt(i + 1) << 16) | (b.charCodeAt(i + 2) << 8) | b.charCodeAt(i + 3)) >>> 0;
+  return [u32(16), u32(20)];
+}
+
 export async function decodePng(url: string | undefined, w: number, h: number): Promise<Canvas | null> {
   if (!okPng(url)) return null;
+  const size = pngSize(url);
+  if (!size || size[0] !== w || size[1] !== h) return null;
+  let bmp: ImageBitmap | null = null;
   try {
-    const bmp = await createImageBitmap(await (await fetch(url)).blob());
+    bmp = await createImageBitmap(await (await fetch(url)).blob());
     if (bmp.width !== w || bmp.height !== h) return null;
     const { canvas, ctx } = makeSkin(w, h);
     ctx.drawImage(bmp, 0, 0);
-    bmp.close();
     return canvas;
   } catch {
     return null;
+  } finally {
+    bmp?.close();
   }
 }
 

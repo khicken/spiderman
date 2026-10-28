@@ -105,7 +105,7 @@ export function armorReduce(dmg: number, armor: number, toughness: number): numb
 
 export const protectionReduce = (dmg: number, epf: number) => dmg * (1 - Math.max(0, Math.min(epf, 20)) / 25);
 
-export const BYPASS_ARMOR: ReadonlySet<DamageSource> = new Set<DamageSource>(["fall", "drown", "starve", "void", "suffocate", "magic", "wither", "generic", "freeze", "fly_into_wall", "sonic_boom"]);
+export const BYPASS_ARMOR: ReadonlySet<DamageSource> = new Set<DamageSource>(["fall", "drown", "starve", "void", "suffocate", "magic", "wither", "generic", "freeze", "fly_into_wall", "sonic_boom", "cramming"]);
 
 export function fallDamage(fallDistance: number, multiplier: number, jumpBoost: number): number {
   return Math.max(0, Math.ceil((fallDistance - 3 - jumpBoost) * multiplier));
@@ -181,6 +181,7 @@ export function deathMessage(source: DamageSource, attackerType?: string, fell =
     case "fly_into_wall": return `${p} experienced kinetic energy`;
     case "trident": return `${p} was impaled by ${by || "a trident"}`;
     case "sonic_boom": return `${p} was obliterated by a sonically-charged shriek`;
+    case "cramming": return `${p} was squished too much`;
     default: return `${p} died`;
   }
 }
