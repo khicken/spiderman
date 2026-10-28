@@ -158,9 +158,10 @@ function useBasic(m: BoxModel, mat: THREE.MeshBasicMaterial) {
   });
 }
 
-export function createPlayerModel(opts: { slim?: boolean } = {}): PlayerModel {
+// custom: an uploaded skin, which resource packs do not replace.
+export function createPlayerModel(opts: { slim?: boolean; skin?: HTMLCanvasElement | OffscreenCanvas; custom?: boolean } = {}): PlayerModel {
   const slim = !!opts.slim;
-  const canvas = paintSteveSkin();
+  const canvas = opts.skin ?? paintSteveSkin();
   const model = boxModel(canvas, playerParts(slim));
   const arm = boxModel(canvas, armParts(slim));
   arm.root.rotation.x = Math.PI;
@@ -183,7 +184,7 @@ export function createPlayerModel(opts: { slim?: boolean } = {}): PlayerModel {
     material,
     skin,
     setLight(v, hurt) {
-      syncPackSkin(skinType, model.root, material);
+      if (!opts.custom) syncPackSkin(skinType, model.root, material);
       if (hurt) material.color.setRGB(Math.min(1, v * 1.2 + 0.3), v * 0.45, v * 0.45);
       else material.color.setScalar(v);
     },

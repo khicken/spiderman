@@ -114,27 +114,33 @@ const HEART = [
 ];
 const HEART_HC = HEART.map((r, y) => (y === 1 ? "KwwrKrwrK" : y === 0 ? ".KwK.KwK." : r));
 
-export type HeartKind = "normal" | "poisoned" | "withered" | "absorbing" | "frozen";
+export type HeartKind = "normal" | "poisoned" | "withered" | "absorbing" | "frozen" | "vehicle";
 const HEART_COLORS: Record<HeartKind, [number, number, number]> = {
   normal: [0xff1313, 0xffbcbc, 0xb00000],
   poisoned: [0x94ab1b, 0xd8e47c, 0x5c740c],
   withered: [0x2f2f2f, 0x767676, 0x141414],
   absorbing: [0xe8b800, 0xfff2a8, 0xa87c00],
   frozen: [0x7fd6f8, 0xe4f8ff, 0x3f97c8],
+  vehicle: [0xff1313, 0xffbcbc, 0xb00000],
 };
 
+// Blinking fills are the health lost in the last second, drawn lighter under the current hearts.
 export function heartPath(kind: HeartKind, fill: "full" | "half" | "empty", hardcore = false, blink = false): string {
   const hc = hardcore ? "_hardcore" : "";
+  if (kind === "vehicle") return `gui/sprites/hud/heart/vehicle_${fill === "empty" ? "container" : fill}`;
   if (fill === "empty") return `gui/sprites/hud/heart/container${hc}${blink ? "_blinking" : ""}`;
   const pre = kind === "normal" ? "" : `${kind}_`;
-  return `gui/sprites/hud/heart/${pre}${hardcore ? "hardcore_" : ""}${fill}`;
+  return `gui/sprites/hud/heart/${pre}${hardcore ? "hardcore_" : ""}${fill}${blink ? "_blinking" : ""}`;
 }
+
+const whiten = (c: number) => (((((c >> 16) & 255) + 255) >> 1) << 16) | (((((c >> 8) & 255) + 255) >> 1) << 8) | (((c & 255) + 255) >> 1);
 
 export function heartUrl(kind: HeartKind, fill: "full" | "half" | "empty", hardcore = false, blink = false): string {
   const pack = packUrl(heartPath(kind, fill, hardcore, blink), 9, 9);
   if (pack) return pack;
-  const rows = hardcore ? HEART_HC : HEART;
-  const [r, w, d] = HEART_COLORS[kind];
+  const rows = hardcore && kind !== "vehicle" ? HEART_HC : HEART;
+  const tint = blink && fill !== "empty" ? whiten : (c: number) => c;
+  const [r, w, d] = HEART_COLORS[kind].map(tint);
   return pixelUrl(`heart:${kind}:${fill}:${hardcore}:${blink}`, 9, 9, (x, y) => {
     const ch = rows[y][x];
     if (ch === ".") return 0;
@@ -430,6 +436,15 @@ const EMPTY_SLOT: Record<string, string[]> = {
     "", "...##########", "...##########", "...##########", "...##########", "...##########", "...##########", "...##########",
     "....########", "....########", ".....######", "......####",
   ],
+  saddle: [
+    "", "", "", "..##.......##", "..###.....###", "...#########", "...#########", "....#######", "....#.....#", "....#.....#", "....#.....#",
+    "...###...###", "...###...###",
+  ],
+  horse_armor: [
+    "", "........##", ".......####", "......######", ".....#######", "...#########", "..####.######", "..##...#######", ".......########",
+    "........#######", ".........######", "..........####",
+  ],
+  llama_armor: ["", "", "", "", "..############", "..############", "..############", "..############", "..############", "..#.#.#.#.#.#"],
 };
 
 export type EmptySlotKind = keyof typeof EMPTY_SLOT;
@@ -475,9 +490,11 @@ const CONTAINER_BG: Record<string, string> = {
   inventory: "inventory", crafting_table: "crafting_table", furnace: "furnace", blast_furnace: "blast_furnace", smoker: "smoker",
   shulker_box: "shulker_box", dispenser: "dispenser", dropper: "dispenser", hopper: "hopper",
   chest: "generic_54", barrel: "generic_54", ender_chest: "generic_54", large_chest: "generic_54",
+  crafter: "crafter", anvil: "anvil", enchanting_table: "enchanting_table", brewing_stand: "brewing_stand", grindstone: "grindstone",
+  stonecutter: "stonecutter", smithing_table: "smithing", loom: "loom", cartography_table: "cartography_table", villager: "villager", beacon: "beacon",
 };
 
-// Vanilla gui/container/<name>.png backgrounds (256x256 sheets, panel at the top-left). Chests use the two-part generic_54 sheet.
+// Vanilla gui/container/<name>.png backgrounds (256x256 sheets, villager 512x256, panel at the top-left). Chests use the two-part generic_54 sheet.
 export function containerBg(kind: string, w: number, h: number): ContainerBg | null {
   const name = CONTAINER_BG[kind];
   if (!name || !activePacks().length) return null;
@@ -485,14 +502,15 @@ export function containerBg(kind: string, w: number, h: number): ContainerBg | n
   if (!src) return null;
   checkPacks();
   const key = `bg:${kind}:${w}:${h}`;
-  const k = src.w / 256;
+  const base = name === "villager" ? 512 : 256;
+  const k = src.w / base;
   const cut = (x: number, y: number, cw: number, ch: number) => {
     const ck = `${key}:${x}:${y}:${cw}:${ch}`;
     let u = CACHE.get(ck);
     if (!u) {
       const out: Img = { w: cw, h: ch, data: new Uint8ClampedArray(cw * ch * 4) };
-      const scaled = resize(src, 256, Math.round(src.h / k));
-      for (let yy = 0; yy < ch; yy++) out.data.set(scaled.data.subarray(((y + yy) * 256 + x) * 4, ((y + yy) * 256 + x + cw) * 4), yy * cw * 4);
+      const scaled = resize(src, base, Math.round(src.h / k));
+      for (let yy = 0; yy < ch; yy++) out.data.set(scaled.data.subarray(((y + yy) * base + x) * 4, ((y + yy) * base + x + cw) * 4), yy * cw * 4);
       u = imgUrl(out);
       CACHE.set(ck, u);
     }
@@ -504,3 +522,43 @@ export function containerBg(kind: string, w: number, h: number): ContainerBg | n
   }
   return { url: cut(0, 0, w, h) };
 }
+
+export const hasContainerBg = (kind: string) => !!CONTAINER_BG[kind] && activePacks().length > 0 && !!packImage(`gui/container/${CONTAINER_BG[kind]}`);
+
+// A pack's gui/sprites/container/<path> at w x h; "" when no selected pack has it.
+export const containerSprite = (path: string, w: number, h: number) => packUrl(`gui/sprites/container/${path}`, w, h);
+
+// Progress sprite cropped like vanilla: the left cw columns, or ch rows from the top (or bottom when fromBottom).
+export function containerProgress(path: string, w: number, h: number, cw: number, ch: number, fromBottom = false): string {
+  const full = `gui/sprites/container/${path}`;
+  if (capture !== undefined || !activePacks().length || !packImage(full)) return "";
+  return packCrop(full, w, h, cw, ch, fromBottom);
+}
+
+export interface Art {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  c?: number; // 0xAARRGGBB fill
+  url?: () => string;
+}
+
+// Static widgets our panel draws where vanilla's gui/container sheet has them baked in.
+const track = (x: number, y: number, h: number): Art[] => [
+  { x, y, w: 12, h, c: 0xff8b8b8b }, { x, y, w: 12, h: 1, c: 0xff373737 }, { x, y, w: 1, h, c: 0xff373737 },
+  { x, y: y + h - 1, w: 12, h: 1, c: 0xffffffff }, { x: x + 11, y: y + 1, w: 1, h: h - 1, c: 0xffffffff },
+];
+export const CONTAINER_ART: Record<string, Art[]> = {
+  anvil: [{ x: 55, y: 54, w: 13, h: 3, c: 0xff8b8b8b }, { x: 60, y: 49, w: 3, h: 13, c: 0xff8b8b8b }, { x: 100, y: 48, w: 22, h: 15, url: () => arrowUrl(0) }],
+  grindstone: [{ x: 92, y: 35, w: 22, h: 15, url: () => arrowUrl(0) }],
+  smithing_table: [{ x: 68, y: 49, w: 22, h: 15, url: () => arrowUrl(0) }, { x: 120, y: 20, w: 48, h: 56, c: 0x40000000 }],
+  cartography_table: [{ x: 67, y: 13, w: 66, h: 66, c: 0xff4a3b2a }],
+  enchanting_table: [{ x: 60, y: 14, w: 108, h: 57, c: 0xff3f3a30 }],
+  brewing_stand: [
+    { x: 60, y: 44, w: 18, h: 4, c: 0xff373737 }, { x: 97, y: 16, w: 9, h: 28, c: 0xff8b8b8b },
+    { x: 62, y: 33, w: 1, h: 18, c: 0xff555555 }, { x: 113, y: 33, w: 1, h: 18, c: 0xff555555 }, { x: 63, y: 32, w: 51, h: 1, c: 0xff555555 },
+  ],
+  stonecutter: track(119, 15, 54),
+  loom: track(119, 13, 56),
+};

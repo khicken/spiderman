@@ -113,12 +113,12 @@ const rainTick: NonNullable<BlockBehavior["randomTick"]> = (ctx, x, y, z, s) => 
 };
 
 function onFire(ctx: GameCtx, body: unknown, entity: { data: Record<string, unknown> } | null): boolean {
-  if (entity) return ((entity.data.fireTicks as number | undefined) ?? 0) > 0;
+  if (entity) return ((entity.data._fire as number | undefined) ?? 0) > 0;
   return isPlayerBody(ctx, body) && ((ctx.player as unknown as { fireTicks?: number }).fireTicks ?? 0) > 0;
 }
 
 function extinguish(ctx: GameCtx, body: unknown, entity: { data: Record<string, unknown> } | null) {
-  if (entity) entity.data.fireTicks = 0;
+  if (entity) entity.data._fire = 0;
   else if (isPlayerBody(ctx, body)) (ctx.player as unknown as { fireTicks?: number }).fireTicks = 0;
 }
 

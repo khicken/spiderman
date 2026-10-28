@@ -4,7 +4,8 @@ import { blockDef } from "../../blocks/registry";
 import { blockBelow, moveBody, type MoveOpts } from "../../player/physics";
 import { isWater } from "../ai";
 import { rig, wrap, setRot, type VPart } from "../rig";
-import { rider, mountPlayer } from "../riding";
+import { rider, mountPlayer, mountMob, registerSeats, hasRoom, isAnimal } from "../riding";
+import { mobDef } from "../registry";
 import { blockCube, blockStateOfItem } from "../block-cube";
 import { boatSkin } from "./art";
 
@@ -106,6 +107,55 @@ function landFriction(ctx: GameCtx, e: Entity) {
   return blockDef(blockBelow(ctx.world, e.body)).slipperiness ?? 0.6;
 }
 
+// Vanilla Boat.getPassengerAttachmentPoint: with two riders the driver sits 0.2 forward and the other 0.6 back; animals sit 0.2 further forward.
+function boatSeat(seats: number) {
+  return {
+    seats,
+    at(v: Entity, i: number, n: number, p: Entity | null): [number, number] {
+      let fwd = 0;
+      if (n > 1) fwd = i === 0 ? 0.2 : -0.6;
+      if (p && isAnimal(p)) fwd += 0.2;
+      return [p ? 0.1 : -0.45, fwd];
+    },
+  };
+}
+registerSeats("boat", boatSeat(2));
+registerSeats("chest_boat", boatSeat(1));
+
+const touching: Entity[] = [];
+
+// Vanilla Boat.tick: when no player steers, mobs narrower than the boat that touch it climb in.
+function pickUp(e: Entity, ctx: GameCtx) {
+  if (rider(ctx, e) || !hasRoom(ctx, e)) return;
+  const b = e.body;
+  ctx.entities.near(b.pos.x, b.pos.y, b.pos.z, 2.5, touching);
+  for (const o of touching) {
+    const def = mobDef(o.type);
+    if (o === e || o.dead || !def || def.category === "misc" || def.category === "water" || o.body.width >= b.width) continue;
+    const reach = (b.width + o.body.width) / 2 + 0.2;
+    if (Math.abs(o.body.pos.x - b.pos.x) > reach || Math.abs(o.body.pos.z - b.pos.z) > reach) continue;
+    if (o.body.pos.y > b.pos.y + b.height || o.body.pos.y + o.body.height < b.pos.y - 0.01) continue;
+    if (mountMob(ctx, o, e) && !hasRoom(ctx, e)) break;
+  }
+  touching.length = 0;
+}
+
+// Vanilla Boat.tick: a paddle advances PI/8 per tick while its key is held, else rests at 0, and splashes once per stroke.
+function row(e: Entity, ctx: GameCtx, key: "_rowL" | "_rowR", on: boolean, inWater: boolean) {
+  if (!on) {
+    e.data[key] = 0;
+    return;
+  }
+  const t = (e.data[key] as number) ?? 0;
+  const TAU = Math.PI * 2;
+  if (t % TAU <= Math.PI / 4 && (t + Math.PI / 8) % TAU >= Math.PI / 4) {
+    const b = e.body;
+    const name = inWater ? "entity.boat.paddle_water" : b.onGround ? "entity.boat.paddle_land" : null;
+    if (name) ctx.emit({ type: "sound", name, x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 1, pitch: 0.8 + 0.4 * ctx.random() });
+  }
+  e.data[key] = t + Math.PI / 8;
+}
+
 function tick(e: Entity, ctx: GameCtx) {
   e.data._pa = e.age;
   e.data.amphibious = true;
@@ -150,18 +200,17 @@ function tick(e: Entity, ctx: GameCtx) {
     if (ctl.forward < 0) f -= 0.005;
     b.vel.x += -Math.sin(e.yaw) * f;
     b.vel.z += -Math.cos(e.yaw) * f;
-    const rowing = ctl.forward !== 0 || left || right;
-    if (rowing) {
-      const lOn = (right && !left) || ctl.forward !== 0;
-      const rOn = (left && !right) || ctl.forward !== 0;
-      if (lOn) e.data._rowL = ((e.data._rowL as number) ?? 0) + Math.PI / 8;
-      if (rOn) e.data._rowR = ((e.data._rowR as number) ?? 0) + Math.PI / 8;
-      if (inWater && e.age % 15 === 0) ctx.emit({ type: "sound", name: "entity.boat.paddle_water", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 0.6 });
-    }
-  } else e.yaw += rot * DEG;
+    row(e, ctx, "_rowL", (right && !left) || ctl.forward > 0, inWater);
+    row(e, ctx, "_rowR", (left && !right) || ctl.forward > 0, inWater);
+  } else {
+    e.yaw += rot * DEG;
+    e.data._rowL = 0;
+    e.data._rowR = 0;
+  }
   e.data._drot = rot;
   e.headYaw = e.yaw;
   moveBody(ctx.world, b, opts);
+  pickUp(e, ctx);
   if (inWater && Math.hypot(b.vel.x, b.vel.z) > 0.2 && e.age % 3 === 0) ctx.emit({ type: "particles", kind: "splash", x: b.pos.x, y: surface, z: b.pos.z, count: 2 });
 }
 
@@ -193,7 +242,7 @@ function boatDef(chest: boolean): MobDef {
         ctx.inventory.open("chest", { x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z, entityId: e.id });
         return true;
       }
-      return mountPlayer(ctx, e);
+      return hasRoom(ctx, e) && mountPlayer(ctx, e);
     },
   };
 }

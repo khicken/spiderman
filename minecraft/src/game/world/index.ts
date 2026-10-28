@@ -1,4 +1,4 @@
-import type { BlockBehavior, BlockEntityData, BlockState, ChunkData, ChunkEvent, Dim, EntitySave, GameCtx, WorldApi } from "../contracts";
+import type { BlockBehavior, BlockEntityData, BlockState, ChunkData, ChunkEvent, Dim, EntitySave, GameCtx, HostAction, WorldApi } from "../contracts";
 import { MAX_Y, MIN_Y, SECTIONS, SET_DEFAULT, SET_NO_DROP, SET_NO_LIGHT, SET_NOTIFY } from "../contracts";
 import { BLOCKS, LIGHT_FILTER, STATE_EMIT } from "../blocks/registry";
 import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE, canHoldWater } from "../blocks/waterlog";
@@ -30,6 +30,7 @@ export interface RemoteLink {
   setBlock(x: number, y: number, z: number, s: BlockState, flags: number): void;
   setBlockEntity(be: BlockEntityData | null, x: number, y: number, z: number): void;
   setWaterlogged(x: number, y: number, z: number, on: boolean): void;
+  action?(kind: HostAction, x: number, y: number, z: number, predict?: () => boolean, face?: number): boolean;
 }
 
 export interface KeepCenter {
@@ -95,6 +96,7 @@ export function createWorld(opts: WorldOpts): World {
   const generate = opts.generate;
   const useIdb = !remote && typeof indexedDB !== "undefined";
   let applying = false;
+  let muted = false;
   let extra: KeepCenter[] = [];
   let extraWanted: number[] = [];
   let extraIdx = 0;
@@ -296,6 +298,7 @@ export function createWorld(opts: WorldOpts): World {
     const wasWet = c.wl.has(i) || IMPLICIT_WATER[old & 0xfff] === 1;
     if (s === 0 && wasWet) s = WATER_SOURCE;
     if (old === s) return false;
+    if (muted) return true;
     if (remote && !applying) remote.setBlock(x, y, z, s, flags);
     const holds = canHoldWater(s) && (wasWet || old === WATER_SOURCE) && !IMPLICIT_WATER[s & 0xfff];
     if (holds) c.wl.add(i);
@@ -408,6 +411,7 @@ export function createWorld(opts: WorldOpts): World {
       const c = store.get(x >> 4, z >> 4);
       if (!c) return;
       const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
+      if (muted) return;
       if (remote && !applying) remote.setBlockEntity(be, x, y, z);
       if (be) {
         be.x = x;
@@ -431,6 +435,7 @@ export function createWorld(opts: WorldOpts): World {
       const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
       const s = c.blocks[i];
       if (IMPLICIT_WATER[s & 0xfff] || (on && !canHoldWater(s)) || on === c.wl.has(i)) return false;
+      if (muted) return true;
       if (remote && !applying) remote.setWaterlogged(x, y, z, on);
       if (on) c.wl.add(i);
       else c.wl.delete(i);
@@ -450,6 +455,17 @@ export function createWorld(opts: WorldOpts): World {
       }
       return true;
     },
+    hostAction: remote?.action
+      ? (kind, x, y, z, predict, face) =>
+          remote.action!(kind, x, y, z, predict && (() => {
+            muted = true;
+            try {
+              return predict();
+            } finally {
+              muted = false;
+            }
+          }), face)
+      : undefined,
     meshInput: (cx, sy, cz) => buildMeshInput(store, cx, sy, cz, hasSky),
     on(fn) {
       listeners.add(fn);

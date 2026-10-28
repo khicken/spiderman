@@ -8,12 +8,16 @@ import { orbIcon } from "./items";
 import { extraView } from "./visuals-extra";
 import { arrowGeometry, arrowMaterial, orbTextures, disposeMisc } from "./misc-art";
 import { createShadows, shadowRadius } from "./shadows";
+import { activeSettings } from "../ui/settings";
+import { createFlames, type Flames } from "./fire-overlay";
+import { isBurning } from "./living";
 
 interface View {
   group: THREE.Group;
   model?: MobModel;
   tag?: { sprite: THREE.Sprite; dispose(): void };
   tagText?: string;
+  flames?: Flames;
   key: string;
   seen: number;
   baby: boolean;
@@ -90,7 +94,8 @@ export function createViews(getCtx: () => GameCtx) {
       spin.rotation.y = age / 20 + v.bob;
       shadeMaterials(spin, brightnessAt(getCtx(), x, y + 0.2, z), false);
       if (glint) {
-        const g = 0.12 + 0.1 * Math.sin(age * 0.25);
+        const vo = activeSettings();
+        const g = (0.12 + 0.1 * Math.sin(age * 0.5 * vo.glintSpeed)) * (vo.glintStrength / 0.75);
         for (const m of cubeMats) m.emissive.setRGB(g * 0.8, g * 0.35, g * 1.2);
         if (spriteMat && "emissive" in spriteMat) (spriteMat as THREE.MeshLambertMaterial).emissive.setRGB(g * 0.8, g * 0.35, g * 1.2);
       }
@@ -116,7 +121,7 @@ export function createViews(getCtx: () => GameCtx) {
     v.group.add(m);
     v.group.rotation.order = "YXZ";
     v.update = (en, pt, x, y, z) => {
-      v.group.position.set(x, y + 0.25, z);
+      v.group.position.set(x, y, z);
       v.group.rotation.y = lerpAngle((en.data._pyaw as number) ?? en.yaw, en.yaw, pt);
       v.group.rotation.x = en.pitch;
       const shake = ((en.data.shake as number) ?? 0) - pt;
@@ -202,7 +207,7 @@ export function createViews(getCtx: () => GameCtx) {
       const hy = en.headYaw;
       en.headYaw = lerpAngle((en.data._phy as number) ?? hy, hy, pt) - yaw + en.yaw;
       model.animate(en, pt, walk, phase);
-      if (skinMat) syncPackSkin(en.type, model.root, skinMat);
+      if (skinMat) syncPackSkin(en.type, model.root, skinMat, en);
       en.headYaw = hy;
       shadeModel(model, getCtx(), en);
       const flash = (en.data.flash as number) ?? 0;
@@ -254,6 +259,7 @@ export function createViews(getCtx: () => GameCtx) {
 
   function destroy(id: number, v: View) {
     v.group.parent?.remove(v.group);
+    if (v.flames) v.flames.mesh.parent?.remove(v.flames.mesh);
     if (v.model) {
       forgetModel(v.model.root);
       v.model.dispose();
@@ -270,6 +276,7 @@ export function createViews(getCtx: () => GameCtx) {
       if (!scene) return;
       frameNo++;
       camPos.copy(ctx.renderer.camera.position);
+      const vo = activeSettings();
       shadows.begin(ctx);
       for (const e of list) {
         if (e.data._remove) continue;
@@ -287,11 +294,12 @@ export function createViews(getCtx: () => GameCtx) {
           y += (p.y + 0.8 - y) * f;
           z += (p.z - z) * f;
         }
-        const max = e.type === "item" || e.type === "xp_orb" || e.type.includes("arrow") ? MISC_DIST : MOB_DIST;
+        const max = (e.type === "item" || e.type === "xp_orb" || e.type.includes("arrow") ? MISC_DIST : MOB_DIST) * vo.entityDistance;
         const dx = x - camPos.x, dz = z - camPos.z;
         let v = views.get(e.id);
         if (dx * dx + dz * dz > max * max) {
           if (v) v.group.visible = false;
+          if (v?.flames) v.flames.mesh.visible = false;
           if (v) v.seen = frameNo;
           continue;
         }
@@ -311,15 +319,23 @@ export function createViews(getCtx: () => GameCtx) {
         v.seen = frameNo;
         v.group.visible = true;
         v.update(e, pt, x, y, z);
+        if (v.model) {
+          const burning = isBurning(e);
+          if (burning && !v.flames) {
+            v.flames = createFlames();
+            scene.add(v.flames.mesh);
+          }
+          v.flames?.update(burning, x, y, z, e.body.width, e.body.height, ctx.renderer.camera);
+        }
         const d2 = dx * dx + dz * dz + (y - camPos.y) * (y - camPos.y);
-        if (d2 < 256 && !e.dead && !invisible(e)) {
+        if (vo.entityShadows && d2 < 256 && !e.dead && !invisible(e)) {
           const r = shadowRadius(e.type, e.body.width) * (v.baby ? 0.5 : 1);
           shadows.add(ctx, x, y, z, r, e.type === "item" || e.type === "xp_orb" ? 0.75 : 1, d2);
         }
       }
       for (const o of scene.children) {
         const r = o.userData.shadowRadius as number | undefined;
-        if (!r || !o.visible) continue;
+        if (!r || !o.visible || !vo.entityShadows) continue;
         const { x, y, z } = o.position;
         const d2 = (x - camPos.x) ** 2 + (y - camPos.y) ** 2 + (z - camPos.z) ** 2;
         if (d2 < 256) shadows.add(ctx, x, y, z, r, 1, d2);

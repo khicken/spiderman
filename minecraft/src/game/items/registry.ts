@@ -2,6 +2,13 @@ import type { ItemDef } from "../contracts";
 import { BLOCKS } from "../blocks/registry";
 import { ITEM_DATA, type ItemSpec } from "./data";
 
+const BLOCK_RARITY: Record<string, ItemDef["rarity"]> = {
+  beacon: "rare", conduit: "rare", dragon_egg: "epic", dragon_head: "epic", heavy_core: "epic", sniffer_egg: "uncommon",
+  skeleton_skull: "uncommon", wither_skeleton_skull: "uncommon", zombie_head: "uncommon", creeper_head: "uncommon",
+  piglin_head: "uncommon", player_head: "uncommon", command_block: "epic", chain_command_block: "epic",
+  repeating_command_block: "epic", structure_block: "epic", jigsaw: "epic", barrier: "epic", light: "epic", structure_void: "epic",
+};
+
 const titleCase = (n: string) => n.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 
 // Plain items first, then one item per block that has one. Items are saved by name, so order is free.
@@ -11,8 +18,9 @@ const blockItems: ItemDef[] = BLOCKS.filter((b) => b.item === undefined && b.sha
   id: plain.length + i,
   name: b.name,
   displayName: b.displayName,
-  maxStack: 64,
+  maxStack: /_banner$/.test(b.name) ? 16 : b.shape === "bed" || /shulker_box$/.test(b.name) ? 1 : 64,
   block: b.name,
+  ...(BLOCK_RARITY[b.name] ? { rarity: BLOCK_RARITY[b.name] } : {}),
 }));
 
 export const ITEMS: ItemDef[] = [...plain, ...blockItems];

@@ -17,6 +17,9 @@ export interface Health {
   dead: boolean;
   blocking: boolean;
   effects: [string, number][];
+  granted: Map<string, { amp: number; until: number }>; // effects from sources the host saw, by host tick
+  credit: { food: number; sat: number }; // food the client may add: what it was seen eating
+  now: number;
   sent: string;
 }
 
@@ -32,11 +35,54 @@ export interface HealthOwner {
 const SHIELDED = new Set<DamageSource>(["mob", "arrow", "explosion", "player", "trident"]);
 
 export function newHealth(): Health {
-  return { health: 20, maxHealth: 20, food: 20, saturation: 5, exhaustion: 0, absorption: 0, foodTimer: 0, invulnerable: 0, lastHurt: 0, dead: false, blocking: false, effects: [], sent: "" };
+  return {
+    health: 20, maxHealth: 20, food: 20, saturation: 5, exhaustion: 0, absorption: 0, foodTimer: 0, invulnerable: 0, lastHurt: 0, dead: false, blocking: false,
+    effects: [], granted: new Map(), credit: { food: 0, sat: 0 }, now: 0, sent: "",
+  };
 }
 
 export function resetHealth(h: Health) {
-  Object.assign(h, newHealth(), { sent: "" });
+  Object.assign(h, newHealth(), { sent: "", now: h.now });
+}
+
+// Effects the host acts on, so a client cannot claim them: damage cuts, healing, extra hearts.
+const TRUSTED = new Set(["resistance", "fire_resistance", "regeneration", "absorption", "health_boost", "saturation"]);
+const CLAIM_SLACK = 40;
+
+export function grantEffect(h: Health, id: string, amp: number, ticks: number) {
+  if (!(amp >= 0 && amp <= 255)) return;
+  const g = h.granted.get(id);
+  h.granted.set(id, { amp: Math.max(amp, g?.amp ?? 0), until: Math.max(g?.until ?? 0, h.now + ticks) });
+  if (id === "absorption") h.absorption = Math.max(h.absorption, 4 * (amp + 1));
+}
+
+const grantedAmp = (h: Health, id: string) => {
+  const g = h.granted.get(id);
+  return g && h.now <= g.until + CLAIM_SLACK ? g.amp : -1;
+};
+
+// What the client says it has, cut down to what the host granted.
+export function claimEffects(h: Health, eff: [string, number][], abs: number, max: number) {
+  h.effects = eff.filter(([id, amp]) => amp >= 0 && amp <= 255 && (!TRUSTED.has(id) || amp <= grantedAmp(h, id)));
+  h.absorption = Math.min(h.absorption, abs, grantedAmp(h, "absorption") >= 0 ? 4 * (grantedAmp(h, "absorption") + 1) : 0);
+  const boost = h.effects.find(([id]) => id === "health_boost");
+  h.maxHealth = Math.min(max, boost ? 20 + 4 * (boost[1] + 1) : 20);
+  h.health = Math.min(h.health, h.maxHealth);
+}
+
+export function eatCredit(h: Health, food: number, sat: number) {
+  h.credit.food = Math.min(20, h.credit.food + food);
+  h.credit.sat = Math.min(20, h.credit.sat + sat);
+}
+
+// A client food change: losses always count, gains only up to what it was seen eating. True when a gain was cut.
+export function foodDelta(h: Health, df: number, ds: number): boolean {
+  const cut = df > h.credit.food + 1e-6 || ds > h.credit.sat + 1e-6;
+  if (df > 0) h.credit.food -= df = Math.min(df, h.credit.food);
+  if (ds > 0) h.credit.sat -= ds = Math.min(ds, h.credit.sat);
+  h.food = Math.max(0, Math.min(20, h.food + df));
+  h.saturation = Math.max(0, Math.min(h.food, h.saturation + ds));
+  return cut;
 }
 
 const level = (h: Health, id: string) => {
@@ -105,6 +151,10 @@ export function hostDamage(o: HealthOwner, ctx: GameCtx, amount: number, source:
     h.health = 1;
     h.absorption = 4 * 2;
     h.effects = [];
+    h.granted.clear();
+    grantEffect(h, "regeneration", 1, 900);
+    grantEffect(h, "absorption", 1, 100);
+    grantEffect(h, "fire_resistance", 0, 800);
     o.send({ t: "totem" });
     return;
   }
@@ -127,8 +177,21 @@ function thorns(o: HealthOwner, ctx: GameCtx, attacker: Entity) {
 
 export function tickHealth(o: HealthOwner, ctx: GameCtx, rules: Rules, tick: number) {
   const h = o.hp;
+  h.now = tick;
   if (h.invulnerable > 0) h.invulnerable--;
+  for (const [id, g] of h.granted) if (tick > g.until + CLAIM_SLACK) h.granted.delete(id);
+  if (h.effects.some(([id]) => TRUSTED.has(id) && grantedAmp(h, id) < 0)) claimEffects(h, h.effects, h.absorption, h.maxHealth);
   if (!h.dead) {
+    // Vanilla MobEffect ticks for the effects the host acts on.
+    for (const [id, a] of h.effects) {
+      if (!(a >= 0)) continue;
+      const k = a > 5 ? 0 : 50 >> a;
+      if (id === "regeneration" && (k <= 0 || tick % k === 0)) healBy(o, 1);
+      if (id === "saturation") {
+        h.food = Math.min(20, h.food + a + 1);
+        h.saturation = Math.min(h.food, h.saturation + (a + 1) * 2);
+      }
+    }
     const diff = rules.difficulty;
     if (h.exhaustion > 4) {
       h.exhaustion -= 4;

@@ -249,6 +249,20 @@ export function mixInto(dst: Float32Array, src: Float32Array, gain = 1, offsetSe
   for (let i = 0; i < src.length && o + i < dst.length; i++) if (o + i >= 0) dst[o + i] += src[i] * gain;
 }
 
+// Linear-interp resample; ratio > 1 raises pitch and shortens the sound.
+export function resample(data: Float32Array, ratio: number): Float32Array {
+  if (Math.abs(ratio - 1) < 1e-6) return data;
+  const n = Math.max(1, Math.floor(data.length / ratio));
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = i * ratio;
+    const j = Math.floor(x);
+    const k = x - j;
+    out[i] = (data[j] ?? 0) * (1 - k) + (data[j + 1] ?? 0) * k;
+  }
+  return out;
+}
+
 export function softClip(data: Float32Array, drive: number): Float32Array {
   const k = Math.tanh(drive);
   for (let i = 0; i < data.length; i++) data[i] = Math.tanh(data[i] * drive) / k;

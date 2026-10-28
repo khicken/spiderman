@@ -1,9 +1,10 @@
 import * as THREE from "three";
+import { BH, BW, bannerPixels, type Layer } from "../systems/features/banner-art";
 
 const PX = 1 / 16;
 const W = 64, H = 64;
 
-function paint(): THREE.DataTexture {
+function paint(banner?: { color: string; patterns: Layer[] }): THREE.DataTexture {
   const data = new Uint8Array(W * H * 4);
   const put = (x: number, y: number, c: number, k = 1) => {
     const i = ((H - 1 - y) * W + x) * 4;
@@ -15,12 +16,20 @@ function paint(): THREE.DataTexture {
   const noise = (x: number, y: number) => 0.9 + (((x * 73 + y * 151) % 17) / 17) * 0.2;
   for (let y = 0; y < 24; y++)
     for (let x = 0; x < 26; x++) {
-      const fx = x - 1, fy = y - 1;
+      const fx = x < 13 ? x - 1 : x - 14, fy = y - 1;
       const rim = fx <= 0 || fx >= 11 || fy <= 0 || fy >= 21;
       const plank = fy % 5 === 0;
       put(x, y, rim ? 0x7a7a7a : 0x9c7a46, (rim ? 1 : plank ? 0.78 : 1) * noise(x, y));
     }
   for (let y = 0; y < 12; y++) for (let x = 26; x < 42; x++) put(x, y, 0x5c4424, noise(x, y));
+  if (banner) {
+    const px = bannerPixels(banner.color, banner.patterns);
+    for (let y = 0; y < 22; y++)
+      for (let x = 0; x < 12; x++) {
+        const o = (Math.floor(((y + 0.5) * BH) / 22) * BW + Math.floor(((x + 0.5) * BW) / 12)) * 4;
+        put(x + 1, y + 1, (px[o] << 16) | (px[o + 1] << 8) | px[o + 2]);
+      }
+  }
   const t = new THREE.DataTexture(data, W, H, THREE.RGBAFormat);
   t.magFilter = t.minFilter = THREE.NearestFilter;
   t.colorSpace = THREE.SRGBColorSpace;
@@ -45,7 +54,7 @@ function box(w: number, h: number, d: number, u: number, v: number, x: number, y
 }
 
 // Vanilla ShieldModel: a 12x22x1 plate with a 2x6x6 handle behind it. The plate faces -z.
-export function createShieldModel(): { geometry: THREE.BufferGeometry; texture: THREE.DataTexture } {
+export function createShieldModel(banner?: { color: string; patterns: Layer[] }): { geometry: THREE.BufferGeometry; texture: THREE.DataTexture } {
   const plate = box(12, 22, 1, 0, 0, -6, -11, -2);
   const handle = box(2, 6, 6, 26, 0, -1, -3, -1);
   const pos: number[] = [], uvs: number[] = [], nrm: number[] = [];
@@ -59,5 +68,5 @@ export function createShieldModel(): { geometry: THREE.BufferGeometry; texture: 
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
-  return { geometry, texture: paint() };
+  return { geometry, texture: paint(banner) };
 }

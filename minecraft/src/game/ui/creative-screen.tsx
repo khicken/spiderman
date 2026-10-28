@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { ClickKind, ContainerView, ItemStack, SlotView } from "../contracts";
+import type { ClickKind, ContainerView, Effect, ItemStack, SlotView } from "../contracts";
+import { EffectList } from "./hud";
 import { Text, useGui } from "./gui";
 import { ItemIcon, tooltipLines } from "./item-icon";
 import { PointerLayer, SlotBox, clickKindOf, usePointer } from "./slot";
 import { PlayerDoll, type DollInventory } from "./player-doll";
-import { keyFor } from "./settings";
+import { activeSettings, keyFor } from "./settings";
+import { hotbarTabItems } from "../items/creative";
 import type { EmptySlotKind } from "./sprites";
 
 const EMPTY_ICON: Partial<Record<string, EmptySlotKind>> = { armor_head: "helmet", armor_chest: "chestplate", armor_legs: "leggings", armor_feet: "boots", offhand: "shield" };
@@ -14,9 +16,9 @@ import { buttonUrl, panelUrl, pixelUrl } from "./sprites";
 import { TextField, playClick, useKeyDown } from "./widgets";
 
 export interface CreativeProps {
-  tabs: { id: string; label: string; icon: string }[]; // "search", "inventory" and "hotbar" ids get vanilla spots
+  tabs: { id: string; label: string; icon: string }[]; // "search", "inventory", "hotbar" and "op_blocks" ids get vanilla spots
   items: (tab: string, search: string) => ItemStack[];
-  onTake: (stack: ItemStack, click: ClickKind) => void;
+  onTake: (stack: ItemStack | null, click: ClickKind) => void;
   onDestroy?: (all: boolean) => void; // destroy-item slot; all = shift-click clears the inventory
 }
 
@@ -27,6 +29,7 @@ interface Props {
   creative: CreativeProps;
   advanced?: boolean;
   inventory?: DollInventory;
+  effects?: Effect[];
 }
 
 const W = 195;
@@ -41,30 +44,45 @@ function tabSpots(tabs: CreativeProps["tabs"]) {
     if (tab.id === "search") spots.push({ tab, top: true, col: 6 });
     else if (tab.id === "inventory" || tab.id === "survival") spots.push({ tab, top: false, col: 6 });
     else if (tab.id === "hotbar") spots.push({ tab, top: true, col: 5 });
+    else if (tab.id === "op_blocks") spots.push({ tab, top: false, col: 5 });
     else if (t < 5) spots.push({ tab, top: true, col: t++ });
     else if (b < 6) spots.push({ tab, top: false, col: b++ });
   }
   return spots;
 }
 
-const tabX = (col: number) => (col === 6 ? W - 26 : col * 27);
+const tabX = (col: number) => (col >= 5 ? W - 27 * (7 - col) + 1 : col * 27);
+const plain = (lines: string[]) => lines.join("\n").replace(/§./g, "").toLowerCase();
+let lastTab = "building_blocks";
 const trashUrl = () => pixelUrl("trash", 16, 16, (x, y) => (Math.abs(x - y) <= 1 || Math.abs(x + y - 15) <= 1) && x > 2 && x < 13 ? 0xffd03030 : 0);
 
-export function CreativeScreen({ view, onClick, onClose, creative, advanced, inventory }: Props) {
+export function CreativeScreen({ view, onClick, onClose, creative, advanced, inventory, effects }: Props) {
   const { width, height } = useGui();
-  const [tab, setTab] = useState(creative.tabs[0]?.id ?? "search");
+  const tabs = useMemo(() => creative.tabs.filter((t) => t.id !== "op_blocks" || activeSettings().operatorItemsTab), [creative.tabs]);
+  const [tab, setTabState] = useState(() => (tabs.some((t) => t.id === lastTab) ? lastTab : tabs[0]?.id ?? "search"));
+  const setTab = (id: string) => {
+    lastTab = id;
+    setTabState(id);
+  };
   const [search, setSearch] = useState("");
   const [scroll, setScroll] = useState(0);
   const [hover, setHover] = useState<string | null>(null);
+  const [effectTip, setEffectTip] = useState<string[]>([]);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const isInv = tab === "inventory" || tab === "survival";
   const isSearch = tab === "search";
-  const items = useMemo(() => (isInv ? [] : creative.items(tab, search)), [creative, tab, search, isInv]);
+  const hotbarView = tab === "hotbar" ? view : null;
+  const all = useMemo<(ItemStack | null)[]>(() => (isInv ? [] : tab === "hotbar" ? hotbarTabItems() : creative.items(tab, "")), [creative, tab, isInv, hotbarView]);
+  const tooltips = useMemo(() => (isSearch ? all.map((s) => (s ? plain(tooltipLines(s)) : "")) : []), [all, isSearch]);
+  const items = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return isSearch && q ? all.filter((_, i) => tooltips[i].includes(q)) : all;
+  }, [all, tooltips, search, isSearch]);
   const rows = Math.ceil(items.length / 9);
   const maxScroll = Math.max(0, rows - 5);
   const sc = Math.min(scroll, maxScroll);
-  const spots = tabSpots(creative.tabs);
-  const current = creative.tabs.find((t) => t.id === tab);
+  const spots = tabSpots(tabs);
+  const current = tabs.find((t) => t.id === tab);
   const left = Math.floor((width - W) / 2);
   const top = Math.floor((height - H) / 2);
 
@@ -75,10 +93,11 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
     if (hover.startsWith("s")) return slots.find((s) => s.index === Number(hover.slice(1)))?.stack ?? null;
     return null;
   })();
-  const tabHover = hover?.startsWith("t") ? creative.tabs.find((t) => t.id === hover.slice(1)) : undefined;
-  const tip = hoveredStack ? tooltipLines(hoveredStack, advanced) : tabHover ? [tabHover.label] : hover === "trash" ? ["Destroy Item"] : [];
+  const tabHover = hover?.startsWith("t") ? tabs.find((t) => t.id === hover.slice(1)) : undefined;
+  const tip = hoveredStack ? tooltipLines(hoveredStack, advanced) : tabHover ? [tabHover.label] : hover === "trash" ? ["Destroy Item"] : effectTip;
   const { onMouseMove, setTip, setCursor, mouse } = usePointer(tip);
   const hoveredSlot = hover?.startsWith("s") ? Number(hover.slice(1)) : null;
+  const hoveredGrid = hover?.startsWith("g") ? items[Number(hover.slice(1))] ?? null : null;
 
   const switchTab = (id: string) => {
     playClick();
@@ -87,21 +106,28 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
     if (id === "search") requestAnimationFrame(() => searchRef.current?.focus());
   };
 
+  // Hotbar, offhand and drop keys act on the hovered slot; returns true when the key was used.
+  const slotKey = (e: KeyboardEvent | React.KeyboardEvent) => {
+    const hotbar = Array.from({ length: 9 }, (_, i) => keyFor(`hotbar.${i + 1}`)).indexOf(e.code);
+    const click: ClickKind | null = hotbar >= 0 ? { hotbar } : e.code === keyFor("swap_offhand") ? { hotbar: 40 } : e.code === keyFor("drop") ? (e.ctrlKey || e.metaKey ? "drop_all" : "drop") : null;
+    if (!click) return false;
+    if (hoveredSlot !== null) onClick(hoveredSlot, click);
+    else if (hoveredGrid && (typeof click === "string" || click.hotbar < 9)) creative.onTake(hoveredGrid, click);
+    else return false;
+    e.preventDefault();
+    return true;
+  };
+
   useKeyDown((e) => {
-    const k = e.key.toLowerCase();
-    if (k === "escape" || (!isSearch && e.code === keyFor("inventory"))) {
+    if (e.key === "Escape" || (!isSearch && e.code === keyFor("inventory"))) {
       e.preventDefault();
       onClose();
       return;
     }
-    if (hoveredSlot !== null) {
-      for (let i = 1; i <= 9; i++) if (e.code === keyFor(`hotbar.${i}`)) return onClick(hoveredSlot, { hotbar: i - 1 });
-      if (e.code === keyFor("swap_offhand")) return onClick(hoveredSlot, { hotbar: 40 });
-      if (e.code === keyFor("drop")) return onClick(hoveredSlot, e.ctrlKey || e.metaKey ? "drop_all" : "drop");
-    }
-    if (k.length === 1 && /[a-z]/.test(k) && k !== "q" && k !== "f" && !isSearch && creative.tabs.some((t) => t.id === "search")) {
+    if (slotKey(e)) return;
+    if (!isSearch && e.code === keyFor("chat") && tabs.some((t) => t.id === "search")) {
       e.preventDefault();
-      setSearch(e.key);
+      setSearch("");
       switchTab("search");
     }
   });
@@ -115,14 +141,12 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
   const gridDown = (i: number) => (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    const s = items[i];
-    if (view.cursor) creative.onDestroy?.(false);
-    else if (s) creative.onTake(s, clickKindOf(e));
+    creative.onTake(items[i] ?? null, clickKindOf(e));
   };
 
   const setScrollFromY = (clientY: number, el: HTMLElement) => {
     const r = el.getBoundingClientRect();
-    const f = (clientY - r.top) / r.height;
+    const f = ((clientY - r.top) / (r.height / 112) - 1 - 7.5) / (112 - 15);
     setScroll(Math.round(Math.max(0, Math.min(1, f)) * maxScroll));
   };
 
@@ -137,7 +161,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
         onMouseLeave={() => setHover((h) => (h === `t${s.tab.id}` ? null : h))}
         onMouseDown={(e) => {
           e.stopPropagation();
-          if (s.tab.id !== "hotbar") switchTab(s.tab.id);
+          switchTab(s.tab.id);
         }}
         style={{ position: "absolute", left: x, top: y, width: 26, height: h, cursor: "pointer", zIndex: selected ? 3 : 0 }}
       >
@@ -172,7 +196,26 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
           {isSearch && (
             <>
               <div style={{ position: "absolute", left: 80, top: 4, width: 89, height: 12, background: "#fff", boxShadow: "inset 1px 1px 0 #373737" }} />
-              <TextField x={82} y={6} width={86} height={9} value={search} onChange={(v) => { setSearch(v); setScroll(0); }} bordered={false} textColor={0x000000} maxLength={50} autoFocus inputRef={searchRef} />
+              <TextField
+                x={82}
+                y={6}
+                width={86}
+                height={9}
+                value={search}
+                onChange={(v) => {
+                  setSearch(v);
+                  setScroll(0);
+                }}
+                onKey={(e) => {
+                  if (e.key === "Escape") onClose();
+                  else if (/^Digit|^Numpad/.test(e.code) && (hoveredSlot !== null || hoveredGrid)) slotKey(e);
+                }}
+                bordered={false}
+                textColor={0x000000}
+                maxLength={50}
+                autoFocus
+                inputRef={searchRef}
+              />
             </>
           )}
           {isInv ? (
@@ -192,7 +235,8 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
                 onLeave={() => setHover((h) => (h === "trash" ? null : h))}
                 onDown={(e) => {
                   e.stopPropagation();
-                  creative.onDestroy?.(e.shiftKey);
+                  if (e.shiftKey) creative.onDestroy?.(true);
+                  else creative.onTake(null, "left");
                 }}
               />
               <img alt="" src={trashUrl()} width={16} height={16} style={{ position: "absolute", left: 173, top: 112, imageRendering: "pixelated", pointerEvents: "none", opacity: 0.8 }} />
@@ -207,7 +251,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
                     key={k}
                     x={9 + (k % 9) * 18}
                     y={18 + Math.floor(k / 9) * 18}
-                    stack={s ? { ...s, count: 1 } : null}
+                    stack={s && tab !== "hotbar" ? { ...s, count: 1 } : s}
                     hovered={hover === `g${i}`}
                     onEnter={() => setHover(`g${i}`)}
                     onLeave={() => setHover((h) => (h === `g${i}` ? null : h))}
@@ -231,6 +275,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
           )}
         </div>
       </div>
+      {effects && <EffectList effects={effects} x={left + W + 2} top={top} width={width} setTip={setEffectTip} />}
       <PointerLayer cursor={view.cursor} tip={tip} setCursor={setCursor} setTip={setTip} />
     </div>
   );

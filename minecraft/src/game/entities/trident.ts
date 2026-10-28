@@ -5,6 +5,7 @@ import { isMob } from "./registry";
 import { findNear } from "../worldgen/structure-grid";
 import { advTrigger } from "../systems/advancements/bus";
 import { advLightning, markProjectile } from "../systems/advancements/hooks";
+import { projectileBreaks } from "./projectiles";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -51,7 +52,6 @@ export function tickTrident(e: Entity, ctx: GameCtx): void {
   const len = b.vel.length();
   if (len > 1e-6) {
     origin.copy(b.pos);
-    origin.y += 0.25;
     dir.copy(b.vel).divideScalar(len);
     const hit = ctx.world.raycast(origin, dir, len, false);
     let limit = hit ? hit.dist / len : 1;
@@ -86,7 +86,9 @@ export function tickTrident(e: Entity, ctx: GameCtx): void {
     if (hit) {
       b.pos.addScaledVector(b.vel, limit);
       b.pos.addScaledVector(dir, -0.05);
+      const speed = b.vel.length();
       b.vel.set(0, 0, 0);
+      projectileBreaks(ctx, e, hit.x, hit.y, hit.z, speed);
       e.data.inGround = [hit.x, hit.y, hit.z];
       e.data.groundTicks = 0;
       ctx.emit({ type: "sound", name: "item.trident.hit_ground", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 1, pitch: 1 });

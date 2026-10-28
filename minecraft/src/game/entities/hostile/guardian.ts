@@ -241,8 +241,8 @@ function guardianDef(elder: boolean): MobDef {
     attackDamage: elder ? 8 : 6,
     xp: [10, 10],
     drops: elder
-      ? [{ item: "prismarine_shard", count: [0, 2] }, { item: "wet_sponge", count: [1, 1] }, { item: "cod", count: [0, 1], chance: 0.5 }, { item: "prismarine_crystals", count: [0, 1], chance: 0.33 }]
-      : [{ item: "prismarine_shard", count: [0, 2] }, { item: "cod", count: [0, 1], chance: 0.4 }, { item: "prismarine_crystals", count: [0, 1], chance: 0.4 }],
+      ? [{ item: "prismarine_shard", count: [0, 2] }, { item: "wet_sponge", count: [1, 1] }, { item: "cod", count: [1, 1], chance: 3 / 6, group: "fish" }, { item: "prismarine_crystals", count: [1, 1], chance: 2 / 6, group: "fish" }]
+      : [{ item: "prismarine_shard", count: [0, 2] }, { item: "cod", count: [1, 1], chance: 2 / 5, group: "fish" }, { item: "prismarine_crystals", count: [1, 1], chance: 2 / 5, group: "fish" }],
     sounds: { hurt: `entity.${k}.hurt`, death: `entity.${k}.death` },
     createModel: () => guardianModel(elder),
     tick: guardianTick(elder),

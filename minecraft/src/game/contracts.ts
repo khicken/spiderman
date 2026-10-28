@@ -59,6 +59,8 @@ export type Horizontal = 0 | 1 | 2 | 3;
 //  bed:           bits 0-1 facing, bit 2 head part
 //  ladder / wall sign / wall attachments: Horizontal facing
 //  leaves:        bit 0 player placed (no decay)
+//  vault:         bits 0-1 facing (Horizontal), bit 2 active, bit 3 ominous
+//  trial spawner: bits 0-1 0 inactive, 1 active, 2 ejecting reward; bit 3 ominous
 export type Shape =
   | "air"
   | "cube"
@@ -133,6 +135,7 @@ export interface DropEntry {
   item: string;
   count?: [number, number];
   chance?: number;
+  group?: string; // entries sharing a group are one-of alternatives: at most one drops, picked by chance
 }
 // undefined drops the block item itself. null drops nothing. "silk" entries need silk touch.
 export type DropSpec = undefined | null | string | DropEntry[];
@@ -296,6 +299,7 @@ export interface ChunkUniforms {
   uSkyFogEnd?: { value: number };
   uSkyMix?: { value: number }; // 0 plain fog color, 1 sky dome color
   uDimLight?: { value: THREE.Vector2 }; // x dimension ambient light, y 1 for the End fixed lightmap
+  uDarkness?: { value: THREE.Vector2 }; // darkness effect: x light pulse subtracted, y blend that cancels the brightness option
 }
 
 // ---------- Block entities ----------
@@ -348,7 +352,7 @@ export interface Body {
 export type DamageSource =
   | "generic" | "fall" | "lava" | "fire" | "drown" | "starve" | "void" | "cactus"
   | "explosion" | "mob" | "player" | "arrow" | "suffocate" | "magic" | "wither"
-  | "lightning" | "freeze" | "thorns" | "mace" | "fly_into_wall" | "trident";
+  | "lightning" | "freeze" | "thorns" | "mace" | "fly_into_wall" | "trident" | "sonic_boom" | "cramming";
 
 export interface EntityHit {
   id: number;
@@ -360,6 +364,7 @@ export interface Effect {
   id: string; // "speed", "regeneration", "poison", "wind_charged", "oozing", ...
   amplifier: number;
   ticks: number;
+  ambient?: boolean; // beacon and conduit: other HUD frame, no blinking
 }
 
 // One live entity. The entity manager owns the list.
@@ -419,7 +424,7 @@ export interface MobDef {
 // Block sounds use the SoundGroup: "block.<group>.<break|place|step|hit|fall>".
 export type GameEvent =
   | { type: "sound"; name: string; x?: number; y?: number; z?: number; volume?: number; pitch?: number }
-  | { type: "particles"; kind: "block" | "smoke" | "flame" | "explosion" | "splash" | "bubble" | "heart" | "angry" | "crit" | "portal" | "drip" | "note" | "dust" | "gust" | "trial_omen"; x: number; y: number; z: number; count?: number; state?: BlockState; color?: number }
+  | { type: "particles"; kind: "block" | "smoke" | "flame" | "explosion" | "splash" | "bubble" | "heart" | "angry" | "crit" | "portal" | "drip" | "note" | "dust" | "gust" | "trial_omen" | "happy" | "sweep" | "enchant" | "lava"; x: number; y: number; z: number; count?: number; state?: BlockState; color?: number }
   | { type: "block_changed"; x: number; y: number; z: number; from: BlockState; to: BlockState }
   | { type: "open_container"; kind: ContainerKind; x?: number; y?: number; z?: number; entityId?: number }
   | { type: "close_container" }
@@ -438,7 +443,7 @@ export type ContainerKind =
   | "inventory" | "creative" | "crafting_table" | "furnace" | "blast_furnace" | "smoker"
   | "chest" | "large_chest" | "barrel" | "shulker_box" | "ender_chest" | "dispenser" | "dropper"
   | "hopper" | "crafter" | "anvil" | "enchanting_table" | "brewing_stand" | "grindstone"
-  | "stonecutter" | "smithing_table" | "loom" | "cartography_table" | "villager" | "beacon";
+  | "stonecutter" | "smithing_table" | "loom" | "cartography_table" | "villager" | "beacon" | "horse";
 
 export type SlotRole =
   | "storage" | "hotbar" | "armor_head" | "armor_chest" | "armor_legs" | "armor_feet"
@@ -461,6 +466,7 @@ export interface ContainerView {
   progress?: Record<string, number>; // "cook" 0..1, "burn" 0..1, "brew" 0..1, "xp_cost"
   options?: { id: string; label: string; cost?: number; enabled: boolean }[]; // enchant, trade, stonecutter
   merchant?: MerchantView; // villager and wandering trader screen
+  mount?: { type: string; age: number; data: Record<string, unknown> }; // horse screen preview
 }
 
 export interface MerchantView {
@@ -491,7 +497,7 @@ export interface InventoryApi {
   chooseOption(id: string): void; // enchant row, trade, stonecutter recipe
   creativeItems(tab: string, search: string): ItemStack[];
   creativeTabs(): { id: string; label: string; icon: string }[];
-  takeCreative(stack: ItemStack, click: ClickKind): void;
+  takeCreative(stack: ItemStack | null, click: ClickKind): void; // null = empty grid slot or the destroy slot
   armorPoints(): number;
   version: number; // increments on every change, for the UI
 }
@@ -564,6 +570,9 @@ export const SET_NO_LIGHT = 2;
 export const SET_NO_DROP = 4;
 export const SET_DEFAULT = SET_NOTIFY;
 
+// Multi-block edits a multiplayer client asks the host to run instead of sending each block.
+export type HostAction = "bone_meal" | "portal" | "end_portal" | "use" | "use_off" | "brush";
+
 export interface WorldApi {
   dim: Dim;
   seed: number;
@@ -573,6 +582,7 @@ export interface WorldApi {
   getBlockLight(x: number, y: number, z: number): number;
   getBiome(x: number, z: number): BiomeDef;
   getBiomeAt?(x: number, y: number, z: number): BiomeDef; // cave biomes underground, else getBiome
+  spawn?: { x: number; y: number; z: number }; // world spawn point, one shared object for every dimension
   topY(x: number, z: number): number;
   isLoaded(x: number, z: number): boolean;
   raycast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, fluids?: boolean): RaycastHit | null;
@@ -583,6 +593,8 @@ export interface WorldApi {
   setBlockEntity(be: BlockEntityData | null, x: number, y: number, z: number): void;
   isWaterlogged?(x: number, y: number, z: number): boolean;
   setWaterlogged?(x: number, y: number, z: number, on: boolean): boolean;
+  // Multiplayer client only: runs predict with writes muted, then sends the action to the host when predict is true.
+  hostAction?(kind: HostAction, x: number, y: number, z: number, predict?: () => boolean, face?: number): boolean;
   meshInput(cx: number, sy: number, cz: number): MeshInput | null; // null when the section is empty or neighbors are missing
   on(fn: (e: ChunkEvent) => void): () => void;
   // Load and unload chunks around the center. Call each frame.
@@ -639,7 +651,7 @@ export interface EntityApi {
   damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
   knockback(id: number, dx: number, dz: number, strength: number): void;
   interact(id: number, held: ItemStack | null): boolean;
-  explode(x: number, y: number, z: number, power: number, fire?: boolean): void;
+  explode(x: number, y: number, z: number, power: number, fire?: boolean, kind?: "block" | "tnt"): void;
   count(category: MobDef["category"]): number;
   tick(ctx: GameCtx): void;
   frame(dt: number, partialTick: number): void;
@@ -653,6 +665,7 @@ export interface EntityApi {
 export interface AudioApi {
   play(name: string, x?: number, y?: number, z?: number, volume?: number, pitch?: number): void;
   setListener(pos: THREE.Vector3, yaw: number, pitch: number): void;
+  setUnderwater?(on: boolean): void;
   setVolume(master: number, music: number, sfx: number): void;
   setMusic(kind: "menu" | "overworld" | "creative" | "underwater" | "nether" | "end" | "none"): void;
   playRecord?(id: string, disc: string, x: number, y: number, z: number, seconds: number): void;
@@ -670,7 +683,7 @@ export interface RendererApi {
   setTime(dayTicks: number): void; // 0..23999
   setWeather(rain: number, thunder: number): void; // 0..1
   setRenderDistance(chunks: number): void;
-  setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number }): void;
+  setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number; biomeBlend?: number; particles?: "all" | "decreased" | "minimal" }): void;
   setOutline(hit: RaycastHit | null, boxes: Aabb[] | null): void;
   setBreak(hit: RaycastHit | null, progress: number): void;
   setUnderwater(kind: "none" | "water" | "lava" | "powder_snow"): void;
@@ -714,6 +727,39 @@ export interface Rules {
   doFireTick: boolean;
   randomTickSpeed: number;
   cheats: boolean;
+  // Other vanilla rules (ui/gamerules.ts). Absent in older saves: read as the vanilla default.
+  naturalRegeneration?: boolean;
+  fallDamage?: boolean;
+  fireDamage?: boolean;
+  drowningDamage?: boolean;
+  freezeDamage?: boolean;
+  showDeathMessages?: boolean;
+  doImmediateRespawn?: boolean;
+  doInsomnia?: boolean;
+  doMobLoot?: boolean;
+  doTileDrops?: boolean;
+  doEntityDrops?: boolean;
+  announceAdvancements?: boolean;
+  doWeatherCycle?: boolean;
+  doPatrolSpawning?: boolean;
+  doWardenSpawning?: boolean;
+  disableRaids?: boolean;
+  playersSleepingPercentage?: number;
+  waterSourceConversion?: boolean;
+  lavaSourceConversion?: boolean;
+  maxEntityCramming?: number;
+  spawnRadius?: number;
+  projectilesCanBreakBlocks?: boolean;
+  blockExplosionDropDecay?: boolean;
+  mobExplosionDropDecay?: boolean;
+  tntExplosionDropDecay?: boolean;
+  universalAnger?: boolean;
+  forgiveDeadPlayers?: boolean;
+  enderPearlsVanishOnDeath?: boolean;
+  reducedDebugInfo?: boolean;
+  doLimitedCrafting?: boolean;
+  globalSoundEvents?: boolean;
+  spectatorsGenerateChunks?: boolean;
 }
 
 // Every module gets this object. game.ts creates it and fills each field.
@@ -751,8 +797,11 @@ export interface HudState {
   withered: boolean;
   frozen: boolean;
   mountHealth?: number;
+  mountMaxHealth?: number; // sets the number of vehicle hearts
+  absorption?: number; // absorption health points
   mountJump?: number; // 0..1 horse jump bar charge
-  bossBars: { id: string; name: string; progress: number; color: string }[];
+  mountJumpCooldown?: boolean; // camel dash cooldown
+  bossBars: { id: string; name: string; progress: number; color: string; notches?: 6 | 10 | 12 | 20 }[];
   debug?: Record<string, string>; // F3 lines
   heldName?: string; // shows above the hotbar on change
   underwater: boolean;
@@ -764,4 +813,6 @@ export interface HudState {
   freeze?: number; // 0..1 powder snow overlay
   portal?: number; // 0..1 nether portal swirl
   light?: number; // 0..1 brightness at the eye, for the vignette
+  thirdPerson?: 0 | 1 | 2; // F5 camera, hides the crosshair
+  attack?: number; // 0..1 attack cooldown, for the attack indicator
 }

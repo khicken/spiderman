@@ -187,9 +187,12 @@ export function step(weight: "light" | "mid" | "heavy" | "click"): Gen {
   if (weight === "click") return clicks([2, 3], 0.06, 1200, 3000, 0.4);
   const f = weight === "light" ? 1800 : weight === "mid" ? 1100 : 500;
   return (r, sr) => {
-    const d = alloc(0.2, sr);
-    addGrains(d, sr, r, { start: 0, dur: 0.08, count: weight === "light" ? 6 : 12, amp: 0.6, freqLo: f * 0.5, freqHi: f * 2.5, q: 1, grainLo: 0.004, grainHi: 0.02 });
-    addTone(d, sr, { dur: 0.15, freq: (t) => (weight === "heavy" ? 55 : 110) * (1 + Math.exp(-t / 0.01)), amp: weight === "heavy" ? 1 : 0.4, decay: 0.03 });
+    const d = alloc(0.3, sr);
+    const ff = f * rand(r, 0.8, 1.25);
+    addGrains(d, sr, r, { start: 0, dur: 0.08, count: weight === "light" ? 7 : 12, amp: 0.6, freqLo: ff * 0.5, freqHi: ff * 2.5, q: 1, grainLo: 0.004, grainHi: 0.02 });
+    addGrains(d, sr, r, { start: rand(r, 0.06, 0.11), dur: 0.08, count: weight === "light" ? 3 : 6, amp: 0.3, freqLo: ff * 0.4, freqHi: ff * 1.8, q: 1, grainLo: 0.004, grainHi: 0.016 });
+    const low = (weight === "heavy" ? 55 : 110) * rand(r, 0.8, 1.25);
+    addTone(d, sr, { dur: 0.15, freq: (t) => low * (1 + Math.exp(-t / 0.01)), amp: (weight === "heavy" ? 0.8 : 0.35) * rand(r, 0.7, 1), decay: rand(r, 0.02, 0.04) });
     return d;
   };
 }

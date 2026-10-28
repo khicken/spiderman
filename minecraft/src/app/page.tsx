@@ -1,23 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ContainerView, HudState } from "../game/contracts";
 import type { GameHandle } from "../game/game";
 import { createAudio, type GameAudio } from "../game/audio";
 import {
   Chat, LeaveBedButton, ContainerScreen, CreateWorldScreen, Crosshair, Text, DEFAULT_SETTINGS, DeathScreen, DebugOverlay, GuiRoot, Hud, LoadingScreen,
-  OptionsScreen, PauseScreen, SelectWorldScreen, TitleScreen, completeCommand, computeGuiScale, setUiClickSound,
+  OptionsScreen, PauseScreen, SelectWorldScreen, TitleScreen, completeCommand, suggestCommand, computeGuiScale, setUiClickSound,
   type ChatMessage, type NewWorldOptions, type Settings, type TimedText, type WorldListEntry,
 } from "../game/ui";
 import { Panorama } from "../game/ui/panorama";
+import type { CreativeProps } from "../game/ui/creative-screen";
 import { StatisticsScreen } from "../game/ui/menus-extra";
 import { Subtitles } from "../game/ui/subtitles";
+import { showsEffects } from "../game/ui/container-screen";
 import { setSubtitles } from "../game/systems/features/subtitles";
 import { generalRows, itemRows, mobRows } from "../game/systems/features/stats";
 import { AdvancementsScreen } from "../game/ui/advancements-screen";
 import { CreditsScreen } from "../game/ui/credits-screen";
 import { TOAST_MS, Toasts, type ToastEntry } from "../game/ui/toasts";
-import { mergeSettings, setActiveKeys } from "../game/ui/settings";
+import { mergeSettings, setActiveKeys, setActiveSettings } from "../game/ui/settings";
 import { createWorldMeta, listWorlds, loadMeta, saveMeta, type WorldMeta } from "../game/world/save";
 import { HideWhileSigning, SignEditScreen } from "../game/ui/sign-screen";
 import { ConnectingScreen, DirectConnectScreen, DisconnectedScreen, MultiplayerScreen, OpenToLanScreen, PlayerListOverlay } from "../game/ui/multiplayer";
@@ -110,6 +112,7 @@ export default function Page() {
   }, [asleep]);
   const { w, h } = useWindowSize();
   const guiScale = computeGuiScale(settings.guiScale, w, h);
+  setActiveSettings(settings);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -167,6 +170,7 @@ export default function Page() {
     const canvas = canvasRef.current;
     let game: GameHandle | null = null;
     let cancelled = false;
+    let respawnTimer: ReturnType<typeof setTimeout> | undefined;
     void import("../game/game").then(({ startGame }) => {
       if (cancelled) return;
       game = startGame(canvas, {
@@ -185,7 +189,15 @@ export default function Page() {
           title: (text, subtitle) => setTitle({ text, subtitle, at: performance.now() }),
           actionBar: (text) => setActionBar({ text, at: performance.now() }),
           hurt: () => setHurtAt(performance.now()),
-          died: (message) => setDeath(message),
+          died: (message) => {
+            if (!meta.rules.doImmediateRespawn) return setDeath(message);
+            clearTimeout(respawnTimer);
+            respawnTimer = setTimeout(() => {
+              if (meta.hardcore) game?.setGameMode("spectator");
+              game?.respawn();
+              game?.lock();
+            });
+          },
           toast: (t) => {
             const id = ++msgId.current;
             setToasts((l) => [...l, { ...t, id }]);
@@ -229,6 +241,7 @@ export default function Page() {
     });
     return () => {
       cancelled = true;
+      clearTimeout(respawnTimer);
       game?.dispose();
       gameRef.current = null;
     };
@@ -291,7 +304,7 @@ export default function Page() {
     setScreen("connecting");
     void import("../game/net/client").then(({ connectClient }) => {
       const c = connectClient(code, playerName(), Math.min(8, settings.renderDistance), (st) =>
-        setConnectStatus(st === "connecting" ? "Connecting to the server..." : st === "joining" ? "Logging in..." : "Loading terrain..."),
+        setConnectStatus(st === "connecting" ? "Connecting to the server..." : st === "offline" ? "No relay server reachable, retrying..." : st === "joining" ? "Logging in..." : "Loading terrain..."),
       );
       cancelJoin.current = c.cancel;
       c.done.then(
@@ -360,6 +373,22 @@ export default function Page() {
   });
   const g = gameRef.current;
   const inv = g?.ctx.inventory;
+  // Stable so the creative screen keeps its item and tooltip memos across HUD updates.
+  const isCreative = view?.kind === "creative";
+  const creative = useMemo<CreativeProps | undefined>(
+    () =>
+      inv && isCreative
+        ? {
+            tabs: inv.creativeTabs(),
+            items: (tab, search) => inv.creativeItems(tab, search),
+            onTake: (stack, click) => inv.takeCreative(stack, click),
+            onDestroy: (all) => {
+              if (all) for (let i = 0; i < 41; i++) inv.setSlot(i, null);
+            },
+          }
+        : undefined,
+    [inv, isCreative],
+  );
 
   if (!mounted) return <main />;
   if (screen !== "game") {
@@ -439,9 +468,9 @@ export default function Page() {
           if (playing && !overlay && !view && !death) gameRef.current?.lock();
         }}
       />
-      {playing && !hideGui && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
+      {playing && !hideGui && !hud?.thirdPerson && !view && !death && !credits && (!overlay || overlay === "chat" || overlay === "bed") && <HideWhileSigning><Crosshair scale={guiScale} /></HideWhileSigning>}
       <GuiRoot guiScale={settings.guiScale}>
-        {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics === "fancy"} />}
+        {playing && hud && !hideGui && <Hud state={hud} title={title} actionBar={actionBar} hurtAt={hurtAt} vignette={settings.graphics !== "fast"} hideEffects={!!view && showsEffects(view.kind, Math.ceil(w / guiScale))} />}
         {playing && !hideGui && settings.showSubtitles && <Subtitles />}
         {credits && (
           <CreditsScreen
@@ -452,9 +481,9 @@ export default function Page() {
             }}
           />
         )}
-        {playing && lockHint && !overlay && !view && !death && !credits && <Text text="Click to play" x={Math.floor(w / guiScale / 2)} y={Math.floor(h / guiScale / 2) + 16} align="center" />}
+        {playing && lockHint && !hideGui && !overlay && !view && !death && !credits && <Text text="Click to play" color={0xa0a0a0} x={Math.floor(w / guiScale / 2)} y={Math.floor(h / guiScale / 2) + 16} align="center" />}
         {playing && debug && hud?.debug && <DebugOverlay lines={hud.debug} width={Math.ceil(w / guiScale)} />}
-        {playing && !death && (
+        {playing && !death && (!hideGui || overlay === "chat" || overlay === "bed") && (
           <div style={{ pointerEvents: overlay === "chat" || overlay === "bed" ? "auto" : "none" }}>
             <Chat
               messages={messages}
@@ -462,6 +491,7 @@ export default function Page() {
               keepOpen={overlay === "bed"}
               initial={chatInit}
               complete={(line) => (g ? completeCommand(g.ctx, line) : [])}
+              suggest={(line) => (g ? suggestCommand(g.ctx, line) : { start: line.length, list: [], usage: [] })}
               textOpacity={settings.chatOpacity}
               bgOpacity={settings.chatBackground}
               lineSpacing={settings.chatLineSpacing}
@@ -497,18 +527,8 @@ export default function Page() {
               onOption={(id) => inv.chooseOption(id)}
               advanced={settings.advancedTooltips}
               inventory={inv}
-              creative={
-                view.kind === "creative"
-                  ? {
-                      tabs: inv.creativeTabs(),
-                      items: (tab, search) => inv.creativeItems(tab, search),
-                      onTake: (stack, click) => inv.takeCreative(stack, click),
-                      onDestroy: (all) => {
-                        if (all) for (let i = 0; i < 41; i++) inv.setSlot(i, null);
-                      },
-                    }
-                  : undefined
-              }
+              effects={hud?.effects}
+              creative={creative}
             />
           </div>
         )}
@@ -520,7 +540,7 @@ export default function Page() {
               score={g?.ctx.player.xpTotal ?? 0}
               hardcore={meta?.hardcore}
               onRespawn={() => {
-                if (meta?.hardcore && g) g.ctx.player.gameMode = "spectator";
+                if (meta?.hardcore) g?.setGameMode("spectator");
                 gameRef.current?.respawn();
                 setDeath(null);
                 gameRef.current?.lock();

@@ -7,10 +7,17 @@ export interface EffectView {
   blindness: number;
   darkness: number;
   nausea: number;
+  confused: number;
 }
 
-const view: EffectView = { nightVision: 0, blindness: 0, darkness: 0, nausea: 0 };
-let nausea = 0;
+const view: EffectView = { nightVision: 0, blindness: 0, darkness: 0, nausea: 0, confused: 0 };
+let spin = 0, prevSpin = 0, spinTick = -1;
+let portalSpin = 0;
+
+// Vanilla spinningEffectIntensity: standing in a nether portal warps the view like nausea.
+export function setPortalSpin(v: number): void {
+  portalSpin = v;
+}
 
 const ticksOf = (p: PlayerState, id: string) => p.effects.find((e) => e.id === id)?.ticks ?? 0;
 
@@ -37,6 +44,7 @@ export function tickEffectParticles(p: PlayerState, ctx: GameCtx): void {
 }
 
 // Strengths for the renderer and camera. Night vision flickers through its last 10 s; blindness fades over 20 ticks; darkness pulses.
+// confused is the nausea spin while the effect is active, for the Distortion Effects tint.
 export function effectView(p: PlayerState, pt: number): EffectView {
   const nv = ticksOf(p, "night_vision");
   view.nightVision = nv <= 0 ? 0 : nv > 200 ? 1 : 0.7 + Math.sin((nv - pt) * Math.PI * 0.2) * 0.3;
@@ -45,8 +53,13 @@ export function effectView(p: PlayerState, pt: number): EffectView {
   view.blindness = bl <= 0 ? 0 : Math.min(1, bl / 20);
   const dk = ticksOf(p, "darkness");
   view.darkness = dk <= 0 ? 0 : (0.45 * Math.cos(((p.ticks + pt) / 22) * Math.PI) + 0.55) * Math.min(1, dk / 20);
-  const want = p.hasEffect("nausea") > 0 ? 1 : 0;
-  nausea += (want - nausea) * (want ? 0.02 : 0.05);
-  view.nausea = nausea < 0.01 ? 0 : nausea;
+  // Vanilla LocalPlayer.handleConfusionTransitionEffect, stepped once per player tick.
+  if (spinTick < 0 || p.ticks < spinTick || p.ticks - spinTick > 20) spinTick = p.ticks;
+  for (; spinTick < p.ticks; spinTick++) {
+    prevSpin = spin;
+    spin = Math.max(0, Math.min(1, spin + (ticksOf(p, "nausea") > 60 ? 1 / 150 : -0.05)));
+  }
+  view.nausea = Math.max(prevSpin + (spin - prevSpin) * pt, portalSpin);
+  view.confused = p.hasEffect("nausea") > 0 ? view.nausea : 0;
   return view;
 }

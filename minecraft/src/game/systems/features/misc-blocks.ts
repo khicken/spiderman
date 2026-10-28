@@ -85,6 +85,7 @@ export function tickConduits(ctx: GameCtx) {
     const pp = p.body.pos;
     if ((pp.x - x - 0.5) ** 2 + (pp.y - y - 0.5) ** 2 + (pp.z - z - 0.5) ** 2 <= range * range && (p.body.inWater || ctx.time.rain > 0.2)) {
       (p as unknown as { addEffect(id: string, amp: number, ticks: number): void }).addEffect("conduit_power", 0, 260);
+      for (const e of p.effects) if (e.id === "conduit_power" && e.ticks === 260) e.ambient = true;
     }
     if (n < 42) continue;
     ctx.entities.near(x + 0.5, y + 0.5, z + 0.5, 8, near);

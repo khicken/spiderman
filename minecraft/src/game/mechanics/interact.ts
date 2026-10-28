@@ -117,22 +117,33 @@ const useBed: UseFn = (ctx, x, y, z, s) => {
     return true;
   }
   const p = ctx.player;
+  const fx = hx - HX[h], fz = hz - HZ[h];
+  const pp = p.body.pos;
+  const near = (bx: number, bz: number) => Math.abs(pp.x - bx - 0.5) <= 3 && Math.abs(pp.y - y) <= 2 && Math.abs(pp.z - bz - 0.5) <= 3;
+  if (!near(hx, hz) && !near(fx, fz)) {
+    ctx.emit({ type: "action_bar", text: "You may not rest now; the bed is too far away" });
+    return true;
+  }
+  if (isOpaque(ctx.world.getBlock(hx, y + 1, hz)) || isOpaque(ctx.world.getBlock(fx, y + 1, fz))) {
+    ctx.emit({ type: "action_bar", text: "This bed is obstructed" });
+    return true;
+  }
   const sp = p.spawn as BedSpawn;
   if (!sp.bed || sp.x !== hx || sp.z !== hz || sp.y !== y) {
     p.spawn = { x: hx, y, z: hz, bed: true } as BedSpawn;
     ctx.emit({ type: "chat", text: "Respawn point set" });
   }
   if (!isNight(ctx)) {
-    ctx.emit({ type: "chat", text: "You can sleep only at night" });
+    ctx.emit({ type: "action_bar", text: "You can sleep only at night" });
     return true;
   }
-  if (monstersNear(ctx, hx, y, hz)) {
-    ctx.emit({ type: "chat", text: "You may not rest now; there are monsters nearby" });
+  if (!creative(ctx) && monstersNear(ctx, hx, y, hz)) {
+    ctx.emit({ type: "action_bar", text: "You may not rest now; there are monsters nearby" });
     return true;
   }
   p.sleeping = true;
   sleepTick = ctx.time.tick;
-  p.teleport(hx + 0.5, y + 0.5625, hz + 0.5);
+  p.teleport(hx + 0.5, y + 0.6875, hz + 0.5);
   ctx.world.scheduleTick(hx, y, hz, 100);
   return true;
 };
@@ -150,7 +161,7 @@ export const bedScheduledTick: NonNullable<BlockBehavior["scheduledTick"]> = (ct
     ctx.world.scheduleTick(x, y, z, left);
     return;
   }
-  if (!SLEEP_RULE.othersAsleep(ctx)) {
+  if (!SLEEP_RULE.othersAsleep(ctx) || (ctx.rules.playersSleepingPercentage ?? 100) > 100) {
     ctx.world.scheduleTick(x, y, z, 10);
     return;
   }

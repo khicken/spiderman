@@ -2,9 +2,8 @@ import type * as THREE from "three";
 import type { AudioApi } from "../contracts";
 import { createMusic, type MusicSetting } from "./music";
 import { onPackChange, packLookup, pickPackClip } from "./pack-sounds";
-import { createBiomeAmbient } from "./biome-ambient";
+import { createBiomeAmbient, seamless } from "./biome-ambient";
 import { createRecords } from "./records";
-import { rand } from "./synth/dsp";
 import { renderVariant, resolveSound, type Resolved } from "./synth/registry";
 
 const MAX_VOICES = 32;
@@ -26,10 +25,21 @@ interface Voice {
   ui: boolean;
 }
 
+export interface MoodWorld {
+  getSkyLight(x: number, y: number, z: number): number;
+  getBlockLight(x: number, y: number, z: number): number;
+}
+
 export interface AmbientState {
   dark?: boolean;
   rain?: number;
+  world?: MoodWorld;
 }
+
+// Vanilla AmbientMoodSettings shared by every biome: tickDelay 6000, blockSearchExtent 8, soundPositionOffset 2.
+const MOOD_DELAY = 6000;
+const MOOD_EXTENT = 8;
+const MOOD_OFFSET = 2;
 
 const HOSTILE = new Set([
   "zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "creeper", "spider", "cave_spider",
@@ -46,7 +56,7 @@ export function soundCategory(name: string): string {
   if (name.startsWith("weather.") || name.startsWith("entity.lightning_bolt")) return "weather";
   if (name.startsWith("ambient.") || name.startsWith("entity.firework_rocket")) return "ambient";
   if (name.startsWith("block.")) return "blocks";
-  if (name.startsWith("entity.player.") || name.startsWith("item.") || name === "random.pop" || name.startsWith("entity.experience_orb") || name.startsWith("entity.item.")) return "players";
+  if (name.startsWith("entity.player.") || name.startsWith("item.") || name === "random.pop" || name.startsWith("entity.experience_orb") || name.startsWith("entity.item.") || name === "entity.generic.eat" || name === "entity.generic.drink") return "players";
   if (name.startsWith("entity.")) {
     const rest = name.slice(7);
     for (const b of BLOCK_ENTITY) if (rest.startsWith(b)) return "blocks";
@@ -76,7 +86,6 @@ export function createAudio(): GameAudio {
   let sfxMute: GainNode | null = null;
   let musicBus: GainNode | null = null;
   let recordsBus: GainNode | null = null;
-  let muffle: BiquadFilterNode | null = null;
   let music: ReturnType<typeof createMusic> | null = null;
   let records: ReturnType<typeof createRecords> | null = null;
   let rainSrc: AudioBufferSourceNode | null = null;
@@ -92,8 +101,11 @@ export function createAudio(): GameAudio {
   let musicKind: MusicSetting = "none";
   let underwater = false;
   let paused = false;
-  let dark = false;
-  let nextCave = 0;
+  let moodWorld: MoodWorld | null = null;
+  let moodiness = 0;
+  let moodBiome: string | null = null;
+  let lastTick = 0;
+  let waterLoop: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   let warmIdx = 0;
   let warmTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
@@ -213,7 +225,8 @@ export function createAudio(): GameAudio {
       const rec = res.recipe;
       buf = buffer(res, Math.floor(Math.random() * (rec.variants ?? 4)));
       gainScale = rec.gain ?? 1;
-      const pv = rec.pitchVar ?? 0.1;
+      // A caller pitch other than 1 already carries vanilla's own randomness.
+      const pv = pitch !== undefined && pitch !== 1 ? Math.min(0.05, rec.pitchVar ?? 0.1) : rec.pitchVar ?? 0.1;
       rate = (pitch ?? 1) * (1 + (Math.random() - Math.random()) * pv);
     }
     if (!buf) return;
@@ -235,7 +248,7 @@ export function createAudio(): GameAudio {
       panner = ctx.createPanner();
       panner.panningModel = "equalpower";
       panner.distanceModel = "linear";
-      panner.refDistance = 1;
+      panner.refDistance = 0;
       panner.maxDistance = far;
       panner.rolloffFactor = 1;
       setPos(panner, x, y, z);
@@ -243,7 +256,7 @@ export function createAudio(): GameAudio {
       gain.connect(panner).connect(out);
       const d = Math.hypot(x - listener.x, y - listener.y, z - listener.z);
       center = ctx.createGain();
-      center.gain.value = CENTER * Math.max(0, 1 - Math.max(0, d - 1) / (far - 1 || 1));
+      center.gain.value = CENTER * Math.max(0, 1 - d / far);
       gain.connect(center).connect(out);
       gain.gain.value *= 0.75;
     } else {
@@ -255,15 +268,79 @@ export function createAudio(): GameAudio {
     src.start();
   }
 
-  function updateAmbient(): void {
-    if (!ctx || !dark || paused) return;
-    const now = ctx.currentTime;
-    if (nextCave === 0) nextCave = now + rand(Math.random, 30, 120);
-    if (now >= nextCave) {
-      nextCave = now + rand(Math.random, 60, 180);
-      const a = Math.random() * Math.PI * 2;
-      play("ambient.cave", listener.x + Math.cos(a) * 6, listener.y + rand(Math.random, -3, 3), listener.z + Math.sin(a) * 6, 0.9);
+  // Vanilla BiomeAmbientSoundsHandler mood: each tick samples one block within 8; darkness fills it over 6000 ticks.
+  function moodTick(w: MoodWorld): void {
+    const span = MOOD_EXTENT * 2 + 1;
+    const bx = Math.floor(listener.x) + Math.floor(Math.random() * span) - MOOD_EXTENT;
+    const by = Math.floor(listener.y) + Math.floor(Math.random() * span) - MOOD_EXTENT;
+    const bz = Math.floor(listener.z) + Math.floor(Math.random() * span) - MOOD_EXTENT;
+    const sky = w.getSkyLight(bx, by, bz);
+    if (sky > 0) moodiness -= (sky / 15) * 0.001;
+    else moodiness -= (w.getBlockLight(bx, by, bz) - 1) / MOOD_DELAY;
+    if (moodiness < 1) {
+      moodiness = Math.max(0, moodiness);
+      return;
     }
+    moodiness = 0;
+    const dx = bx + 0.5 - listener.x, dy = by + 0.5 - listener.y, dz = bz + 0.5 - listener.z;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const off = len + MOOD_OFFSET;
+    play(moodBiome ? `ambient.${moodBiome}.mood` : "ambient.cave", listener.x + (dx / len) * off, listener.y + (dy / len) * off, listener.z + (dz / len) * off, 0.9);
+  }
+
+  function waterTick(): void {
+    if (Math.random() < 0.01) play("ambient.underwater.loop.additions");
+    if (Math.random() < 0.001) play("ambient.underwater.loop.additions.rare");
+    if (Math.random() < 0.0001) play("ambient.underwater.loop.additions.ultra_rare");
+  }
+
+  function updateAmbient(): void {
+    if (!ctx || paused) return;
+    const now = ctx.currentTime;
+    if (!lastTick || now - lastTick > 1) lastTick = now;
+    for (; now - lastTick >= 0.05; lastTick += 0.05) {
+      if (moodWorld) moodTick(moodWorld);
+      if (waterLoop) waterTick();
+    }
+  }
+
+  function stopWaterLoop(secs: number): void {
+    const l = waterLoop;
+    waterLoop = null;
+    if (!l || !ctx) return;
+    const now = ctx.currentTime;
+    try {
+      l.gain.gain.cancelScheduledValues(now);
+      l.gain.gain.setValueAtTime(l.gain.gain.value, now);
+      l.gain.gain.linearRampToValueAtTime(0, now + secs);
+      l.src.stop(now + secs + 0.05);
+    } catch { /* stopped already */ }
+    l.src.onended = () => {
+      try { l.gain.disconnect(); } catch { /* gone */ }
+    };
+  }
+
+  function startWaterLoop(): void {
+    if (!ctx || !sfxMute || waterLoop) return;
+    const clip = pickPackClip(pack, "ambient.underwater.loop");
+    const res = clip ? null : resolveSound("ambient.underwater.loop");
+    const raw = clip ? clip.buffer : res && buffer(res, 0);
+    if (!raw) return;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    const src = ctx.createBufferSource();
+    src.buffer = clip ? raw : seamless(ctx, raw, 0.75);
+    src.loop = true;
+    src.connect(gain).connect(sfxMute);
+    src.start();
+    gain.gain.linearRampToValueAtTime((res?.recipe.gain ?? 1) * (cats.ambient ?? 1), ctx.currentTime + 2);
+    waterLoop = { src, gain };
+  }
+
+  function syncWaterLoop(): void {
+    if (paused) return;
+    if (underwater && !waterLoop) startWaterLoop();
+    else if (!underwater && waterLoop) stopWaterLoop(2);
   }
 
   function stopRain(): void {
@@ -310,15 +387,19 @@ export function createAudio(): GameAudio {
         sfxMute = ctx.createGain();
         musicBus = ctx.createGain();
         recordsBus = ctx.createGain();
-        muffle = ctx.createBiquadFilter();
-        muffle.type = "lowpass";
-        muffle.frequency.value = underwater ? 700 : 22000;
         sfxMute.gain.value = paused ? 0 : 1;
         sfxMute.connect(sfx);
         recordsBus.connect(sfxMute);
-        sfx.connect(muffle).connect(master);
+        sfx.connect(master);
         musicBus.connect(master);
-        master.connect(ctx.destination);
+        // Many sounds at once (mining, explosions) sum past 1.0; limit instead of clipping.
+        const limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -6;
+        limiter.knee.value = 6;
+        limiter.ratio.value = 20;
+        limiter.attack.value = 0.002;
+        limiter.release.value = 0.2;
+        master.connect(limiter).connect(ctx.destination);
         music = createMusic(ctx, musicBus, pack);
         biomeAmb = createBiomeAmbient({
           ctx,
@@ -336,6 +417,7 @@ export function createAudio(): GameAudio {
         applyVolumes();
         music.setKind(musicKind);
         warmTimer = setTimeout(warm, 100);
+        syncWaterLoop();
       }
       if (ctx.state === "suspended") void ctx.resume().catch((err) => warnOnce("resume-promise", "audio resume failed", err));
     }),
@@ -379,13 +461,13 @@ export function createAudio(): GameAudio {
     setUnderwater: guard("underwater", (on: boolean) => {
       if (on === underwater) return;
       underwater = on;
-      if (ctx && muffle) muffle.frequency.setTargetAtTime(on ? 700 : 22000, ctx.currentTime, 0.05);
+      if (paused) return;
+      play(on ? "ambient.underwater.enter" : "ambient.underwater.exit");
+      if (on) startWaterLoop();
+      else stopWaterLoop(2);
     }),
     setAmbient: guard("ambient", (s: AmbientState) => {
-      if (s.dark !== undefined && s.dark !== dark) {
-        dark = s.dark;
-        nextCave = 0;
-      }
+      if (s.world !== undefined) moodWorld = s.world;
       if (s.rain !== undefined) setRain(s.rain);
     }),
     setPaused: guard("pause", (on: boolean) => {
@@ -394,16 +476,25 @@ export function createAudio(): GameAudio {
       if (!ctx || !sfxMute) return;
       if (on) stopSfx(true);
       sfxMute.gain.setTargetAtTime(on ? 0 : 1, ctx.currentTime, on ? 0.02 : 0.1);
+      syncWaterLoop();
     }),
-    setBiomeAmbient: guard("biome-ambient", (biome: string | null) => biomeAmb?.set(biome, paused)),
+    setBiomeAmbient: guard("biome-ambient", (biome: string | null) => {
+      moodBiome = biome;
+      biomeAmb?.set(biome, paused);
+      if (biome) music?.setBiome(biome);
+    }),
     changeDim: guard("dim", () => {
       biomeAmb?.stop();
+      stopWaterLoop(0.1);
+      moodiness = 0;
+      moodBiome = null;
       stopSfx(true);
       stopRain();
       rainLevel = 0;
       music?.fadeAll();
     }),
     stopAll: guard("stop", () => {
+      stopWaterLoop(0.1);
       stopSfx(true);
       stopRain();
       rainLevel = 0;
@@ -414,6 +505,7 @@ export function createAudio(): GameAudio {
     dispose: guard("dispose", () => {
       disposed = true;
       biomeAmb?.stop();
+      stopWaterLoop(0);
       offPack();
       if (warmTimer) clearTimeout(warmTimer);
       music?.dispose();

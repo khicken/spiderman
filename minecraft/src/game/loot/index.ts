@@ -31,6 +31,24 @@ function applyFn(st: ItemStack, fn: string, r: JavaRandom) {
       st.item = "enchanted_book";
       st.data = { stored: rec };
     } else st.ench = rec;
+  } else if (fn.startsWith("opts:")) {
+    const ids = fn.slice(5).split("|");
+    const e = ENCHANTMENTS.find((x) => x.id === ids[r.nextInt(ids.length)]);
+    if (!e) return;
+    const rec = { [e.id]: 1 + r.nextInt(e.maxLevel) };
+    if (st.item === "book") {
+      st.item = "enchanted_book";
+      st.data = { stored: rec };
+    } else st.ench = rec;
+  } else if (fn.startsWith("set:")) {
+    const [id, lvl] = fn.slice(4).split("=");
+    if (st.item === "book") {
+      st.item = "enchanted_book";
+      st.data = { stored: { [id]: Number(lvl) } };
+    } else st.ench = { [id]: Number(lvl) };
+  } else if (fn.startsWith("omen:")) {
+    const [lo, hi] = fn.slice(5).split("-").map(Number);
+    st.data = { amplifier: lo + r.nextInt(hi - lo + 1) };
   } else if (fn === "swift_sneak") {
     st.item = "enchanted_book";
     st.data = { stored: { swift_sneak: 1 + r.nextInt(3) } };
@@ -55,21 +73,30 @@ function pick(entries: Entry[], r: JavaRandom): Entry {
   return entries[entries.length - 1];
 }
 
-export function rollLoot(table: Table | string, seed: number): ItemStack[] {
-  const t = typeof table === "string" ? LOOT[table] : table;
-  if (!t) return [];
-  const r = new JavaRandom(seed >>> 0);
-  const out: ItemStack[] = [];
+function rollInto(t: Table, r: JavaRandom, out: ItemStack[], depth: number) {
   for (const pool of t) {
+    if (pool.chance !== undefined && r.nextFloat() >= pool.chance) continue;
     const rolls = pool.rolls[0] + r.nextInt(pool.rolls[1] - pool.rolls[0] + 1);
     for (let k = 0; k < rolls; k++) {
       const [item, , min = 1, max = min, fn] = pick(pool.entries, r);
+      if (item.startsWith("@")) {
+        const sub = LOOT[item.slice(1)];
+        if (sub && depth < 4) rollInto(sub, r, out, depth + 1);
+        continue;
+      }
       if (item === "empty" || !itemDef(item)) continue;
       const st: ItemStack = { item, count: min + r.nextInt(max - min + 1) };
       if (fn) applyFn(st, fn, r);
       out.push(st);
     }
   }
+}
+
+export function rollLoot(table: Table | string, seed: number): ItemStack[] {
+  const t = typeof table === "string" ? LOOT[table] : table;
+  if (!t) return [];
+  const out: ItemStack[] = [];
+  rollInto(t, new JavaRandom(seed >>> 0), out, 0);
   return out;
 }
 

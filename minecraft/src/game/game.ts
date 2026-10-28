@@ -13,12 +13,13 @@ import { portalArrived } from "./mechanics/portal";
 import { buildPortal as forcePortal, forgetPortal, nearestKnown, scanPortal } from "./mechanics/portal-link";
 import { createInput, createPlayer } from "./player";
 import { setKeyBinds } from "./player/input";
+import { attackStats, attackStrength } from "./player/stats";
 import { createTouchControls, isTouchDevice } from "./player/touch";
 import { CAVE_CULL } from "./render/cave-cull";
 import { createRenderer } from "./render";
 import { createSystems } from "./systems";
 import { uiBridge, type Toast } from "./systems/ui-bridge";
-import { runCommand } from "./ui/commands";
+import { runCommand, setGameMode } from "./ui/commands";
 import { computeGuiScale } from "./ui/gui";
 import type { Settings } from "./ui/settings";
 import { createWorld, type World } from "./world";
@@ -26,6 +27,10 @@ import { loadEntities, saveEntities, saveMeta, type WorldMeta } from "./world/sa
 import { findSpawn } from "./worldgen";
 import type { GameInternals, NetLink } from "./net";
 import type { LanOptions } from "./net/host";
+import { setPortalSpin } from "./player/effects-fx";
+import { vehicleInventoryKey } from "./entities/riding";
+import { forgiveDeadPlayer } from "./entities/combat";
+import { entityScreenValid } from "./player/riding";
 
 export type GamePhase = "loading" | "playing";
 
@@ -86,6 +91,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   const time = { tick: meta.tick ?? 0, dayTime: meta.dayTime ?? 0, day: Math.floor((meta.tick ?? 0) / DAY_TICKS), rain: meta.rain ?? 0, thunder: meta.thunder ?? 0 };
   const queued: GameEvent[] = [];
   let containerOpen = false;
+  let containerEntity: number | undefined;
   let disposed = false;
   let paused = false;
   let net: NetLink | null = opts.net ?? null;
@@ -118,12 +124,14 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     if (was) route({ type: "close_container" });
   };
 
+  const worldSpawn = { x: 0, y: 80, z: 0 };
   function buildStage(d: Dim) {
     dim = d;
     const taken = net?.adoptWorld?.(d) ?? null;
     adopted = !!taken;
     world = taken?.world ?? createWorld({ seed: meta.seed, dim: d, worldId: meta.id, behaviors: BEHAVIORS, getCtx: () => net?.ctxFor?.(d) ?? ctx, remote: net?.remoteWorld?.(d) });
     ctx.world = world;
+    world.spawn = worldSpawn;
     renderer = createRenderer(canvas, world);
     ctx.renderer = renderer;
     renderer.resize(window.innerWidth, window.innerHeight);
@@ -190,6 +198,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   net?.attach?.(internals);
   const sp = findSpawn(meta.seed);
   if (!meta.spawn) meta.spawn = { x: sp.x, y: 80, z: sp.z };
+  meta.worldSpawn = Object.assign(worldSpawn, meta.worldSpawn ?? { x: sp.x, y: 80, z: sp.z });
   if (!hasSave) player.spawn = { ...meta.spawn };
 
   let phase: GamePhase = "loading";
@@ -213,7 +222,6 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         audio.play(e.name, e.x, e.y, e.z, e.volume, e.pitch);
         return;
       case "particles":
-        if (settings.particles === "minimal" ? Math.random() < 0.9 : settings.particles === "decreased" && Math.random() < 0.5) return;
         renderer?.addParticles(e);
         return;
       case "block_changed": {
@@ -223,6 +231,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       }
       case "open_container":
         containerOpen = true;
+        containerEntity = e.entityId;
         input.enabled = false;
         if (typeof document !== "undefined" && document.pointerLockElement) document.exitPointerLock();
         ui.container(inventory.view());
@@ -237,6 +246,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         ui.hurt();
         return;
       case "player_died":
+        forgiveDeadPlayer(ctx);
         input.enabled = false;
         if (document.pointerLockElement) document.exitPointerLock();
         ui.died(e.message);
@@ -263,6 +273,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   const offAction = input.onAction((a) => {
     if (a === "inventory") {
       if (player.dead) return;
+      const mount = player.vehicle != null ? ctx.entities.get(player.vehicle) : undefined;
+      if (mount && vehicleInventoryKey(ctx, mount)) return;
       inventory.open(player.gameMode === "creative" ? "creative" : "inventory");
       return;
     }
@@ -284,8 +296,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   });
 
   function applySettings() {
-    const quality: Quality = touch ? "low" : settings.graphics === "fancy" ? "high" : "medium";
-    renderer.setOptions({ fov: settings.fov, quality, clouds: settings.clouds, brightness: settings.brightness });
+    const quality: Quality = touch ? "low" : settings.graphics !== "fast" ? "high" : "medium";
+    renderer.setOptions({ fov: settings.fov, quality, clouds: settings.clouds, brightness: settings.brightness, biomeBlend: settings.biomeBlend, particles: settings.particles });
     renderer.setRenderDistance(settings.renderDistance);
     audio.setVolume(settings.master, settings.volumes?.music ?? settings.music, 1);
     if (settings.volumes) audio.setCategories(settings.volumes);
@@ -356,6 +368,26 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     return [x, y > MIN_Y ? y : 80, z];
   }
 
+  // Vanilla spawnRadius: a world-spawn respawn lands on a random standable column within the radius.
+  function scatterSpawn() {
+    const sp = player.spawn as BedSpawn;
+    const r = Math.floor(ctx.rules.spawnRadius ?? 10);
+    if (sp.bed || r <= 1 || player.gameMode === "adventure") return;
+    for (let i = 0; i < 16; i++) {
+      const x = Math.floor(sp.x) + Math.floor(Math.random() * (2 * r + 1)) - r, z = Math.floor(sp.z) + Math.floor(Math.random() * (2 * r + 1)) - r;
+      if (!world.ready(x, z)) continue;
+      // Vanilla getOverworldRespawnPos: the first full block down from the top, unless a fluid comes first.
+      for (let y = world.topY(x, z); y > MIN_Y; y--) {
+        const def = blockDef(world.getBlock(x, y, z));
+        if (def.name === "water" || def.name === "lava" || world.isWaterlogged?.(x, y, z)) break;
+        if (def.solid && def.shape === "cube") {
+          if (blockDef(world.getBlock(x, y + 1, z)).solid || blockDef(world.getBlock(x, y + 2, z)).solid) break;
+          return player.teleport(x + 0.5, y + 1, z + 0.5);
+        }
+      }
+    }
+  }
+
   function arrive() {
     const tx = Math.floor(target.x), tz = Math.floor(target.z);
     if (arrival === "end") {
@@ -375,6 +407,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     } else if (arrival === "spawn") {
       const [sx, sy, sz] = safeSpot(tx, tz);
       if (!hasSave && player.spawn.y === 80) player.spawn = { x: sx, y: sy, z: sz };
+      if (!hasSave && worldSpawn.y === 80) Object.assign(worldSpawn, { x: sx, y: sy, z: sz });
       meta.spawn = { ...player.spawn };
       player.teleport(sx + 0.5, sy, sz + 0.5);
     } else {
@@ -448,11 +481,12 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       thundering = time.thunder > 0.5;
       thunderTimer = thundering ? 3600 + Math.floor(Math.random() * 12000) : 12000 + Math.floor(Math.random() * 168000);
     }
-    if (--rainTimer <= 0) {
+    const cycle = meta.rules.doWeatherCycle !== false;
+    if (cycle && --rainTimer <= 0) {
       raining = !raining;
       rainTimer = raining ? 12000 + Math.floor(Math.random() * 12000) : 12000 + Math.floor(Math.random() * 168000);
     }
-    if (--thunderTimer <= 0) {
+    if (cycle && --thunderTimer <= 0) {
       thundering = !thundering;
       thunderTimer = thundering ? 3600 + Math.floor(Math.random() * 12000) : 12000 + Math.floor(Math.random() * 168000);
     }
@@ -478,6 +512,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     hostile.tick(ctx);
     inventory.tick(ctx);
     player.tick(ctx);
+    if (containerOpen && containerEntity !== undefined && !entityScreenValid(player, entities.get(containerEntity))) inventory.close();
     systems.tick();
     net?.tick();
     tickPortalFx();
@@ -523,6 +558,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     }
     try {
       if (phase === "loading") {
+        chunkCenter.x = target.x;
+        chunkCenter.z = target.z;
         world.update(target.x, target.z, settings.renderDistance);
         renderer.camera.position.set(target.x, Number.isFinite(target.y) ? target.y + 1.6 : 100, target.z);
         renderer.render(dt);
@@ -560,7 +597,12 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       systems.frame(dt);
       net?.frame(dt);
       const p2 = performance.now();
-      world.update(player.body.pos.x, player.body.pos.z, settings.renderDistance);
+      // Vanilla spectatorsGenerateChunks off: a spectator is no chunk ticket source, so the loaded area stays put.
+      if (player.gameMode !== "spectator" || ctx.rules.spectatorsGenerateChunks !== false) {
+        chunkCenter.x = player.body.pos.x;
+        chunkCenter.z = player.body.pos.z;
+      }
+      world.update(chunkCenter.x, chunkCenter.z, settings.renderDistance);
       const p3 = performance.now();
       renderer.setTime(time.day * DAY_TICKS + time.dayTime);
       renderer.setWeather(time.rain, time.thunder);
@@ -579,14 +621,14 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         const pos = player.body.pos;
         const isDark = dim === "end" || (dim === "overworld" && world.getSkyLight(Math.floor(pos.x), Math.floor(pos.y + 1), Math.floor(pos.z)) < 8);
         if (isDark !== dark) dark = isDark;
-        audio.setAmbient({ dark, rain: dim === "overworld" ? time.rain : 0 });
+        audio.setAmbient({ dark, rain: dim === "overworld" ? time.rain : 0, world });
         audio.setBiomeAmbient(dim === "nether" ? world.getBiome(Math.floor(pos.x), Math.floor(pos.z)).name : null);
         if (!paused) audio.setMusic(dim === "nether" ? "nether" : dim === "end" ? "end" : player.gameMode === "creative" ? "creative" : player.air < 300 ? "underwater" : "overworld");
         ui.hud(hudState());
         const wantLock = !touch && input.enabled && !input.pointerLocked;
         if (!wantLock) unlockedAt = 0;
         else if (!unlockedAt) unlockedAt = now;
-        const hint = wantLock && now - unlockedAt > 400;
+        const hint = wantLock && now - unlockedAt > 400 && !input.lockPending;
         if (hint !== lockHint) ui.lockHint?.((lockHint = hint));
       }
       if (now > saveAt) {
@@ -600,6 +642,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
 
 
   let debugOn = false;
+  const chunkCenter = { x: 0, z: 0 };
   let portalFx = 0;
   const portalId = blockId("nether_portal");
 
@@ -607,6 +650,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     const p = player.body.pos;
     const inside = idOf(world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) === portalId || idOf(world.getBlock(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z))) === portalId;
     portalFx = inside ? Math.min(1, portalFx + 0.0125) : Math.max(0, portalFx - 0.05);
+    setPortalSpin(portalFx);
   }
 
   function lightAtEye(): number {
@@ -636,7 +680,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   function hudState(): HudState {
     const inv = inventory;
     const held = inv.held();
-    const p = player as typeof player & { frozenTicks?: number };
+    const p = player as typeof player & { frozenTicks?: number; absorption?: number };
     const bossBars: HudState["bossBars"] = [];
     for (const e of entities.all()) {
       const b = e.data.bossbar as HudState["bossBars"][number] | undefined;
@@ -660,7 +704,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       hardcore: meta.hardcore,
       poisoned: player.effects.some((e) => e.id === "poison"),
       withered: player.effects.some((e) => e.id === "wither"),
-      frozen: (p.frozenTicks ?? 0) > 0,
+      frozen: (p.frozenTicks ?? 0) >= 140,
+      absorption: p.absorption,
       bossBars,
       heldName: held ? held.name ?? (isPotionItem(held.item) ? potionItemName(held.item, potionOf(held)) : itemDef(held.item)?.displayName ?? held.item) : undefined,
       underwater: player.air < 300,
@@ -672,7 +717,11 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       portal: portalFx,
       light: lightAtEye(),
       mountHealth: player.mountHealth(),
+      mountMaxHealth: player.vehicle != null ? entities.get(player.vehicle)?.maxHealth : undefined,
       mountJump: player.mountJump(),
+      mountJumpCooldown: player.vehicle != null && Number(entities.get(player.vehicle)?.data.dashCd ?? 0) > 0,
+      thirdPerson: player.thirdPerson,
+      attack: attackStrength((player as typeof player & { attackTicker: number }).attackTicker, attackStats(held).speed),
     };
     if (debugOn) h.debug = debugLines();
     return h;
@@ -696,7 +745,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     const bx = Math.floor(pos.x), by = Math.floor(pos.y), bz = Math.floor(pos.z);
     const dir = player.lookDir();
     const f = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? 1 : 3) : dir.z > 0 ? 2 : 0;
-    const yawDeg = ((((-player.yaw * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
+    const yawDeg = ((((180 - (player.yaw * 180) / Math.PI) % 360) + 540) % 360) - 180;
     const biome = world.getBiomeAt?.(bx, by, bz) ?? world.getBiome(bx, bz);
     const info = renderer.renderer.info;
     const t = player.target;
@@ -744,6 +793,12 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       out["r:13"] = `Sky: ${ms(rs.atmosphere)} Upload: ${ms(rs.upload)} Draw: ${ms(rs.draw)} ms`;
       out["r:14"] = `Sections: ${rs.visible}/${rs.sections} visible, ${rs.pages} pages ${Math.round((rs.verts / 1e6) * 10) / 10}M verts`;
       out["r:15"] = `Mesh: ${rs.queued} queued, ${rs.inFlight} in ${rs.workers} workers, ${rs.results} to upload`;
+    }
+    // Vanilla showOnlyReducedInfo: no coordinates, facing, biome or targeted block.
+    if (ctx.rules.reducedDebugInfo) {
+      for (let i = 7; i <= 13; i++) delete out[`l:${i}`];
+      out["l:7"] = `Chunk-relative: ${bx & 15} ${by & 15} ${bz & 15}`;
+      return out;
     }
     if (t) {
       const def = blockDef(t.state);
@@ -821,6 +876,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     command(line: string): string[] {
       return net?.command?.(line) ?? runCommand(ctx, line);
     },
+    setGameMode: (m: Parameters<typeof setGameMode>[1]) => setGameMode(ctx, m),
     clickSlot: (i: number, c: Parameters<typeof inventory.clickSlot>[1]) => inventory.clickSlot(i, c),
     closeContainer() {
       inventory.close();
@@ -855,6 +911,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         player.spawn = { x: wx, y: wy, z: wz };
       }
       player.respawn();
+      scatterSpawn();
       resume();
     },
     save,
@@ -916,6 +973,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         player.pitch = (pitchDeg * Math.PI) / 180;
       },
       cmd: (line: string) => runCommand(ctx, line),
+      dim: (d: Dim, x: number, y: number, z: number) => queued.push({ type: "change_dim", dim: d, x, y, z }),
       block: (x: number, y: number, z: number) => blockDef(world.getBlock(x, y, z)).name,
       fps: () => fps,
       caveCull: CAVE_CULL,

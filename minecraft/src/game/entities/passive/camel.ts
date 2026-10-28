@@ -1,8 +1,9 @@
 import type { Entity, MobDef } from "../../contracts";
 import { clearPath } from "../ai";
+import { blockJumpFactor, blockSpeedFactor } from "../../player/physics";
 import { isBaby } from "../geom";
 import { rig, wrap, setRot, quadLegs, look, type VPart } from "../rig";
-import { mountPlayer, rider, steer } from "../riding";
+import { hasRoom, isAnimal, mountPlayer, openMount, registerMountInv, registerSeats, rider, steer } from "../riding";
 import { skin, shade, type Pix } from "./paint";
 import { animalAI, feed, num, sound, useItem, type AnimalOpts } from "./common";
 
@@ -95,6 +96,24 @@ function camelModel() {
 }
 
 const camelOpts: AnimalOpts = { food: ["cactus"], tempt: 2.5 };
+const SEAT = 1.45;
+const SIT_DROP = 1.15;
+
+// Vanilla Camel.getPassengerAttachmentPoint: a lone rider sits 0.5 forward; with two, the rear seat is 0.7 back, animals 0.2 further forward.
+registerSeats("camel", {
+  seats: 2,
+  at(v, i, n, p) {
+    let fwd = 0.5;
+    if (n > 1) {
+      if (i > 0) fwd = -0.7;
+      if (p && isAnimal(p)) fwd += 0.2;
+    }
+    const dy = (p ? SEAT + 0.4 : SEAT) - (v.data.sitting ? SIT_DROP : 0);
+    return [dy, fwd];
+  },
+});
+
+registerMountInv("camel", { canOpen: (e) => !isBaby(e), saddle: true });
 
 export const CAMEL: MobDef = {
   type: "camel",
@@ -107,7 +126,7 @@ export const CAMEL: MobDef = {
   xp: [1, 3],
   sounds: { ambient: "entity.camel.ambient", hurt: "entity.camel.hurt", death: "entity.camel.death", step: "entity.camel.step" },
   spawn: { dims: ["overworld"], biomes: ["desert"], light: "grass", group: [1, 1], weight: 1 },
-  seat: 1.45,
+  seat: SEAT,
   createModel: camelModel,
   tick(e, ctx) {
     e.body.stepHeight = 1.5;
@@ -125,11 +144,13 @@ export const CAMEL: MobDef = {
       }
       if (!e.data.saddle) return;
       steer(e, ctx, ctl, 0.09 + (ctl.sprint && cd === 0 ? 0.1 : 0));
+      // Vanilla Camel.executeRidersJump adds look * 22.2222 * charge * speed (0.09) and up 1.4285 * charge * jump strength (0.42).
       if (ctl.jumpCharge > 0 && e.body.onGround && cd === 0) {
-        const k = Math.max(0.3, ctl.jumpCharge);
-        e.body.vel.x += -Math.sin(e.yaw) * 1.2 * k;
-        e.body.vel.z += -Math.cos(e.yaw) * 1.2 * k;
-        e.body.vel.y = 0.6 * k;
+        const k = ctl.jumpCharge;
+        const h = 22.2222 * k * 0.09 * blockSpeedFactor(ctx.world, e.body);
+        e.body.vel.x += -Math.sin(e.yaw) * h;
+        e.body.vel.z += -Math.cos(e.yaw) * h;
+        e.body.vel.y += 1.4285 * k * 0.42 * blockJumpFactor(ctx.world, e.body);
         e.data.dashCd = 55;
         sound(ctx, e, "entity.camel.dash");
       }
@@ -150,6 +171,7 @@ export const CAMEL: MobDef = {
     animalAI(e, ctx, camelOpts);
   },
   onInteract(e, ctx, held) {
+    if (ctx.player.sneaking && ctx.player.vehicle !== e.id && openMount(ctx, e)) return true;
     if (held?.item === "saddle" && !e.data.saddle && !isBaby(e)) {
       e.data.saddle = true;
       useItem(ctx);
@@ -165,7 +187,7 @@ export const CAMEL: MobDef = {
       }
       return feed(e, ctx, CAMEL, held, camelOpts);
     }
-    if (isBaby(e) || ctx.player.sneaking) return false;
+    if (isBaby(e) || ctx.player.sneaking || !hasRoom(ctx, e)) return false;
     return mountPlayer(ctx, e);
   },
 };

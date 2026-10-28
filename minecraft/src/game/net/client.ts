@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { ClickKind, ContainerView, Dim, Entity, EntityApi, GameEvent, ItemStack } from "../contracts";
+import type { BlockBehavior, ClickKind, ContainerView, Dim, Entity, EntityApi, GameEvent, ItemStack } from "../contracts";
 import type { MirrorEntities } from "../entities";
 import { mobDef } from "../entities/registry";
 import { wakeUp } from "../mechanics/interact";
@@ -14,10 +14,11 @@ import { createAvatars } from "./avatars";
 import { unpackChunk, unpackMoves, type EntMove } from "./codec";
 import { entData } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
-import { BIN, F, PROTOCOL, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type WelcomeMsg } from "./protocol";
+import { BIN, F, PROTOCOL, hostUse, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type WelcomeMsg } from "./protocol";
 import { createTransport, type Transport } from "./transport";
+import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
 
-export type JoinStatus = "connecting" | "joining" | "loading";
+export type JoinStatus = "connecting" | "joining" | "loading" | "offline";
 
 export interface ClientLink extends NetLink {
   readonly welcome: WelcomeMsg;
@@ -27,6 +28,7 @@ export interface ClientLink extends NetLink {
 }
 
 const JOIN_TIMEOUT = 30000;
+const SKIN_GAP = 5000;
 // Commands that change the shared world, time or position run on the host against this player's proxy.
 const HOST_COMMANDS = new Set(["time", "weather", "tp", "teleport", "setblock", "fill", "difficulty", "gamerule", "summon", "setworldspawn", "kill", "list", "me", "locate"]);
 const SILENT_MS = 10000;
@@ -40,6 +42,25 @@ const reviveSets = (v: unknown): unknown => {
   for (const k in o) out[k] = reviveSets(o[k]);
   return out;
 };
+
+// Uses of these blocks go to the host with the hand that holds the item; the local run only predicts.
+function hostUses(own: Record<string, BlockBehavior>): Record<string, BlockBehavior> {
+  const out = { ...own };
+  for (const [name, b] of Object.entries(own)) {
+    const use = b.use;
+    if (!use || !hostUse(name)) continue;
+    out[name] = {
+      ...b,
+      use(ctx, x, y, z, s, held) {
+        const inv = ctx.inventory;
+        const hand = held === inv.held() ? "use" : held === inv.slots[40] ? "use_off" : null;
+        const fwd = ctx.world.hostAction;
+        return fwd && hand ? fwd(hand, x, y, z, () => use(ctx, x, y, z, s, held), ctx.player.target?.face) : use(ctx, x, y, z, s, held);
+      },
+    };
+  }
+  return out;
+}
 
 export function connectClient(code: string, name: string, rd: number, status?: (s: JoinStatus) => void): { done: Promise<ClientLink>; cancel(): void } {
   let cancelled = false;
@@ -55,10 +76,12 @@ export function connectClient(code: string, name: string, rd: number, status?: (
       }
       status?.("connecting");
       const hello: ClientMsg = { t: "hello", v: PROTOCOL, name, rd };
+      let offline = false;
       tr.onMessage = (from, raw) => {
         const m = raw as HostMsg;
         if (!m || typeof m !== "object") return;
         if (m.t === "host") {
+          offline = false;
           status?.("joining");
           tr.send(from, hello);
         } else if (m.t === "full") {
@@ -72,12 +95,14 @@ export function connectClient(code: string, name: string, rd: number, status?: (
         }
       };
       timer = setInterval(() => {
+        const alone = tr.relayDown && !tr.peers().length;
         if (performance.now() - started > JOIN_TIMEOUT) {
           clearInterval(timer!);
           tr.leave();
-          reject(new Error("Timed out"));
+          reject(new Error(alone ? "No relay server reachable" : "Timed out"));
           return;
         }
+        if (alone !== offline) status?.((offline = alone) ? "offline" : "connecting");
         tr.broadcast(hello);
       }, 1000);
       tr.broadcast(hello);
@@ -115,6 +140,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
   let exh = 0;
   let pstJson = "";
   let hostSeq = 0;
+  let muting = false;
   const shadow = { hp: -1, food: 0, sat: 0 };
   const avatars = createAvatars(() => g!.ctx);
   setPlayerName(name);
@@ -123,9 +149,17 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
   const send = (m: ClientMsg) => t.send(hostId, m);
   const advOf = () => ((g?.systemsSave().advancements as { players?: Record<string, unknown> } | undefined)?.players ?? {})[name];
 
+  // The host takes one skin message per 5 s, so changes go out as the latest look at that pace.
+  let lookDue: Look | null = null;
+  let lookAt = 0;
+  const offLook = onLocalLook((l) => {
+    lookDue = l;
+  });
+
   function close(reason: string) {
     if (closed) return;
     closed = true;
+    offLook();
     clearInterval(watch);
     t.leave();
     link.onClose?.(reason);
@@ -214,6 +248,11 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     lastHeard = performance.now();
     const m = rawMsg as HostMsg;
     if (!m || typeof m !== "object") return;
+    // Sent right after the welcome, before the game attaches.
+    if (m.t === "skins") {
+      for (const s of Array.isArray(m.list) ? m.list : []) if (s && typeof s.id === "number" && s.id !== welcome.you) avatars.look(s.id, cleanLook(s.look));
+      return;
+    }
     if (!g) return;
     const ctx = g.ctx;
     switch (m.t) {
@@ -245,6 +284,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       case "players":
         avatars.set(m.list, welcome.you, g.dim);
         return;
+
       case "list":
         list = m.list;
         return;
@@ -378,13 +418,22 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
 
   const vel = new THREE.Vector3();
 
+  function sendInv(now: number) {
+    invAt = now;
+    invVer = inv!.version;
+    send({ t: "inv", inv: invSave(), player: g!.player.save(), adv: advOf(), seq: hostSeq });
+  }
+
+  const pstOf = (p: PlayerState) => JSON.stringify([p.effects.map((e) => [e.id, e.amplifier]), p.absorption, p.maxHealth, !!p.blocking, p.gameMode]);
+  const gained = (p: PlayerState) => shadow.hp >= 0 && (p.food > shadow.food || p.saturation > shadow.sat || p.health > shadow.hp || pstOf(p) !== pstJson);
+
   // Local writes to health or food (eating, cake, potions, commands) become requests; the host's next stats message is the truth.
   function syncHealth(p: PlayerState) {
     if (exh > 0) {
       send({ t: "exh", v: exh });
       exh = 0;
     }
-    const pst = JSON.stringify([p.effects.map((e) => [e.id, e.amplifier]), p.absorption, p.maxHealth, !!p.blocking, p.gameMode]);
+    const pst = pstOf(p);
     if (pst !== pstJson) {
       pstJson = pst;
       const eff = p.effects.map((e) => [e.id, e.amplifier] as [string, number]);
@@ -416,6 +465,9 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
           exh += v;
         },
       };
+      send({ t: "skin", look: localLook() });
+      lookAt = performance.now();
+      gi.ctx.behaviors = hostUses(gi.ctx.behaviors);
       const rawRespawn = p.respawn.bind(p);
       p.respawn = () => {
         rawRespawn();
@@ -456,6 +508,19 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         setBlock: (x, y, z, s, f) => send({ t: "set", dim: d, x, y, z, s, f }),
         setBlockEntity: (be, x, y, z) => send({ t: "be", dim: d, x, y, z, be: be ? JSON.parse(JSON.stringify(be)) : null }),
         setWaterlogged: (x, y, z, on) => send({ t: "wl", dim: d, x, y, z, on }),
+        action(kind, x, y, z, predict, face) {
+          const before = kind === "bone_meal" || kind === "portal" || kind === "end_portal" ? undefined : inv?.save();
+          if (predict) {
+            muting = true;
+            try {
+              if (!predict()) return false;
+            } finally {
+              muting = false;
+            }
+          }
+          send(before ? { t: "act", dim: d, kind, x, y, z, inv: before, seq: hostSeq, face } : { t: "act", dim: d, kind, x, y, z });
+          return true;
+        },
       };
     },
     wrapEntities(e: MirrorEntities): EntityApi {
@@ -467,15 +532,17 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       return {
         ...e,
         spawn(type, x, y, z, data) {
-          if (!local) return null;
+          if (!local || muting) return null;
           const made = e.create(type, x, y, z, data);
           if (made) pending.push(made);
           return made;
         },
         dropItem(stack: ItemStack, x, y, z, v) {
+          if (muting) return;
           send({ t: "drop", stack: { ...stack }, x, y, z, vel: v ? [v.x, v.y, v.z] : undefined });
         },
         dropXp(n, x, y, z) {
+          if (muting) return;
           send({ t: "dropxp", n, x, y, z });
         },
         damage(id, amount, source) {
@@ -528,6 +595,11 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     },
     tick() {
       if (!g) return;
+      if (lookDue && performance.now() - lookAt > SKIN_GAP) {
+        send({ t: "skin", look: lookDue });
+        lookDue = null;
+        lookAt = performance.now();
+      }
       applyMoves();
       raw?.tickMirror();
       local = true;
@@ -547,6 +619,9 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       const anim = (p as unknown as { attackAnim: number }).attackAnim ?? 0;
       if (anim > 0 && (prevAnim === 0 || anim < prevAnim)) sw++;
       prevAnim = anim;
+      const now = performance.now();
+      // The host grants food and effects from what left the inventory, so it must see the inventory first.
+      if (inv && inv.version !== invVer && gained(p as unknown as PlayerState)) sendInv(now);
       syncHealth(p as unknown as PlayerState);
       send({ t: "move", x: p.body.pos.x, y: p.body.pos.y, z: p.body.pos.z, yaw: p.yaw, pitch: p.pitch, f: flags(), sw, dim: g.dim });
       const eq = equip();
@@ -555,16 +630,12 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         eqJson = j;
         send({ t: "equip", eq });
       }
-      const now = performance.now();
-      if (inv && now - invAt > 2000 && inv.version !== invVer) {
-        invAt = now;
-        invVer = inv.version;
-        send({ t: "inv", inv: invSave(), player: p.save(), adv: advOf(), seq: hostSeq });
-      }
+      if (inv && now - invAt > 2000 && inv.version !== invVer) sendInv(now);
     },
     frame(dt) {
       avatars.frame(dt);
     },
+    debug: () => ({ avatars: avatars.list(), direct: t.direct(hostId), relayUp: t.relayUp }),
     say(text) {
       send({ t: "chat", text });
     },
@@ -581,6 +652,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         send({ t: "bye" });
       }
       closed = true;
+      offLook();
       clearInterval(watch);
       avatars.dispose();
       setTimeout(() => t.leave(), 300);

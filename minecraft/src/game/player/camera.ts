@@ -18,6 +18,9 @@ const base = new THREE.Matrix4();
 const inv = new THREE.Matrix4();
 const tmp = new THREE.Matrix4();
 const scl = new THREE.Vector3(1, 1, 1);
+const warp = new THREE.Matrix4();
+const SPIN_AXIS = new THREE.Vector3(0, Math.SQRT1_2, Math.SQRT1_2);
+let warped = false;
 
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -40,7 +43,7 @@ export function bobMatrix(p: PlayerState, pt: number, bobbing: boolean, out: THR
     out.multiply(tmp.makeRotationZ(-f * 14 * D));
     out.multiply(tmp.makeRotationY(p.hurtDir * D));
   }
-  if (bobbing && !p.flying) {
+  if (bobbing) {
     const g = p.walkDist - p.prevWalkDist;
     const h = -(p.walkDist + g * pt);
     const i = lerp(p.prevBob, p.bob, pt);
@@ -115,8 +118,7 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
     camPos.addScaledVector(back, d);
     out.thirdDist = d;
   }
-  const wob = nausea > 0 ? Math.sin((p.ticks + pt) * 0.18) * nausea : 0;
-  quat.setFromEuler(euler.set(pitch, yaw, wob * 0.2, "YXZ"));
+  quat.setFromEuler(euler.set(pitch, yaw, 0, "YXZ"));
   base.compose(camPos, quat, scl);
   inv.copy(bob).invert();
   base.multiply(inv);
@@ -126,13 +128,22 @@ export function updateCamera(p: PlayerState, ctx: GameCtx, pt: number, bob: THRE
   const fluid = fluidAt(ctx.world, eye.x, eye.y, eye.z);
   const powder = blockIds.powder >= 0 && idOf(ctx.world.getBlock(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z))) === blockIds.powder;
   ctx.renderer.setUnderwater(p.gameMode === "spectator" ? "none" : fluid ?? (powder ? "powder_snow" : "none"));
+  ctx.audio.setUnderwater?.(p.gameMode !== "spectator" && fluid === "water");
   let fov = p.fov * lerp(p.prevFovMod, p.fovMod, pt);
   if (fluid) fov *= 0.85714287;
   cam.userData.handFov = fluid ? 70 * 0.85714287 : 70;
-  if (nausea > 0) fov *= 1 + Math.sin((p.ticks + pt) * 0.27) * 0.12 * nausea;
-  if (Math.abs(cam.fov - fov) > 1e-3) {
+  if (Math.abs(cam.fov - fov) > 1e-3 || nausea > 0 || warped) {
     cam.fov = fov;
     cam.updateProjectionMatrix();
+  }
+  warped = nausea > 0;
+  if (warped) {
+    // Vanilla GameRenderer.renderLevel: squash the view along an axis spinning 7 deg/tick (20 in a portal), after the bob.
+    const h = (5 / (nausea * nausea + 5) - nausea * 0.04) ** 2;
+    const j = (p.ticks + pt) * (p.hasEffect("nausea") > 0 ? 7 : 20) * D;
+    warp.makeRotationAxis(SPIN_AXIS, j).multiply(tmp.makeScale(1 / h, 1, 1)).multiply(tmp.makeRotationAxis(SPIN_AXIS, -j));
+    cam.projectionMatrix.multiply(bob).multiply(warp).multiply(inv);
+    cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
   }
   ctx.audio.setListener(cam.position, p.yaw, p.pitch);
   return out;

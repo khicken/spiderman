@@ -1,5 +1,6 @@
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { applyPhysics, clearPath, lookAt, meleeAttack, moveTo, playerTargetable, wander, type Target } from "../ai";
+import { playerKbResist } from "../combat";
 import { addEffect, attackerOf, hurtAmount, nearby, num, particles, sound, targetInfo } from "./brain";
 import { wardenModel } from "./looks-beasts";
 
@@ -117,36 +118,42 @@ function decayAnger(e: Entity, ctx: GameCtx): Target {
   return top >= ANGRY ? best : undefined;
 }
 
+// Vanilla SonicBoom: fires 34 ticks into the charge if the target is still within 15 blocks across and 20 up or down.
 function sonicBoom(e: Entity, ctx: GameCtx, t: Target) {
   const info = targetInfo(ctx, t);
   if (!info) return;
   const b = e.body;
+  if ((info.pos.x - b.pos.x) ** 2 + (info.pos.z - b.pos.z) ** 2 >= 15 * 15 || Math.abs(info.pos.y - b.pos.y) >= 20) return;
   const sx = b.pos.x, sy = b.pos.y + 1.6, sz = b.pos.z;
-  const tx = info.pos.x, ty = info.pos.y + info.height / 2, tz = info.pos.z;
+  const tx = info.pos.x, ty = t === "player" ? ctx.player.eye().y : info.pos.y + info.height * 0.85, tz = info.pos.z;
   const dx = tx - sx, dy = ty - sy, dz = tz - sz;
   const len = Math.hypot(dx, dy, dz) || 1;
-  for (let i = 1; i < Math.floor(len) + 7; i++) {
-    const k = i / len;
-    particles(ctx, "gust", sx + dx * k, sy + dy * k, sz + dz * k, 1, 0x29dfeb);
-  }
+  const hx = dx / len, hy = dy / len, hz = dz / len;
+  for (let i = 1; i < Math.floor(len) + 7; i++) particles(ctx, "gust", sx + hx * i, sy + hy * i, sz + hz * i, 1, 0x29dfeb);
   sound(ctx, e, "entity.warden.sonic_boom", 3);
-  const hx = dx / len, hz = dz / len;
+  let body: Entity["body"] | null = null, resist = 0, hit = false;
   if (t === "player") {
-    ctx.player.damage(10, "magic", e);
-    const v = ctx.player.body.vel;
-    v.x += hx * 2.5;
-    v.y += 0.5;
-    v.z += hz * 2.5;
+    const pl = ctx.player;
+    const hp = pl.health + ((pl as { absorption?: number }).absorption ?? 0);
+    pl.damage(10, "sonic_boom", e);
+    hit = pl.health + ((pl as { absorption?: number }).absorption ?? 0) < hp;
+    body = pl.body;
+    resist = playerKbResist(ctx);
   } else if (typeof t === "number") {
     const o = ctx.entities.get(t);
-    ctx.entities.damage(t, 10, "magic", e);
+    const hp = o?.health ?? 0;
+    ctx.entities.damage(t, 10, "sonic_boom", e);
     if (o) {
-      const r = 1 - ((o.data.kbResist as number) ?? 0);
-      o.body.vel.x += hx * 2.5 * r;
-      o.body.vel.y += 0.5 * r;
-      o.body.vel.z += hz * 2.5 * r;
+      hit = o.health < hp;
+      body = o.body;
+      resist = (o.data.kbResist as number) ?? 0;
     }
   }
+  if (!hit || !body) return;
+  const k = 1 - resist;
+  body.vel.x += hx * 2.5 * k;
+  body.vel.y += hy * 0.5 * k;
+  body.vel.z += hz * 2.5 * k;
 }
 
 function emergeTick(e: Entity, ctx: GameCtx, key: "emerge" | "dig"): boolean {
@@ -224,7 +231,7 @@ function tick(e: Entity, ctx: GameCtx) {
       sound(ctx, e, "entity.warden.sonic_charge", 3);
     } else {
       moveTo(e, ctx, i.pos.x, i.pos.y, i.pos.z, speed * 1.2, 500);
-      if (meleeAttack(e, ctx, 30, 18)) sound(ctx, e, "entity.warden.attack_impact");
+      if (meleeAttack(e, ctx, 30, 18, 1.5)) sound(ctx, e, "entity.warden.attack_impact");
     }
   } else if (e.data.disturbX !== undefined) {
     const x = e.data.disturbX as number, y = e.data.disturbY as number, z = e.data.disturbZ as number;

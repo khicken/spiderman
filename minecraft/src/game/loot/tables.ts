@@ -1,13 +1,16 @@
 // Vanilla 1.21 chest loot tables. Entry: [item, weight, min, max, fn?]. fn: "ench" enchant_randomly,
-// "lvl:a-b" enchant_with_levels (treasure allowed), "dmg" random durability, "potion:<type>", "stew", "empty" (no item).
+// "lvl:a-b" enchant_with_levels (treasure allowed), "dmg" random durability, "potion:<type>", "stew", "empty" (no item),
+// "opts:a|b" enchant_randomly from a list, "set:<id>=<lvl>" set_enchantments, "omen:a-b" ominous bottle amplifier.
+// An item "@<table>" rolls that whole table (a loot_table entry); a pool with chance rolls only that often.
 export type Entry = [item: string, weight: number, min?: number, max?: number, fn?: string];
 export interface Pool {
   rolls: [number, number];
   entries: Entry[];
+  chance?: number;
 }
 export type Table = Pool[];
 
-const P = (min: number, max: number, entries: Entry[]): Pool => ({ rolls: [min, max], entries });
+const P = (min: number, max: number, entries: Entry[], chance?: number): Pool => ({ rolls: [min, max], entries, chance });
 
 export const LOOT: Record<string, Table> = {
   simple_dungeon: [
@@ -299,21 +302,44 @@ export const LOOT: Record<string, Table> = {
     ]),
   ],
   trial_chambers_reward: [
+    P(1, 1, [["@trial_chambers_reward_rare", 8], ["@trial_chambers_reward_common", 2]]),
+    P(1, 3, [["@trial_chambers_reward_common", 1]]),
+    P(1, 1, [["@trial_chambers_reward_unique", 1]], 0.25),
+  ],
+  trial_chambers_reward_common: [
     P(1, 1, [
-      ["emerald", 4, 1, 3], ["iron_ingot", 3, 1, 3], ["tipped_arrow", 4, 2, 8, "potion:poison"], ["tipped_arrow", 4, 2, 8, "potion:strength"],
-      ["shield", 3], ["bow", 3, 1, 1, "ench"], ["crossbow", 3, 1, 1, "ench"], ["iron_axe", 3, 1, 1, "ench"], ["iron_chestplate", 3, 1, 1, "ench"],
-      ["golden_carrot", 2, 1, 2], ["book", 2, 1, 1, "ench"], ["diamond_chestplate", 1, 1, 1, "ench"], ["diamond_axe", 1, 1, 1, "ench"],
+      ["arrow", 4, 2, 8], ["tipped_arrow", 4, 2, 8, "potion:poison"], ["emerald", 4, 2, 4], ["wind_charge", 3, 1, 3], ["iron_ingot", 3, 1, 2],
+      ["honey_bottle", 3, 1, 2], ["ominous_bottle", 2, 1, 1, "omen:0-1"], ["wind_charge", 1, 4, 12], ["diamond", 1, 1, 2],
     ]),
-    P(1, 3, [["arrow", 2, 4, 14], ["wind_charge", 2, 4, 12], ["honey_bottle", 1, 2, 5], ["ominous_bottle", 1, 1, 2], ["diamond", 1, 1, 2]]),
-    P(1, 1, [["empty", 4], ["golden_apple", 2], ["bolt_armor_trim_smithing_template", 1], ["music_disc_precipice", 1], ["guster_banner_pattern", 1], ["heavy_core", 1, 1, 1, "rare"]]),
+  ],
+  trial_chambers_reward_rare: [
+    P(1, 1, [
+      ["emerald", 3, 2, 4], ["shield", 3], ["bow", 3, 1, 1, "ench"], ["crossbow", 2, 1, 1, "lvl:5-20"], ["iron_axe", 2, 1, 1, "lvl:0-10"],
+      ["iron_chestplate", 2, 1, 1, "lvl:0-10"], ["golden_carrot", 2, 1, 2],
+      ["book", 2, 1, 1, "opts:sharpness|bane_of_arthropods|efficiency|fortune|silk_touch|feather_falling"],
+      ["book", 1, 1, 1, "opts:riptide|loyalty|channeling|impaling|mending"], ["diamond_chestplate", 1, 1, 1, "lvl:5-15"], ["diamond_axe", 1, 1, 1, "lvl:5-15"],
+    ]),
+  ],
+  trial_chambers_reward_unique: [
+    P(1, 1, [["golden_apple", 4], ["bolt_armor_trim_smithing_template", 3], ["guster_banner_pattern", 2], ["music_disc_precipice", 2], ["trident", 1]]),
   ],
   trial_chambers_reward_ominous: [
+    P(1, 1, [["@trial_chambers_reward_ominous_rare", 8], ["@trial_chambers_reward_ominous_common", 2]]),
+    P(1, 3, [["@trial_chambers_reward_ominous_common", 1]]),
+    P(1, 1, [["@trial_chambers_reward_ominous_unique", 1]], 0.75),
+  ],
+  trial_chambers_reward_ominous_common: [
+    P(1, 1, [["emerald", 5, 4, 10], ["wind_charge", 4, 8, 12], ["tipped_arrow", 3, 4, 12, "potion:strong_slowness"], ["diamond", 2, 2, 3], ["ominous_bottle", 1, 1, 1, "omen:2-4"]]),
+  ],
+  trial_chambers_reward_ominous_rare: [
     P(1, 1, [
-      ["emerald_block", 5], ["iron_block", 4], ["crossbow", 4, 1, 1, "ench"], ["iron_axe", 4, 1, 1, "ench"], ["iron_chestplate", 3, 1, 1, "ench"],
-      ["book", 3, 1, 1, "ench"], ["diamond_axe", 3, 1, 1, "ench"], ["diamond_chestplate", 3, 1, 1, "ench"], ["diamond_block", 1],
+      ["emerald_block", 5], ["iron_block", 4], ["crossbow", 4, 1, 1, "lvl:5-20"], ["iron_axe", 4, 1, 1, "lvl:0-10"], ["iron_chestplate", 3, 1, 1, "lvl:0-10"],
+      ["diamond_axe", 3, 1, 1, "lvl:10-20"], ["diamond_chestplate", 3, 1, 1, "lvl:10-20"], ["book", 2, 1, 1, "opts:knockback|punch|smite|looting|multishot"],
+      ["book", 2, 1, 1, "opts:breach|density"], ["book", 2, 1, 1, "set:wind_burst=1"], ["diamond_block", 1],
     ]),
-    P(1, 3, [["wind_charge", 4, 8, 12], ["tipped_arrow", 3, 4, 12, "potion:strong_slowness"], ["diamond", 2, 2, 3], ["ominous_bottle", 1, 1, 1]]),
-    P(1, 1, [["empty", 3], ["enchanted_golden_apple", 1], ["flow_armor_trim_smithing_template", 3], ["flow_banner_pattern", 2], ["music_disc_creator", 1], ["heavy_core", 3]]),
+  ],
+  trial_chambers_reward_ominous_unique: [
+    P(1, 1, [["enchanted_golden_apple", 3], ["flow_armor_trim_smithing_template", 3], ["flow_banner_pattern", 2], ["music_disc_creator", 1], ["heavy_core", 1]]),
   ],
   trial_spawner_consumables: [
     P(1, 1, [
@@ -321,8 +347,8 @@ export const LOOT: Record<string, Table> = {
     ]),
   ],
   trial_spawner_key: [P(1, 1, [["trial_key", 1]])],
+  trial_spawner_ominous_key: [P(1, 1, [["ominous_trial_key", 1]])],
   trial_spawner_ominous: [
-    P(1, 1, [["ominous_trial_key", 1]]),
     P(1, 1, [["cooked_beef", 3, 2, 4], ["baked_potato", 3, 3, 6], ["golden_carrot", 2, 1, 3], ["potion", 1, 1, 1, "potion:strength"], ["wind_charge", 2, 1, 3]]),
   ],
 };

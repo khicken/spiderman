@@ -10,7 +10,6 @@ const AMBIENT: Record<string, [number, number]> = {
   warped_forest: [3, 0.01428],
 };
 const W = [1, 4, 6, 4, 1];
-let acc = 0;
 
 // Vanilla CubicSampler-style blend of the biome fog colors around the camera, so fog fades across borders.
 export function blendedFog(world: WorldApi, x: number, z: number, out: [number, number, number] | number[]) {
@@ -29,23 +28,10 @@ export function blendedFog(world: WorldApi, x: number, z: number, out: [number, 
   out[2] = b / t / 255;
 }
 
-// Vanilla doAnimateTick: 667 samples within 16 and 667 within 32 blocks per client tick.
-export function netherAmbient(world: WorldApi, cx: number, cy: number, cz: number, dt: number, spawn: (kind: number, x: number, y: number, z: number) => void) {
-  acc += dt;
-  let ticks = 0;
-  while (acc >= 0.05 && ticks < 2) {
-    acc -= 0.05;
-    ticks++;
-    for (let n = 0; n < 1334; n++) {
-      const r = n & 1 ? 32 : 16;
-      const x = Math.floor(cx + Math.floor(Math.random() * r) - Math.floor(Math.random() * r));
-      const y = Math.floor(cy + Math.floor(Math.random() * r) - Math.floor(Math.random() * r));
-      const z = Math.floor(cz + Math.floor(Math.random() * r) - Math.floor(Math.random() * r));
-      if (y < 0 || y > 127) continue;
-      const a = AMBIENT[world.getBiome(x, z).name];
-      if (!a || Math.random() >= a[1] || OPAQUE[idOf(world.getBlock(x, y, z))]) continue;
-      spawn(a[0], x + Math.random(), y + Math.random(), z + Math.random());
-    }
-  }
-  if (acc > 0.1) acc = 0;
+// One doAnimateTick sample: the biome's ambient particle chance in an open block.
+export function netherAmbient(world: WorldApi, x: number, y: number, z: number, spawn: (kind: number, x: number, y: number, z: number) => void) {
+  if (y < 0 || y > 127) return;
+  const a = AMBIENT[world.getBiome(x, z).name];
+  if (!a || Math.random() >= a[1] || OPAQUE[idOf(world.getBlock(x, y, z))]) return;
+  spawn(a[0], x + Math.random(), y + Math.random(), z + Math.random());
 }

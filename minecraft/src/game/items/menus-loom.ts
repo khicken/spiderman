@@ -1,6 +1,7 @@
 import type { ItemStack } from "../contracts";
 import { arraySlot, shiftOutput, shiftTo, type Menu, type Slot } from "./menu";
 import { moveWithinPlayer, playerSlots, type MenuDeps } from "./menus";
+import { PATTERN_NAMES } from "./data-misc";
 
 type Pos = { x: number; y: number; z: number };
 
@@ -17,7 +18,7 @@ const ITEM_PATTERNS: Record<string, string> = {
 };
 const MAX_LAYERS = 6;
 
-const label = (p: string) => p.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+const label = (p: string) => PATTERN_NAMES[p] ?? p;
 const isBanner = (s: ItemStack | null) => !!s && s.item.endsWith("_banner") && !s.item.includes("wall");
 const dyeColor = (s: ItemStack | null) => (s && s.item.endsWith("_dye") ? s.item.slice(0, -4) : null);
 

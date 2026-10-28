@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import type { BlockState, Entity } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
-import { itemDef } from "../../items/registry";
-import { paintItemTexture } from "../../textures/icons";
+import { itemSpritePixels } from "../../textures/icons";
 import { paintBlockTexture } from "../../textures/index";
+import { extrudeSprite } from "../../player/item-mesh";
+import { handItemMatrix } from "../../player/hand";
 import type { Rig } from "./rig";
 
 const textures = new Map<string, THREE.DataTexture>();
@@ -23,22 +24,59 @@ function rgbaTexture(key: string, paint: () => Uint8ClampedArray): THREE.DataTex
   return t;
 }
 
-const planeGeo = new THREE.PlaneGeometry(1, 1);
 const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+const spriteGeos = new Map<string, THREE.BufferGeometry>();
+
+function spriteGeo(item: string): THREE.BufferGeometry {
+  let g = spriteGeos.get(item);
+  if (!g) spriteGeos.set(item, (g = item === "trident" ? tridentGeometry() : extrudeSprite(itemSpritePixels(item))));
+  return g;
+}
+
+let tridentGeo: THREE.BufferGeometry | null = null;
+
+// Vanilla TridentModel boxes, baked through the builtin item renderer's scale(1, -1, -1) and translate(-0.5).
+export function tridentGeometry(): THREE.BufferGeometry {
+  if (tridentGeo) return tridentGeo;
+  const pos: number[] = [];
+  const col: number[] = [];
+  const lin = (c: number) => Math.pow(c / 255, 2.2);
+  const box = (x: number, y: number, z: number, w: number, h: number, d: number, c: number) => {
+    const g = new THREE.BoxGeometry(w / 16, h / 16, d / 16).toNonIndexed();
+    g.translate((x + w / 2) / 16, (y + h / 2) / 16, (z + d / 2) / 16);
+    const p = g.attributes.position.array as Float32Array;
+    const n = g.attributes.normal.array as Float32Array;
+    for (let i = 0; i < p.length; i += 3) {
+      pos.push(p[i] - 0.5, -p[i + 1] - 0.5, -p[i + 2] - 0.5);
+      const shade = n[i + 1] < -0.5 ? 1 : n[i + 1] > 0.5 ? 0.5 : n[i] !== 0 ? 0.6 : 0.8;
+      col.push(lin((c >> 16) & 255) * shade, lin((c >> 8) & 255) * shade, lin(c & 255) * shade);
+    }
+    g.dispose();
+  };
+  box(-0.5, 2, -0.5, 1, 25, 1, 0x4c9a92);
+  box(-1.5, 0, -0.5, 3, 2, 1, 0x8fd8cf);
+  box(-2.5, -3, -0.5, 1, 4, 1, 0xc9f2ec);
+  box(-0.5, -4, -0.5, 1, 4, 1, 0xc9f2ec);
+  box(1.5, -3, -0.5, 1, 4, 1, 0xc9f2ec);
+  tridentGeo = new THREE.BufferGeometry();
+  tridentGeo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  tridentGeo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  tridentGeo.computeVertexNormals();
+  return tridentGeo;
+}
 
 export interface Held {
   update(e: Entity): void;
 }
 
-// Item sprite in the right hand. e.data.held overrides the default item; "" hides it.
+// Item in the right hand, placed like the player's third-person item. e.data.held overrides the default item; "" hides it.
 export function attachHeld(r: Rig, item?: string): Held | null {
   const arm = r.p.right_arm;
   if (!arm) return null;
-  const mat = new THREE.MeshLambertMaterial({ alphaTest: 0.1, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(planeGeo, mat);
-  mesh.scale.setScalar(0.7);
-  mesh.position.set(1 / 16, -10 / 16, -2 / 16);
-  mesh.rotation.set(0, Math.PI / 2, -Math.PI / 4 + Math.PI);
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const mesh = new THREE.Mesh(spriteGeo("stick"), mat);
+  mesh.matrixAutoUpdate = false;
+  mesh.visible = false;
   arm.add(mesh);
   let shown = "";
   const prevDispose = r.m.dispose;
@@ -53,10 +91,8 @@ export function attachHeld(r: Rig, item?: string): Held | null {
         shown = want;
         mesh.visible = !!want;
         if (want) {
-          const key = itemDef(want)?.texture ?? want;
-          mat.map = rgbaTexture("i:" + key, () => paintItemTexture(key));
-          mat.emissiveMap = mat.map;
-          mat.needsUpdate = true;
+          mesh.geometry = spriteGeo(want);
+          handItemMatrix(mesh.matrix, want === "trident" ? "trident_in_hand" : want, "flat", 1);
         }
       }
     },

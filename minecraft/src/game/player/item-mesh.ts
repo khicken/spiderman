@@ -10,24 +10,27 @@ import { paintBlockTexture } from "../textures/index";
 import { itemSpritePixels } from "../textures/icons";
 import { dialFrame, paintDial } from "../textures/dials";
 import type { ItemStack } from "../contracts";
-import { GLINT_TIME } from "../entities/armor-layer";
+import { GLINT_STRENGTH, GLINT_TIME } from "../entities/armor-layer";
 import { createShieldModel } from "./shield-model";
+import { tridentGeometry } from "../entities/hostile/held";
 import { packVersion } from "../packs";
 
 export function itemKey(s: ItemStack | null): string | null {
   if (!s) return null;
   const f = dialFrame(s);
-  const base = f === null ? s.item : `${s.item}@${f}`;
+  const banner = s.item === "shield" && typeof s.data?.banner === "string" ? `~${s.data.banner}~${JSON.stringify(s.data.patterns ?? [])}` : "";
+  const base = f === null ? s.item + banner : `${s.item}@${f}`;
   return s.ench && Object.keys(s.ench).length ? `${base}#glint` : base;
 }
 
 const GLINT_FRAG = /* glsl */ `
 uniform float uTime;
+uniform float uStrength;
 varying vec3 vPos;
 void main() {
   float s = fract((vPos.x * 2.0 + vPos.y) * 1.5 - uTime * 0.35);
   float k = smoothstep(0.0, 0.25, s) * smoothstep(0.6, 0.3, s);
-  gl_FragColor = vec4(vec3(0.5, 0.25, 0.8) * k * 0.7, 1.0);
+  gl_FragColor = vec4(vec3(0.5, 0.25, 0.8) * k * 0.7 * uStrength, 1.0);
 }`;
 const GLINT_VERT = /* glsl */ `
 varying vec3 vPos;
@@ -155,8 +158,8 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
     return t;
   };
 
-  const glintMat = new THREE.ShaderMaterial({ uniforms: { uTime: GLINT_TIME }, vertexShader: GLINT_VERT, fragmentShader: GLINT_FRAG, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthFunc: THREE.LessEqualDepth });
-  let shieldTex: THREE.Texture | null = null;
+  const glintMat = new THREE.ShaderMaterial({ uniforms: { uTime: GLINT_TIME, uStrength: GLINT_STRENGTH }, vertexShader: GLINT_VERT, fragmentShader: GLINT_FRAG, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthFunc: THREE.LessEqualDepth });
+  const shieldTexs: THREE.Texture[] = [];
 
   function build(key: string): ItemModel | null {
     if (key.endsWith("#glint")) {
@@ -183,10 +186,12 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
       return { kind: "flat", create: () => new THREE.Mesh(geo, flatMat) };
     }
     const name = key;
-    if (name === "shield") {
-      const sm = createShieldModel();
+    if (name === "trident_in_hand" || name === "trident_throwing") return { kind: "flat", create: () => new THREE.Mesh(tridentGeometry(), flatMat) };
+    if (name === "shield" || name.startsWith("shield~")) {
+      const [, color, layers] = name.split("~");
+      const sm = createShieldModel(color ? { color, patterns: JSON.parse(layers) } : undefined);
       geos.push(sm.geometry);
-      shieldTex = sm.texture;
+      shieldTexs.push(sm.texture);
       const mat = new THREE.MeshBasicMaterial({ map: sm.texture });
       shaded.push({ mat, shade: 1 });
       return { kind: "shield", create: () => new THREE.Mesh(sm.geometry, mat) };
@@ -253,7 +258,7 @@ export function createItemMeshes(getUniforms?: () => ChunkUniforms | undefined):
       for (const s of shaded) s.mat.dispose();
       glintMat.dispose();
       held?.dispose();
-      shieldTex?.dispose();
+      for (const t of shieldTexs) t.dispose();
       cache.clear();
     },
   };

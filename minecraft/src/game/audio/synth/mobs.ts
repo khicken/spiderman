@@ -372,7 +372,7 @@ export const MOB_SOUNDS: Record<string, MobSounds> = {
   wither_skeleton: skeleton(700, 1700, false),
   bogged: skeleton(600, 1900, true),
   creeper: {
-    primed: R(hissNoise(1.5, 2800, 0.15), 0.9, 2),
+    primed: R(hissNoise(0.8, 2400, 0.1), 0.9, 2),
     ambient: R(clicks([2, 4], 0.3, 1500, 3000, 0.1), 0.1),
     hurt: R(seq([[clicks([8, 12], 0.15, 500, 1800, 0.3), 0], [hissNoise(0.3, 3000, 0.05), 0, 0.5]]), 0.85),
     death: R(seq([[clicks([14, 20], 0.35, 400, 1500, 0.3), 0], [hissNoise(0.7, 2500, 0.05), 0, 0.6]]), 0.85),
@@ -404,7 +404,7 @@ export const MOB_SOUNDS: Record<string, MobSounds> = {
   pillager: humanoid(125, 0.4, false),
   vindicator: humanoid(115, 0.5, false),
   evoker: humanoid(120, 0.4, false),
-  illusioner: humanoid(130, 0.4, false),
+  illusioner: { ...humanoid(130, 0.4, false), mirror_move: R(whoosh(0.5, 400, 2400), 0.6) },
   witch: {
     ...humanoid(260, 0.3, false),
     ambient: R(repeat(say({ dur: 0.12, f: [420, 330], vowels: ["e", "uh"], breath: 0.3, rough: 0.3 }), [3, 5], [0.13, 0.16]), 0.6),

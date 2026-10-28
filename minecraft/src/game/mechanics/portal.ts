@@ -1,7 +1,7 @@
 import type { BlockBehavior, BlockState, GameCtx, WorldApi } from "../contracts";
 import { AIR, SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
-import { idn, isPlayerBody, sound, st } from "./util";
+import { globalSound, idn, isPlayerBody, sound, st } from "./util";
 import { rememberPortal } from "./portal-link";
 
 const OBSIDIAN = idn("obsidian");
@@ -56,6 +56,7 @@ export function lightPortal(ctx: GameCtx, x: number, y: number, z: number): bool
   if (ctx.world.dim === "end" || PORTAL < 0) return false;
   const p = findPortal(ctx.world, x, y, z);
   if (!p) return false;
+  if (ctx.world.hostAction) return ctx.world.hostAction("portal", x, y, z);
   const dx = p.axis === 1 ? 1 : 0, dz = p.axis === 1 ? 0 : 1;
   const s = stateOf(PORTAL, p.axis);
   for (let h = 0; h < p.height; h++) {
@@ -165,14 +166,18 @@ function ringComplete(w: WorldApi, cx: number, y: number, cz: number): boolean {
   return true;
 }
 
-function completeEndPortal(ctx: GameCtx, x: number, y: number, z: number) {
+export function completeEndPortal(ctx: GameCtx, x: number, y: number, z: number) {
   const w = ctx.world;
+  if (w.hostAction) {
+    w.hostAction("end_portal", x, y, z);
+    return;
+  }
   for (let i = -1; i <= 1; i++) {
     for (const [cx, cz] of [[x - i, z + 2], [x - i, z - 2], [x + 2, z - i], [x - 2, z - i]]) {
       if (!ringComplete(w, cx, y, cz)) continue;
       const portal = st("end_portal");
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) w.setBlock(cx + a, y, cz + b, portal, SET_NOTIFY);
-      ctx.emit({ type: "sound", name: "block.end_portal.spawn", x: cx + 0.5, y: y + 0.5, z: cz + 0.5, volume: 1 });
+      globalSound(ctx, "block.end_portal.spawn", cx + 0.5, y + 0.5, cz + 0.5);
       return;
     }
   }

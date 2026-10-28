@@ -105,7 +105,7 @@ export const PIG: MobDef = {
   },
   onInteract(e, ctx, held) {
     if (feed(e, ctx, PIG, held, pigOpts)) return true;
-    if (e.data.saddle && !isBaby(e) && held?.item !== "saddle" && held?.item !== "lead") return mountPlayer(ctx, e);
+    if (e.data.saddle && !isBaby(e) && held?.item !== "lead") return mountPlayer(ctx, e);
     if (held?.item === "saddle" && !isBaby(e) && !e.data.saddle) {
       e.data.saddle = true;
       useItem(ctx);

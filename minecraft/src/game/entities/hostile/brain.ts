@@ -2,8 +2,10 @@ import * as THREE from "three";
 import type { Effect, Entity, GameCtx } from "../../contracts";
 import {
   applyPhysics, canSee, canSeePlayer, clearPath, findPath, followPath, hasPath, lookAt, moveTo, playerTargetable, randomSpot,
-  rotlerp, sunBurns, wander, walkToward, yawTo, type Target,
+  rotlerp, sunBurns, wander, walkToward, yawTo, canSeeSky, lightAt, brightnessCurve, skyDarken, type Target,
 } from "../ai";
+import type { Equipment } from "../armor-layer";
+import { itemDef } from "../../items/registry";
 import { playerVisibility } from "../../systems/brewing/effects";
 
 export const DIFF = { peaceful: 0, easy: 1, normal: 2, hard: 3 } as const;
@@ -73,9 +75,66 @@ export function setFire(e: Entity, ticks: number): void {
   e.data._fire = Math.max(num(e, "_fire"), ticks);
 }
 
+// Vanilla Zombie/AbstractSkeleton.aiStep: a head item blocks the sun and a damageable one wears 0-1 per burn tick.
 export function burnInDaylight(e: Entity, ctx: GameCtx): void {
-  if (e.data.helmet || num(e, "_fire") > 0) return;
-  if (sunBurns(e, ctx)) setFire(e, 160);
+  if (e.dead || !sunBurns(e, ctx)) return;
+  const eq = e.data.equipment as Equipment | undefined;
+  const head = eq?.head;
+  if (head) {
+    const def = itemDef(head.item);
+    const max = def?.armor?.durability ?? def?.durability ?? 0;
+    if (max > 0) {
+      head.damage = (head.damage ?? 0) + Math.floor(ctx.random() * 2);
+      if (head.damage >= max) {
+        eq.head = null;
+        e.data.helmet = false;
+        e.data.armor = Math.max(0, num(e, "armor") - (def?.armor?.points ?? 0));
+        e.data.toughness = Math.max(0, num(e, "toughness") - (def?.armor?.toughness ?? 0));
+        sound(ctx, e, "entity.item.break", 0.8, 0.8 + ctx.random() * 0.4);
+      }
+    }
+    return;
+  }
+  if (e.data.helmet) return;
+  setFire(e, 160);
+}
+
+// Vanilla DifficultyInstance effective difficulty; chunk inhabited time is not tracked, so it counts as 0.
+export function regionalDifficulty(ctx: GameCtx): number {
+  const base = diffId(ctx);
+  if (base === 0) return 0;
+  const total = ctx.time.day * 24000 + ctx.time.dayTime;
+  const f1 = Math.min(1, Math.max(0, (total - 72000) / 1440000)) * 0.25;
+  const moon = MOON_BRIGHTNESS[Math.floor(total / 24000) % 8];
+  let f2 = Math.min(f1, Math.max(0, moon * 0.25));
+  if (base === 1) f2 *= 0.5;
+  return base * (0.75 + f1 + f2);
+}
+const MOON_BRIGHTNESS = [1, 0.75, 0.5, 0.25, 0, 0.25, 0.5, 0.75];
+
+// Vanilla FleeSunGoal: with no target, a burning bare-headed mob under open sky walks to a shaded spot.
+export function fleeSun(e: Entity, ctx: GameCtx, speed: number): boolean {
+  if (e.data._flee) {
+    if (hasPath(e) && followPath(e, ctx, speed)) return true;
+    e.data._flee = false;
+    return false;
+  }
+  const eq = e.data.equipment as Equipment | undefined;
+  if (num(e, "_fire") <= 0 || eq?.head || e.data.helmet || ctx.world.dim !== "overworld" || skyDarken(ctx) >= 4) return false;
+  const p = e.body.pos;
+  if (!canSeeSky(ctx, p.x, p.y, p.z)) return false;
+  for (let i = 0; i < 10; i++) {
+    const x = Math.floor(p.x) + randInt(ctx, -10, 9) + 0.5, y = Math.floor(p.y) + randInt(ctx, -3, 2), z = Math.floor(p.z) + randInt(ctx, -10, 9) + 0.5;
+    if (canSeeSky(ctx, x, y, z) || brightnessCurve(lightAt(ctx, x, y, z)) <= 0.5) continue;
+    const path = findPath(ctx, p, { x, y, z }, 200, { height: e.body.height });
+    if (!path) continue;
+    clearPath(e);
+    e.data._path = path;
+    e.data._wander = false;
+    e.data._flee = true;
+    return true;
+  }
+  return false;
 }
 
 export function playerPos(ctx: GameCtx): THREE.Vector3 {

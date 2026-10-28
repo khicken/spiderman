@@ -45,6 +45,7 @@ export interface NetLink {
   say(text: string): void;
   command?(line: string): string[] | null; // null runs the command locally
   players(): PlayerListEntry[];
+  debug?(): unknown; // state for dev test scripts
   dispose(): void;
 }
 

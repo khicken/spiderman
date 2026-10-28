@@ -5,7 +5,7 @@ import { CONDUCTOR, DX, DZ, HORIZONTAL, id, nameOf, notifyAt } from "./util";
 
 export const SIZE: Record<string, number> = {
   chest: 27, trapped_chest: 27, barrel: 27, shulker_box: 27, furnace: 3, blast_furnace: 3, smoker: 3,
-  hopper: 5, dispenser: 9, dropper: 9, brewing_stand: 5, crafter: 9,
+  hopper: 5, dispenser: 9, dropper: 9, brewing_stand: 5, crafter: 9, decorated_pot: 1,
 };
 const FURNACES = new Set(["furnace", "blast_furnace", "smoker"]);
 

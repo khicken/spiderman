@@ -1,6 +1,7 @@
 // Wire protocol between the host (runs the world) and clients. JSON messages carry a `t` tag.
 // Binary messages start with one kind byte (BIN). The host is authoritative; clients send requests.
-import type { BlockEntityData, BlockState, ClickKind, ContainerKind, ContainerView, DamageSource, Dim, GameMode, ItemStack, Rules } from "../contracts";
+import type { BlockEntityData, BlockState, ClickKind, ContainerKind, ContainerView, DamageSource, Dim, GameMode, HostAction, ItemStack, Rules } from "../contracts";
+import type { Look } from "./skins";
 
 export const PROTOCOL = 1;
 export const MAX_PLAYERS = 8;
@@ -91,6 +92,8 @@ export type ClientMsg =
   | { t: "set"; dim: Dim; x: number; y: number; z: number; s: BlockState; f: number }
   | { t: "be"; dim: Dim; x: number; y: number; z: number; be: BlockEntityData | null }
   | { t: "wl"; dim: Dim; x: number; y: number; z: number; on: boolean }
+  | { t: "act"; dim: Dim; kind: HostAction; x: number; y: number; z: number; inv?: unknown; seq?: number; face?: number }
+  | { t: "skin"; look: Look }
   | { t: "spawn"; type: string; x: number; y: number; z: number; vel: [number, number, number]; yaw: number; pitch: number; data: Record<string, unknown> }
   | { t: "drop"; stack: ItemStack; x: number; y: number; z: number; vel?: [number, number, number] }
   | { t: "dropxp"; n: number; x: number; y: number; z: number }
@@ -123,6 +126,7 @@ export type HostMsg =
   | { t: "blocks"; dim: Dim; list: number[]; be?: { x: number; y: number; z: number; be: BlockEntityData | null }[] }
   | { t: "ents"; spawn?: EntSpawn[]; gone?: number[]; data?: [number, Record<string, unknown>][]; clear?: boolean }
   | { t: "players"; list: PlayerSnap[] }
+  | { t: "skins"; list: { id: number; look: Look }[] }
   | { t: "list"; list: PlayerListEntry[] }
   | { t: "chat"; text: string; color?: string }
   | { t: "sound"; name: string; x?: number; y?: number; z?: number; volume?: number; pitch?: number }
@@ -168,6 +172,13 @@ export function cleanName(s: string): string {
   // Names key plain objects (saved players, advancements); "__proto__" would reach Object.prototype.
   return n in Object.prototype ? "" : n;
 }
+
+// Block uses the host runs for clients, so items going in or out stay on the host's ledger.
+const HOST_USES = new Set([
+  "flower_pot", "cauldron", "water_cauldron", "lava_cauldron", "powder_snow_cauldron", "composter", "decorated_pot", "lectern", "chiseled_bookshelf", "jukebox",
+  "sweet_berry_bush", "cave_vines", "cave_vines_plant", "pumpkin",
+]);
+export const hostUse = (block: string) => HOST_USES.has(block) || block.startsWith("potted_");
 
 export const isDim = (v: unknown): v is Dim => typeof v === "string" && (DIMS as string[]).includes(v);
 export const int = (v: unknown, lo = -3e7, hi = 3e7): number | null => (Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi ? (v as number) : null);

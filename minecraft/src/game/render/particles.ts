@@ -5,7 +5,7 @@ import { blockDef, IS_FLUID, OPAQUE, SOLID } from "../blocks/registry";
 
 const NX = [1, -1, 0, 0, 0, 0], NY = [0, 0, 1, -1, 0, 0], NZ = [0, 0, 0, 0, 1, -1];
 import { textureLayer } from "../textures";
-import { PARTICLE_PATHS, paintParticleSheet, SPRITE, SPRITE_LAYERS } from "./particle-art";
+import { GLYPHS, PARTICLE_PATHS, paintParticleSheet, SPRITE, SPRITE_LAYERS } from "./particle-art";
 import { tileOr } from "./pack-art";
 import { lightmap } from "../mesh/lightmap";
 
@@ -13,13 +13,13 @@ const LM: [number, number, number] = [1, 1, 1];
 
 type ParticleEvent = Extract<GameEvent, { type: "particles" }>;
 
-const enum Beh { Normal, Portal, Bubble, Drip, Fall }
+const enum Beh { Normal, Portal, Bubble, Drip, Fall, Enchant, Lava, Rod, Petal }
 const enum Anim { Fixed, Fwd, Rev }
 const COLLIDE = 1, BRIGHT = 2, GROUND = 4, SHRINK = 8;
 const TICK = 1 / 20;
 const FIELDS = [
   "x", "y", "z", "px", "py", "pz", "vx", "vy", "vz", "ox", "oy", "oz", "age", "life", "size", "grav", "drag",
-  "r", "g", "b", "a", "u0", "v0", "du", "layer", "src", "frames", "anim", "beh", "flags", "light",
+  "r", "g", "b", "a", "u0", "v0", "du", "layer", "src", "frames", "anim", "beh", "flags", "light", "land",
 ] as const;
 type Field = (typeof FIELDS)[number];
 type Pool = Record<Field, Float32Array>;
@@ -55,6 +55,9 @@ void main() {
   gl_FragColor = vec4(t.rgb * sRGBTransferEOTF(vec4(vColor.rgb, 1.0)).rgb, a);
   #include <colorspace_fragment>
 }`;
+
+// Emitters mark vanilla happy_villager particles as green dust.
+const HAPPY_DUST = new Set([0x80e040, 0x55ff55]);
 
 const TINTS: Record<string, number> = { birch: 0x80a755, spruce: 0x619961, stem: 0x9fbf3e, redstone: 0xc81010 };
 
@@ -109,6 +112,10 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
   let acc = 0;
   let tickNo = 0;
   const rand = Math.random;
+  // Vanilla ParticleStatus: 0 all, 1 decreased (each particle skipped with 1/3 chance), 2 minimal (only forced particles).
+  let status = 0;
+  let forced = false;
+  const skip = () => !forced && status > 0 && (status === 2 || rand() * 3 < 1);
 
   function setBudget(n: number) {
     if (n === cap) return;
@@ -176,6 +183,7 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
     p.beh[i] = Beh.Normal;
     p.flags[i] = COLLIDE;
     p.light[i] = brightness(x, y, z);
+    p.land[i] = 0;
     return i;
   }
 
@@ -189,7 +197,7 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
     p.layer[i] = layer; p.frames[i] = frames; p.anim[i] = anim;
   }
 
-  function blockParticles(e: ParticleEvent) {
+  function blockParticles(e: ParticleEvent, count: number) {
     const state: BlockState = e.state ?? 0;
     if (!idOf(state)) return;
     const def = blockDef(state);
@@ -222,7 +230,7 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
           }
       return;
     }
-    for (let n = 0; n < e.count; n++) {
+    for (let n = 0; n < count; n++) {
       const i = dust(e.x + (rand() - 0.5) * 0.2, e.y + (rand() - 0.5) * 0.2, e.z + (rand() - 0.5) * 0.2, 0, 0, 0);
       if (i < 0) return;
       p.vx[i] *= 0.2; p.vy[i] *= 0.2; p.vz[i] *= 0.2;
@@ -232,11 +240,24 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
 
   const jit = (n: number, s: number) => (n > 1 ? (rand() - 0.5) * s : 0);
 
+  // Vanilla overrideLimiter types and block destroy particles ignore the Particles setting.
   function addParticles(e: ParticleEvent) {
     if (!cap) return;
-    const n = Math.max(1, e.count ?? 1);
+    let n = Math.max(1, e.count ?? 1);
+    if (!(e.kind === "explosion" || e.kind === "gust" || (e.kind === "block" && e.count === undefined))) {
+      let m = 0;
+      for (let k = 0; k < n; k++) if (!skip()) m++;
+      if (!m) return;
+      n = m;
+    }
+    forced = true;
+    emit(e, n);
+    forced = false;
+  }
+
+  function emit(e: ParticleEvent, n: number) {
     switch (e.kind) {
-      case "block": blockParticles(e); return;
+      case "block": blockParticles(e, n); return;
       case "smoke":
         for (let k = 0; k < n; k++) {
           const i = add(e.x + jit(n, 0.3), e.y + jit(n, 0.3), e.z + jit(n, 0.3), 0, 0, 0, true);
@@ -350,7 +371,8 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
           color(i, e.color ?? 0x3355ff);
           if (e.color === 0xff6a00 || e.color === 0xffa500) p.flags[i] |= BRIGHT;
           p.life[i] = 40;
-          p.grav[i] = 0;
+          p.grav[i] = 0.06;
+          p.land[i] = 16;
           p.beh[i] = Beh.Drip;
           sprite(i, SPRITE.dripHang, 1, Anim.Fixed);
         }
@@ -375,6 +397,7 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
         }
         return;
       case "dust":
+        if (e.color !== undefined && HAPPY_DUST.has(e.color)) { happy(e.x, e.y, e.z, n); return; }
         for (let k = 0; k < n; k++) {
           const i = add(e.x + jit(n, 0.5), e.y + jit(n, 0.5), e.z + jit(n, 0.5), 0, 0, 0, true);
           if (i < 0) return;
@@ -398,6 +421,24 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
           sprite(i, SPRITE.gust, 12, Anim.Fwd);
         }
         return;
+      case "happy": happy(e.x, e.y, e.z, n); return;
+      case "sweep": {
+        const i = add(e.x, e.y, e.z, 0, 0, 0, false);
+        if (i < 0) return;
+        const c = rand() * 0.6 + 0.4;
+        p.r[i] = p.g[i] = p.b[i] = c;
+        p.size[i] = 1;
+        p.life[i] = 4;
+        p.flags[i] = BRIGHT;
+        sprite(i, SPRITE.sweep, 8, Anim.Fwd);
+        return;
+      }
+      case "enchant":
+        for (let k = 0; k < n; k++) enchant(e.x, e.y, e.z, (rand() - 0.5) * 4, -rand() - 0.5, (rand() - 0.5) * 4);
+        return;
+      case "lava":
+        for (let k = 0; k < n; k++) lavaPop(e.x + jit(n, 0.6), e.y, e.z + jit(n, 0.6));
+        return;
       case "trial_omen":
         for (let k = 0; k < n; k++) {
           const i = add(e.x + jit(n, 0.8), e.y + jit(n, 0.8), e.z + jit(n, 0.8), 0, 0, 0, true);
@@ -413,7 +454,177 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
     }
   }
 
+  // Vanilla SuspendedTownParticle (happy villager) spawned spread inside the block.
+  function happy(x: number, y: number, z: number, n: number) {
+    for (let k = 0; k < n; k++) {
+      const i = add(x + (n > 1 ? (rand() - 0.5) * 0.9 : 0), y + (n > 1 ? (rand() - 0.5) * 0.9 : 0), z + (n > 1 ? (rand() - 0.5) * 0.9 : 0), 0, 0, 0, false);
+      if (i < 0) return;
+      p.vx[i] = gauss() * 0.02; p.vy[i] = gauss() * 0.02; p.vz[i] = gauss() * 0.02;
+      p.size[i] *= rand() * 0.6 + 0.5;
+      p.life[i] = Math.floor(20 / (rand() * 0.8 + 0.2));
+      p.drag[i] = 1;
+      p.flags[i] = 0;
+      sprite(i, SPRITE.happy, 1, Anim.Fixed);
+    }
+  }
+
+  // Vanilla FlyTowardsPositionParticle: starts at (x,y,z)+v and flies to (x,y,z), dipping 1.2 at the end.
+  function enchant(x: number, y: number, z: number, vx: number, vy: number, vz: number) {
+    if (skip()) return;
+    const i = add(x + vx, y + vy, z + vz, vx, vy, vz, false);
+    if (i < 0) return;
+    p.ox[i] = x; p.oy[i] = y; p.oz[i] = z;
+    p.size[i] = 0.1 * (rand() * 0.5 + 0.2);
+    const f = rand() * 0.6 + 0.4;
+    p.r[i] = 0.9 * f; p.g[i] = 0.9 * f; p.b[i] = f;
+    p.life[i] = Math.floor(rand() * 10) + 30;
+    p.beh[i] = Beh.Enchant;
+    p.flags[i] = BRIGHT;
+    sprite(i, SPRITE.glyph + Math.floor(rand() * GLYPHS), 1, Anim.Fixed);
+  }
+
+  function lavaPop(x: number, y: number, z: number) {
+    if (skip()) return;
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.vx[i] = (rand() * 2 - 1) * 0.4 * 0.8; p.vy[i] = rand() * 0.4 + 0.05; p.vz[i] = (rand() * 2 - 1) * 0.4 * 0.8;
+    p.size[i] *= rand() * 2 + 0.2;
+    p.life[i] = Math.floor(16 / (rand() * 0.8 + 0.2));
+    p.grav[i] = 0.75;
+    p.drag[i] = 0.999;
+    p.flags[i] = COLLIDE | BRIGHT | SHRINK;
+    p.beh[i] = Beh.Lava;
+    sprite(i, SPRITE.lava, 1, Anim.Fixed);
+  }
+
+  function smokeAt(x: number, y: number, z: number, vx: number, vy: number, vz: number, scale: number) {
+    if (skip()) return;
+    const i = add(x, y, z, 0, 0, 0, true);
+    if (i < 0) return;
+    p.vx[i] = p.vx[i] * 0.1 + vx; p.vy[i] = p.vy[i] * 0.1 + vy; p.vz[i] = p.vz[i] * 0.1 + vz;
+    const c = rand() * 0.3;
+    p.r[i] = p.g[i] = p.b[i] = c;
+    p.size[i] *= 0.75 * scale;
+    p.life[i] = Math.max(1, Math.floor((8 / (rand() * 0.8 + 0.2)) * scale));
+    p.grav[i] = -0.1;
+    p.drag[i] = 0.96;
+    p.flags[i] = 0;
+    sprite(i, SPRITE.generic, 8, Anim.Rev);
+  }
+
+  function flameAt(x: number, y: number, z: number, soul: boolean, scale: number) {
+    if (skip()) return;
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.vx[i] = 0; p.vy[i] = 0; p.vz[i] = 0;
+    p.size[i] *= scale;
+    p.life[i] = Math.floor(8 / (rand() * 0.8 + 0.2)) + 4;
+    p.drag[i] = 0.96;
+    p.flags[i] = BRIGHT | SHRINK;
+    sprite(i, soul ? SPRITE.soulFlame : SPRITE.flame, 1, Anim.Fixed);
+  }
+
+  function dustAt(x: number, y: number, z: number, hex: number) {
+    if (skip()) return;
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.vx[i] = (rand() * 2 - 1) * 0.01; p.vy[i] = (rand() * 2 - 1) * 0.01; p.vz[i] = (rand() * 2 - 1) * 0.01;
+    color(i, hex, rand() * 0.4 + 0.6);
+    p.size[i] *= 0.75;
+    p.life[i] = Math.max(1, Math.floor(8 / (rand() * 0.8 + 0.2)));
+    p.drag[i] = 0.96;
+    p.flags[i] = 0;
+    sprite(i, SPRITE.generic, 8, Anim.Rev);
+  }
+
+  // Vanilla DripHangParticle per fluid: water, lava, honey, obsidian tear.
+  const DRIP_COLOR = [0x334cff, 0xff4915, 0x9f8215, 0x8308e3], DRIP_HANG = [40, 40, 100, 100];
+  const DRIP_GRAV = [0.06, 0.06, 0.01, 0.01], DRIP_LAND = [16, 16, 128, 28];
+  function dripAt(x: number, y: number, z: number, kind: 0 | 1 | 2 | 3) {
+    if (skip()) return;
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    color(i, DRIP_COLOR[kind]);
+    if (kind === 1 || kind === 3) p.flags[i] |= BRIGHT;
+    p.life[i] = DRIP_HANG[kind];
+    p.grav[i] = DRIP_GRAV[kind];
+    p.land[i] = DRIP_LAND[kind];
+    p.beh[i] = Beh.Drip;
+    sprite(i, SPRITE.dripHang, 1, Anim.Fixed);
+  }
+
+  // Vanilla FALLING_SPORE_BLOSSOM: a drip that falls from the start and vanishes on landing.
+  function sporeFall(x: number, y: number, z: number) {
+    if (skip()) return;
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.r[i] = 0.32; p.g[i] = 0.5; p.b[i] = 0.22;
+    p.life[i] = Math.floor(64 / (0.1 + rand() * 0.8));
+    p.grav[i] = 0.005;
+    p.beh[i] = Beh.Fall;
+    sprite(i, SPRITE.dripFall, 1, Anim.Fixed);
+  }
+
+  // Vanilla SPORE_BLOSSOM_AIR (a SuspendedParticle), capped like its 1000 particle group.
+  function sporeAir(x: number, y: number, z: number) {
+    if (skip() || count > cap * 0.6) return;
+    const i = add(x, y - 0.125, z, 0, -0.8, 0, true);
+    if (i < 0) return;
+    p.r[i] = 0.32; p.g[i] = 0.5; p.b[i] = 0.22;
+    p.size[i] *= rand() * 0.6 + 0.6;
+    p.life[i] = 500 + Math.floor(rand() * 501);
+    p.grav[i] = 0.01;
+    p.drag[i] = 1;
+    p.flags[i] = 0;
+    sprite(i, SPRITE.generic + 1, 1, Anim.Fixed);
+  }
+
+  // Vanilla EndRodParticle: glitter that fades to 0xF2DEC9 and out over its second half.
+  function endRod(x: number, y: number, z: number, vx: number, vy: number, vz: number) {
+    if (skip()) return;
+    const i = add(x, y, z, vx, vy, vz, false);
+    if (i < 0) return;
+    p.size[i] *= 0.75;
+    p.life[i] = 60 + Math.floor(rand() * 12);
+    p.grav[i] = 0.0125;
+    p.drag[i] = 0.91;
+    p.flags[i] = BRIGHT;
+    p.beh[i] = Beh.Rod;
+    sprite(i, SPRITE.glitter, 8, Anim.Rev);
+  }
+
+  // Vanilla CherryParticle: 300 ticks of slow fall with a sideways drift that grows with age.
+  function petal(x: number, y: number, z: number) {
+    if (skip()) return;
+    const i = add(x, y, z, 0, 0, 0, false);
+    if (i < 0) return;
+    p.size[i] = rand() < 0.5 ? 0.05 : 0.075;
+    p.life[i] = 300;
+    p.grav[i] = 7.5e-4;
+    p.drag[i] = 1;
+    p.ox[i] = (rand() * 60 * Math.PI) / 180;
+    p.beh[i] = Beh.Petal;
+    sprite(i, SPRITE.petal, 1, Anim.Fixed);
+  }
+
+  function portalAt(x: number, y: number, z: number, vx: number, vy: number, vz: number) {
+    if (skip()) return;
+    const i = add(x, y, z, vx, vy, vz, false);
+    if (i < 0) return;
+    const j = rand() * 0.6 + 0.4;
+    p.r[i] = j * 0.9; p.g[i] = j * 0.3; p.b[i] = j;
+    p.life[i] = Math.floor(rand() * 10) + 40;
+    p.size[i] = 0.1 * (rand() * 0.2 + 0.5);
+    p.beh[i] = Beh.Portal;
+    p.flags[i] = BRIGHT;
+  }
+
+  function gauss() {
+    return Math.sqrt(-2 * Math.log(rand() || 1e-9)) * Math.cos(Math.PI * 2 * rand());
+  }
+
   function rainSplash(x: number, y: number, z: number, water: boolean) {
+    if (skip()) return;
     const i = add(x, y, z, 0, 0, 0, true);
     if (i < 0) return;
     p.vx[i] *= 0.3; p.vy[i] = rand() * 0.2 + 0.1; p.vz[i] *= 0.3;
@@ -461,7 +672,6 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
         if (p.beh[i] === Beh.Drip) {
           p.beh[i] = Beh.Fall;
           p.life[i] = age + 200;
-          p.grav[i] = 0.06;
           p.layer[i] = SPRITE.dripFall;
           continue;
         }
@@ -477,7 +687,30 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
         p.z[i] = p.oz[i] + p.vz[i] * q;
         continue;
       }
+      if (beh === Beh.Enchant) {
+        const f = 1 - age / p.life[i];
+        let g = 1 - f;
+        g *= g; g *= g;
+        p.x[i] = p.ox[i] + p.vx[i] * f;
+        p.y[i] = p.oy[i] + p.vy[i] * f - g * 1.2;
+        p.z[i] = p.oz[i] + p.vz[i] * f;
+        continue;
+      }
+      if (beh === Beh.Lava && rand() > age / p.life[i]) smokeAt(p.x[i], p.y[i], p.z[i], p.vx[i], p.vy[i], p.vz[i], 1);
       if (beh === Beh.Drip) continue;
+      if (beh === Beh.Rod && age > p.life[i] / 2) {
+        p.a[i] = 1 - (age - p.life[i] / 2) / p.life[i];
+        p.r[i] += (0.949 - p.r[i]) * 0.2; p.g[i] += (0.871 - p.g[i]) * 0.2; p.b[i] += (0.788 - p.b[i]) * 0.2;
+      }
+      if (beh === Beh.Petal) {
+        const f = Math.pow(Math.min(age / 300, 1), 1.25) * 2 * 0.0025;
+        p.vx[i] += Math.cos(p.ox[i]) * f; p.vz[i] += Math.sin(p.ox[i]) * f;
+        p.vy[i] -= p.grav[i];
+        move(i);
+        if (p.flags[i] & GROUND || (age > 1 && (p.vx[i] === 0 || p.vz[i] === 0))) kill(i);
+        else if ((i & 3) === (tickNo & 3)) p.light[i] = brightness(p.x[i], p.y[i], p.z[i]);
+        continue;
+      }
       if (beh === Beh.Fall) p.vy[i] -= p.grav[i];
       else p.vy[i] -= 0.04 * p.grav[i];
       if (beh === Beh.Bubble) p.vy[i] += 0.002;
@@ -487,9 +720,10 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
         continue;
       }
       if (beh === Beh.Fall && p.flags[i] & GROUND) {
+        if (!p.land[i]) { kill(i); continue; }
         p.beh[i] = Beh.Normal;
         p.layer[i] = SPRITE.dripLand;
-        p.life[i] = age + 4 + Math.floor(rand() * 4);
+        p.life[i] = age + Math.floor(p.land[i] / (rand() * 0.8 + 0.2));
         p.vx[i] = p.vy[i] = p.vz[i] = 0;
         p.grav[i] = 0;
         continue;
@@ -542,6 +776,7 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
 
   // Biome ambient particles: 0 white ash, 1 ash, 2 crimson spore, 3 warped spore (vanilla BaseAshSmoke and Suspended particles).
   function ambient(kind: number, x: number, y: number, z: number) {
+    if (skip()) return;
     if (count > cap * 0.6) return;
     const i = add(x, y, z, 0, 0, 0, false);
     if (i < 0) return;
@@ -573,10 +808,22 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
   return {
     addParticles,
     ambient,
+    smokeAt,
+    flameAt,
+    dustAt,
+    dripAt,
+    portalAt,
+    sporeFall,
+    sporeAir,
+    endRod,
+    petal,
+    enchant,
+    lavaPop,
     rainSplash: (x: number, y: number, z: number) => rainSplash(x, y, z, false),
     update,
     setBudget,
     setLighting(_day: number, _g: number) {},
+    setStatus(s: "all" | "decreased" | "minimal") { status = s === "minimal" ? 2 : s === "decreased" ? 1 : 0; },
     count: () => count,
     clear() { count = 0; },
     reloadArt() {

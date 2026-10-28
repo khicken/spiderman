@@ -1,5 +1,5 @@
-// Vanilla BiomeAmbientSoundsHandler for the nether: a looping bed that fades over 2 s per biome,
-// additions at 0.0111 per tick, and a mood sound every few minutes in the dark.
+// Vanilla BiomeAmbientSoundsHandler for the nether: a looping bed that fades over 2 s per biome
+// and additions at 0.0111 per tick. The mood sound lives in index.ts with the overworld cave mood.
 export interface BiomeAmbientDeps {
   ctx: AudioContext;
   out: AudioNode;
@@ -10,7 +10,7 @@ export interface BiomeAmbientDeps {
 
 interface Loop { src: AudioBufferSourceNode; gain: GainNode }
 
-function seamless(ctx: AudioContext, b: AudioBuffer, fade: number): AudioBuffer {
+export function seamless(ctx: AudioContext, b: AudioBuffer, fade: number): AudioBuffer {
   const n = b.length, f = Math.min(Math.floor(fade * b.sampleRate), Math.floor(n / 3));
   const out = ctx.createBuffer(1, n - f, b.sampleRate);
   const src = b.getChannelData(0), dst = out.getChannelData(0);
@@ -26,7 +26,7 @@ export function createBiomeAmbient(d: BiomeAmbientDeps) {
   let biome: string | null = null;
   let loop: Loop | null = null;
   const cache = new Map<string, AudioBuffer | null>();
-  let nextMood = 0, last = 0;
+  let last = 0;
 
   function fadeOut(l: Loop) {
     const now = d.ctx.currentTime;
@@ -73,12 +73,7 @@ export function createBiomeAmbient(d: BiomeAmbientDeps) {
       const dt = Math.min(1, last ? now - last : 0);
       last = now;
       if (!biome) return;
-      if (nextMood === 0) nextMood = now + 120 + Math.random() * 300;
       if (Math.random() < 1 - Math.pow(1 - 0.0111, dt * 20)) d.play(`ambient.${biome}.additions`, 1);
-      if (now >= nextMood) {
-        nextMood = now + 180 + Math.random() * 300;
-        d.play(`ambient.${biome}.mood`, 1);
-      }
     },
     stop() {
       if (loop) fadeOut(loop);

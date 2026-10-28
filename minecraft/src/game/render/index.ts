@@ -16,12 +16,13 @@ import { QUALITY } from "./quality";
 import { createSky } from "./sky";
 import type { SkyState } from "./sky";
 import { createWeather } from "./weather";
+import { animateTick } from "./animate-tick";
 import { createWaterFog } from "./water-fog";
 import { FLICKER } from "../mesh/materials";
 import { syncLightmap } from "../mesh/lightmap";
 import { onPacksChanged } from "../packs";
 import { applyColormaps } from "./colormap";
-import { resetTints } from "../world/mesh-input";
+import { resetTints, setBlendRadius } from "../world/mesh-input";
 
 export { QUALITY } from "./quality";
 
@@ -67,6 +68,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   const clouds = createClouds(scene);
   const particles = createParticles(scene, world, getAtlas);
   const weather = createWeather(scene, world, particles.rainSplash);
+  const netherSample = (x: number, y: number, z: number) => netherAmbient(world, x, y, z, particles.ambient);
   const overlays = createOverlays(scene, getAtlas);
   const offPacks = onPacksChanged(() => {
     const old = atlas;
@@ -143,6 +145,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   }
 
   const fx = { nightVision: 0, blindness: 0, darkness: 0 };
+  // Vanilla darkness: the fog closes in over a 22 tick blend, and the lightmap pulses on its own 80 tick cosine.
+  let darkBlend = 0;
 
   function setUnderwater(kind: Submersion) {
     if (kind !== submersion) submergedFor = 0;
@@ -163,8 +167,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     if (dim === "overworld") {
       skyColor(biome.skyColor, angle, r, th, flash, sky3);
       camera.getWorldDirection(_dir);
-      const h = Math.hypot(_dir.x, _dir.z) || 1;
-      overworldFog(biome.fogColor, sky3, angle, renderDistance, _dir.x / h, r, th, fog3);
+      overworldFog(biome.fogColor, sky3, angle, renderDistance, _dir.x, r, th, fog3);
       sunriseColor(angle, sunrise);
       day = flash > 0 ? Math.max(daylight(angle, r, th), flash) : daylight(angle, r, th);
       skyLightTint(angle, r, th, tint3);
@@ -216,20 +219,23 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       range.near = visionFar * 0.25;
       range.far = visionFar;
     }
-    if (fx.blindness > 0 || fx.darkness > 0) {
-      const k = Math.max(fx.blindness, fx.darkness);
+    darkBlend = fx.darkness > 0 ? Math.min(1, darkBlend + dt / 1.1) : Math.max(0, darkBlend - dt / 1.1);
+    if (fx.blindness > 0 || darkBlend > 0) {
+      const k = fx.blindness > 0 ? fx.blindness : darkBlend;
       fog3[0] *= 1 - k; fog3[1] *= 1 - k; fog3[2] *= 1 - k;
       const end = fx.blindness > 0 ? 5 : 15;
       range.far += (end - range.far) * k;
-      range.near += ((fx.blindness > 0 ? 0 : end * 0.75) - range.near) * k;
+      range.near += (end * (fx.blindness > 0 ? 0.25 : 0.75) - range.near) * k;
     }
+    const pulse = Math.max(0, Math.cos(time * 20 * Math.PI * 0.025) * 0.45 * darkBlend);
+    uniforms.uDarkness?.value.set(pulse, darkBlend);
     uniforms.uFogColor.value.setRGB(fog3[0], fog3[1], fog3[2], THREE.SRGBColorSpace);
     fog.color.copy(uniforms.uFogColor.value);
     uniforms.uFogNear.value = range.near;
     uniforms.uFogFar.value = range.far;
     fog.near = Math.max(0, range.near);
     fog.far = range.far;
-    uniforms.uDaylight.value = (dim === "overworld" ? (day - 0.2) / 0.8 : day) * (1 - fx.darkness * 0.8);
+    uniforms.uDaylight.value = dim === "overworld" ? (day - 0.2) / 0.8 : day;
     if (uniforms.uNightVision) uniforms.uNightVision.value = fx.nightVision;
     uniforms.uDimLight?.value.set(dim === "nether" ? 0.1 : 0, dim === "end" ? 1 : 0);
     uniforms.uSkyTint.value.setRGB(tint3[0], tint3[1], tint3[2], THREE.SRGBColorSpace);
@@ -239,7 +245,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     if (uniforms.uSkyColor && uniforms.uSkyFogEnd && uniforms.uSkyMix) {
       uniforms.uSkyColor.value.setRGB(sky3[0], sky3[1], sky3[2], THREE.SRGBColorSpace);
       uniforms.uSkyFogEnd.value = Math.max(16, skyState.fogEnd);
-      uniforms.uSkyMix.value = dim === "overworld" && submersion === "none" && !(visionFar > 0 && visionFar < renderDistance * 16) && fx.blindness <= 0 && fx.darkness <= 0 ? 1 : 0;
+      uniforms.uSkyMix.value = dim === "overworld" && submersion === "none" && !(visionFar > 0 && visionFar < renderDistance * 16) && fx.blindness <= 0 && darkBlend <= 0 ? 1 : 0;
     }
 
     syncLightmap(uniforms);
@@ -254,6 +260,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       skyState.rain = r;
       skyState.moonPhase = moonPhase(days * 24000 + dayTicks);
       cloudColor(angle, r, th, cloud3);
+      const hide = Math.max(fx.blindness, darkBlend);
+      for (let i = 0; i < 3; i++) cloud3[i] += (fog3[i] - cloud3[i]) * hide;
       clouds.update(dt, cam, cloud3, fog3);
       weather.update(dt, cam, time, r, day);
     } else {
@@ -292,12 +300,12 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     const t1 = performance.now();
     chunks.update(camera);
     const t2 = performance.now();
-    if (dim === "nether") netherAmbient(world, camera.position.x, camera.position.y, camera.position.z, step, particles.ambient);
+    animateTick(world, particles, camera.position.x, camera.position.y, camera.position.z, step, dim === "overworld" ? rain : 0, dim === "nether" ? netherSample : undefined);
     particles.update(step);
 
     renderer.info.reset();
     renderer.clear();
-    if (dim !== "nether" && submersion === "none" && fx.blindness < 0.5) renderer.render(sky.scene, sky.camera);
+    if (dim !== "nether" && submersion === "none" && fx.blindness <= 0 && fx.darkness <= 0) renderer.render(sky.scene, sky.camera);
     renderer.clearDepth();
     renderer.render(scene, camera);
     renderHand();
@@ -315,13 +323,15 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     camera.updateProjectionMatrix();
   }
 
-  function setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number }) {
+  function setOptions(o: { fov: number; quality: Quality; clouds: boolean; brightness: number; biomeBlend?: number; particles?: "all" | "decreased" | "minimal" }) {
     camera.fov = o.fov;
+    particles.setStatus(o.particles ?? "all");
     camera.updateProjectionMatrix();
     quality = o.quality;
     cloudsOn = o.clouds;
     const fancy = quality === "high";
-    if (fancy !== GFX.fancyLeaves) {
+    const blend = o.biomeBlend !== undefined && setBlendRadius(o.biomeBlend);
+    if (fancy !== GFX.fancyLeaves || blend) {
       GFX.fancyLeaves = fancy;
       chunks.remeshAll();
     }

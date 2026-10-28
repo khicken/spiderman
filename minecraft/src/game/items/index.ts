@@ -10,6 +10,7 @@ import { clickMenu, type Menu, type MenuEnv } from "./menu";
 import { containerMenu, crafterMenu, craftingMenu, enderMenu, inventoryMenu, type BoundBE, type MenuDeps } from "./menus";
 import { anvilMenu, brewingMenu, enchantingMenu, furnaceMenu, grindstoneMenu, smithingMenu, stonecutterMenu } from "./menus-station";
 import { merchantMenu } from "./menus-merchant";
+import { horseMenu } from "./menus-horse";
 import { cartographyMenu, loomMenu } from "./menus-loom";
 import { itemDef, maxStack } from "./registry";
 import { canStack, copyStack, maxDurability } from "./stack";
@@ -165,6 +166,7 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
     if (kind === "smithing_table") return smithingMenu(deps, at);
     if (kind === "beacon") return beaconMenu(deps, at);
     if (kind === "villager") return merchantMenu(deps, at);
+    if (kind === "horse") return horseMenu(deps, at);
     if (kind === "loom") return loomMenu(deps, at);
     if (kind === "cartography_table") return cartographyMenu(deps, at);
     if (!at) return null;
@@ -192,7 +194,8 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
       }
       kind = "chest";
     }
-    const size = SIZES[kind];
+    const entBe = at?.entityId !== undefined ? (ctxOrNull()?.entities.get(at.entityId)?.data.be as BlockEntityData | undefined) : undefined;
+    const size = (kind === "chest" && entBe?.items?.length) || SIZES[kind];
     if (!size) return null;
     const b = bind(kind, at, size);
     if (!b) return null;
@@ -356,19 +359,24 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
     },
     creativeItems,
     creativeTabs: () => CREATIVE_TABS.map((t) => ({ ...t })),
-    takeCreative(stack: ItemStack, click: ClickKind) {
-      const max = maxStack(stack.item);
+    // Vanilla creative grid: left takes 1 (shift a full stack), right on the same item removes 1, an empty or other slot deletes the cursor.
+    takeCreative(stack: ItemStack | null, click: ClickKind) {
       const c = env.cursor;
-      if (typeof click === "object") {
-        if ("hotbar" in click && click.hotbar >= 0 && click.hotbar < 9) slots[click.hotbar] = copyStack(stack, max);
-      } else if (click === "shift") give(copyStack(stack, max));
-      else if (click === "drop") dropStack(copyStack(stack, 1));
-      else if (click === "drop_all") dropStack(copyStack(stack, max));
-      else if (click === "middle") env.cursor = copyStack(stack, max);
-      else if (c) {
-        if (canStack(c, stack)) env.cursor = { ...c, count: Math.min(max, c.count + 1) };
+      const less = (s: ItemStack) => (s.count > 1 ? { ...s, count: s.count - 1 } : null);
+      if (!stack) {
+        if (c && typeof click === "string" && click !== "middle") env.cursor = click === "right" ? less(c) : null;
+      } else {
+        const max = maxStack(stack.item);
+        if (typeof click === "object") {
+          if ("hotbar" in click && click.hotbar >= 0 && click.hotbar < 9) slots[click.hotbar] = copyStack(stack, max);
+        } else if (click === "drop") dropStack(copyStack(stack, 1));
+        else if (click === "drop_all") dropStack(copyStack(stack, max));
+        else if (click === "middle") env.cursor ??= copyStack(stack, max);
+        else if (!c) env.cursor = copyStack(stack, click === "shift" ? max : 1);
+        else if (click === "right") env.cursor = less(c);
+        else if (canStack(c, stack)) env.cursor = { ...c, count: click === "shift" ? max : Math.min(max, c.count + 1) };
         else env.cursor = null;
-      } else env.cursor = copyStack(stack, click === "right" ? 1 : max);
+      }
       api.version++;
     },
     armorPoints(): number {

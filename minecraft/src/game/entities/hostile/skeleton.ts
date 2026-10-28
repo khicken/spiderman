@@ -1,21 +1,21 @@
 import { equipMob } from "../armor-layer";
 import type { Entity, GameCtx, MobDef } from "../../contracts";
-import { applyPhysics, canSee, clearPath, idleLook, lookAt, meleeAttack, moveTo } from "../ai";
+import { applyPhysics, canSee, clearPath, idleLook, lookAt, meleeAttack, moveTo, skyDarken } from "../ai";
 import {
-  addEffect, avoid, burnInDaylight, chase, diffId, hurtAmount, idle, naturalSpawn, discard, num, shootArrow, sound, strafe,
+  addEffect, avoid, burnInDaylight, chase, fleeSun, diffId, hurtAmount, idle, naturalSpawn, discard, num, shootArrow, sound, strafe,
   targetInfo, updateTarget,
 } from "./brain";
 import { paintBogged, paintSkeletonSkin, paintStray, paintWitherSkeleton, undeadModel } from "./looks-undead";
 import { MONSTER_BIOMES, SNOWY, SWAMPS } from "./spawns";
 
-interface BowCfg {
+export interface BowCfg {
   type: string;
   sound: string;
   arrow?: { effect: string; ticks: number };
   interval: [number, number];
 }
 
-function bowAttack(e: Entity, ctx: GameCtx, cfg: BowCfg, speed: number): void {
+export function bowAttack(e: Entity, ctx: GameCtx, cfg: BowCfg, speed: number): void {
   const t = e.data._target as "player" | number;
   const info = targetInfo(ctx, t);
   if (!info) return;
@@ -56,7 +56,9 @@ function bowAttack(e: Entity, ctx: GameCtx, cfg: BowCfg, speed: number): void {
         e.data._draw = 0;
         const power = Math.min(1, ((using + 1) / 20) ** 2 / 3 + ((using + 1) / 20) * 2 / 3);
         const extra = cfg.arrow ? { potion: cfg.arrow.effect, effects: [{ id: cfg.arrow.effect, ticks: cfg.arrow.ticks, amplifier: 0 }] } : {};
-        shootArrow(e, ctx, t, power, extra);
+        const arrow = shootArrow(e, ctx, t, power, extra);
+        // Vanilla 1.21 AbstractArrow.setBaseDamageFromMob: 2 per unit of draw plus a triangle spread around 0.11 per difficulty level.
+        if (arrow) arrow.data.damage = power * 2 + diffId(ctx) * 0.11 + 0.57425 * (ctx.random() - ctx.random());
         sound(ctx, e, cfg.sound + ".shoot", 1, 1 / (ctx.random() * 0.4 + 0.8));
         e.data._atkCd = diffId(ctx) === 3 ? cfg.interval[0] : cfg.interval[1];
       }
@@ -79,12 +81,15 @@ function skeletonTick(cfg: BowCfg & { burns: boolean; sword?: boolean; witherHit
     const hurt = hurtAmount(e);
     const speed = 0.25;
     if (cfg.burns) burnInDaylight(e, ctx);
+    // Vanilla RestrictSunGoal: by day and bare-headed, paths stop short of open sky.
+    e.data._avoidSun = cfg.burns && ctx.world.dim === "overworld" && skyDarken(ctx) < 4 && !(e.data.equipment as { head?: unknown } | undefined)?.head && !e.data.helmet;
     if (!cfg.sword && avoid(e, ctx, ["wolf"], 6, speed)) {
       applyPhysics(e, ctx);
       return;
     }
     const t = updateTarget(e, ctx, { range: 16 }, hurt);
     if (t !== undefined) {
+      e.data._flee = false;
       if (cfg.sword || e.data.held === "") {
         chase(e, ctx, t, speed * 1.2);
         e.data.aggressive = true;
@@ -99,7 +104,7 @@ function skeletonTick(cfg: BowCfg & { burns: boolean; sword?: boolean; witherHit
     } else {
       e.data._draw = 0;
       e.data.aggressive = false;
-      idle(e, ctx, speed);
+      if (!(cfg.burns && fleeSun(e, ctx, speed))) idle(e, ctx, speed);
       idleLook(e, ctx);
     }
     applyPhysics(e, ctx);
@@ -112,7 +117,7 @@ const BONES: MobDef["drops"] = [{ item: "bone", count: [0, 2] }, { item: "arrow"
 
 function equipmentDrop(e: Entity, ctx: GameCtx, item: string): void {
   const held = (e.data.held as string | undefined) ?? item;
-  if (held && ctx.random() < 0.085) ctx.entities.dropItem({ item: held, count: 1, damage: Math.floor(ctx.random() * 300) }, e.body.pos.x, e.body.pos.y + 0.5, e.body.pos.z);
+  if (held && !e.data.noEquipDrop && ctx.random() < 0.085) ctx.entities.dropItem({ item: held, count: 1, damage: Math.floor(ctx.random() * 300) }, e.body.pos.x, e.body.pos.y + 0.5, e.body.pos.z);
 }
 
 const witherTick = skeletonTick({ type: "wither_skeleton", sound: "entity.wither_skeleton", interval: [20, 40], burns: false, sword: true, witherHit: true });
@@ -195,7 +200,7 @@ export const SKELETONS: MobDef[] = [
     speed: 0.25,
     attackDamage: 8,
     xp: [5, 5],
-    drops: [{ item: "coal", count: [0, 1], chance: 1 / 3 }, { item: "bone", count: [0, 2] }, { item: "wither_skeleton_skull", count: [1, 1], chance: 0.025 }],
+    drops: [{ item: "coal", count: [-1, 1] }, { item: "bone", count: [0, 2] }, { item: "wither_skeleton_skull", count: [1, 1], chance: 0.025 }],
     sounds: SOUNDS("entity.wither_skeleton"),
     spawn: { dims: ["nether"], biomes: ["nether_wastes", "soul_sand_valley", "crimson_forest", "warped_forest", "basalt_deltas"], light: "dark", group: [2, 5], weight: 8 },
     createModel: () => undeadModel({ key: "wither_skeleton", paint: paintWitherSkeleton, parts: "skeleton", arms: "sword", held: "stone_sword", scale: 1.2 }),

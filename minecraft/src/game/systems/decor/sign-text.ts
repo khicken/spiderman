@@ -69,7 +69,7 @@ function paint(canvas: HTMLCanvasElement, lines: string[], color: number, glowin
     if (!text) continue;
     const r = rasterText(text, body, false);
     const x0 = Math.floor((canvas.width - r.width) / 2);
-    const y0 = i * lh + Math.floor((lh - 8) / 2);
+    const y0 = i * lh + Math.floor((lh - 8) / 2) - r.top;
     const img = new ImageData(new Uint8ClampedArray(r.data), r.width, r.height);
     if (outline >= 0) {
       const o = rasterText(text, outline, false);

@@ -3,6 +3,12 @@ import { AIR, SET_NO_DROP, SET_NOTIFY } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { advTrigger } from "../systems/advancements/bus";
 
+// Vanilla triggers summoned_entity for players within the mob's box inflated by 5 (golems) or 50 (wither).
+function playerNear(ctx: GameCtx, x: number, y: number, z: number, r: number) {
+  const p = ctx.player.body.pos;
+  return Math.abs(p.x - x) <= r + 1 && Math.abs(p.z - z) <= r + 1 && p.y > y - r - 2 && p.y < y + r + 3;
+}
+
 type Cell = [number, number, number];
 const is = (...names: string[]) => (n: string) => names.includes(n);
 const SKULL = is("wither_skeleton_skull", "wither_skeleton_wall_skull");
@@ -59,7 +65,7 @@ function headPlaced(ctx: GameCtx, x: number, y: number, z: number) {
   const iron = findPattern(ctx, x, y, z, IRON_GOLEM, IRON_EMPTY);
   if (iron) {
     clear(ctx, [[x, y, z], ...iron]);
-    if (ctx.entities.spawn("iron_golem", x + 0.5, y - 2, z + 0.5, { playerCreated: true, persistent: true })) advTrigger({ t: "summoned", type: "iron_golem" });
+    if (ctx.entities.spawn("iron_golem", x + 0.5, y - 2, z + 0.5, { playerCreated: true, persistent: true }) && playerNear(ctx, x + 0.5, y - 2, z + 0.5, 5)) advTrigger({ t: "summoned", type: "iron_golem" });
   }
 }
 
@@ -70,7 +76,7 @@ function skullPlaced(ctx: GameCtx, x: number, y: number, z: number) {
   clear(ctx, body);
   const w = ctx.entities.spawn("wither", cx + 0.5, y - 2, cz + 0.5, { persistent: true, invul: 220 });
   if (w) ctx.emit({ type: "sound", name: "entity.wither.spawn", x: cx + 0.5, y, z: cz + 0.5, volume: 1 });
-  if (w) advTrigger({ t: "summoned", type: "wither" });
+  if (w && playerNear(ctx, cx + 0.5, y - 2, cz + 0.5, 50)) advTrigger({ t: "summoned", type: "wither" });
 }
 
 const head: BlockBehavior = { onPlaced: (ctx, x, y, z) => headPlaced(ctx, x, y, z) };

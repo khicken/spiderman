@@ -268,7 +268,7 @@ function explodeCart(e: Entity, ctx: GameCtx) {
   e.data._remove = true;
   const p = e.body.pos;
   const sp = Math.min(5, Math.hypot(e.body.vel.x, e.body.vel.z));
-  ctx.entities.explode(p.x, p.y, p.z, 4 + ctx.random() * 1.5 * sp);
+  ctx.entities.explode(p.x, p.y, p.z, 4 + ctx.random() * 1.5 * sp, false, "tnt");
 }
 
 function cartDef(kind: Kind): MobDef {

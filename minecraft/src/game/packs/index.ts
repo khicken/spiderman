@@ -36,6 +36,7 @@ let images = new Map<string, Img>();
 let metas = new Map<string, AnimMeta>();
 let sounds = new Map<string, SoundEntry[]>();
 let soundFiles = new Map<string, Uint8Array>();
+let fontDocs = new Map<string, unknown[]>();
 const decoded = new Map<string, PackSound[] | null>();
 let version = 0;
 let active: string[] = [];
@@ -77,6 +78,8 @@ export function onPacksChanged(cb: () => void): () => void {
 export const packImage = (path: string): Img | null => images.get(path) ?? null;
 export const hasPackImage = (path: string) => images.has(path);
 export const packImagePaths = () => images.keys();
+// Parsed font JSON under assets/minecraft/, e.g. "font/default.json", one entry per pack that has it, top pack first.
+export const packFontDocs = (path: string): unknown[] => fontDocs.get(path) ?? [];
 
 // First animation frame for block, item and particle textures that may be vertical strips.
 const tiles = new Map<string, Img>();
@@ -125,7 +128,8 @@ export async function initPacks(): Promise<void> {
   if (process.env.NODE_ENV !== "production")
     (window as unknown as { __mcPacks: unknown }).__mcPacks = {
       coverage: (probe?: string) => import("./coverage").then((m) => m.packCoverage(probe)),
-      exportClaudePack: () => import("./export").then((m) => m.exportClaudePack()),
+      exportClaudePack: (o?: { sounds?: boolean }) => import("./export").then((m) => m.exportClaudePack(o)),
+      importBytes: (name: string, bytes: Uint8Array) => import("./import").then((m) => m.importZip(new File([bytes as BlobPart], name))),
       select: setSelectedPacks,
       list: listAllPacks,
     };
@@ -191,6 +195,7 @@ export function applyPacks(ids: string[]): Promise<void> {
     const files = new Map<string, Uint8Array>();
     const nextSounds = new Map<string, SoundEntry[]>();
     const nextFiles = new Map<string, Uint8Array>();
+    const nextFonts = new Map<string, unknown[]>();
     const loaded: string[] = [];
     const known = new Set((await listAllPacks()).map((p) => p.id));
     const stack = ids.filter((id) => known.has(id));
@@ -201,6 +206,13 @@ export function applyPacks(ids: string[]): Promise<void> {
       for (const [p, b] of pf) {
         if (p.startsWith("textures/")) files.set(p, b);
         else if (p.startsWith("sounds/")) nextFiles.set(p, b);
+        else if (p.startsWith("font/") && p.endsWith(".json")) {
+          try {
+            nextFonts.set(p, [JSON.parse(new TextDecoder().decode(b).replace(/^\uFEFF/, "")), ...(nextFonts.get(p) ?? [])]);
+          } catch {
+            // A broken font file leaves the fonts below it.
+          }
+        }
       }
       const sj = pf.get("sounds.json");
       if (sj) mergeSounds(nextSounds, sj);
@@ -228,6 +240,7 @@ export function applyPacks(ids: string[]): Promise<void> {
     metas = nextMetas;
     sounds = nextSounds;
     soundFiles = nextFiles;
+    fontDocs = nextFonts;
     decoded.clear();
     active = loaded;
     version++;

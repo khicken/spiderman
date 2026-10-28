@@ -253,7 +253,9 @@ export function CreateWorldScreen({ onCreate, onCancel, worldTypes = ["Default"]
   const [name, setName] = useState("New World");
   const [mode, setMode] = useState<CreateMode>("survival");
   const [diff, setDiff] = useState<Rules["difficulty"]>("normal");
-  const [cheats, setCheats] = useState(false);
+  // Vanilla WorldCreationUiState: unset follows the mode (on for Creative) until the player toggles it.
+  const [cheatsSet, setCheats] = useState<boolean | null>(null);
+  const cheats = mode === "hardcore" ? false : cheatsSet ?? mode === "creative";
   const [seed, setSeed] = useState("");
   const [type, setType] = useState(0);
   const [structures, setStructures] = useState(true);
@@ -266,7 +268,7 @@ export function CreateWorldScreen({ onCreate, onCancel, worldTypes = ["Default"]
       gameMode: mode === "creative" ? "creative" : "survival",
       hardcore: mode === "hardcore",
       difficulty: mode === "hardcore" ? "hard" : diff,
-      cheats: mode === "hardcore" ? false : cheats,
+      cheats,
       seed: seedFromString(seed),
       worldType: worldTypes[type],
       structures,
@@ -298,12 +300,11 @@ export function CreateWorldScreen({ onCreate, onCancel, worldTypes = ["Default"]
             onClick={() => {
               const next = mode === "survival" ? "hardcore" : mode === "hardcore" ? "creative" : "survival";
               setMode(next);
-              setCheats(next === "creative");
             }}
           />
           <Text text={MODE_DESC[mode]} color={0xa0a0a0} x={cx} y={106} align="center" />
           <Button x={bx} y={120} width={210} label={`Difficulty: ${mode === "hardcore" ? "Hard" : cap(diff)}`} disabled={mode === "hardcore"} onClick={() => setDiff(DIFFS[(DIFFS.indexOf(diff) + 1) % 4])} />
-          <Button x={bx} y={144} width={210} label={`Allow Cheats: ${onOff(mode === "hardcore" ? false : cheats)}`} disabled={mode === "hardcore"} onClick={() => setCheats(!cheats)} />
+          <Button x={bx} y={144} width={210} label={`Allow Cheats: ${onOff(cheats)}`} disabled={mode === "hardcore"} onClick={() => setCheats(!cheats)} />
           <Text text="Commands like /gamemode, /experience" color={0xa0a0a0} x={cx} y={168} align="center" />
         </>
       )}

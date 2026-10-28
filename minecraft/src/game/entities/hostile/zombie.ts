@@ -4,7 +4,7 @@ import { AIR, metaOf } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
 import { idleLook, inWaterColumn, meleeAttack, walkToward, lookAt, applyPhysics, canSeeSky, lightAt } from "../ai";
 import {
-  addEffect, naturalSpawn, burnInDaylight, chase, diffId, discard, hurtAmount, idle, num, pick, randInt, replaceWith, setFire, sound,
+  addEffect, naturalSpawn, burnInDaylight, chase, diffId, discard, hurtAmount, idle, num, pick, randInt, regionalDifficulty, replaceWith, setFire, sound,
   targetInfo, updateTarget, eyeY, shootVel, particles,
 } from "./brain";
 import { paintDrowned, paintHusk, paintZombie, paintZombieVillager, undeadModel } from "./looks-undead";
@@ -163,9 +163,16 @@ function makeTick(cfg: ZombieCfg) {
       const dmg = 3 + weaponBonus(e.data.held);
       if (meleeAttack(e, ctx, dmg)) {
         if (cfg.type === "husk" && t === "player") addEffect(ctx.player.effects, "hunger", 140 * diffId(ctx));
-        if (num(e, "_fire") > 0 && t !== "player" && ctx.random() < diffId(ctx) * 0.3) {
-          const o = ctx.entities.get(t as number);
-          if (o) setFire(o, 40 * diffId(ctx));
+        const f = regionalDifficulty(ctx);
+        if (!e.data.held && num(e, "_fire") > 0 && ctx.random() < f * 0.3) {
+          const ticks = 40 * Math.floor(f);
+          if (t === "player") {
+            const p = ctx.player as typeof ctx.player & { fireTicks?: number };
+            p.fireTicks = Math.max(p.fireTicks ?? 0, ticks);
+          } else {
+            const o = ctx.entities.get(t as number);
+            if (o) setFire(o, ticks);
+          }
         }
         sound(ctx, e, cfg.sound + ".attack", 0.6);
       }
@@ -184,7 +191,7 @@ function rareDrop(e: Entity, ctx: GameCtx, extra: string[] = []): void {
   const p = e.body.pos;
   if (ctx.random() < 0.025) ctx.entities.dropItem({ item: pick(ctx, ["iron_ingot", "carrot", "potato"]), count: 1 }, p.x, p.y + 0.5, p.z);
   const held = e.data.held as string;
-  if (held && ctx.random() < 0.085 && !extra.includes(held)) ctx.entities.dropItem({ item: held, count: 1 }, p.x, p.y + 0.5, p.z);
+  if (held && !e.data.noEquipDrop && ctx.random() < 0.085 && !extra.includes(held)) ctx.entities.dropItem({ item: held, count: 1 }, p.x, p.y + 0.5, p.z);
 }
 
 const ZOMBIE_SOUNDS = (s: string) => ({ ambient: s + ".ambient", hurt: s + ".hurt", death: s + ".death", step: s + ".step" });

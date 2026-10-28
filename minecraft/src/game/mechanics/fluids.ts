@@ -50,7 +50,9 @@ function canSpreadTo(target: BlockState, fid: number, down: boolean): boolean {
   return canPassInto(target);
 }
 
-export function newLiquid(w: WorldApi, x: number, y: number, z: number, fid: number): BlockState {
+const converts = (ctx: GameCtx, fid: number) => (fid === WATER ? ctx.rules?.waterSourceConversion !== false : ctx.rules?.lavaSourceConversion === true);
+
+export function newLiquid(w: WorldApi, x: number, y: number, z: number, fid: number, convert = fid === WATER): BlockState {
   let max = 0;
   let sources = 0;
   for (let h = 0; h < 4; h++) {
@@ -60,7 +62,7 @@ export function newLiquid(w: WorldApi, x: number, y: number, z: number, fid: num
     const a = amount(n);
     if (a > max) max = a;
   }
-  if (fid === WATER && sources >= 2) {
+  if (convert && sources >= 2) {
     const below = w.getBlock(x, y - 1, z);
     if (isSolid(below) || isSourceOf(fluidState(w, x, y - 1, z), fid)) return stateOf(fid, 0);
   }
@@ -138,7 +140,7 @@ function spreadSides(ctx: GameCtx, x: number, y: number, z: number, s: BlockStat
     const nx = x + HX[h], nz = z + HZ[h];
     const n = w.getBlock(nx, y, nz);
     if (!canSpreadTo(n, fid, false)) continue;
-    const ns = newLiquid(w, nx, y, nz, fid);
+    const ns = newLiquid(w, nx, y, nz, fid, converts(ctx, fid));
     if (ns !== AIR) spreadTo(ctx, nx, y, nz, ns, fid, false);
   }
 }
@@ -148,7 +150,7 @@ function spread(ctx: GameCtx, x: number, y: number, z: number, s: BlockState, fi
   if (y > MIN_Y) {
     const below = w.getBlock(x, y - 1, z);
     if (canSpreadTo(below, fid, true)) {
-      const nb = newLiquid(w, x, y - 1, z, fid);
+      const nb = newLiquid(w, x, y - 1, z, fid, converts(ctx, fid));
       if (nb !== AIR) {
         spreadTo(ctx, x, y - 1, z, nb, fid, true);
         if (sourceNeighbors(w, x, y, z, fid) >= 3) spreadSides(ctx, x, y, z, s, fid);
@@ -164,7 +166,7 @@ function fluidTick(ctx: GameCtx, x: number, y: number, z: number, s: BlockState)
   const fid = idOf(s);
   if (fid === LAVA && lavaReacts(ctx, x, y, z, s)) return;
   if (metaOf(s) !== 0) {
-    const ns = newLiquid(w, x, y, z, fid);
+    const ns = newLiquid(w, x, y, z, fid, converts(ctx, fid));
     if (ns === AIR) {
       w.setBlock(x, y, z, AIR, SET_NOTIFY);
       return;

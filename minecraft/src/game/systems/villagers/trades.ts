@@ -8,7 +8,7 @@ export const LEVEL_NAMES = ["Novice", "Apprentice", "Journeyman", "Expert", "Mas
 export const LEVEL_XP = [0, 10, 70, 150, 250];
 
 type Rand = () => number;
-type Listing = (r: Rand) => MerchantTrade | null;
+type Listing = (r: Rand, vtype?: string) => MerchantTrade | null;
 
 const S = (item: string, count = 1, extra: Partial<ItemStack> = {}): ItemStack => ({ item, count, ...extra });
 const ri = (r: Rand, n: number) => Math.floor(r() * n);
@@ -64,8 +64,25 @@ const TIPPED: Listing = (r) => make(S("emerald", 2), S("tipped_arrow", 5, { data
 const MAP = (em: number, name: string, xp: number): Listing => () => make(S("emerald", em), S(hasItem("filled_map") ? "filled_map" : "map", 1, { name }), 12, xp, 0.2, S("compass"));
 
 const WOOLS = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"];
-const BOATS = ["oak_boat", "spruce_boat", "birch_boat", "jungle_boat", "acacia_boat", "dark_oak_boat", "mangrove_boat", "cherry_boat"];
 const TERRACOTTA = WOOLS.flatMap((c) => [`${c}_terracotta`, `${c}_glazed_terracotta`]);
+// Vanilla lists one offer per item, so each color is its own listing in the level's pool.
+const EACH = (items: string[], f: (item: string) => Listing): Listing[] => items.map(f);
+const colors = (suffix: string) => WOOLS.map((c) => `${c}_${suffix}`);
+
+// Vanilla VillagerType.byBiome.
+export function villagerType(biome: string): string {
+  if (biome === "desert" || biome.endsWith("badlands")) return "desert";
+  if (biome.includes("jungle")) return "jungle";
+  if (biome.includes("savanna")) return "savanna";
+  if (biome.includes("swamp")) return "swamp";
+  if (biome.includes("snowy") || biome.includes("frozen") || biome === "ice_spikes") return "snow";
+  if (biome.includes("taiga") || biome.startsWith("windswept_")) return "taiga";
+  return "plains";
+}
+
+// Vanilla EmeraldsForVillagerTypeItem: the fisherman buys the boat of its own villager type.
+const TYPE_BOAT: Record<string, string> = { plains: "oak_boat", taiga: "spruce_boat", snow: "spruce_boat", desert: "jungle_boat", jungle: "jungle_boat", savanna: "acacia_boat", swamp: "dark_oak_boat" };
+const BOAT: Listing = (_r, vtype) => make(S(TYPE_BOAT[vtype ?? "plains"] ?? "oak_boat"), S("emerald"), 12, 30, 0.05);
 const SCUTE = hasItem("turtle_scute") ? "turtle_scute" : "scute";
 
 // Vanilla 1.21 VillagerTrades (non-experimental): five levels per profession.
@@ -73,7 +90,7 @@ export const TRADE_POOLS: Record<string, Listing[][]> = {
   farmer: [
     [E("wheat", 20, 16, 2), E("potato", 26, 16, 2), E("carrot", 22, 16, 2), E("beetroot", 15, 16, 2), B(1, "bread", 6, 16, 1)],
     [E("pumpkin", 6, 12, 10), B(1, "pumpkin_pie", 4, 12, 5), B(1, "apple", 4, 16, 5)],
-    [B(1, "cookie", 18, 12, 10), E("melon", 4, 12, 20)],
+    [B(3, "cookie", 18, 12, 10), E("melon", 4, 12, 20)],
     [B(1, "cake", 1, 12, 15), STEW],
     [B(3, "golden_carrot", 3, 12, 30), B(4, "glistering_melon_slice", 3, 12, 30)],
   ],
@@ -82,13 +99,13 @@ export const TRADE_POOLS: Record<string, Listing[][]> = {
     [E("cod", 15, 16, 10), P("salmon", 6, 1, "cooked_salmon", 6, 16, 5), B(2, "campfire", 1, 12, 5)],
     [E("salmon", 13, 16, 20), G("fishing_rod", 3, 3, 10)],
     [E("tropical_fish", 6, 12, 30)],
-    [E("pufferfish", 4, 12, 30), E(BOATS, 1, 12, 30)],
+    [E("pufferfish", 4, 12, 30), BOAT],
   ],
   shepherd: [
     [E("white_wool", 18, 16, 2), E("brown_wool", 18, 16, 2), E("black_wool", 18, 16, 2), E("gray_wool", 18, 16, 2), B(2, "shears", 1, 12, 1)],
-    [E(["white_dye", "gray_dye", "black_dye", "light_blue_dye", "lime_dye"], 12, 16, 10), B(1, WOOLS.map((c) => `${c}_wool`), 1, 16, 5), B(1, WOOLS.map((c) => `${c}_carpet`), 4, 16, 5)],
-    [E(["yellow_dye", "light_gray_dye", "orange_dye", "red_dye", "pink_dye"], 12, 16, 20), B(3, WOOLS.map((c) => `${c}_bed`), 1, 12, 10)],
-    [E(["brown_dye", "purple_dye", "blue_dye", "green_dye", "magenta_dye", "cyan_dye"], 12, 16, 30), B(3, WOOLS.map((c) => `${c}_banner`), 1, 12, 15)],
+    [...EACH(["white_dye", "gray_dye", "black_dye", "light_blue_dye", "lime_dye"], (d) => E(d, 12, 16, 10)), ...EACH(colors("wool"), (w) => B(1, w, 1, 16, 5)), ...EACH(colors("carpet"), (c) => B(1, c, 4, 16, 5))],
+    [...EACH(["yellow_dye", "light_gray_dye", "orange_dye", "red_dye", "pink_dye"], (d) => E(d, 12, 16, 20)), ...EACH(colors("bed"), (b) => B(3, b, 1, 12, 10))],
+    [...EACH(["brown_dye", "purple_dye", "blue_dye", "green_dye", "magenta_dye", "cyan_dye"], (d) => E(d, 12, 16, 30)), ...EACH(colors("banner"), (b) => B(3, b, 1, 12, 15))],
     [B(2, "painting", 3, 12, 30)],
   ],
   fletcher: [
@@ -107,9 +124,9 @@ export const TRADE_POOLS: Record<string, Listing[][]> = {
   ],
   cartographer: [
     [E("paper", 24, 16, 2), B(7, "map", 1, 12, 1)],
-    [E("glass_pane", 11, 16, 10), MAP(13, "Ocean Explorer Map", 5)],
+    [E("glass_pane", 11, 16, 10), MAP(13, "Ocean Explorer Map", 5), MAP(12, "Trial Explorer Map", 5)],
     [E("compass", 1, 12, 20), MAP(14, "Woodland Explorer Map", 10)],
-    [B(7, "item_frame", 1, 12, 15), B(3, WOOLS.map((c) => `${c}_banner`), 1, 12, 15)],
+    [B(7, "item_frame", 1, 12, 15), ...EACH(colors("banner"), (b) => B(3, b, 1, 12, 15))],
     [B(8, "globe_banner_pattern", 1, 12, 30)],
   ],
   cleric: [
@@ -143,8 +160,8 @@ export const TRADE_POOLS: Record<string, Listing[][]> = {
   mason: [
     [E("clay_ball", 10, 16, 2), B(1, "brick", 10, 16, 1)],
     [E("stone", 20, 16, 10), B(1, "chiseled_stone_bricks", 4, 16, 5)],
-    [E(["granite", "andesite", "diorite"], 16, 16, 20), B(1, ["polished_andesite", "polished_diorite", "polished_granite"], 4, 16, 10), B(1, "dripstone_block", 4, 16, 10)],
-    [E("quartz", 12, 12, 30), B(1, TERRACOTTA, 1, 12, 15)],
+    [...EACH(["granite", "andesite", "diorite"], (i) => E(i, 16, 16, 20)), ...EACH(["polished_andesite", "polished_diorite", "polished_granite"], (i) => B(1, i, 4, 16, 10)), B(1, "dripstone_block", 4, 16, 10)],
+    [E("quartz", 12, 12, 30), ...EACH(TERRACOTTA, (i) => B(1, i, 1, 12, 15))],
     [B(1, "quartz_pillar", 1, 12, 30), B(1, "quartz_block", 1, 12, 30)],
   ],
   toolsmith: [
@@ -163,14 +180,14 @@ export const TRADE_POOLS: Record<string, Listing[][]> = {
   ],
 };
 
-export function rollLevelTrades(prof: string, level: number, r: Rand): MerchantTrade[] {
+export function rollLevelTrades(prof: string, level: number, r: Rand, vtype = "plains"): MerchantTrade[] {
   const pool = TRADE_POOLS[prof]?.[level - 1];
   if (!pool) return [];
   const idx = pool.map((_, i) => i);
   const out: MerchantTrade[] = [];
   while (out.length < 2 && idx.length) {
     const i = idx.splice(ri(r, idx.length), 1)[0];
-    const t = pool[i](r);
+    const t = pool[i](r, vtype);
     if (t) out.push(t);
   }
   return out;

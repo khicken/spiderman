@@ -123,6 +123,23 @@ function resolveFacing(d: BlockDef, cf: number, meta: number): string | undefine
   return resolve(t, cf);
 }
 
+const H_FACE = [4, 1, 5, 0];
+
+function vaultKey(cf: number, meta: number): string {
+  const om = meta & 8 ? "_ominous" : "";
+  if (cf === 2) return `vault_top${om}`;
+  if (cf === 3) return `vault_bottom${om}`;
+  return `vault_${cf === 5 ? "front" : "side"}_${meta & 4 ? "on" : "off"}${om}`;
+}
+
+function trialKey(cf: number, meta: number): string {
+  const om = meta & 8 ? "_ominous" : "";
+  const st = meta & 3;
+  if (cf === 3) return "trial_spawner_bottom";
+  if (cf === 2 && st === 2) return `trial_spawner_top_ejecting_reward${om}`;
+  return `trial_spawner_${cf === 2 ? "top" : "side"}_${st ? "active" : "inactive"}${om}`;
+}
+
 function fillTex(d: BlockDef) {
   const t = d.textures;
   const facing = d.shape === "cube" && !!t.front;
@@ -138,6 +155,8 @@ function fillTex(d: BlockDef) {
       if (d.name === "chiseled_bookshelf" && meta & 8 && cf === 5) key = "chiseled_bookshelf_occupied";
       if (d.name === "respawn_anchor" && meta > 0 && cf === 2) key = "respawn_anchor_top";
       if ((d.name === "beehive" || d.name === "bee_nest") && meta & 8 && cf === 5) key = `${d.name}_front_honey`;
+      if (d.name === "vault") key = vaultKey(facingToCanonical(H_FACE[meta & 3], wf), meta);
+      if (d.name === "trial_spawner") key = trialKey(cf, meta);
       TEX[(d.id * 16 + meta) * 6 + wf] = layerOf(key);
     }
   }

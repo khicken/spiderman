@@ -344,7 +344,7 @@ export const HOPPER_BEHAVIOR: BlockBehavior = {
   scheduledTick(ctx, x, y, z, s) {
     ticked(ctx, x, y, z);
     if (disabled(s)) return;
-    schedule(ctx, x, y, z, hopperMove(ctx, x, y, z, s) ? 8 : 2);
+    schedule(ctx, x, y, z, hopperMove(ctx, x, y, z, s) ? 8 : 1);
   },
   use: (ctx, x, y, z) => openScreen(ctx, "hopper", x, y, z),
   comparatorOutput(ctx, x, y, z) {

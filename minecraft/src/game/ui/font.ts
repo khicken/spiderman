@@ -1,7 +1,8 @@
 // Vanilla-like bitmap font: 8 rows per glyph (rows 0-6 above the baseline, row 7 descender), advance = width + 1.
-import { activePacks, packImage, packVersion, type Img } from "../packs";
+import { activePacks, packVersion } from "../packs";
+import { packGlyphs } from "../packs/font";
 
-const URLS = new Map<string, { url: string; width: number; height: number }>();
+const URLS = new Map<string, { url: string; width: number; height: number; top: number }>();
 
 const G: Record<string, string[]> = {
   "!": ["#", "#", "#", "#", "#", "", "#"],
@@ -101,13 +102,16 @@ G[">"] = mirror(G["<"]);
 G["\\"] = mirror(G["/"]);
 G["]"] = mirror(G["["]);
 G["}"] = mirror(G["{"]);
+G["\u221e"] = ["", "", ".##.##.", "#..#..#", "#..#..#", ".##.##."];
 
 export const GLYPH_ROWS = 8;
 export const LINE_HEIGHT = 9;
 
 export interface Glyph {
   width: number;
-  rows: Uint8Array; // GLYPH_ROWS * width, 1 = ink
+  rows: Uint8Array; // (h ?? GLYPH_ROWS) * width, 1 = ink
+  h?: number;
+  y?: number; // first row offset; pack glyphs taller than 8 rows start above row 0
 }
 
 export const GLYPHS: Record<string, Glyph> = {};
@@ -122,39 +126,18 @@ for (const [ch, src] of Object.entries(G)) {
 GLYPHS[" "] = { width: 3, rows: new Uint8Array(GLYPH_ROWS * 3) };
 
 const CLAUDE_GLYPHS: Record<string, Glyph> = { ...GLYPHS };
-let packGlyphs: Record<string, Glyph> | null = null;
+let packFont: Map<string, Glyph> | null = null;
 let fontV = 0;
 
-// Vanilla textures/font/ascii.png: 16x16 cells, char code = row * 16 + column, width = last inked column + 1.
 function loadPackFont() {
   fontV = packVersion();
   URLS.clear();
-  const img = activePacks().length ? packImage("font/ascii") : null;
-  packGlyphs = img ? glyphsFromSheet(img) : null;
-}
-
-export function glyphsFromSheet(img: Img): Record<string, Glyph> {
-  const out: Record<string, Glyph> = {};
-  const cw = img.w / 16, ch = img.h / 16, k = cw / 8;
-  const ink = (x: number, y: number) => img.data[(Math.floor(y) * img.w + Math.floor(x)) * 4 + 3] > 127;
-  for (let code = 33; code < 127; code++) {
-    const ox = (code % 16) * cw, oy = Math.floor(code / 16) * ch;
-    let last = -1;
-    for (let x = 0; x < cw; x++) for (let y = 0; y < ch; y++) if (ink(ox + x, oy + y)) last = Math.max(last, x);
-    if (last < 0) continue;
-    const width = Math.max(1, Math.ceil((last + 1) / k));
-    const rows = new Uint8Array(GLYPH_ROWS * width);
-    for (let gy = 0; gy < GLYPH_ROWS; gy++)
-      for (let gx = 0; gx < width; gx++) if (ink(ox + gx * k + k / 2, oy + gy * k + k / 2)) rows[gy * width + gx] = 1;
-    out[String.fromCharCode(code)] = { width, rows };
-  }
-  out[" "] = CLAUDE_GLYPHS[" "];
-  return out;
+  packFont = activePacks().length ? packGlyphs() : null;
 }
 
 export function glyphOf(ch: string): Glyph {
   if (fontV !== packVersion()) loadPackFont();
-  return packGlyphs?.[ch] ?? CLAUDE_GLYPHS[ch] ?? CLAUDE_GLYPHS["?"];
+  return packFont?.get(ch) ?? CLAUDE_GLYPHS[ch] ?? CLAUDE_GLYPHS["?"];
 }
 
 
@@ -243,18 +226,30 @@ export interface TextRaster {
   width: number;
   height: number;
   data: Uint8ClampedArray; // RGBA
+  top: number; // rows above the line for glyphs taller than it (vanilla draws them past the line box)
 }
 
 const OBF = "ABCDEFGHJKLMNOPRSTUVWXYZabdeghnopqsuvwxyz0123456789";
 
 export function rasterText(text: string, color = 0xffffff, shadow = true, amp = false): TextRaster {
   const runs = parseRuns(text, color, amp);
-  let w = 0;
-  for (const r of runs) for (const ch of r.text) w += advance(ch, r.bold);
+  const drawn = runs.map((r) => Array.from(r.text, (ch) => (r.obfuscated && ch !== " " ? OBF[Math.floor(Math.random() * OBF.length)] : ch)));
+  let w = 0, minY = 0, maxY = 0;
+  runs.forEach((r, i) => {
+    for (const ch of r.text) w += advance(ch, r.bold);
+    for (const ch of drawn[i]) {
+      const g = glyphOf(ch), oy = g.y ?? 0;
+      if (!g.rows.length) continue;
+      minY = Math.min(minY, oy);
+      maxY = Math.max(maxY, oy + (g.h ?? GLYPH_ROWS) + (shadow ? 1 : 0) - LINE_HEIGHT);
+    }
+  });
   const width = Math.max(1, w + (shadow ? 1 : 0));
-  const height = LINE_HEIGHT;
+  const top = -minY;
+  const height = LINE_HEIGHT + top + maxY;
   const data = new Uint8ClampedArray(width * height * 4);
   const put = (x: number, y: number, c: number) => {
+    y += top;
     if (x < 0 || y < 0 || x >= width || y >= height) return;
     const o = (y * width + x) * 4;
     data[o] = (c >> 16) & 255;
@@ -264,18 +259,18 @@ export function rasterText(text: string, color = 0xffffff, shadow = true, amp = 
   };
   const pass = (dx: number, dy: number, isShadow: boolean) => {
     let x = 0;
-    for (const r of runs) {
+    runs.forEach((r, ri) => {
       const c = isShadow ? shadowOf(r.color) : r.color;
       const startX = x;
-      for (let ch of r.text) {
-        if (r.obfuscated && ch !== " ") ch = OBF[Math.floor(Math.random() * OBF.length)];
+      for (const ch of drawn[ri]) {
         const g = glyphOf(ch);
-        for (let gy = 0; gy < GLYPH_ROWS; gy++) {
-          const slant = r.italic ? (gy < 3 ? 1 : 0) : 0;
+        const gh = g.h ?? GLYPH_ROWS, oy = g.y ?? 0;
+        for (let gy = 0; gy < gh; gy++) {
+          const slant = r.italic ? (gy + oy < 3 ? 1 : 0) : 0;
           for (let gx = 0; gx < g.width; gx++) {
             if (!g.rows[gy * g.width + gx]) continue;
-            put(x + gx + dx + slant, gy + dy, c);
-            if (r.bold) put(x + gx + dx + slant + 1, gy + dy, c);
+            put(x + gx + dx + slant, gy + oy + dy, c);
+            if (r.bold) put(x + gx + dx + slant + 1, gy + oy + dy, c);
           }
         }
         x += advance(ch, r.bold);
@@ -284,11 +279,11 @@ export function rasterText(text: string, color = 0xffffff, shadow = true, amp = 
         if (r.underline) put(lx + dx, 8 + dy, c);
         if (r.strike) put(lx + dx, 3 + dy, c);
       }
-    }
+    });
   };
   if (shadow) pass(1, 1, true);
   pass(0, 0, false);
-  return { width, height, data };
+  return { width, height, data, top };
 }
 
 
@@ -303,7 +298,7 @@ export function textImage(text: string, color = 0xffffff, shadow = true, amp = f
   canvas.height = r.height;
   const g = canvas.getContext("2d");
   if (g) g.putImageData(new ImageData(new Uint8ClampedArray(r.data), r.width, r.height), 0, 0);
-  const out = { url: canvas.toDataURL(), width: r.width, height: r.height };
+  const out = { url: canvas.toDataURL(), width: r.width, height: r.height, top: r.top };
   if (URLS.size > 3000) URLS.clear();
   if (!/§k|&k/i.test(text)) URLS.set(key, out);
   return out;

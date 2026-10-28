@@ -2,6 +2,7 @@ import type { Entity, GameCtx, ItemStack, MobDef } from "../../contracts";
 import { blockByName } from "../../blocks/registry";
 import { advTrigger, type Dim3 } from "./bus";
 import { MONSTERS } from "./crit";
+import { addEffect } from "../../entities/hostile/brain";
 
 const HOSTILE = new Set([...MONSTERS, "warden"]);
 const CAPTAINS = new Set(["pillager", "vindicator", "evoker", "illusioner"]);
@@ -25,7 +26,8 @@ export function advKill(ctx: GameCtx, e: Entity, def: MobDef, attacker?: Entity 
   const proj = pr && ctx.time.tick - pr.tick <= 1 ? pr : undefined;
   const byPlayer = attacker === "player" || proj?.owner === "player" || ((e.data._byPlayer as number) ?? 0) > 0;
   const killer = attacker && attacker !== "player" ? attacker.type : undefined;
-  if (!byPlayer && killer !== "axolotl") return;
+  if (attacker === "player" || proj?.owner === "player") axolotlSupport(ctx, e);
+  if (!byPlayer) return;
   const p = ctx.player.body.pos, b = e.body.pos;
   const fx = Math.floor(b.x), fy = Math.floor(b.y), fz = Math.floor(b.z);
   advTrigger({
@@ -41,6 +43,20 @@ export function advKill(ctx: GameCtx, e: Entity, def: MobDef, attacker?: Entity 
     captain: CAPTAINS.has(e.type) && !!e.data.captain,
     nearCatalyst: byPlayer && catalystNear(ctx, fx, fy, fz),
   });
+}
+
+// Vanilla Axolotl.onStopAttacking: a player kills an axolotl's target while within 20 blocks of that axolotl.
+function axolotlSupport(ctx: GameCtx, victim: Entity): void {
+  const v = victim.body.pos, p = ctx.player.body.pos;
+  const ax = ctx.entities.near(v.x, v.y, v.z, 32, near).find((a) => a.type === "axolotl" && !a.dead && a.data._target === victim.id && a.body.pos.distanceToSquared(p) <= 400);
+  near.length = 0;
+  if (!ax) return;
+  const fx = ctx.player.effects;
+  const cur = fx.find((f) => f.id === "regeneration");
+  if (!cur || cur.ticks <= 2399) addEffect(fx, "regeneration", Math.min(2400, 100 + (cur?.ticks ?? 0)), 0);
+  const mf = fx.findIndex((f) => f.id === "mining_fatigue");
+  if (mf >= 0) fx.splice(mf, 1);
+  advTrigger({ t: "effects_changed", effects: fx.map((f) => f.id).sort(), source: "axolotl" });
 }
 
 export function advEntityUse(ctx: GameCtx, target: Entity | undefined, before: ItemStack | null, slot: number): void {

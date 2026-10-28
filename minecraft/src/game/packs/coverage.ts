@@ -3,7 +3,8 @@ import { BLOCK_TEXTURE_KEYS } from "../textures/index";
 import { ITEM_TEXTURE_KEYS } from "../textures/icons";
 import { MOB_SKIN_PATHS } from "../entities/pack-skins";
 import { PARTICLE_PATHS } from "../render/particle-art";
-import { activePacks, hasPackImage, hasPackSound, packImagePaths, packSoundAsync } from "./index";
+import { activePacks, hasPackImage, hasPackSound, packFontDocs, packImagePaths, packSoundAsync } from "./index";
+import { packGlyphs } from "./font";
 
 export async function packCoverage(soundProbe = "block.stone.break") {
   const count = (paths: string[]) => ({ hit: paths.filter(hasPackImage).length, total: paths.length, miss: paths.filter((p) => !hasPackImage(p)).slice(0, 8) });
@@ -17,7 +18,7 @@ export async function packCoverage(soundProbe = "block.stone.break") {
     particle: count(PARTICLE_PATHS.map((p) => p[1])),
     gui: all.filter((p) => p.startsWith("gui/")).length,
     environment: all.filter((p) => p.startsWith("environment/")),
-    font: hasPackImage("font/ascii"),
+    font: { sheets: all.filter((p) => p.startsWith("font/")), json: packFontDocs("font/default.json").length, glyphs: packGlyphs()?.size ?? 0 },
     sound: { probe: soundProbe, defined: hasPackSound(soundProbe), buffers: buf?.length ?? 0, seconds: buf?.[0]?.buffer.duration ?? 0 },
   };
 }

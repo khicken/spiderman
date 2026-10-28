@@ -3,7 +3,7 @@ import type { ItemStack } from "../contracts";
 import { itemKey, type ItemMeshes, type ItemKind } from "./item-mesh";
 import type { PlayerModel } from "./model";
 import type { UseState } from "./state";
-import { mapTexture } from "../systems/features/map-render";
+import { mapDecorTexture, mapPlayerMarker, mapTexture } from "../systems/features/map-render";
 import { itemDef } from "../items/registry";
 
 const D = Math.PI / 180;
@@ -48,14 +48,26 @@ const ROD: Displays = { fp: [0, 90, 25, 0, 1.6, 0.8, 0.68], tp: [0, 90, 55, 0, 4
 const BOW: Displays = { fp: [0, -90, 25, 1.13, 3.2, 1.13, 0.68], tp: [-80, 260, -40, -1, -2, 2.5, 0.9] };
 const CROSSBOW: Displays = { fp: [-90, 0, -35, 1.13, 3.2, 1.13, 0.68], tp: [-90, 0, -60, 2, 0.1, -3, 0.9] };
 const BLOCK: Displays = { fp: [0, 45, 0, 0, 0, 0, 0.4], tp: [75, 45, 0, 0, 2.5, 0, 0.375] };
-const SHIELD: Displays = { fp: [0, 180, 5, 4, -5, -6, 0.75], tp: [0, 90, 0, -1, 6, -4, 1] };
+// Vanilla shield.json and shield_blocking.json, per hand: the builtin model is not symmetric, so left values are their own.
+const SHIELD_R: Displays = { fp: [0, 180, 5, -10, 2, -10, 1.25], tp: [0, 90, 0, 10, 6, -4, 1] };
+const SHIELD_L: Displays = { fp: [0, 180, 5, 10, 0, -10, 1.25], tp: [0, 90, 0, 10, 6, 12, 1] };
+const BLOCKING_R: Displays = { fp: [0, 180, -5, -15, 5, -11, 1.25], tp: [45, 135, 0, 3.51, 11, -2, 1] };
+const BLOCKING_L: Displays = { fp: [0, 180, -5, 5, 5, -11, 1.25], tp: [45, 135, 0, 13.51, 3, 5, 1] };
+const shieldDisplays = (i: number, blocking: boolean) => (blocking ? (i > 0 ? BLOCKING_R : BLOCKING_L) : i > 0 ? SHIELD_R : SHIELD_L);
+// Vanilla trident_in_hand.json and trident_throwing.json, per hand like the shield.
+const TRIDENT_R: Displays = { fp: [0, -90, 25, -3, 17, 1, 1], tp: [0, 60, 0, 11, 17, -2, 1] };
+const TRIDENT_L: Displays = { fp: [0, 90, -25, 13, 17, 1, 1], tp: [0, 60, 0, 3, 17, 12, 1] };
+const THROWING_R: Displays = { fp: TRIDENT_R.fp, tp: [0, 90, 180, 8, -17, 9, 1] };
+const THROWING_L: Displays = { fp: TRIDENT_L.fp, tp: [0, 90, 180, 8, -17, -7, 1] };
 const HANDHELD_ITEMS = new Set(["stick", "bone", "blaze_rod", "breeze_rod", "bamboo", "mace", "debug_stick", "trident"]);
 const ROD_ITEMS = new Set(["fishing_rod", "carrot_on_a_stick", "warped_fungus_on_a_stick"]);
 
-export function itemDisplays(key: string, kind: ItemKind): Displays {
+export function itemDisplays(key: string, kind: ItemKind, i = 1, blocking = false): Displays {
   if (kind === "block") return BLOCK;
-  if (kind === "shield") return SHIELD;
+  if (kind === "shield") return shieldDisplays(i, blocking);
   const name = key.replace(/[@#].*$/, "");
+  if (name === "trident_in_hand") return i > 0 ? TRIDENT_R : TRIDENT_L;
+  if (name === "trident_throwing") return i > 0 ? THROWING_R : THROWING_L;
   if (name.startsWith("bow")) return BOW;
   if (name.startsWith("crossbow")) return CROSSBOW;
   if (ROD_ITEMS.has(name)) return ROD;
@@ -65,8 +77,9 @@ export function itemDisplays(key: string, kind: ItemKind): Displays {
 // Vanilla bow and crossbow model overrides: pulling stages while drawn, the loaded sprite when charged.
 export function heldKey(s: ItemStack | null, u: UseState | null | undefined, useTicks: number): string | null {
   const k = itemKey(s);
-  if (!s || !k || (s.item !== "bow" && s.item !== "crossbow")) return k;
+  if (!s || !k || (s.item !== "bow" && s.item !== "crossbow" && s.item !== "trident")) return k;
   const glint = k.endsWith("#glint") ? "#glint" : "";
+  if (s.item === "trident") return (u?.kind === "trident" ? "trident_throwing" : "trident_in_hand") + glint;
   if (s.item === "bow") {
     if (u?.kind !== "bow") return k;
     const p = useTicks / 20;
@@ -80,17 +93,30 @@ export function heldKey(s: ItemStack | null, u: UseState | null | undefined, use
   return k;
 }
 
-const display = (d: Display, i: number) => {
+// shield: vanilla BlockEntityWithoutLevelRenderer draws the shield model through translate(-0.5) and scale(1, -1, -1).
+const display = (d: Display, i: number, shield = false) => {
   T((i * d[3]) / 16, d[4] / 16, d[5] / 16);
   RXYZ(d[0], i * d[1], i * d[2]);
   S(d[6], d[6], d[6]);
+  if (!shield) return;
+  T(-0.5, -0.5, -0.5);
+  S(1, -1, -1);
 };
 
 // Vanilla ItemInHandLayer: the item hangs from the hand of a third-person arm; i is 1 right, -1 left.
+export function handItemMatrix(out: THREE.Matrix4, name: string, kind: ItemKind, i: number, blocking = false): THREE.Matrix4 {
+  m.identity();
+  T(i / 16, -10 / 16, -2 / 16);
+  RX(-90);
+  display(itemDisplays(name, kind, i, blocking).tp, i, kind === "shield");
+  return out.copy(m);
+}
+
 export function createHeldSlot(items: ItemMeshes, i: number) {
   const holder = new THREE.Group();
   holder.matrixAutoUpdate = false;
   let shown: string | null = null;
+  let shownBlocking = false;
   let arm: THREE.Object3D | null = null;
   return {
     set(a: THREE.Object3D | null, stack: ItemStack | null, use?: UseState | null, useTicks = 0) {
@@ -100,17 +126,17 @@ export function createHeldSlot(items: ItemMeshes, i: number) {
         if (a) a.add(holder);
       }
       const name = heldKey(stack, use, useTicks);
-      if (name === shown) return;
-      shown = name;
-      holder.clear();
+      const blocking = use?.kind === "shield";
+      if (name === shown && blocking === shownBlocking) return;
+      shownBlocking = blocking;
       const md = name ? items.model(name) : null;
+      if (name !== shown) {
+        holder.clear();
+        if (md) holder.add(md.create());
+      }
+      shown = name;
       if (!md || !name) return;
-      holder.add(md.create());
-      m.identity();
-      T(i / 16, -10 / 16, -1 / 16);
-      RX(-90);
-      display(itemDisplays(name, md.kind).tp, i);
-      holder.matrix.copy(m);
+      handItemMatrix(holder.matrix, name, md.kind, i, blocking);
     },
     dispose() {
       holder.removeFromParent();
@@ -138,6 +164,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   root.add(armHolder, itemHolder);
   let shown: string | null = null;
   let shownFp: Display = GENERATED.fp;
+  let shownShield = false;
   const tp = createHeldSlot(items, 1);
 
   const setItem = (name: string | null) => {
@@ -145,6 +172,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     shown = name;
     itemHolder.clear();
     const md = name ? items.model(name) : null;
+    shownShield = md?.kind === "shield";
     if (md && name) {
       shownFp = itemDisplays(name, md.kind).fp;
       itemHolder.add(md.create());
@@ -170,7 +198,8 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   const armTransform = (equip: number, i: number) => T(i * 0.56, -0.52 - equip * 0.6, -0.72);
 
   // Vanilla ItemInHandRenderer.renderArmWithItem; i is 1 for the right hand and -1 for the left.
-  function itemMatrix(f: HandFrame, i: number, u: UseState | null, swing: number, equip: number, d: Display, holder: THREE.Object3D) {
+  function itemMatrix(f: HandFrame, i: number, u: UseState | null, swing: number, equip: number, d: Display, holder: THREE.Object3D, shield = false) {
+    if (shield) d = shieldDisplays(i, u?.kind === "shield").fp;
     m.copy(f.bob);
     if (u && (u.kind === "eat" || u.kind === "drink")) {
       const rem = u.total - f.useTicks + 1;
@@ -208,8 +237,6 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       RY(i * -45);
     } else if (u && u.kind === "shield") {
       armTransform(equip, i);
-      T(i * -0.32, 0.3, 0.05);
-      RY(i * -8);
     } else if (u && u.kind === "brush") {
       armTransform(equip, i);
       const h = 1 - ((f.useTicks % 10) + 1) / 10;
@@ -230,7 +257,7 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
       RX(Math.sin(g * Math.PI) * -80);
       RY(i * -45);
     }
-    display(d, i);
+    display(d, i, shield);
     holder.matrix.copy(m);
   }
 
@@ -239,13 +266,15 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
   root.add(offHolder);
   let offShown: string | null = null;
   let offFp: Display = GENERATED.fp;
+  let offShield = false;
   const setOff = (key: string | null) => {
     if (key === offShown) return;
     offShown = key;
     offHolder.clear();
     const md = key ? items.model(key) : null;
+    offShield = md?.kind === "shield";
     if (md && key) {
-      offFp = itemDisplays(key, md.kind).fp;
+      offFp = itemDisplays(key, md.kind, -1).fp;
       offHolder.add(md.create());
     }
   };
@@ -256,9 +285,17 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     mesh.matrixAutoUpdate = false;
     mesh.visible = false;
     root.add(mesh);
+    // Children: player marker sprite, then the decoration layer.
+    for (let i = 0; i < 2; i++) {
+      const layer = new THREE.Mesh(mapGeo, new THREE.MeshBasicMaterial({ fog: false, transparent: true }));
+      layer.matrixAutoUpdate = false;
+      layer.matrix.makeTranslation(0, 0, 0.0005);
+      mesh.add(layer);
+    }
     return mesh;
   };
   const mapMain = mapMesh(), mapOff = mapMesh();
+  const markerScale = new THREE.Vector3();
 
   // Vanilla ItemInHandRenderer.calculateMapTilt: looking down raises the map flat in both hands.
   function twoHandedMap(f: HandFrame) {
@@ -286,14 +323,28 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
     mesh.matrix.copy(m);
   }
 
-  function showMap(mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>, tex: THREE.Texture | null, light: number) {
+  function showMap(mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>, tex: THREE.Texture | null, light: number, stack?: ItemStack | null) {
     mesh.visible = !!tex;
     if (!tex) return;
-    if (mesh.material.map !== tex) {
-      mesh.material.map = tex;
-      mesh.material.needsUpdate = true;
+    const c = Math.max(0.25, Math.min(1, light));
+    setMap(mesh.material, tex, c);
+    const [marker, deco] = mesh.children as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[];
+    const decoTex = mapDecorTexture(stack);
+    deco.visible = !!decoTex;
+    if (decoTex) setMap(deco.material, decoTex, c);
+    const mk = mapPlayerMarker(stack);
+    marker.visible = !!mk;
+    if (!mk) return;
+    setMap(marker.material, mk.tex, c);
+    marker.matrix.makeRotationZ(mk.rot).scale(markerScale.set(mk.size, mk.size, 1)).setPosition(mk.x * MAP_SIZE, mk.y * MAP_SIZE, 0.001);
+  }
+
+  function setMap(mat: THREE.MeshBasicMaterial, tex: THREE.Texture, c: number) {
+    if (mat.map !== tex) {
+      mat.map = tex;
+      mat.needsUpdate = true;
     }
-    mesh.material.color.setScalar(Math.max(0.25, Math.min(1, light)));
+    mat.color.setScalar(c);
   }
 
   return {
@@ -307,8 +358,8 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
         return;
       }
       const mainTex = mapTexture(f.stack), offTex = mapTexture(f.off);
-      showMap(mapMain, mainTex, f.light);
-      showMap(mapOff, offTex, f.light);
+      showMap(mapMain, mainTex, f.light, f.stack);
+      showMap(mapOff, offTex, f.light, f.off);
       model.setLight(f.light, false);
       items.setLight(f.light);
       const mainUse = f.use && f.use.hand === "main" ? f.use : null;
@@ -321,21 +372,23 @@ export function createHand(model: PlayerModel, items: ItemMeshes): HandView {
         if (f.off) oneHandedMap(f, 1, f.swingOff ? 0 : f.swing, f.equip, mapMain);
         else twoHandedMap(f);
       } else if (empty) armMatrix(f);
-      else itemMatrix(f, 1, mainUse, mainUse || f.swingOff ? 0 : f.swing, f.equip, shownFp, itemHolder);
+      else itemMatrix(f, 1, mainUse, mainUse || f.swingOff ? 0 : f.swing, f.equip, shownFp, itemHolder, shownShield);
       const offUse = f.use && f.use.hand === "off" ? f.use : null;
       setOff(heldKey(f.off ?? null, offUse, f.useTicks));
       offHolder.visible = !!offShown && !offTex && !(mainTex && !f.off);
       const offSwing = f.swingOff ? f.swing : 0, offEquip = f.offEquip ?? 0;
       if (offTex) oneHandedMap(f, -1, offSwing, offEquip, mapOff);
-      else if (offHolder.visible) itemMatrix(f, -1, offUse, offUse ? 0 : offSwing, offEquip, offFp, offHolder);
+      else if (offHolder.visible) itemMatrix(f, -1, offUse, offUse ? 0 : offSwing, offEquip, offFp, offHolder, offShield);
     },
     setThirdPerson(arm, stack, use, useTicks) {
       tp.set(arm, stack, use, useTicks);
     },
     dispose() {
       mapGeo.dispose();
-      mapMain.material.dispose();
-      mapOff.material.dispose();
+      for (const mesh of [mapMain, mapOff]) {
+        mesh.material.dispose();
+        for (const c of mesh.children) ((c as THREE.Mesh).material as THREE.Material).dispose();
+      }
       root.clear();
       tp.dispose();
     },

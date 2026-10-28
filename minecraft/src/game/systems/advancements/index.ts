@@ -19,7 +19,7 @@ let ctxRef: GameCtx | null = null;
 let travel: { x: number; z: number } | null = null;
 const shots = new Map<number, { crossbow: boolean; types: string[] }>();
 
-installVault();
+installVault(() => playerName);
 
 export const advancementDone = (id: string) => !!prog[id]?.done;
 export const advancementPlayer = () => playerName;
@@ -38,7 +38,7 @@ export function setAdvancementPlayer(name: string) {
 function announce(ctx: GameCtx, a: AdvDef) {
   if (!a.toast) return;
   const verb = a.kind === "challenge" ? "has completed the challenge" : a.kind === "goal" ? "has reached the goal" : "has made the advancement";
-  ctx.emit({ type: "chat", text: `${playerName} ${verb} ${a.kind === "challenge" ? "§5" : "§a"}[${a.title}]` });
+  if (ctx.rules.announceAdvancements !== false) ctx.emit({ type: "chat", text: `${playerName} ${verb} ${a.kind === "challenge" ? "§5" : "§a"}[${a.title}]` });
   ctx.audio.play(a.kind === "challenge" ? "ui.toast.challenge_complete" : "ui.toast.in");
   uiBridge.toast({ title: a.title, icon: a.icon, kind: a.kind });
 }
@@ -100,10 +100,12 @@ function entered(ctx: GameCtx, from: Dim3) {
 function loadProgress(raw: unknown): Progress {
   const out: Progress = {};
   for (const [id, v] of Object.entries((raw ?? {}) as Record<string, unknown>)) {
+    // Unknown ids (custom/... or from a newer version) are kept as stored so a later save does not drop them.
     if (typeof v === "number") {
       const a = BY_ID.get(id);
       if (a) grantAll(out, a, v);
-    } else if (v && typeof v === "object" && BY_ID.has(id)) {
+      else out[id] = { c: {}, done: v };
+    } else if (v && typeof v === "object") {
       const st = v as AdvState;
       out[id] = { c: { ...(st.c ?? {}) }, ...(st.done ? { done: st.done } : {}) };
     }

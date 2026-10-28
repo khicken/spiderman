@@ -1,5 +1,6 @@
 import type { BlockEntityData, ChunkData, Dim, EntitySave, GameMode, Rules } from "../contracts";
 import { markDirty } from "../cloud/dirty";
+import { migrateChunk } from "./migrate";
 
 export interface WorldMeta {
   id: string;
@@ -20,6 +21,7 @@ export interface WorldMeta {
   rain?: number;
   thunder?: number;
   spawn?: { x: number; y: number; z: number };
+  worldSpawn?: { x: number; y: number; z: number };
   icon?: string; // data URL screenshot taken on quit
 }
 
@@ -157,7 +159,7 @@ export async function loadChunk(worldId: string, dim: Dim, cx: number, cz: numbe
   if (!hasIdb()) return null;
   const v = await request<SavedChunk | undefined>("chunks", "readonly", (s) => s.get(chunkSaveKey(worldId, dim, cx, cz)));
   if (!v) return null;
-  return { cx, cz, dim, ...v };
+  return migrateChunk({ cx, cz, dim, ...v });
 }
 
 export async function saveEntities(worldId: string, dim: Dim, list: EntitySave[]): Promise<void> {

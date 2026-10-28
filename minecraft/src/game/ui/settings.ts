@@ -11,7 +11,7 @@ export interface Settings {
   viewBobbing: boolean;
   clouds: boolean;
   cloudMode: "fancy" | "fast" | "off";
-  graphics: "fast" | "fancy";
+  graphics: "fast" | "fancy" | "fabulous";
   smoothLighting: boolean;
   maxFps: number; // 10..260, 260 = Unlimited
   fovEffects: number; // 0..1
@@ -31,6 +31,14 @@ export interface Settings {
   toggleSprint: boolean;
   keys: Record<string, string>; // bind id -> KeyboardEvent.code
   showSubtitles?: boolean;
+  attackIndicator: "off" | "crosshair" | "hotbar";
+  distortion: number; // 0..1 Distortion Effects
+  entityDistance: number; // 0.5..5 Entity Distance
+  glintSpeed: number; // 0..1
+  glintStrength: number; // 0..1
+  menuBlur: number; // 0..10 Menu Background Blur
+  biomeBlend: number; // 0..7 block radius
+  operatorItemsTab?: boolean;
 }
 
 export const SOUND_CATEGORIES: [SoundCategory, string][] = [
@@ -50,6 +58,7 @@ export const KEY_BIND_GROUPS: [string, [id: string, label: string, code: string]
   ["Movement", [["forward", "Walk Forwards", "KeyW"], ["left", "Strafe Left", "KeyA"], ["back", "Walk Backwards", "KeyS"], ["right", "Strafe Right", "KeyD"], ["jump", "Jump", "Space"], ["sneak", "Sneak", "ShiftLeft"], ["sprint", "Sprint", "ControlLeft"]]],
   ["Gameplay", [["attack", "Attack/Destroy", "Mouse0"], ["use", "Use Item/Place Block", "Mouse2"], ["pick_block", "Pick Block", "Mouse1"]]],
   ["Inventory", [["drop", "Drop Selected Item", "KeyQ"], ["inventory", "Open/Close Inventory", "KeyE"], ["swap_offhand", "Swap Item With Offhand", "KeyF"], ...Array.from({ length: 9 }, (_, i): [string, string, string] => [`hotbar.${i + 1}`, `Hotbar Slot ${i + 1}`, `Digit${i + 1}`])]],
+  ["Creative Mode", [["save_toolbar", "Save Hotbar Activator", "KeyC"], ["load_toolbar", "Load Hotbar Activator", "KeyX"]]],
   ["Multiplayer", [["chat", "Open Chat", "KeyT"], ["command", "Open Command", "Slash"]]],
   ["Miscellaneous", [["advancements", "Advancements", "KeyL"], ["screenshot", "Take Screenshot", "F2"], ["perspective", "Toggle Perspective", "F5"], ["fullscreen", "Toggle Fullscreen", "F11"], ["hide_gui", "Hide GUI", "F1"], ["debug", "Debug Screen", "F3"]]],
 ];
@@ -86,6 +95,13 @@ export const DEFAULT_SETTINGS: Settings = {
   toggleSneak: false,
   toggleSprint: false,
   keys: DEFAULT_KEYS,
+  attackIndicator: "crosshair",
+  distortion: 1,
+  entityDistance: 1,
+  glintSpeed: 0.5,
+  glintStrength: 0.75,
+  menuBlur: 5,
+  biomeBlend: 2,
 };
 
 // Merges a stored object over the defaults, so settings saved by older builds gain new fields.
@@ -107,6 +123,7 @@ export const volumeLabel = (name: string, v: number) => `${name}: ${v <= 0 ? "OF
 export const guiScaleLabel = (v: number) => `GUI Scale: ${v === 0 ? "Auto" : v}`;
 export const fpsLabel = (v: number) => `Max Framerate: ${v >= 260 ? "Unlimited" : `${v} fps`}`;
 export const fovEffectsLabel = (v: number) => `FOV Effects: ${v <= 0 ? "OFF" : pct(v)}`;
+export const biomeBlendLabel = (v: number) => `Biome Blend: ${v === 0 ? "OFF" : `${v * 2 + 1}x${v * 2 + 1}`}`;
 export const pctLabel = (name: string, v: number) => `${name}: ${pct(v)}`;
 
 const KEY_NAMES: Record<string, string> = {
@@ -126,6 +143,13 @@ export function keyName(code: string): string {
   if (code.startsWith("Numpad")) return `Keypad ${code.slice(6)}`;
   return code;
 }
+
+let active: Settings = DEFAULT_SETTINGS;
+// The page sets the live settings each render; menus and render modules read them without prop threading.
+export const setActiveSettings = (s: Settings) => {
+  active = s;
+};
+export const activeSettings = () => active;
 
 let activeKeys: Record<string, string> = DEFAULT_KEYS;
 // The page sets the live binds; screens read them for E (close inventory) and similar keys.

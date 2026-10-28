@@ -3,10 +3,11 @@
 import type { CSSProperties } from "react";
 import type { HudState } from "../contracts";
 import { paintBlockTexture } from "../textures";
+import { ANIMATED, paintFrame } from "../textures/animated";
 import { packUrl, pixelUrl } from "./sprites";
 
 const OVERLAY_CSS = `
-@keyframes mc-portal{0%{background-position:0 0}100%{background-position:0 100%}}
+@keyframes mc-portal{from{transform:translateY(0)}to{transform:translateY(-100%)}}
 `;
 
 const full = (w: number, h: number, extra: CSSProperties): CSSProperties => ({ position: "absolute", left: 0, top: 0, width: w, height: h, pointerEvents: "none", ...extra });
@@ -49,11 +50,16 @@ function pumpkin(): string {
   return pumpkinUrl;
 }
 
+// The 32 animation frames (1 tick each) stacked vertically, like the vanilla nether_portal.png strip.
+const PORTAL_FRAMES = 32;
 const portalUrl = () => {
-  const tex = typeof document === "undefined" ? null : paintBlockTexture("nether_portal");
-  return pixelUrl("portal_overlay", 16, 16, (x, y) => {
+  const def = ANIMATED.find((a) => a.key === "nether_portal")!;
+  const base = typeof document === "undefined" ? null : paintBlockTexture("nether_portal");
+  const frames = base ? Array.from({ length: PORTAL_FRAMES }, (_, f) => (f ? paintFrame(def, base, f) : base)) : [];
+  return pixelUrl("portal_overlay", 16, 16 * PORTAL_FRAMES, (x, y) => {
+    const tex = frames[y >> 4];
     if (!tex) return 0xc05a1aa8;
-    const o = (y * 16 + x) * 4;
+    const o = ((y & 15) * 16 + x) * 4;
     return ((tex[o + 3] << 24) | (tex[o] << 16) | (tex[o + 1] << 8) | tex[o + 2]) >>> 0;
   });
 };
@@ -90,16 +96,15 @@ export function HudOverlays({ state, width, height, vignette }: { state: HudStat
           })}
         />
       )}
-      {portal > 0 && (
-        <div
-          style={full(width, height, {
-            opacity: portal,
-            backgroundImage: `url(${portalUrl()})`,
-            backgroundSize: "100% 100%",
-            imageRendering: "pixelated",
-            animation: "mc-portal 4s linear infinite",
-          })}
-        />
+      {portal > 0 && !state.effects.some((e) => e.id === "nausea") && (
+        <div style={full(width, height, { opacity: portal, overflow: "hidden" })}>
+          <img
+            alt=""
+            src={portalUrl()}
+            draggable={false}
+            style={{ display: "block", width, height: height * PORTAL_FRAMES, maxWidth: "none", imageRendering: "pixelated", animation: `mc-portal ${PORTAL_FRAMES / 20}s steps(${PORTAL_FRAMES}) infinite` }}
+          />
+        </div>
       )}
     </>
   );

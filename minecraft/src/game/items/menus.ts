@@ -5,6 +5,7 @@ import { craftRemainder, matchCrafting, type CraftMatch } from "./recipes";
 import { enchLevel } from "./enchant";
 import { ensureItems } from "./furnace";
 import { advTrigger } from "../systems/advancements/bus";
+import { craftUnlocked } from "../systems/features/recipe-book";
 
 export interface MenuDeps {
   inv: (ItemStack | null)[];
@@ -14,6 +15,12 @@ export interface MenuDeps {
   creative(): boolean;
   give(s: ItemStack): void;
   enchantSeed: { value: number };
+}
+
+// Vanilla doLimitedCrafting: the player grid only crafts unlocked recipes; special recipes always work.
+function playerCraft(d: MenuDeps, grid: (ItemStack | null)[], width: 2 | 3): CraftMatch | null {
+  const m = matchCrafting(grid, width);
+  return m && m.recipe !== undefined && d.ctx()?.rules.doLimitedCrafting && !craftUnlocked(m.recipe) ? null : m;
 }
 
 export const TITLES: Partial<Record<ContainerKind, string>> = {
@@ -80,13 +87,13 @@ function craftResult(d: MenuDeps, grid: (ItemStack | null)[], width: 2 | 3, stat
           else d.give({ item: rem, count: 1 });
         }
       }
-      state.m = matchCrafting(grid, width);
+      state.m = playerCraft(d, grid, width);
     },
   };
 }
 
 export function inventoryMenu(d: MenuDeps, kind: "inventory" | "creative" = "inventory"): Menu {
-  const state = { m: matchCrafting(d.craft2, 2) };
+  const state = { m: playerCraft(d, d.craft2, 2) };
   const slots: Slot[] = [
     craftResult(d, d.craft2, 2, state),
     ...[0, 1, 2, 3].map((i) => arraySlot(d.craft2, i, "craft_input")),
@@ -119,7 +126,7 @@ export function inventoryMenu(d: MenuDeps, kind: "inventory" | "creative" = "inv
       else shiftTo(menu, i, [[9, 45]]);
     },
     changed() {
-      state.m = matchCrafting(d.craft2, 2);
+      state.m = playerCraft(d, d.craft2, 2);
     },
     close() {
       returnAll(d, d.craft2);
@@ -149,7 +156,7 @@ export function craftingMenu(d: MenuDeps): Menu {
       shiftTo(menu, i, i < 37 ? [[37, 46]] : [[10, 37]]);
     },
     changed() {
-      state.m = matchCrafting(grid, 3);
+      state.m = playerCraft(d, grid, 3);
     },
     close() {
       returnAll(d, grid);

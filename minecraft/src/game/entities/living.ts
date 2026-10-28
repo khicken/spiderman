@@ -1,7 +1,7 @@
 import type { DropEntry, Entity, GameCtx, ItemStack, MobDef } from "../contracts";
 import { MIN_Y, idOf } from "../contracts";
 import { OPAQUE, SOLID, blockDef } from "../blocks/registry";
-import { isWater } from "./ai";
+import { inPowderSnow, isWater, rainAt } from "./ai";
 import { fluidState } from "../blocks/waterlog";
 import { isBaby } from "./geom";
 
@@ -18,8 +18,16 @@ const COOKED: Record<string, string> = {
 export function rollDrops(drops: DropEntry[], ctx: GameCtx, looting: number, burning: boolean): ItemStack[] {
   const out: ItemStack[] = [];
   const r = ctx.random;
+  const groups = new Map<string, DropEntry | null>();
   for (const d of drops) {
-    const chance = d.chance ?? 1;
+    if (d.group !== undefined) {
+      if (!groups.has(d.group)) {
+        let roll = r();
+        groups.set(d.group, drops.find((g) => g.group === d.group && (roll -= g.chance ?? 0) < 0) ?? null);
+      }
+      if (groups.get(d.group) !== d) continue;
+    }
+    const chance = d.group !== undefined ? 1 : d.chance ?? 1;
     if (chance < 1 && r() >= chance + 0.01 * looting) continue;
     const [a, b] = d.count ?? [1, 1];
     let n = a + Math.floor(r() * (b - a + 1));
@@ -36,18 +44,22 @@ function pitch(e: Entity, ctx: GameCtx) {
 }
 
 export function hurtSound(e: Entity, ctx: GameCtx, def: MobDef) {
+  const name = def.sounds?.hurt ?? "entity.generic.hurt";
+  if (!name) return;
   const p = e.body.pos;
-  ctx.emit({ type: "sound", name: def.sounds?.hurt ?? "entity.generic.hurt", x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
+  ctx.emit({ type: "sound", name, x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
 }
 
 export function deathSound(e: Entity, ctx: GameCtx, def: MobDef) {
+  const name = def.sounds?.death ?? "entity.generic.death";
+  if (!name) return;
   const p = e.body.pos;
-  ctx.emit({ type: "sound", name: def.sounds?.death ?? "entity.generic.death", x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
+  ctx.emit({ type: "sound", name, x: p.x, y: p.y, z: p.z, volume: 1, pitch: pitch(e, ctx) });
 }
 
 export function ambientTick(e: Entity, ctx: GameCtx, def: MobDef) {
   const snd = def.sounds?.ambient;
-  if (!snd || def.category === "hostile") return;
+  if (!snd || def.type === "enderman") return;
   const t = (e.data._amb as number) ?? -Math.floor(ctx.random() * 80);
   if (Math.floor(ctx.random() * 1000) < t) {
     e.data._amb = -((e.data.ambientInterval as number) ?? 80);
@@ -80,24 +92,7 @@ export function baseTick(e: Entity, ctx: GameCtx, def: MobDef) {
     ents.damage(e.id, 4, "void");
     if (e.dead) return;
   }
-  const fireImmune = e.data.fireImmune === true || e.effects.some((f) => f.id === "fire_resistance");
-  let fire = (e.data._fire as number) ?? 0;
-  if (b.inLava && !fireImmune) {
-    ents.damage(e.id, 4, "lava");
-    fire = Math.max(fire, 300);
-  }
-  if (fire > 0) {
-    if (fireImmune) fire = 0;
-    else if (b.inWater) {
-      fire = 0;
-      ctx.emit({ type: "sound", name: "entity.generic.extinguish_fire", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 0.7, pitch: 1.6 });
-    } else {
-      fire--;
-      if (fire % 20 === 0) ents.damage(e.id, 1, "fire");
-      if (e.age % 4 === 0) ctx.emit({ type: "particles", kind: "flame", x: b.pos.x, y: b.pos.y + b.height * ctx.random(), z: b.pos.z, count: 1 });
-    }
-  }
-  e.data._fire = fire;
+  fireTick(e, ctx);
   breathe(e, ctx, def);
   const ex = Math.floor(b.pos.x), ey = Math.floor(b.pos.y + b.height * 0.85), ez = Math.floor(b.pos.z);
   const eyeId = idOf(ctx.world.getBlock(ex, ey, ez));
@@ -112,6 +107,36 @@ export function baseTick(e: Entity, ctx: GameCtx, def: MobDef) {
   const cd = (e.data.breedCd as number) ?? 0;
   if (cd > 0) e.data.breedCd = cd - 1;
   if (e.data._byPlayer) e.data._byPlayer = (e.data._byPlayer as number) - 1;
+}
+
+// Vanilla on-fire state: fire-immune mobs never show flames.
+export function isBurning(e: Entity) {
+  return e.data.fireImmune !== true && ((e.data._fire as number) ?? 0) > 0;
+}
+
+// Vanilla Entity.baseTick fire, lavaHurt, and the move() extinguish check.
+function fireTick(e: Entity, ctx: GameCtx) {
+  const b = e.body;
+  const immune = e.data.fireImmune === true;
+  let fire = (e.data._fire as number) ?? 0;
+  if (b.inLava && !immune) {
+    fire = Math.max(fire, 300);
+    const hp = e.health;
+    ctx.entities.damage(e.id, 4, "lava");
+    if (e.health < hp) ctx.emit({ type: "sound", name: "entity.generic.burn", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 0.4, pitch: 2 + ctx.random() * 0.4 });
+  }
+  if (fire > 0) {
+    if (immune) fire = Math.max(0, fire - 4);
+    else {
+      if (fire % 20 === 0 && !b.inLava) ctx.entities.damage(e.id, 1, "fire");
+      fire--;
+    }
+  }
+  if (fire > 0 && !immune && (b.inWater || rainAt(ctx, b.pos.x, b.pos.y, b.pos.z) || rainAt(ctx, b.pos.x, b.pos.y + b.height, b.pos.z) || inPowderSnow(e, ctx))) {
+    fire = 0;
+    ctx.emit({ type: "sound", name: "entity.generic.extinguish_fire", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 0.7, pitch: 1.6 + (ctx.random() - ctx.random()) * 0.4 });
+  }
+  e.data._fire = fire;
 }
 
 function breathe(e: Entity, ctx: GameCtx, def: MobDef) {

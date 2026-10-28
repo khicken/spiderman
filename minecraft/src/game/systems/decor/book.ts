@@ -46,7 +46,7 @@ function pageTile() {
   return px;
 }
 
-function getArt() {
+export function getArt() {
   if (!art) {
     art = {
       lidL: pixBoxes([[-6, -5, -0.1, 0, 5, 0.1]]),

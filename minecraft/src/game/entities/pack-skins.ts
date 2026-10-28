@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { Entity } from "../contracts";
 import { activePacks, packImage, packVersion } from "../packs";
 import type { Img } from "../packs/img";
 
@@ -90,12 +91,48 @@ export const MOB_SKIN_PATHS: Record<string, string> = {
   player_slim: "entity/player/slim/alex",
 };
 
+const str = (v: unknown, d: string) => (typeof v === "string" ? v : d);
+
+// Vanilla variant textures keyed by the e.data.variant ids the passive mobs use.
+const VARIANT_PATHS: Record<string, (v: unknown, e: Entity) => string> = {
+  cat: (v) => `entity/cat/${str(v, "tabby")}`,
+  horse: (v) => `entity/horse/horse_${str(v, "brown")}`,
+  llama: (v) => `entity/llama/${str(v, "creamy")}`,
+  trader_llama: (v) => `entity/llama/${str(v, "creamy")}`,
+  wolf: (v, e) => {
+    const base = str(v, "pale") === "pale" ? "entity/wolf/wolf" : `entity/wolf/wolf_${v}`;
+    return base + (e.data.owner ? "_tame" : e.data._target !== undefined ? "_angry" : "");
+  },
+  rabbit: (v) => `entity/rabbit/${str(v, "brown")}`,
+  frog: (v) => `entity/frog/${str(v, "temperate")}_frog`,
+  parrot: (v) => `entity/parrot/parrot_${str(v, "red_blue") === "gray" ? "grey" : str(v, "red_blue")}`,
+  axolotl: (v) => `entity/axolotl/axolotl_${str(v, "lucy")}`,
+  fox: (v) => (v === "snow" ? "entity/fox/snow_fox" : "entity/fox/fox"),
+  mooshroom: (v) => `entity/cow/${v === "brown" ? "brown" : "red"}_mooshroom`,
+  panda: (v) => (str(v, "normal") === "normal" ? "entity/panda/panda" : `entity/panda/${v}_panda`),
+};
+
+// Called per mob per frame: rebuild the string only when an input VARIANT_PATHS reads changes.
+const PATH_CACHE = new WeakMap<Entity, { v: unknown; tame: boolean; angry: boolean; path: string }>();
+
+export function skinPath(type: string, e?: Entity): string | undefined {
+  const f = e && VARIANT_PATHS[type];
+  if (!f) return MOB_SKIN_PATHS[type];
+  const v = e.data.variant, tame = !!e.data.owner, angry = e.data._target !== undefined;
+  const c = PATH_CACHE.get(e);
+  if (c && c.v === v && c.tame === tame && c.angry === angry) return c.path;
+  const path = f(v, e);
+  PATH_CACHE.set(e, { v, tame, angry, path });
+  return path;
+}
+
 type SkinMat = THREE.MeshLambertMaterial | THREE.MeshBasicMaterial;
 
 interface Tracked {
   claude: THREE.Texture | null;
   pack: THREE.Texture | null;
   v: number;
+  path: string;
 }
 
 const TRACK = new WeakMap<SkinMat, Tracked>();
@@ -151,18 +188,19 @@ function imageSize(t: THREE.Texture | null): [number, number] {
 }
 
 // Call once per frame after the model animates (variants may swap the map back).
-export function syncPackSkin(type: string, root: THREE.Object3D, mat?: SkinMat | null): void {
-  const path = MOB_SKIN_PATHS[type];
+export function syncPackSkin(type: string, root: THREE.Object3D, mat?: SkinMat | null, e?: Entity): void {
+  const path = skinPath(type, e);
   if (!path || typeof document === "undefined") return;
   const m = mat ?? baseMaterial(root);
   if (!m) return;
   let tr = TRACK.get(m);
   if (!tr) {
-    tr = { claude: m.map, pack: null, v: -1 };
+    tr = { claude: m.map, pack: null, v: -1, path };
     TRACK.set(m, tr);
   } else if (m.map && !PACK_TEX.has(m.map)) tr.claude = m.map;
-  if (tr.v !== packVersion()) {
+  if (tr.v !== packVersion() || tr.path !== path) {
     tr.v = packVersion();
+    tr.path = path;
     const img = activePacks().length ? packImage(path) : null;
     tr.pack = img ? packTexture(path, img, ...imageSize(tr.claude)) : null;
   }

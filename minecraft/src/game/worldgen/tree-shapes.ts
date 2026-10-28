@@ -118,40 +118,40 @@ export function fancyOak(x: number, y: number, z: number, wood: Wood) {
   }
 }
 
-export function spruceTree(x: number, y: number, z: number, h: number) {
-  trunk(x, y, z, h, B.spruce_log);
-  const fh = Math.min(h - 1, 4 + r.int(4));
-  const maxR = 2 + r.int(2);
-  leaf(x, y + h, z, B.spruce_leaves);
-  let rad = 0, lim = 1;
-  for (let k = 0; k <= fh; k++) {
-    const yy = y + h - k;
-    for (let dx = -rad; dx <= rad; dx++) {
-      for (let dz = -rad; dz <= rad; dz++) {
-        if (rad > 0 && Math.abs(dx) === rad && Math.abs(dz) === rad) continue;
-        leaf(x + dx, yy, z + dz, B.spruce_leaves);
-      }
+// Square leaf row skipping the four corners, like FoliagePlacer.placeLeavesRow for spruce and pine.
+function row(x: number, y: number, z: number, rad: number) {
+  for (let dx = -rad; dx <= rad; dx++) {
+    for (let dz = -rad; dz <= rad; dz++) {
+      if (rad > 0 && Math.abs(dx) === rad && Math.abs(dz) === rad) continue;
+      leaf(x + dx, y, z + dz, B.spruce_leaves);
     }
-    if (rad >= lim) {
-      rad = k === 0 ? 1 : 0;
-      lim = Math.min(lim + 1, maxR);
-    } else rad++;
   }
 }
 
+// SpruceFoliagePlacer: radius 2-3, offset 0-2, foliage height max(4, h - 1..2); rows alternate between 1 and the radius below the tip.
+export function spruceTree(x: number, y: number, z: number, h: number) {
+  trunk(x, y, z, h, B.spruce_log);
+  const radius = 2 + r.int(2), offset = r.int(3), fh = Math.max(4, h - 1 - r.int(2));
+  let i = r.int(2), j = 1, k = 0;
+  for (let l = offset; l >= -fh; l--) {
+    row(x, y + h + l, z, i);
+    if (i >= j) {
+      i = k;
+      k = 1;
+      j = Math.min(j + 1, radius);
+    } else i++;
+  }
+}
+
+// PineFoliagePlacer: radius 1-2, offset 1, foliage height 3-4; a short tuft over a bare trunk.
 export function pineTree(x: number, y: number, z: number, h: number) {
   trunk(x, y, z, h, B.spruce_log);
-  leaf(x, y + h, z, B.spruce_leaves);
-  const fh = 3 + r.int(2);
-  for (let k = 0; k < fh; k++) {
-    const rad = k === 0 ? 0 : k === fh - 1 ? 1 : k % 2 ? 1 : 2;
-    const yy = y + h - 1 - k + 1;
-    for (let dx = -rad; dx <= rad; dx++) {
-      for (let dz = -rad; dz <= rad; dz++) {
-        if (rad > 0 && Math.abs(dx) === rad && Math.abs(dz) === rad) continue;
-        leaf(x + dx, yy, z + dz, B.spruce_leaves);
-      }
-    }
+  const radius = 1 + r.int(2), fh = 3 + r.int(2);
+  let i = 0;
+  for (let j = 1; j >= 1 - fh; j--) {
+    row(x, y + h + j, z, i);
+    if (i >= 1 && j === 1 - fh + 1) i--;
+    else if (i < radius) i++;
   }
 }
 
@@ -173,14 +173,23 @@ function disc(x: number, y: number, z: number, rad: number, id: number, two: boo
   }
 }
 
+// GiantTrunkPlacer + MegaPineFoliagePlacer: crown 13-17 (spruce) or 3-7 (pine), radius widening to 3 with every other row stepped out.
 export function megaSpruce(x: number, y: number, z: number, pine: boolean) {
-  const h = 13 + r.int(15);
+  const h = 13 + r.int(3) + r.int(15);
   trunk2(x, y, z, h, B.spruce_log);
-  const fh = pine ? 3 + r.int(3) : Math.floor(h * 0.6);
-  for (let k = 0; k <= fh; k++) {
-    const yy = y + h - k + 1;
-    const rad = Math.min(pine ? 2 : 4, Math.floor((k + (k % 3 === 0 ? 0 : 2)) / (pine ? 2 : 3)));
-    disc(x, yy, z, rad, B.spruce_leaves, true);
+  const fh = pine ? 3 + r.int(5) : 13 + r.int(5);
+  let prev = 0;
+  for (let yy = y + h - fh; yy <= y + h; yy++) {
+    const k = y + h - yy, l = Math.floor((k / fh) * 3.5);
+    const m = k > 0 && l === prev && (yy & 1) === 0 ? l + 1 : l;
+    for (let dx = -m; dx <= m + 1; dx++) {
+      for (let dz = -m; dz <= m + 1; dz++) {
+        const ax = dx > 0 ? dx - 1 : -dx, az = dz > 0 ? dz - 1 : -dz;
+        if (ax + az >= 7 || ax * ax + az * az > m * m) continue;
+        leaf(x + dx, yy, z + dz, B.spruce_leaves);
+      }
+    }
+    prev = l;
   }
 }
 

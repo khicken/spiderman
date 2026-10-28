@@ -6,6 +6,7 @@ import { itemDef } from "../items/registry";
 import { blockIds, blockOn, bodyBox, fallMultiplier, fluidAt } from "./physics";
 import { BYPASS_ARMOR, MAX_AIR, armorReduce, deathMessage, ench, fallDamage, protectionReduce, xpNeeded } from "./stats";
 import type { PlayerState } from "./state";
+import { rainAt } from "../entities/light";
 
 const box = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
 
@@ -41,7 +42,7 @@ export function protectionEpf(ctx: Pick<GameCtx, "inventory">, source: DamageSou
   let epf = 0;
   for (let i = 36; i <= 39; i++) {
     const s = ctx.inventory.slots[i];
-    if (!s?.ench) continue;
+    if (!s?.ench || source === "sonic_boom") continue;
     if (source !== "void" && source !== "starve") epf += ench(s, "protection");
     if (source === "fire" || source === "lava") epf += 2 * ench(s, "fire_protection");
     if (source === "fall") epf += 3 * ench(s, "feather_falling");
@@ -91,7 +92,7 @@ export function useTotem(p: PlayerState, ctx: GameCtx): boolean {
   return true;
 }
 
-// Vanilla LivingEntity.isDamageSourceBlocked: the source must be in front of the view; an axe hit disables the shield for 5 s.
+// Vanilla LivingEntity.isDamageSourceBlocked: the source must be in front of the view; a mob that canDisableShield (axe, warden) disables it for 5 s.
 export const shieldFaces = (p: PlayerApi, x: number, z: number) =>
   !!(p as { blocking?: boolean }).blocking && -Math.sin(p.yaw) * (x - p.body.pos.x) - Math.cos(p.yaw) * (z - p.body.pos.z) > 0;
 
@@ -103,7 +104,7 @@ function blockWithShield(p: PlayerState, ctx: GameCtx, amount: number, from: { x
   if (amount >= 3) damageSlot(ctx, slot, 1 + Math.floor(amount));
   if (melee) {
     ctx.entities.knockback(melee.id, dx, dz, 0.5);
-    if (String(melee.data.held ?? "").endsWith("_axe") && ctx.random() < 0.25) disableShield(p, ctx);
+    if (String(melee.data.held ?? "").endsWith("_axe") || melee.type === "warden") disableShield(p, ctx);
   }
   return true;
 }
@@ -117,7 +118,7 @@ export function disableShield(p: PlayerState, ctx: GameCtx): void {
 
 // Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them.
 export function difficultyScale(ctx: Pick<GameCtx, "rules">, amount: number, source: DamageSource, attacker?: Entity): number {
-  if (source !== "mob" && source !== "explosion" && !((source === "arrow" || source === "trident") && attacker)) return amount;
+  if (source !== "mob" && source !== "explosion" && source !== "sonic_boom" && !((source === "arrow" || source === "trident") && attacker)) return amount;
   switch (ctx.rules.difficulty) {
     case "peaceful": return 0;
     case "easy": return Math.min(amount / 2 + 1, amount);
@@ -133,10 +134,18 @@ function hurtSound(source: DamageSource): string {
   return "entity.player.hurt";
 }
 
+// Vanilla Player.isInvulnerableTo: the damage game rules.
+const ruleOff = (ctx: GameCtx, source: DamageSource) =>
+  (source === "fall" && ctx.rules.fallDamage === false) ||
+  (source === "drown" && ctx.rules.drowningDamage === false) ||
+  (source === "freeze" && ctx.rules.freezeDamage === false) ||
+  ((source === "fire" || source === "lava") && ctx.rules.fireDamage === false);
+
 export function damage(p: PlayerState, amount: number, source: DamageSource, attacker?: Entity): void {
   const ctx = p.ctx();
   if (p.dead || amount <= 0) return;
   if (invulnerableMode(p) && source !== "void") return;
+  if (ruleOff(ctx, source)) return;
   if ((source === "fire" || source === "lava") && p.hasEffect("fire_resistance")) return;
   if (p.remote) {
     p.damageFrom = null;
@@ -237,7 +246,7 @@ export function die(p: PlayerState, ctx: GameCtx, source: DamageSource, attacker
   }
   p.effects.length = 0;
   ctx.emit({ type: "player_died", message: msg });
-  ctx.emit({ type: "chat", text: msg });
+  if (ctx.rules.showDeathMessages !== false) ctx.emit({ type: "chat", text: msg });
 }
 
 function spreadCobwebs(ctx: GameCtx, x: number, y: number, z: number): void {
@@ -277,18 +286,19 @@ function tickFood(p: PlayerState, ctx: GameCtx): void {
     else if (diff !== "peaceful") p.food = Math.max(p.food - 1, 0);
   }
   const hurt = p.health > 0 && p.health < p.maxHealth;
-  if (diff === "peaceful") {
+  const regen = ctx.rules.naturalRegeneration !== false;
+  if (diff === "peaceful" && regen) {
     if (hurt && p.ticks % 20 === 0) heal(p, 1);
     if (p.food < 20 && p.ticks % 10 === 0) p.food++;
   }
-  if (p.saturation > 0 && hurt && p.food >= 20) {
+  if (regen && p.saturation > 0 && hurt && p.food >= 20) {
     if (++p.foodTimer >= 10) {
       const f = Math.min(p.saturation, 6);
       heal(p, f / 6);
       addExhaustion(p, f);
       p.foodTimer = 0;
     }
-  } else if (p.food >= 18 && hurt) {
+  } else if (regen && p.food >= 18 && hurt) {
     if (++p.foodTimer >= 80) {
       heal(p, 1);
       addExhaustion(p, 6);
@@ -371,7 +381,7 @@ function tickEnvironment(p: PlayerState, ctx: GameCtx): void {
   } else if (p.air < MAX_AIR) p.air = Math.min(MAX_AIR, p.air + 4);
 
   if (spectator) return;
-  if (b.inLava && !p.hasEffect("fire_resistance") && !invulnerableMode(p)) {
+  if (b.inLava && !invulnerableMode(p)) {
     p.fireTicks = Math.max(p.fireTicks, 300);
     damage(p, 4, "lava");
   }
@@ -400,16 +410,13 @@ function tickEnvironment(p: PlayerState, ctx: GameCtx): void {
   const onName = blockDef(on).name;
   if (b.onGround && !p.sneaking && onName === "magma_block" && !ench(ctx.inventory.slots[39], "frost_walker")) damage(p, 1, "fire");
 
-  if (b.inWater || (ctx.time.rain > 0 && w.getSkyLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)) >= 15)) {
+  if (b.inWater || rainAt(ctx, b.pos.x, b.pos.y, b.pos.z) || rainAt(ctx, b.pos.x, b.pos.y + b.height, b.pos.z)) {
     if (p.fireTicks > 0) sound(ctx, "entity.generic.extinguish_fire", p, 0.7, 1.6);
     p.fireTicks = 0;
   }
   if (p.fireTicks > 0) {
-    if (p.hasEffect("fire_resistance")) p.fireTicks = Math.max(0, p.fireTicks - 4);
-    else {
-      if (p.fireTicks % 20 === 0) damage(p, 1, "fire");
-      p.fireTicks--;
-    }
+    if (p.fireTicks % 20 === 0 && !b.inLava) damage(p, 1, "fire");
+    p.fireTicks--;
   }
 
   const eyeState = w.getBlock(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));

@@ -22,10 +22,10 @@ interface Spec {
 }
 
 const TREES = new Map<number, Spec>([
-  [BI.plains, { count: 0.05, kinds: [["bee_oak", 0.05], ["fancy", 0.1], ["oak", 0.85]] }],
-  [BI.sunflower, { count: 0.05, kinds: [["bee_oak", 0.05], ["fancy", 0.1], ["oak", 0.85]] }],
-  [BI.meadow, { count: 0.06, kinds: [["bee_birch", 0.5], ["fancy", 0.5]] }],
-  [BI.forest, { count: 10, kinds: [["birch", 0.2], ["fancy", 0.1], ["bee_oak", 0.01], ["oak", 0.69]] }],
+  [BI.plains, { count: 0.05, kinds: [["bee_oak", 0.002], ["fancy", 0.333], ["oak", 0.665]] }],
+  [BI.sunflower, { count: 0.05, kinds: [["bee_oak", 0.002], ["fancy", 0.333], ["oak", 0.665]] }],
+  [BI.meadow, { count: 0.01, kinds: [["bee_birch", 0.5], ["fancy", 0.5]] }],
+  [BI.forest, { count: 10, kinds: [["birch", 0.2], ["fancy", 0.1], ["bee_oak", 0.002], ["oak", 0.698]] }],
   [BI.flowerForest, { count: 6, kinds: [["birch", 0.2], ["fancy", 0.1], ["bee_oak", 0.02], ["oak", 0.68]] }],
   [BI.birch, { count: 10, kinds: [["bee_birch", 0.002], ["birch", 0.998]] }],
   [BI.ogBirch, { count: 10, kinds: [["tall_birch", 0.8], ["birch", 0.2]] }],
@@ -34,7 +34,7 @@ const TREES = new Map<number, Spec>([
   [BI.snowyTaiga, { count: 10, kinds: [["pine", 0.33], ["spruce", 0.67]] }],
   [BI.ogPine, { count: 10, kinds: [["mega_pine", 0.3], ["pine", 0.3], ["spruce", 0.4]] }],
   [BI.ogSpruce, { count: 10, kinds: [["mega_spruce", 0.33], ["pine", 0.33], ["spruce", 0.34]] }],
-  [BI.grove, { count: 10, kinds: [["pine", 1]] }],
+  [BI.grove, { count: 10, kinds: [["pine", 0.333], ["spruce", 0.667]] }],
   [BI.snowyPlains, { count: 0.1, kinds: [["spruce", 1]] }],
   [BI.wsHills, { count: 0.1, kinds: [["spruce", 0.66], ["oak", 0.34]] }],
   [BI.wsGravelly, { count: 0.1, kinds: [["spruce", 0.66], ["oak", 0.34]] }],
@@ -74,8 +74,8 @@ function grow(kind: Kind, x: number, y: number, z: number, r: Rng, ground: numbe
     case "birch": return oakTree(x, y, z, BIRCH, 5 + r.int(3));
     case "bee_birch": oakTree(x, y, z, BIRCH, 5 + r.int(3)); return beeNest(x, y + 2, z);
     case "tall_birch": return oakTree(x, y, z, BIRCH, 10 + r.int(5));
-    case "spruce": return spruceTree(x, y, z, 6 + r.int(4));
-    case "pine": return pineTree(x, y, z, 7 + r.int(5));
+    case "spruce": return spruceTree(x, y, z, 5 + r.int(3) + r.int(2));
+    case "pine": return pineTree(x, y, z, 6 + r.int(5));
     case "mega_spruce": return megaSpruce(x, y, z, false);
     case "mega_pine": return megaSpruce(x, y, z, true);
     case "jungle": return jungleTree(x, y, z);

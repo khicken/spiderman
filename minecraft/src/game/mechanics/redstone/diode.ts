@@ -1,5 +1,6 @@
 import { Face, idOf, metaOf, stateOf, type BlockBehavior, type BlockState, type GameCtx } from "../../contracts";
 import { analogOutput } from "./inventory";
+import { frameOutput } from "../../entities/item-frame";
 import { signalFrom, strongOut } from "./power";
 import { breakBlock, CONDUCTOR, DX, DY, DZ, F2H, H2F, id, lookHorizontal, notifyFront, OPP, schedule, setState, sound, sturdyTop, ticked } from "./util";
 
@@ -110,7 +111,7 @@ function comparatorInput(ctx: GameCtx, x: number, y: number, z: number, s: Block
     bx += DX[d];
     by += DY[d];
     bz += DZ[d];
-    const b = analogOutput(ctx, bx, by, bz);
+    const b = Math.max(analogOutput(ctx, bx, by, bz), frameOutput(ctx, bx, by, bz, d));
     if (b >= 0) p = b;
   }
   return p;

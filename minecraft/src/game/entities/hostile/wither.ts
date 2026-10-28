@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Entity, GameCtx, MobDef, MobModel } from "../../contracts";
 import { AIR } from "../../contracts";
+import { globalSound } from "../../mechanics/util";
 import { blockDef } from "../../blocks/registry";
 import { applyPhysics, canSee, canSeePlayer, playerTargetable, rotlerp, yawTo } from "../ai";
 import { boxModel } from "../model";
@@ -200,7 +201,7 @@ function witherTick(e: Entity, ctx: GameCtx) {
     e.data._pa = e.age;
     if (invul === 0) {
       mobExplode(ctx, e, b.pos.x, b.pos.y + b.height / 2, b.pos.z, 7);
-      ctx.emit({ type: "sound", name: "entity.wither.spawn", x: b.pos.x, y: b.pos.y, z: b.pos.z, volume: 10, pitch: 1 });
+      globalSound(ctx, "entity.wither.spawn", b.pos.x, b.pos.y, b.pos.z);
     }
     return;
   }

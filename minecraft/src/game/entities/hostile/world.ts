@@ -1,8 +1,9 @@
 import type { GameCtx } from "../../contracts";
-import { AIR, CHUNK, MIN_Y, SEA_LEVEL, idOf } from "../../contracts";
-import { OPAQUE, SOLID, blockDef } from "../../blocks/registry";
+import { MIN_Y, SEA_LEVEL, idOf } from "../../contracts";
+import { IS_FLUID, SOLID, blockDef } from "../../blocks/registry";
 import { canSeeSky, playerTargetable, skyDarken } from "../ai";
-import { diffId, randInt } from "./brain";
+import { diffId, randInt, regionalDifficulty } from "./brain";
+import { nearestPoi } from "../../systems/villagers/poi";
 import { PILLAR_ANGLES, exitPortalActive, fountainY } from "./dragon";
 
 const B = (v: number | string) => BigInt(v);
@@ -24,10 +25,32 @@ export function isSlimeChunk(seed: number, cx: number, cz: number): boolean {
   }
 }
 
-function standable(ctx: GameCtx, x: number, y: number, z: number): boolean {
-  const w = ctx.world;
-  const below = idOf(w.getBlock(x, y - 1, z));
-  return !!SOLID[below] && !!OPAQUE[below] && w.getBlock(x, y, z) === AIR && w.getBlock(x, y + 1, z) === AIR;
+// Vanilla NaturalSpawner.isValidEmptySpawnBlock, without the redstone and spawn-blocking tag checks.
+function emptySpawnBlock(ctx: GameCtx, x: number, y: number, z: number): boolean {
+  const id = idOf(ctx.world.getBlock(x, y, z));
+  return !SOLID[id] && !IS_FLUID[id];
+}
+
+function floorOk(ctx: GameCtx, x: number, y: number, z: number): boolean {
+  const id = idOf(ctx.world.getBlock(x, y, z));
+  return !!SOLID[id] && blockDef(ctx.world.getBlock(x, y, z)).name !== "bedrock";
+}
+
+// Vanilla MOTION_BLOCKING_NO_LEAVES heightmap: first block above the top solid or fluid block, skipping leaves.
+function noLeavesTop(ctx: GameCtx, x: number, z: number): number {
+  let y = ctx.world.topY(x, z);
+  for (; y > MIN_Y; y--) {
+    const s = ctx.world.getBlock(x, y, z);
+    const id = idOf(s);
+    if ((SOLID[id] || IS_FLUID[id]) && !blockDef(s).name.endsWith("_leaves")) break;
+  }
+  return y + 1;
+}
+
+// Vanilla isCloseToVillage(pos, 2): a village point of interest within about two chunk sections.
+function nearVillagePoi(ctx: GameCtx): boolean {
+  const p = ctx.player.body.pos;
+  return !!(nearestPoi(ctx, null, p.x, p.y, p.z, 40) || nearestPoi(ctx, "bed", p.x, p.y, p.z, 40) || nearestPoi(ctx, "bell", p.x, p.y, p.z, 40));
 }
 
 export function createHostileWorld() {
@@ -36,54 +59,47 @@ export function createHostileWorld() {
   let patrolTimer = 12000;
   let dragonCheck = 0;
 
+  // Vanilla PhantomSpawner.
   function phantoms(ctx: GameCtx): void {
     const p = ctx.player;
     if (p.sleeping || p.dead) sinceRest = 0;
     else sinceRest++;
-    if (--phantomTimer > 0) return;
+    if (!ctx.rules.doMobSpawning || ctx.rules.doInsomnia === false || --phantomTimer > 0) return;
     phantomTimer = (60 + Math.floor(ctx.random() * 60)) * 20;
     if (ctx.world.dim !== "overworld" || skyDarken(ctx) < 5 || !playerTargetable(ctx) || diffId(ctx) === 0) return;
     const pos = p.body.pos;
-    if (pos.y < SEA_LEVEL || !canSeeSky(ctx, pos.x, pos.y + 1.6, pos.z)) return;
+    if (pos.y < SEA_LEVEL || !canSeeSky(ctx, pos.x, pos.y, pos.z)) return;
+    if (regionalDifficulty(ctx) <= ctx.random() * 3) return;
     if (Math.floor(ctx.random() * Math.max(1, sinceRest)) < 72000) return;
-    const n = 1 + Math.floor(ctx.random() * (diffId(ctx) + 1));
     const sx = Math.floor(pos.x) + randInt(ctx, -10, 10);
     const sy = Math.floor(pos.y) + 20 + Math.floor(ctx.random() * 15);
     const sz = Math.floor(pos.z) + randInt(ctx, -10, 10);
-    if (ctx.world.getBlock(sx, sy, sz) !== AIR) return;
+    if (!emptySpawnBlock(ctx, sx, sy, sz)) return;
+    const n = 1 + Math.floor(ctx.random() * (diffId(ctx) + 1));
     for (let i = 0; i < n; i++) ctx.entities.spawn("phantom", sx + 0.5, sy, sz + 0.5, { size: 0 });
   }
 
+  // Vanilla PatrolSpawner: every 10-11 min by day from day 5, 1 in 5, away from villages; leader plus ceil(regional difficulty) pillagers.
   function patrols(ctx: GameCtx): void {
-    if (--patrolTimer > 0) return;
+    if (!ctx.rules.doMobSpawning || ctx.rules.doPatrolSpawning === false || --patrolTimer > 0) return;
     patrolTimer = 12000 + Math.floor(ctx.random() * 1200);
-    const dayTime = ctx.time.dayTime % 24000;
-    if (ctx.world.dim !== "overworld" || ctx.time.day < 5 || dayTime > 12000 || ctx.random() >= 0.2 || diffId(ctx) === 0) return;
+    if (ctx.world.dim !== "overworld" || diffId(ctx) === 0 || ctx.time.day < 5 || skyDarken(ctx) >= 4) return;
+    if (Math.floor(ctx.random() * 5) !== 0 || ctx.player.gameMode === "spectator" || nearVillagePoi(ctx)) return;
     const pos = ctx.player.body.pos;
-    const x = Math.floor(pos.x) + randInt(ctx, 24, 48) * (ctx.random() < 0.5 ? -1 : 1);
-    const z = Math.floor(pos.z) + randInt(ctx, 24, 48) * (ctx.random() < 0.5 ? -1 : 1);
-    if (!ctx.world.isLoaded(x, z) || ctx.world.getBiome(x, z).name === "mushroom_fields") return;
-    const n = 2 + Math.floor(ctx.random() * 4);
+    let x = Math.floor(pos.x) + (24 + Math.floor(ctx.random() * 24)) * (ctx.random() < 0.5 ? -1 : 1);
+    let z = Math.floor(pos.z) + (24 + Math.floor(ctx.random() * 24)) * (ctx.random() < 0.5 ? -1 : 1);
+    const w = ctx.world;
+    if (!w.isLoaded(x - 10, z - 10) || !w.isLoaded(x + 10, z + 10) || !w.isLoaded(x - 10, z + 10) || !w.isLoaded(x + 10, z - 10)) return;
+    if (w.getBiome(x, z).name === "mushroom_fields") return;
+    const n = Math.ceil(regionalDifficulty(ctx)) + 1;
     for (let i = 0; i < n; i++) {
-      const px = x + randInt(ctx, -3, 3);
-      const pz = z + randInt(ctx, -3, 3);
-      const py = ctx.world.topY(px, pz) + 1;
-      if (!standable(ctx, px, py, pz) || ctx.world.getBlockLight(px, py, pz) > 8) continue;
-      ctx.entities.spawn("pillager", px + 0.5, py, pz + 0.5, { captain: i === 0, patrolX: pos.x, patrolZ: pos.z });
+      const y = noLeavesTop(ctx, x, z);
+      const ok = emptySpawnBlock(ctx, x, y, z) && w.getBlockLight(x, y, z) <= 8 && floorOk(ctx, x, y - 1, z);
+      if (ok) ctx.entities.spawn("pillager", x + 0.5, y, z + 0.5, { captain: i === 0, patrolX: pos.x, patrolZ: pos.z });
+      else if (i === 0) break;
+      x += Math.floor(ctx.random() * 5) - Math.floor(ctx.random() * 5);
+      z += Math.floor(ctx.random() * 5) - Math.floor(ctx.random() * 5);
     }
-  }
-
-  function slimeChunks(ctx: GameCtx): void {
-    if (ctx.world.dim !== "overworld" || diffId(ctx) === 0 || !ctx.rules.doMobSpawning || ctx.random() >= 0.25) return;
-    if (ctx.entities.count("hostile") >= 70) return;
-    const pos = ctx.player.body.pos;
-    const x = Math.floor(pos.x) + randInt(ctx, 24, 96) * (ctx.random() < 0.5 ? -1 : 1);
-    const z = Math.floor(pos.z) + randInt(ctx, 24, 96) * (ctx.random() < 0.5 ? -1 : 1);
-    if (!ctx.world.isLoaded(x, z) || !isSlimeChunk(ctx.world.seed, Math.floor(x / CHUNK), Math.floor(z / CHUNK))) return;
-    const y = MIN_Y + 1 + Math.floor(ctx.random() * (40 - MIN_Y));
-    if (!standable(ctx, x, y, z) || ctx.random() >= 0.1) return;
-    if (blockDef(ctx.world.getBlock(x, y - 1, z)).name === "bedrock") return;
-    ctx.entities.spawn("slime", x + 0.5, y, z + 0.5);
   }
 
   function dragonFight(ctx: GameCtx): void {
@@ -112,7 +128,6 @@ export function createHostileWorld() {
     tick(ctx: GameCtx) {
       phantoms(ctx);
       patrols(ctx);
-      slimeChunks(ctx);
       dragonFight(ctx);
     },
     timeSinceRest: () => sinceRest,

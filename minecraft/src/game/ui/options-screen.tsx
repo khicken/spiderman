@@ -5,10 +5,11 @@ import type { Rules } from "../contracts";
 import { Text, useGui } from "./gui";
 import { Button, ListArea, Screen, Slider, TextField, onOff, useKeyDown } from "./widgets";
 import { playerName, setPlayerNameStored } from "../net/profile";
+import { MAX_PNG, decodePng, localLook, setLocalLook, type Look } from "../net/skins";
 import { KeyBinds } from "./key-binds";
 import { PacksScreen } from "./packs-screen";
 import {
-  SOUND_CATEGORIES, brightnessLabel, fovEffectsLabel, fovLabel, fpsLabel, guiScaleLabel, pctLabel, sensitivityLabel, volumeLabel,
+  SOUND_CATEGORIES, biomeBlendLabel, brightnessLabel, fovEffectsLabel, fovLabel, fpsLabel, guiScaleLabel, pctLabel, sensitivityLabel, volumeLabel,
   type Settings, type SoundCategory,
 } from "./settings";
 
@@ -47,6 +48,10 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 const cycle = <T,>(list: readonly T[], v: T) => list[(list.indexOf(v) + 1) % list.length];
 const PARTICLES = ["all", "decreased", "minimal"] as const;
 const CLOUDS = ["fancy", "fast", "off"] as const;
+const GRAPHICS = ["fast", "fancy", "fabulous"] as const;
+const GRAPHICS_LABEL = { fast: "Fast", fancy: "Fancy", fabulous: "Fabulous!" } as const;
+const INDICATORS = ["off", "crosshair", "hotbar"] as const;
+const offPct = (name: string, v: number) => `${name}: ${v <= 0 ? "OFF" : `${Math.round(v * 100)}%`}`;
 
 function isFullscreen() {
   return typeof document !== "undefined" && !!document.fullscreenElement;
@@ -113,7 +118,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
   });
 
   const video: Item[] = [
-    { kind: "button", label: `Graphics: ${s.graphics === "fancy" ? "Fancy" : "Fast"}`, onClick: () => onChange({ graphics: s.graphics === "fancy" ? "fast" : "fancy" }) },
+    { kind: "button", label: `Graphics: ${GRAPHICS_LABEL[s.graphics]}`, onClick: () => onChange({ graphics: cycle(GRAPHICS, s.graphics) }) },
     { kind: "slider", label: `Render Distance: ${s.renderDistance} chunks`, value: frac(s.renderDistance, 2, 32), set: (v) => onChange({ renderDistance: steps(v, 2, 32) }) },
     { kind: "button", label: "Chunk Builder: Threaded", disabled: true },
     { kind: "slider", label: `Simulation Distance: ${s.simulationDistance} chunks`, value: frac(s.simulationDistance, 5, 32), set: (v) => onChange({ simulationDistance: steps(v, 5, 32) }) },
@@ -122,7 +127,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
     { kind: "button", label: "VSync: ON", disabled: true },
     { kind: "button", label: `View Bobbing: ${onOff(s.viewBobbing)}`, onClick: () => onChange({ viewBobbing: !s.viewBobbing }) },
     { kind: "slider", label: guiScaleLabel(s.guiScale), value: s.guiScale / 4, set: (v) => onChange({ guiScale: steps(v, 0, 4) }) },
-    { kind: "button", label: "Attack Indicator: Crosshair", disabled: true },
+    { kind: "button", label: `Attack Indicator: ${s.attackIndicator === "off" ? "OFF" : cap(s.attackIndicator)}`, onClick: () => onChange({ attackIndicator: cycle(INDICATORS, s.attackIndicator) }) },
     { kind: "slider", label: brightnessLabel(s.brightness), value: s.brightness, set: (v) => onChange({ brightness: r2(v) }) },
     {
       kind: "button",
@@ -143,8 +148,14 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
     { kind: "button", label: `Particles: ${cap(s.particles)}`, onClick: () => onChange({ particles: cycle(PARTICLES, s.particles) }) },
     { kind: "button", label: "Mipmap Levels: OFF", disabled: true },
     { kind: "button", label: `Entity Shadows: ${onOff(s.entityShadows)}`, onClick: () => onChange({ entityShadows: !s.entityShadows }) },
+    { kind: "slider", label: offPct("Distortion Effects", s.distortion), value: s.distortion, set: (v) => onChange({ distortion: r2(v) }) },
+    { kind: "slider", label: `Entity Distance: ${Math.round(s.entityDistance * 100)}%`, value: frac(s.entityDistance, 0.5, 5), set: (v) => onChange({ entityDistance: steps(v, 0, 18) / 4 + 0.5 }) },
     { kind: "slider", label: fovEffectsLabel(s.fovEffects), value: s.fovEffects, set: (v) => onChange({ fovEffects: r2(v) }) },
-    { kind: "button", label: `Advanced Tooltips: ${onOff(s.advancedTooltips)}`, onClick: () => onChange({ advancedTooltips: !s.advancedTooltips }) },
+    { kind: "button", label: "Autosave Indicator: OFF", disabled: true },
+    { kind: "slider", label: offPct("Glint Speed", s.glintSpeed), value: s.glintSpeed, set: (v) => onChange({ glintSpeed: r2(v) }) },
+    { kind: "slider", label: offPct("Glint Strength", s.glintStrength), value: s.glintStrength, set: (v) => onChange({ glintStrength: r2(v) }) },
+    { kind: "slider", label: `Menu Background Blur: ${s.menuBlur || "OFF"}`, value: s.menuBlur / 10, set: (v) => onChange({ menuBlur: steps(v, 0, 10) }) },
+    { kind: "slider", label: biomeBlendLabel(s.biomeBlend), value: s.biomeBlend / 7, set: (v) => onChange({ biomeBlend: steps(v, 0, 7) }) },
   ];
 
   const sound: Item[] = [
@@ -161,7 +172,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
     { kind: "button", label: `Sneak: ${s.toggleSneak ? "Toggle" : "Hold"}`, onClick: () => onChange({ toggleSneak: !s.toggleSneak }) },
     { kind: "button", label: `Sprint: ${s.toggleSprint ? "Toggle" : "Hold"}`, onClick: () => onChange({ toggleSprint: !s.toggleSprint }) },
     { kind: "button", label: "Auto-Jump: OFF", disabled: true },
-    { kind: "button", label: "Operator Items Tab: OFF", disabled: true },
+    { kind: "button", label: `Operator Items Tab: ${onOff(!!s.operatorItemsTab)}`, onClick: () => onChange({ operatorItemsTab: !s.operatorItemsTab }) },
   ];
 
   const mouse: Item[] = [
@@ -179,7 +190,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
   ];
 
   const lists: Partial<Record<Page, { big?: Item; items: Item[] }>> = {
-    video: { items: video },
+    video: { big: { kind: "button", label: "Fullscreen Resolution: Current", disabled: true }, items: video },
     sound: { big: { kind: "slider", label: volumeLabel("Master Volume", s.master), value: s.master, set: (v) => onChange({ master: r2(v) }) }, items: sound },
     controls: { items: controls },
     mouse: { items: mouse },
@@ -214,7 +225,7 @@ export function OptionsScreen({ settings: s, onChange, onDone, inGame, difficult
           })
         }
       </ScrollList>
-      <Button x={cx - 100} y={height - 27} label="Done" onClick={onDone} />
+      <Button x={cx - 100} y={height - 27} label="Done" onClick={done} />
     </Screen>
   );
 }
@@ -258,7 +269,50 @@ function SkinPage({ background, onDone }: { background: "menu" | "ingame"; onDon
       <Text text="Multiplayer Name" x={cx - 100} y={Math.floor(height / 6) + 4} color={0xa0a0a0} />
       <TextField x={cx - 100} y={Math.floor(height / 6) + 16} width={200} value={name} onChange={edit} onEnter={onDone} maxLength={16} hint="Player name" autoFocus />
       <Text text={ok ? "Other players see this name." : "Use 3 to 16 letters, digits or _."} x={cx} y={Math.floor(height / 6) + 44} color={ok ? 0x808080 : 0xff5555} align="center" />
+      <SkinChoice cx={cx} y={Math.floor(height / 6) + 64} />
       <Button x={cx - 100} y={height - 27} label="Done" onClick={onDone} />
     </Screen>
+  );
+}
+
+function pickPng(onLoad: (url: string) => void) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/png";
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => typeof r.result === "string" && onLoad(r.result);
+    r.readAsDataURL(f);
+  };
+  input.click();
+}
+
+const KIND_LABEL = { steve: "Steve", alex: "Alex", custom: "Custom" } as const;
+
+function SkinChoice({ cx, y }: { cx: number; y: number }) {
+  const [look, setLook] = useState<Look>(localLook);
+  const [msg, setMsg] = useState("");
+  const save = (l: Look) => {
+    setLook(l);
+    setLocalLook(l);
+    setMsg("");
+  };
+  const upload = (w: number, h: number, apply: (url: string) => void) =>
+    pickPng(async (url) => {
+      if (url.length > MAX_PNG || !(await decodePng(url, w, h))) return setMsg(`Use a ${w}x${h} PNG under 30 KB.`);
+      apply(url);
+    });
+  const kinds: Look["kind"][] = look.png ? ["steve", "alex", "custom"] : ["steve", "alex"];
+  const next = kinds[(kinds.indexOf(look.kind) + 1) % kinds.length];
+  return (
+    <>
+      <Button x={cx - 155} y={y} width={150} label={`Skin: ${KIND_LABEL[look.kind]}`} onClick={() => save({ ...look, kind: next, slim: next === "alex" || (next === "custom" && look.slim) })} />
+      <Button x={cx + 5} y={y} width={150} label={`Arms: ${look.slim ? "Slim" : "Classic"}`} disabled={look.kind !== "custom"} onClick={() => save({ ...look, slim: !look.slim })} />
+      <Button x={cx - 155} y={y + 24} width={150} label="Upload Skin..." onClick={() => upload(64, 64, (png) => save({ ...look, kind: "custom", png }))} />
+      <Button x={cx + 5} y={y + 24} width={150} label={look.cape ? "Remove Cape" : "Upload Cape..."} onClick={() => (look.cape ? save({ ...look, cape: undefined }) : upload(64, 32, (cape) => save({ ...look, cape })))} />
+      {msg && <Text text={msg} x={cx} y={y + 52} color={0x808080} align="center" />}
+    </>
   );
 }

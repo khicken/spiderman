@@ -1,4 +1,6 @@
 import type { Entity, GameCtx } from "../contracts";
+import { idOf } from "../contracts";
+import { blockByName } from "../blocks/registry";
 
 const TAU = Math.PI * 2;
 
@@ -44,13 +46,36 @@ export function canSeeSky(ctx: GameCtx, x: number, y: number, z: number) {
   return ctx.world.getSkyLight(Math.floor(x), Math.floor(y), Math.floor(z)) >= 15;
 }
 
-// Vanilla isSunBurnTick for undead mobs: day, open sky, not wet.
+// Vanilla Level.isRainingAt: open sky above, raining, and rain (not snow) at this height in the biome.
+export function rainAt(ctx: GameCtx, x: number, y: number, z: number) {
+  if (ctx.time.rain < 0.2 || ctx.world.dim !== "overworld") return false;
+  const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
+  if (ctx.world.topY(bx, bz) > by) return false;
+  const b = ctx.world.getBiome(bx, bz);
+  return b.precipitation === "rain" && warmEnoughToRain(b.temperature, by);
+}
+
+// Vanilla Biome.getHeightAdjustedTemperature >= 0.15, without the temperature noise term.
+export function warmEnoughToRain(temperature: number, y: number) {
+  return (y > 80 ? temperature - ((y - 80) * 0.05) / 40 : temperature) >= 0.15;
+}
+
+let powderId = -2;
+export function inPowderSnow(e: Entity, ctx: GameCtx) {
+  if (powderId === -2) powderId = blockByName("powder_snow")?.id ?? -1;
+  const p = e.body.pos;
+  return powderId >= 0 && idOf(ctx.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) === powderId;
+}
+
+// Vanilla Mob.isSunBurnTick: day, eye under open sky, not in water, rain or powder snow.
 export function sunBurns(e: Entity, ctx: GameCtx) {
-  if (ctx.world.dim !== "overworld" || e.body.inWater || ctx.time.rain > 0.2) return false;
-  const ey = e.body.pos.y + e.body.height * 0.85;
+  if (ctx.world.dim !== "overworld" || e.body.inWater) return false;
+  const p = e.body.pos;
+  const ey = p.y + e.body.height * 0.85;
+  if (rainAt(ctx, p.x, p.y, p.z) || rainAt(ctx, p.x, p.y + e.body.height, p.z) || inPowderSnow(e, ctx)) return false;
   const darken = skyDarken(ctx);
-  const br = brightnessCurve(lightAt(ctx, e.body.pos.x, ey, e.body.pos.z, darken));
-  return br > 0.5 && ctx.random() * 30 < (br - 0.4) * 2 && darken < 4 && canSeeSky(ctx, e.body.pos.x, ey, e.body.pos.z);
+  const br = brightnessCurve(lightAt(ctx, p.x, ey, p.z, darken));
+  return br > 0.5 && ctx.random() * 30 < (br - 0.4) * 2 && darken < 4 && canSeeSky(ctx, p.x, ey, p.z);
 }
 
 // Vanilla light-level to brightness curve (dimension ambient 0).

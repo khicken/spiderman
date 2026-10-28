@@ -98,6 +98,8 @@ const enchanted = (s: ItemStack | null | undefined) => !!s?.ench && Object.keys(
 
 export function createPlayerExtras(model: PlayerModel, items: ItemMeshes): PlayerExtras {
   const P = model.model.parts;
+  // Vanilla ModelPart rotates in Z, Y, X order; the block and crossbow poses depend on it.
+  for (const n of ["right_arm", "left_arm", "right_leg", "left_leg"]) P[n].rotation.order = "ZYX";
   const armor = createArmorLayer(P, true);
   const wings = createWings(P.body);
   const off = createHeldSlot(items, -1);
@@ -119,8 +121,9 @@ export function createPlayerExtras(model: PlayerModel, items: ItemMeshes): Playe
       const u = p.using;
       const mainShield = u?.kind === "shield" && u.hand === "main";
       const offShield = u?.kind === "shield" && u.hand === "off";
-      if (p.blocking && mainShield) P.right_arm.rotation.set(0.9424779 + p.pitch * 0.5, Math.PI / 6, 0);
-      if (p.blocking && offShield) P.left_arm.rotation.set(0.9424779 + p.pitch * 0.5, -Math.PI / 6, 0);
+      // Vanilla HumanoidModel ArmPose.BLOCK: half the walk swing plus a fixed raise, from the first use tick.
+      if (mainShield) P.right_arm.rotation.set(P.right_arm.rotation.x * 0.5 + 0.9424779, Math.PI / 6, 0);
+      if (offShield) P.left_arm.rotation.set(P.left_arm.rotation.x * 0.5 + 0.9424779, -Math.PI / 6, 0);
       if (u?.kind === "trident") P[u.hand === "main" ? "right_arm" : "left_arm"].rotation.set(Math.PI + p.pitch * 0.5, 0, 0);
       if (u?.kind === "spyglass") P[u.hand === "main" ? "right_arm" : "left_arm"].rotation.set(1.9198622 + p.pitch, u.hand === "main" ? -0.26 : 0.26, 0);
       const held = ctx.inventory.held();

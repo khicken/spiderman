@@ -137,7 +137,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     ctx.emit({ type: "sound", name: `block.${def.sound}.break`, x: x + 0.5, y: y + 0.5, z: z + 0.5, volume: SOUND_VOL, pitch: 0.8 });
     ctx.emit({ type: "particles", kind: "block", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 32, state: s });
     if (!creative) {
-      if (canHarvest(def, held)) {
+      if (canHarvest(def, held) && ctx.rules.doTileDrops !== false) {
         for (const d of computeDrops(s, held, ctx.random)) {
           ctx.entities.dropItem(d, x + 0.5 + (ctx.random() - 0.5) * 0.5, y + 0.5 + (ctx.random() - 0.5) * 0.5 - 0.125, z + 0.5 + (ctx.random() - 0.5) * 0.5);
         }
@@ -236,12 +236,18 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     const walked = Math.hypot(b.pos.x - p.prevPos.x, b.pos.z - p.prevPos.z) * 0.6;
     const speed = WALK_SPEED * (p.sprinting ? SPRINT_MULT : 1) * (1 + 0.2 * p.hasEffect("speed")) * Math.max(0, 1 - 0.15 * p.hasEffect("slowness"));
     const sweep = charged && !crit && !sprintHit && b.onGround && walked < speed && toolOf(held)?.kind === "sword";
+    // Vanilla LivingEntity.hurt fails inside the invulnerability frames unless the hit beats the last one; a failed hit has no knockback, sweep or effects.
+    const landed = !mobDef(e.type) || (!e.data.invulnerable && !(Number(e.data._inv ?? 0) > 10 && total <= Number(e.data._lastHurt ?? 0)));
     if (held?.item === "mace") e.data._breach = ench(held, "breach");
     ctx.entities.damage(id, total, smash ? "mace" : "player", "player");
     e.data._breach = undefined;
+    if (!landed) {
+      ctx.emit({ type: "sound", name: "entity.player.attack.nodamage", x: b.pos.x, y: b.pos.y, z: b.pos.z });
+      return;
+    }
     if (smash && total >= 100) ctx.emit({ type: "advancement", title: "Over-Overkill" });
     const fire = ench(held, "fire_aspect");
-    if (fire > 0) e.data.fireTicks = Math.max(Number(e.data.fireTicks ?? 0), fire * 80);
+    if (fire > 0) e.data._fire = Math.max(Number(e.data._fire ?? 0), fire * 80);
     if (knock > 0) ctx.entities.knockback(id, -Math.sin(p.yaw), -Math.cos(p.yaw), knock * 0.5);
     if (knock > 0) {
       b.vel.x *= 0.6;
@@ -259,6 +265,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
         ctx.entities.damage(o.id, (sd + enchantDamageBonus(held, o.type)) * s, "player", "player");
       }
       ctx.emit({ type: "sound", name: "entity.player.attack.sweep", x: b.pos.x, y: b.pos.y, z: b.pos.z });
+      ctx.emit({ type: "particles", kind: "sweep", x: b.pos.x - Math.sin(p.yaw), y: b.pos.y + b.height * 0.5, z: b.pos.z - Math.cos(p.yaw) });
     }
     if (smash) {
       const heavy = b.fallDistance > 5;
@@ -280,6 +287,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     const snd = crit ? "entity.player.attack.crit" : sweep || sprintHit ? null : charged ? "entity.player.attack.strong" : "entity.player.attack.weak";
     if (snd) ctx.emit({ type: "sound", name: snd, x: b.pos.x, y: b.pos.y, z: b.pos.z });
     if (crit) ctx.emit({ type: "particles", kind: "crit", x: e.body.pos.x, y: e.body.pos.y + e.body.height * 0.5, z: e.body.pos.z, count: 12 });
+    if (bonus > 0) ctx.emit({ type: "particles", kind: "crit", x: e.body.pos.x, y: e.body.pos.y + e.body.height * 0.5, z: e.body.pos.z, count: 12, color: 0x8fd8ff });
     addExhaustion(p, 0.1);
     const kind = toolOf(held)?.kind;
     if (kind || held?.item === "trident" || held?.item === "mace") damageSlot(ctx, ctx.inventory.selected, kind && kind !== "sword" ? 2 : 1);

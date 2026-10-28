@@ -51,7 +51,11 @@ function tick(e: Entity, ctx: GameCtx): void {
   const hurt = hurtAmount(e);
   burnInDaylight(e, ctx);
   if (e.data.ax === undefined) setAnchor(e, ctx, b.pos.x, b.pos.y - 20, b.pos.z);
-  const t = updateTarget(e, ctx, { range: 64, sight: false }, hurt);
+  let t = updateTarget(e, ctx, { range: 64, sight: false }, hurt);
+  if (t === "player" && !playerTargetable(ctx)) {
+    t = e.data._target = undefined;
+    e.data.aggressive = false;
+  }
   const info = targetInfo(ctx, t);
   let swoop = e.data.phase === "swoop";
   if (info) {

@@ -6,6 +6,7 @@ export type InputAction =
 export interface InputApi {
   enabled: boolean; // false while a screen is open. Setting false clears held keys.
   readonly pointerLocked: boolean;
+  readonly lockPending: boolean; // a lock request is still retrying
   forward: number;
   strafe: number; // positive is right
   jump: boolean;
@@ -31,7 +32,7 @@ const DOUBLE_TAP_MS = 350; // vanilla 7 ticks
 const BINDS: Record<string, string> = {
   forward: "KeyW", back: "KeyS", left: "KeyA", right: "KeyD", jump: "Space", sneak: "ShiftLeft", sprint: "ControlLeft",
   inventory: "KeyE", drop: "KeyQ", swap_offhand: "KeyF", chat: "KeyT", command: "Slash", screenshot: "F2", perspective: "F5",
-  fullscreen: "F11", hide_gui: "F1", debug: "F3", advancements: "KeyL",
+  fullscreen: "F11", hide_gui: "F1", debug: "F3", advancements: "KeyL", attack: "Mouse0", use: "Mouse2", pick_block: "Mouse1",
   "hotbar.1": "Digit1", "hotbar.2": "Digit2", "hotbar.3": "Digit3", "hotbar.4": "Digit4", "hotbar.5": "Digit5",
   "hotbar.6": "Digit6", "hotbar.7": "Digit7", "hotbar.8": "Digit8", "hotbar.9": "Digit9",
 };
@@ -39,7 +40,7 @@ const TOGGLES = { sneak: false, sprint: false };
 
 // Settings push rebinds and Hold/Toggle modes here; every input instance reads them live.
 export function setKeyBinds(map: Record<string, string>, toggles?: { sneak: boolean; sprint: boolean }) {
-  for (const [k, v] of Object.entries(map)) if (!k.startsWith("attack") && !k.startsWith("use") && !k.startsWith("pick")) BINDS[k] = v;
+  Object.assign(BINDS, map);
   if (toggles) Object.assign(TOGGLES, toggles);
 }
 const bindOf = (code: string): string | null => {
@@ -66,7 +67,7 @@ export function createInput(canvas: HTMLElement): InputApi {
     }
   };
   const locked = () => typeof document !== "undefined" && document.pointerLockElement === canvas;
-  const ctrl = (e: KeyboardEvent) => e.ctrlKey || e.metaKey;
+  const ctrl = (e: KeyboardEvent | MouseEvent) => e.ctrlKey || e.metaKey;
 
   const api: InputApi = {
     get enabled() {
@@ -106,12 +107,11 @@ export function createInput(canvas: HTMLElement): InputApi {
       api.rightClicks = 0;
     },
     requestLock() {
-      try {
-        const r = (canvas as HTMLElement & { requestPointerLock(o?: unknown): Promise<void> | void }).requestPointerLock();
-        if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => {});
-      } catch {
-        // Headless browsers have no pointer lock.
-      }
+      lockAt = performance.now();
+      tryLock();
+    },
+    get lockPending() {
+      return !locked() && performance.now() - lockAt < LOCK_RETRY_MS;
     },
     onAction(cb) {
       listeners.add(cb);
@@ -128,6 +128,8 @@ export function createInput(canvas: HTMLElement): InputApi {
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("contextmenu", onContext);
       document.removeEventListener("pointerlockchange", onLockChange);
+      document.removeEventListener("pointerlockerror", retryLock);
+      clearTimeout(lockTimer);
       listeners.clear();
       keys.clear();
     },
@@ -171,7 +173,22 @@ export function createInput(canvas: HTMLElement): InputApi {
       if (bind === "drop") emit(ctrl(e) ? "drop_stack" : "drop");
       return;
     }
+    down(c, bind, ctrl(e));
+  }
+
+  // Shared by keys and mouse buttons, so any bind takes either.
+  function down(c: string, bind: string | null, ctrlHeld: boolean) {
     keys.add(c);
+    if (bind === "attack") {
+      api.left = true;
+      api.leftClicks++;
+    } else if (bind === "use") {
+      api.right = true;
+      api.rightClicks++;
+    } else if (bind === "pick_block") {
+      api.middle = true;
+      emit("pick_block");
+    }
     if (bind === "sneak" && TOGGLES.sneak) sneakOn = !sneakOn;
     if (bind === "sprint" && TOGGLES.sprint) sprintOn = !sprintOn;
     update();
@@ -187,7 +204,7 @@ export function createInput(canvas: HTMLElement): InputApi {
       } else lastSpace = now;
     } else if (bind?.startsWith("hotbar.")) emit(`hotbar:${Number(bind.slice(7)) - 1}`);
     else if (bind === "inventory") emit("inventory");
-    else if (bind === "drop") emit(ctrl(e) ? "drop_stack" : "drop");
+    else if (bind === "drop") emit(ctrlHeld ? "drop_stack" : "drop");
     else if (bind === "swap_offhand") emit("swap_offhand");
     else if (bind === "chat") emit("chat");
     else if (bind === "command") emit("command");
@@ -198,7 +215,15 @@ export function createInput(canvas: HTMLElement): InputApi {
   }
 
   function onKeyUp(e: KeyboardEvent) {
-    keys.delete(e.code);
+    up(e.code);
+  }
+
+  function up(c: string) {
+    keys.delete(c);
+    const bind = bindOf(c);
+    if (bind === "attack") api.left = false;
+    else if (bind === "use") api.right = false;
+    else if (bind === "pick_block") api.middle = false;
     update();
   }
 
@@ -213,23 +238,17 @@ export function createInput(canvas: HTMLElement): InputApi {
   function onMouseDown(e: MouseEvent) {
     if (!enabled) return;
     e.preventDefault();
-    if (!locked()) api.requestLock();
-    if (e.button === 0) {
-      api.left = true;
-      api.leftClicks++;
-    } else if (e.button === 2) {
-      api.right = true;
-      api.rightClicks++;
-    } else if (e.button === 1) {
-      api.middle = true;
-      emit("pick_block");
+    if (!locked()) {
+      api.requestLock();
+      // Vanilla: the click that grabs the mouse does not attack or use.
+      if (!lockFailed) return;
     }
+    const c = `Mouse${e.button}`;
+    down(c, bindOf(c), ctrl(e));
   }
 
   function onMouseUp(e: MouseEvent) {
-    if (e.button === 0) api.left = false;
-    else if (e.button === 2) api.right = false;
-    else if (e.button === 1) api.middle = false;
+    up(`Mouse${e.button}`);
   }
 
   function onWheel(e: WheelEvent) {
@@ -239,6 +258,29 @@ export function createInput(canvas: HTMLElement): InputApi {
   }
 
   const onContext = (e: Event) => e.preventDefault();
+
+  // Browsers refuse a re-lock for about 1 s after the user presses Escape, so keep retrying.
+  const LOCK_RETRY_MS = 1600;
+  let lockAt = -Infinity;
+  let lockTimer: ReturnType<typeof setTimeout> | undefined;
+  let lockFailed = false;
+  const lockFail = () => {
+    lockFailed = true;
+    retryLock();
+  };
+  function tryLock() {
+    lockTimer = undefined;
+    if (locked() || !enabled) return;
+    try {
+      const r = (canvas as HTMLElement & { requestPointerLock(o?: unknown): Promise<void> | void }).requestPointerLock();
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(lockFail);
+    } catch {
+      lockFail(); // Headless browsers have no pointer lock.
+    }
+  }
+  function retryLock() {
+    if (lockTimer === undefined && !locked() && enabled && performance.now() - lockAt < LOCK_RETRY_MS) lockTimer = setTimeout(tryLock, 250);
+  }
 
   let wasLocked = false;
   function onLockChange() {
@@ -256,5 +298,6 @@ export function createInput(canvas: HTMLElement): InputApi {
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("contextmenu", onContext);
   document.addEventListener("pointerlockchange", onLockChange);
+  document.addEventListener("pointerlockerror", retryLock);
   return api;
 }

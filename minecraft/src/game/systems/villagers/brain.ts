@@ -4,7 +4,7 @@ import { blockByName } from "../../blocks/registry";
 import { clearPath, idleLook, lookAt, moveTo, panic, playerDistSq, randomSpot, wander, yawTo } from "../../entities/ai";
 import { isBaby } from "../../entities/geom";
 import type { MerchantTrade } from "../../items/menus-merchant";
-import { LEVEL_XP, rollLevelTrades, restockTrades, type PriceCtx } from "./trades";
+import { LEVEL_XP, rollLevelTrades, restockTrades, villagerType, type PriceCtx } from "./trades";
 import { nearestPoi, poiValid, posKey, requestArea } from "./poi";
 
 const HX = [0, -1, 0, 1];
@@ -68,9 +68,10 @@ export function initVillager(e: Entity, ctx: GameCtx) {
   if (typeof e.data.profession !== "string") e.data.profession = !isBaby(e) && ctx.random() < 0.05 ? "nitwit" : "none";
   e.data.level = Math.max(1, Math.min(5, num(e, "level", 1)));
   e.data.xp = num(e, "xp", LEVEL_XP[(e.data.level as number) - 1]);
+  if (typeof e.data.villagerType !== "string") e.data.villagerType = villagerType(ctx.world.getBiome(Math.floor(e.body.pos.x), Math.floor(e.body.pos.z)).name);
   if (employed(e) && !Array.isArray(e.data.trades)) {
     const list: MerchantTrade[] = [];
-    for (let l = 1; l <= (e.data.level as number); l++) list.push(...rollLevelTrades(e.data.profession as string, l, ctx.random));
+    for (let l = 1; l <= (e.data.level as number); l++) list.push(...rollLevelTrades(e.data.profession as string, l, ctx.random, e.data.villagerType as string));
     e.data.trades = list;
   }
   e.data._init = true;
@@ -90,7 +91,7 @@ function levelUp(e: Entity, ctx: GameCtx) {
   if (lvl >= 5 || !employed(e)) return;
   e.data.level = lvl + 1;
   const list = (e.data.trades as MerchantTrade[]) ?? [];
-  list.push(...rollLevelTrades(e.data.profession as string, lvl + 1, ctx.random));
+  list.push(...rollLevelTrades(e.data.profession as string, lvl + 1, ctx.random, e.data.villagerType as string));
   e.data.trades = list;
   const regen = e.effects.find((f) => f.id === "regeneration");
   if (regen) regen.ticks = Math.max(regen.ticks, 200);
@@ -120,7 +121,7 @@ function jobTick(e: Entity, ctx: GameCtx) {
   e.data.job = [site.x, site.y, site.z];
   if (!employed(e)) {
     e.data.profession = site.kind;
-    e.data.trades = rollLevelTrades(site.kind, 1, ctx.random);
+    e.data.trades = rollLevelTrades(site.kind, 1, ctx.random, e.data.villagerType as string);
     e.data.level = 1;
     e.data.xp = 0;
     happy(ctx, e);

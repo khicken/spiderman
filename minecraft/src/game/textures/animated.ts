@@ -1,3 +1,5 @@
+import { flamePixels } from "./fire";
+
 // Frame 0 is the base layer. Frame counts and frame ticks follow the vanilla .mcmeta files.
 
 type Kind = "fluid" | "lava" | "portal" | "fire" | "lantern" | "hue" | "magma";
@@ -56,6 +58,7 @@ function hueRotate(out: Uint8ClampedArray, o: number, deg: number) {
 
 // Every motion term must be periodic over the frame count, or the loop jumps.
 export function paintFrame(def: AnimDef, base: Uint8ClampedArray, f: number): Uint8ClampedArray {
+  if (def.kind === "fire") return flamePixels(def.key, f, def.frames);
   const out = new Uint8ClampedArray(1024);
   const p = (TAU * f) / def.frames;
   for (let y = 0; y < 16; y++)
@@ -75,15 +78,6 @@ export function paintFrame(def: AnimDef, base: Uint8ClampedArray, f: number): Ui
           const dx = x - 7.5, dy = y - 7.5;
           const c = Math.cos(p), s = Math.sin(p);
           bilinear(base, 7.5 + dx * c - dy * s + Math.sin(p * 2 + y * 0.8) * 0.6, 7.5 + dx * s + dy * c, out, o);
-          break;
-        }
-        case "fire": {
-          const lift = Math.round(Math.sin(p * 2 + x * 1.7) * 1.5 + Math.sin(p + x * 0.9));
-          const sx = x + Math.round(Math.sin(p * 3 + y * 0.7) * 0.8);
-          const sy = y + lift;
-          if (sy > 15) copyPx(base, sx, 15, out, o);
-          else if (sy < 0) out[o + 3] = 0;
-          else copyPx(base, sx, sy, out, o);
           break;
         }
         case "lantern": {

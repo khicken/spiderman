@@ -97,7 +97,7 @@ const materials: ItemSpec[] = [
   s("trial_key"),
   s("ominous_trial_key"),
   s("ominous_bottle", { rarity: "uncommon" }),
-  s("end_crystal"),
+  s("end_crystal", { rarity: "rare" }),
   one("debug_stick", { rarity: "epic" }),
 ];
 
@@ -183,6 +183,19 @@ export const TRIM_PATTERNS = [
 ] as const;
 
 export const TRIM_MATERIALS = ["quartz", "iron_ingot", "netherite_ingot", "redstone", "copper_ingot", "gold_ingot", "emerald", "diamond", "lapis_lazuli", "amethyst_shard"] as const;
+
+export const PATTERN_NAMES: Record<string, string> = {
+  stripe_bottom: "Base", stripe_top: "Chief", stripe_left: "Pale Dexter", stripe_right: "Pale Sinister", stripe_center: "Pale",
+  stripe_middle: "Fess", stripe_downright: "Bend", stripe_downleft: "Bend Sinister", small_stripes: "Paly", cross: "Saltire",
+  straight_cross: "Cross", diagonal_left: "Per Bend Sinister", diagonal_right: "Per Bend", diagonal_up_left: "Per Bend Inverted",
+  diagonal_up_right: "Per Bend Sinister Inverted", half_vertical: "Per Pale", half_vertical_right: "Per Pale Inverted",
+  half_horizontal: "Per Fess", half_horizontal_bottom: "Per Fess Inverted", square_bottom_left: "Base Dexter Canton",
+  square_bottom_right: "Base Sinister Canton", square_top_left: "Chief Dexter Canton", square_top_right: "Chief Sinister Canton",
+  triangle_bottom: "Chevron", triangle_top: "Inverted Chevron", triangles_bottom: "Base Indented", triangles_top: "Chief Indented",
+  circle: "Roundel", rhombus: "Lozenge", border: "Bordure", curly_border: "Bordure Indented", bricks: "Field Masoned",
+  gradient: "Gradient", gradient_up: "Base Gradient", creeper: "Creeper Charge", skull: "Skull Charge", flower: "Flower Charge",
+  mojang: "Thing", globe: "Globe", piglin: "Snout", flow: "Flow", guster: "Guster",
+};
 
 export const BANNER_PATTERNS = ["flower", "creeper", "skull", "mojang", "globe", "piglin", "flow", "guster"] as const;
 

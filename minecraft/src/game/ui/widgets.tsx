@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { textWidth } from "./font";
 import { Text, useGui } from "./gui";
 import { buttonUrl, dirtUrl, sliderHandleUrl, sliderTrackUrl } from "./sprites";
+import { activeSettings } from "./settings";
 
 let clickSound: (() => void) | null = null;
 // The integration layer sets this to play "ui.button.click".
@@ -213,7 +214,7 @@ export function Screen({ background = "dirt", children, onMouseDown }: { backgro
     background === "dirt"
       ? { backgroundImage: `url(${dirtUrl()})`, backgroundSize: "32px 32px", imageRendering: "pixelated" }
       : background === "ingame"
-        ? { background: "linear-gradient(rgba(16,16,16,0.75), rgba(16,16,16,0.82))", backdropFilter: "blur(5px)", WebkitBackdropFilter: "blur(5px)" }
+        ? { background: "linear-gradient(rgba(16,16,16,0.75), rgba(16,16,16,0.82))", backdropFilter: `blur(${activeSettings().menuBlur}px)`, WebkitBackdropFilter: `blur(${activeSettings().menuBlur}px)` }
         : background === "death"
           ? { background: "linear-gradient(rgba(80,0,0,0.38), rgba(128,48,48,0.63))" }
           : {};

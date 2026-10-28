@@ -165,12 +165,12 @@ export function wrap(r: Rig, anim: (a: Pose) => void, opts: WrapOpts = {}): MobM
         }
       }
       resetPose(r);
+      for (let i = 0; i < heads.length; i++) heads[i].position.copy(headPos[i]);
       anim(a);
       syncOverlay(r);
       const hs = a.baby ? opts.babyHead ?? 1.5 : 1;
       for (let i = 0; i < heads.length; i++) {
         heads[i].scale.setScalar(hs);
-        heads[i].position.copy(headPos[i]);
         if (a.baby) heads[i].position.y += 1 / 16;
       }
     },

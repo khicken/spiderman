@@ -1,11 +1,12 @@
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { rig, wrap, setRot, overlay, syncOverlay, type VPart } from "../rig";
-import { skin, shade, type Pix } from "./paint";
+import { skin, shade, patches, type Pix } from "./paint";
 import { animalAI, feed, num, sound, useItem, type AnimalOpts } from "./common";
 import { isBaby } from "../geom";
 import { wander, clearPath } from "../ai";
 import { blockJumpFactor } from "../../player/physics";
-import { rider, mountPlayer, steer, dismountPlayer } from "../riding";
+import { rider, mountPlayer, steer, dismountPlayer, openMount, registerMountInv } from "../riding";
+import { dropContents } from "../vehicles/boat";
 
 type Kind = "horse" | "donkey" | "mule" | "skeleton_horse" | "zombie_horse";
 
@@ -48,6 +49,35 @@ function paintHorse(p: Pix, coat: string, eared: boolean) {
   if (eared) p.fillCuboid(26, 0, 2, 7, 1, B);
 }
 
+const HORSE_COLORS = ["white", "creamy", "chestnut", "brown", "black", "gray", "dark_brown"];
+const MARKINGS = ["none", "white", "white_field", "white_dots", "black_dots"];
+
+// Vanilla horse markings drawn over the coat: stockings and blaze, a white field, white dots, or black dots.
+function paintMarkings(p: Pix, m: string) {
+  if (m === "none") return;
+  const body = p.cuboid(0, 32, 10, 10, 22);
+  const neck = p.cuboid(0, 35, 4, 12, 7);
+  const head = p.cuboid(0, 13, 6, 5, 7);
+  const mouth = p.cuboid(0, 25, 4, 5, 5);
+  const leg = p.cuboid(48, 21, 4, 11, 4);
+  const W = [0xf2efe8, 0xe6e2da, 0xfaf8f2];
+  if (m === "white") {
+    p.noise([48, leg.front[1] + 5, 16, 4], W);
+    p.noise([head.front[0] + 2, head.front[1], 2, 5], W);
+    p.noise([head.top[0] + 2, head.top[1], 2, 7], W);
+    p.noise([mouth.front[0] + 1, mouth.front[1], 2, 3], W);
+    p.noise([mouth.top[0] + 1, mouth.top[1], 2, 5], W);
+    return;
+  }
+  const big = m === "white_field";
+  const pal = m === "black_dots" ? [0x1c1612, 0x2a221c] : W;
+  const [n, r] = big ? [5, 4.5] : [14, 0.9];
+  for (const f of [body.right, body.left, body.top, body.back]) patches(p, f, pal, Math.max(2, Math.round((n * f[2] * f[3]) / 220)), r);
+  for (const f of [neck.right, neck.left]) patches(p, f, pal, big ? 2 : 4, r);
+  if (big) p.noise([48, leg.front[1] + 4, 16, 5], W);
+  else patches(p, [48, leg.front[1], 16, 9], pal, 5, r);
+}
+
 function paintSaddle(p: Pix) {
   const L = [0x6b4423, 0x5e3a1d, 0x7a4f2a];
   const f = p.cuboid(26, 0, 10, 9, 9);
@@ -61,6 +91,8 @@ function paintSaddle(p: Pix) {
   }
 }
 
+// The item lives in horseArmor; data.armor holds armor points for damage reduction.
+const ARMOR_POINTS: Record<string, number> = { leather_horse_armor: 3, iron_horse_armor: 5, golden_horse_armor: 7, diamond_horse_armor: 11 };
 const ARMOR_COLOR: Record<string, number> = { leather_horse_armor: 0xa06540, iron_horse_armor: 0xd8d8d8, golden_horse_armor: 0xf2cd3c, diamond_horse_armor: 0x4aedd9 };
 
 // Horse armor in gray, tinted per material through the overlay's base color.
@@ -116,8 +148,13 @@ function horseModel(kind: Kind) {
       { name: "right_ear", parent: "head_parts", pivot: [0, 0, 0], box: [-2.55, -13, 4, 2, 3, 0], uv: [19, 16] },
     );
   }
-  const key = (e: Entity) => (kind === "horse" ? `horse_${(e.data.variant as string) ?? "brown"}` : `horse_${kind}`);
-  const paint = (k: string) => skin(k, 64, 64, (p) => paintHorse(p, k.slice(6), k === "horse_donkey" || k === "horse_mule"));
+  const key = (e: Entity) => (kind === "horse" ? `horse_${(e.data.variant as string) ?? "brown"}~${(e.data.markings as string) ?? "none"}` : `horse_${kind}`);
+  const paint = (k: string) =>
+    skin(k, 64, 64, (p) => {
+      const [coat, marks] = k.slice(6).split("~");
+      paintHorse(p, coat, k === "horse_donkey" || k === "horse_mule");
+      if (marks) paintMarkings(p, marks);
+    });
   const r = rig(paint(kind === "horse" ? "horse_brown" : `horse_${kind}`), parts);
   const saddle = overlay(r, skin("horse_saddle", 64, 64, paintSaddle), [{ name: "body", pivot: [0, 11, 5], box: [-5, -8, -9, 10, 9, 9], uv: [26, 0], inflate: 0.5 }]);
   const armorList: VPart[] = [
@@ -159,12 +196,16 @@ function horseModel(kind: Kind) {
       saddle.root.visible = a.e.data.saddle === true;
       if (chests) chests.root.visible = a.e.data.chest === true;
       if (armor) {
-        const item = (a.e.data.armor as string | undefined) ?? "";
+        const item = (a.e.data.horseArmor as string | undefined) ?? "";
         armor.root.visible = !!ARMOR_COLOR[item];
         if (item !== armorItem && ARMOR_COLOR[item]) {
           armor.root.traverse((o) => {
             const m = (o as { material?: { userData: Record<string, unknown> } }).material;
-            if (m) m.userData.base = ARMOR_COLOR[item];
+            if (!m) return;
+            const b = m.userData.base as { setHex?: (c: number) => void } | undefined;
+            // entities/render.ts converts base to a Color once and caches it.
+            if (b?.setHex) b.setHex(ARMOR_COLOR[item]);
+            else m.userData.base = ARMOR_COLOR[item];
           });
         }
         armorItem = item;
@@ -187,7 +228,13 @@ function breedOpts(kind: Kind): AnimalOpts {
     mates: kind === "horse" ? ["donkey"] : kind === "donkey" ? ["horse"] : undefined,
     babyOf: (a, b) => (a.type === b.type ? a.type : "mule"),
     breed(a, b, baby, ctx) {
-      if (a.type === b.type) baby.data.variant = ctx.random() < 0.5 ? a.data.variant : b.data.variant;
+      // Vanilla Horse.getBreedOffspring: color 4/9 each parent else random, markings 2/5 each parent else random.
+      if (a.type === b.type && a.type === "horse") {
+        const i = Math.floor(ctx.random() * 9);
+        baby.data.variant = i < 4 ? a.data.variant : i < 8 ? b.data.variant : HORSE_COLORS[Math.floor(ctx.random() * 7)];
+        const j = Math.floor(ctx.random() * 5);
+        baby.data.markings = j < 2 ? a.data.markings : j < 4 ? b.data.markings : MARKINGS[Math.floor(ctx.random() * 5)];
+      }
       const avg = (k: string) => (num(a, k) + num(b, k) + ((k === "hp" ? 15 + ctx.random() * 15 : k === "spd" ? 0.1125 + ctx.random() * 0.225 : 0.4 + ctx.random() * 0.6))) / 3;
       baby.data.hp = avg("hp");
       baby.data.spd = avg("spd");
@@ -202,7 +249,8 @@ function rollStats(e: Entity, ctx: GameCtx, kind: Kind) {
     e.data.hp = 15 + Math.floor(r() * 8) + Math.floor(r() * 9);
     e.data.spd = (0.45 + r() * 0.3 + r() * 0.3 + r() * 0.3) * 0.25;
     e.data.jmp = 0.4 + r() * 0.2 + r() * 0.2 + r() * 0.2;
-    if (!e.data.variant) e.data.variant = Object.keys(COATS)[Math.floor(r() * 7)];
+    if (!e.data.variant) e.data.variant = HORSE_COLORS[Math.floor(r() * 7)];
+    if (!e.data.markings) e.data.markings = MARKINGS[Math.floor(r() * 5)];
   } else if (kind === "donkey" || kind === "mule") {
     e.data.hp = 15 + Math.floor(r() * 16);
     e.data.spd = 0.175;
@@ -279,6 +327,10 @@ function horseDef(kind: Kind): MobDef {
     createModel: () => horseModel(kind),
     tick(e, ctx) {
       if (e.data.hp === undefined) rollStats(e, ctx, kind);
+      if (typeof e.data.armor === "string") {
+        e.data.horseArmor = e.data.armor;
+        e.data.armor = ARMOR_POINTS[e.data.armor] ?? 0;
+      }
       e.body.stepHeight = 1;
       e.maxHealth = e.data.hp as number;
       if (undead) e.data.undead = true;
@@ -298,6 +350,7 @@ function horseDef(kind: Kind): MobDef {
     },
     onInteract(e, ctx, held) {
       const item = held?.item;
+      if (ctx.player.sneaking && ctx.player.vehicle !== e.id && openMount(ctx, e)) return true;
       if (item && HEAL[item] !== undefined && (e.health < e.maxHealth || (!e.data.tame && TEMPER[item])) && !(FOOD.includes(item) && e.data.tame && e.health >= e.maxHealth)) {
         if (undead) return false;
         useItem(ctx);
@@ -314,25 +367,54 @@ function horseDef(kind: Kind): MobDef {
         sound(ctx, e, "entity.horse.saddle", 0.5, 1);
         return true;
       }
-      if (kind === "horse" && item?.endsWith("_horse_armor") && e.data.tame && !isBaby(e)) {
-        if (e.data.armor) ctx.entities.dropItem({ item: e.data.armor as string, count: 1 }, e.body.pos.x, e.body.pos.y + 1, e.body.pos.z);
-        e.data.armor = item;
+      if (kind === "horse" && item?.endsWith("_horse_armor") && e.data.tame && !isBaby(e) && !e.data.horseArmor) {
+        e.data.horseArmor = item;
+        e.data.armor = ARMOR_POINTS[item] ?? 0;
         useItem(ctx);
         sound(ctx, e, "entity.horse.armor", 0.5, 1);
         return true;
       }
       if ((kind === "donkey" || kind === "mule") && item === "chest" && e.data.tame && !e.data.chest && !isBaby(e)) {
         e.data.chest = true;
+        e.data.be = { x: 0, y: 0, z: 0, type: "chest", items: new Array(15).fill(null), data: { customName: e.data.name ?? names[kind] } };
         useItem(ctx);
         sound(ctx, e, `entity.${kind}.chest`, 1, 1);
         return true;
       }
       if (undead && !e.data.tame) return false;
-      if (item && item !== "saddle" && item !== "lead" && !item.endsWith("horse_armor") && HEAL[item] === undefined && !e.data.tame) return false;
+      if (item && HEAL[item] === undefined && !e.data.tame) {
+        e.data._rear = 20;
+        sound(ctx, e, `entity.${kind}.angry`);
+        return true;
+      }
       return mountPlayer(ctx, e);
+    },
+    onDeath(e, ctx) {
+      const p = e.body.pos;
+      if (e.data.horseArmor) ctx.entities.dropItem({ item: e.data.horseArmor as string, count: 1 }, p.x, p.y + 0.5, p.z);
+      if (!e.data.chest) return;
+      ctx.entities.dropItem({ item: "chest", count: 1 }, p.x, p.y + 0.5, p.z);
+      dropContents(e, ctx);
     },
   };
   return def;
+}
+
+for (const kind of ["horse", "donkey", "mule", "skeleton_horse", "zombie_horse"] as const) {
+  registerMountInv(kind, {
+    canOpen: (e) => e.data.tame === true && !isBaby(e),
+    saddle: true,
+    ...(kind === "horse" && {
+      armor: "horse_armor" as const,
+      isArmor: (item: string) => !!ARMOR_POINTS[item],
+      getArmor: (e: Entity) => (e.data.horseArmor ? { item: e.data.horseArmor as string, count: 1 } : null),
+      setArmor(e: Entity, s: { item: string } | null, ctx: GameCtx) {
+        if (s && s.item !== e.data.horseArmor) sound(ctx, e, "entity.horse.armor", 0.5, 1);
+        e.data.horseArmor = s?.item;
+        e.data.armor = s ? ARMOR_POINTS[s.item] ?? 0 : 0;
+      },
+    }),
+  });
 }
 
 export const HORSE = horseDef("horse");
