@@ -441,12 +441,10 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     t2.copy(vel).addScaledVector(slash.dir, -along).multiplyScalar(0.35);
     vel.copy(slash.dir).multiplyScalar(Math.max(along, lunge)).add(t2);
     slash.speed = vel.length();
-    gas = Math.max(0, gas - 0.02 * drain());
     frame.side = slash.side;
     startAct("slash", SLASH_T);
     sfx("slash", 0.7 + 0.3 * slash.charge);
     if (perfect) out.push({ type: "shake", strength: 0.25 });
-    fx.gas(pos, t1.copy(slash.dir).negate(), 1.2);
   };
 
   const updateSlash = (dt: number) => {
@@ -600,7 +598,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         const ramp = Math.min(1, reelT / 0.45);
         const curve = 0.3 + 0.7 * ramp * ramp * (3 - 2 * ramp);
         const arrive = THREE.MathUtils.clamp((d - 3) / 4, 0, 1);
-        const power = (n === 2 ? 72 : 50) * st.reel * curve * arrive * (gas > 0 ? 1 : 0.4) * (boosting ? 1.25 : 1);
+        const power = (n === 2 ? 72 : 50) * st.reel * curve * arrive * (boosting ? 1.25 : 1);
         const vr = vel.dot(t1);
         const cap = (n === 2 ? 58 : 46) * st.reel;
         if (vr < cap) a.addScaledVector(t1, power * Math.min(1, (cap - vr) / 10));
@@ -612,8 +610,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         t2.copy(wish).addScaledVector(t1, -wish.dot(t1));
         a.addScaledVector(t2, 26);
         if (d < 3.2 && vr > 0) vel.addScaledVector(t1, -vr * Math.min(1, 9 * dt));
-        gas = Math.max(0, gas - 0.012 * n * drain() * dt);
-        if (gas > 0 && !boosting) gasPuff(t2.copy(t1).negate(), 0.25 + 0.2 * ramp, dt, 0.07);
       }
     }
 
@@ -660,7 +656,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       a.addScaledVector(t1, (n ? 34 : 26) * Math.max(0.3, 1 - Math.max(0, along) / 48));
       if (n) a.y += 6;
       else if (vel.y < 0) a.y += 3;
-      gas = Math.max(0, gas - 0.09 * drain() * dt);
+      gas = Math.max(0, gas - 0.12 * drain() * dt);
       gasPuff(t2.copy(t1).negate(), 1, dt);
     }
 
@@ -668,7 +664,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (input.pressed.has("dash") && dashCd <= 0 && gas > 0.02 && mode !== "held") {
       dashCd = 0.45;
       dashAt = time;
-      gas = Math.max(0, gas - 0.05 * drain());
+      gas = Math.max(0, gas - 0.06 * drain());
       if (wish.lengthSq() > 0) t2.copy(wish).addScaledVector(UP, grounded ? 0.12 : 0.18).normalize();
       else if (n) t2.copy(look);
       else t2.copy(look).setY(0).normalize().addScaledVector(UP, 0.12).normalize();
