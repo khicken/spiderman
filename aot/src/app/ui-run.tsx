@@ -68,36 +68,39 @@ export function LevelUp({ run, onPick }: { run: RunHud; onPick: (i: number) => v
   if (!run.choice) return null;
   return (
     <div
-      className="pointer-events-auto absolute left-1/2 top-[76px] z-40 w-[600px] -translate-x-1/2 font-cond text-bone [.touch-hud_&]:left-[calc(50%-172px)] [.touch-hud_&]:top-12 [.touch-hud_&]:w-[224px] [.touch-hud_&]:translate-x-0"
+      data-levelup
+      className="pointer-events-auto absolute right-4 top-[150px] z-40 w-[240px] font-cond text-bone [.touch-hud_&]:right-auto [.touch-hud_&]:left-[calc(50%-172px)] [.touch-hud_&]:top-12 [.touch-hud_&]:w-[224px]"
       onPointerDown={(e) => e.stopPropagation()}
       onPointerUp={(e) => e.stopPropagation()}
       onPointerMove={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-      <div className="mb-1 text-xs uppercase tracking-[0.2em] ink-shadow">
-        <span>
-          Level {run.level} <span className="font-jp font-bold text-blood">強化</span> <span className="text-bone/70 [.touch-hud_&]:hidden">Press 1, 2 or 3</span>
-          <span className="hidden text-bone/70 [.touch-hud_&]:inline">Tap one</span>
-        </span>
+      <div className="mb-1 flex items-baseline gap-2 text-xs uppercase tracking-[0.2em] ink-shadow">
+        <span className="font-display text-base tracking-wide">Upgrade</span>
+        <span className="font-jp font-bold text-blood">強化</span>
+        {run.pending > 1 && <span className="text-brass">×{run.pending}</span>}
+        <span className="hidden text-bone/70 [.touch-hud_&]:inline">Tap one</span>
       </div>
-      <div className="grid grid-cols-3 gap-2 [.touch-hud_&]:gap-1.5">
+      <div className="flex flex-col gap-1 [.touch-hud_&]:grid [.touch-hud_&]:grid-cols-3">
         {run.choice.map((u, i) => (
           <button
             key={u.id}
             data-upgrade={u.id}
             onClick={() => onPick(i)}
-            className="plate panel-in relative cursor-pointer border border-brass/50 bg-gradient-to-b from-char/90 to-ink/90 p-2 text-left hover:border-bone [.touch-hud_&]:p-1.5"
+            className="plate panel-in flex cursor-pointer items-center gap-2 border border-brass/50 bg-gradient-to-r from-char/90 to-ink/80 px-2 py-1 text-left hover:border-bone [.touch-hud_&]:p-1.5"
           >
-            <div className="flex items-center gap-2">
-              <Key>{i + 1}</Key>
-              <span className="min-w-0 flex-1 font-display text-lg uppercase leading-none [.touch-hud_&]:text-xs">{u.name}</span>
-            </div>
-            <div className="mt-1 text-xs leading-snug text-bone/75 [.touch-hud_&]:text-[10px] [.touch-hud_&]:leading-tight">{u.text}</div>
-            <div className="mt-1.5 flex gap-0.5">
-              {Array.from({ length: u.max }, (_, k) => (
-                <span key={k} className={`h-1 flex-1 ${k < u.level ? "bg-brass" : k === u.level ? "bg-blood" : "bg-bone/15"}`} />
-              ))}
-            </div>
+            <Key>{i + 1}</Key>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-2">
+                <span className="font-display text-sm uppercase leading-none [.touch-hud_&]:text-xs">{u.name}</span>
+                <span className="ml-auto flex gap-0.5 self-center">
+                  {Array.from({ length: u.max }, (_, k) => (
+                    <span key={k} className={`h-1 w-2 ${k < u.level ? "bg-brass" : k === u.level ? "bg-blood" : "bg-bone/15"}`} />
+                  ))}
+                </span>
+              </span>
+              <span className="block text-[11px] leading-tight text-bone/75 [.touch-hud_&]:text-[10px]">{u.text}</span>
+            </span>
           </button>
         ))}
       </div>

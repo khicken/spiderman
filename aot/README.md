@@ -15,6 +15,7 @@ Quick start: Q locks on a titan, F hooks it, hold E and release to strike the na
 - Only a nape cut kills. Cut legs to make a titan kneel, eyes to blind it, arms to stop a grab. Dash as a hand reaches for you to dodge it. If caught, hold E and release when the blades glow.
 - Phone or tablet: play in landscape. Use the left stick to move, drag to look, and the right buttons for anchors, gas, slash, and dash.
 - Bosses: the Female Titan (wave 4), the Armored Titan (wave 7), and the Beast Titan (wave 10). Waves never end after wave 10.
+- Each level up shows upgrade choices at the screen edge. Press 1, 2, or 3, or tap one, while you keep flying.
 - A Survey Corps squad fights with you. G orders them to attack your target or regroup. C and V fire single anchors.
 - Pick Eren, Mikasa, Levi, Armin, or a cadet under Soldiers. Ranks unlock Mikasa and Levi.
 

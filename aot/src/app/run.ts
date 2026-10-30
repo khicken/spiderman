@@ -8,13 +8,11 @@ type Spec = { text: string; hint?: string; need: number; count?: Count; kind?: T
 type Obj = Objective & { spec: Spec };
 
 const UPGRADES: Omit<Upgrade, "level">[] = [
-  { id: "tank", name: "Gas tank", jp: "大型ボンベ", text: "+15% gas capacity", max: 4 },
-  { id: "reel", name: "Reel power", jp: "巻き取り強化", text: "+8% reel pull and top speed", max: 4 },
-  { id: "blade", name: "Blade durability", jp: "刃の耐久", text: "Blades dull 15% slower", max: 4 },
-  { id: "spare", name: "Spare blades", jp: "予備の刃", text: "+2 spare blade sets", max: 3 },
-  { id: "damage", name: "Cut damage", jp: "斬撃強化", text: "+10% cut damage", max: 5 },
-  { id: "charge", name: "Faster charge", jp: "溜め短縮", text: "Charge strikes 12% faster", max: 3 },
-  { id: "health", name: "Health", jp: "体力強化", text: "+20% max health", max: 4 },
+  { id: "reel", name: "Reel power", jp: "巻き取り強化", text: "Faster reel and higher top speed", max: 3 },
+  { id: "dash", name: "Gas dash", jp: "噴射強化", text: "Stronger dash, shorter cooldown", max: 2 },
+  { id: "damage", name: "Deep cuts", jp: "斬撃強化", text: "+25% cut damage", max: 3 },
+  { id: "charge", name: "Quick draw", jp: "溜め短縮", text: "Perfect cuts come sooner", max: 2 },
+  { id: "spears", name: "Spear pack", jp: "雷槍", text: "+2 thunder spears", max: 2 },
   { id: "squad", name: "Squad size", jp: "増員", text: "+1 soldier in your squad", max: 2 },
 ];
 
@@ -98,13 +96,12 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
   const boost = (): Boost => {
     const g = gearBoost(o.tier);
     return {
-      tank: g.tank * (1 + 0.15 * lv.tank),
-      reel: g.reel * (1 + 0.08 * lv.reel),
-      wear: g.wear * 0.85 ** lv.blade,
-      damage: g.damage * (1 + 0.1 * lv.damage),
-      chargeTime: g.chargeTime * 0.88 ** lv.charge,
-      health: g.health * (1 + 0.2 * lv.health),
-      spare: g.spare + 2 * lv.spare,
+      ...g,
+      reel: g.reel * (1 + 0.15 * lv.reel),
+      dash: g.dash * (1 + 0.3 * lv.dash),
+      damage: g.damage * (1 + 0.25 * lv.damage),
+      chargeTime: g.chargeTime * 0.85 ** lv.charge,
+      spears: g.spears + 2 * lv.spears,
     };
   };
   player.setBoost(boost());
@@ -295,14 +292,11 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
           if ((finT += real) > 2.5) endDrill();
         } else if (dt > 0 && objs.some((ob) => ob.spec.count === "kill" && ob.state === "on") && !titans.list().some((t) => t.alive)) titans.drill?.(1);
       }
-      world.setBeckon(pending > 0);
-      const was = open;
-      open = pending > 0 && player.inSupply && live && !dead && !titans.held();
+      open = pending > 0 && live && !dead;
       if (open && !choice) {
         choice = roll();
         if (!choice.length) choice = null, pending = 0, open = false;
       }
-      if (open && !was) out.push({ type: "sfx", name: "bladeDraw" });
       return out.splice(0);
     },
     pick(i: number): GameEvent[] {
@@ -318,9 +312,6 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     },
     hud(): RunHud {
       return { level, xp, need: needFor(level), total, objectives: objs, choice: open ? choice : null, pending, done, count, drill, showDepot: drill && objs.some((ob) => ob.spec.count === "supply" && ob.state === "on") };
-    },
-    get upgrades() {
-      return { ...lv };
     },
   };
 }

@@ -69,7 +69,7 @@ export const GEAR = [
 export const gearTier = (c: Career) => Math.min(GEAR.length - 1, rankIndex(c));
 
 export function gearBoost(t: number): Boost {
-  return { tank: 1 + 0.05 * t, reel: 1 + 0.03 * t, wear: 1 - 0.05 * t, damage: 1 + 0.03 * t, chargeTime: 1, health: 1, spare: t >= 3 ? 1 : 0 };
+  return { tank: 1 + 0.05 * t, reel: 1 + 0.03 * t, wear: 1 - 0.05 * t, damage: 1 + 0.03 * t, chargeTime: 1, dash: 1, spare: t >= 3 ? 1 : 0, spears: 0 };
 }
 
 export function gearText(t: number) {

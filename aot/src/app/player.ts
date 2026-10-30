@@ -31,11 +31,13 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   let scout = createScout();
   let base: CharStats = getCharacter("cadet").stats;
   let st: CharStats = base;
-  let bo: Boost = { tank: 1, reel: 1, wear: 1, damage: 1, chargeTime: 1, health: 1, spare: 0 };
+  let bo: Boost = { tank: 1, reel: 1, wear: 1, damage: 1, chargeTime: 1, dash: 1, spare: 0, spears: 0 };
   let spare = SPARE;
+  let spearMax = SPEARS;
   const mix = () => {
     st = { ...base, tank: base.tank * bo.tank, reel: base.reel * bo.reel, maxSpeed: base.maxSpeed * (1 + (bo.reel - 1) / 2), wear: base.wear * bo.wear, damage: base.damage * bo.damage, chargeTime: base.chargeTime * bo.chargeTime };
     spare = SPARE + bo.spare;
+    spearMax = SPEARS + bo.spears;
   };
   let charId = "cadet";
   const drain = () => st.gasDrain / st.tank;
@@ -503,7 +505,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     wasHeld = false;
     combo = 0;
     chain.clear();
-    spearAmmo = SPEARS;
+    spearAmmo = spearMax;
     spears.reset();
     for (const h of hooks) {
       h.state = "idle";
@@ -527,7 +529,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       lowArmed = false;
       sfx("lowSupply");
     }
-    const full = gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= SPEARS;
+    const full = gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= spearMax;
     if (near >= 0 && !inSupply) {
       fx.flare(world.depotTops[near]);
       sfx("resupply", full ? 0.3 : undefined);
@@ -542,9 +544,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       supplyT = 0;
       if (sharp < 1) sharp = 1;
       else if (blades < spare) blades++;
-      spearAmmo = Math.min(SPEARS, spearAmmo + 1);
+      spearAmmo = Math.min(spearMax, spearAmmo + 1);
     }
-    if (!chimed && gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= SPEARS) {
+    if (!chimed && gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= spearMax) {
       chimed = true;
       sfx("refilled");
     }
@@ -662,14 +664,14 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
 
     dashCd -= dt;
     if (input.pressed.has("dash") && dashCd <= 0 && gas > 0.02 && mode !== "held") {
-      dashCd = 0.45;
+      dashCd = 0.45 / bo.dash;
       dashAt = time;
       gas = Math.max(0, gas - 0.06 * drain());
       if (wish.lengthSq() > 0) t2.copy(wish).addScaledVector(UP, grounded ? 0.12 : 0.18).normalize();
       else if (n) t2.copy(look);
       else t2.copy(look).setY(0).normalize().addScaledVector(UP, 0.12).normalize();
       const along = vel.dot(t2);
-      vel.addScaledVector(t2, Math.max(16, 30 - Math.max(0, along) * 0.4));
+      vel.addScaledVector(t2, Math.max(16, 30 - Math.max(0, along) * 0.4) * bo.dash);
       startAct("dash", 0.28);
       sfx("gasDash");
       out.push({ type: "shake", strength: 0.12 });
@@ -1055,7 +1057,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     damage(amount, from) {
       if (mode === "dead") return [];
       const ev: GameEvent[] = [{ type: "sfx", name: "hurt" }, { type: "shake", strength: 0.35 + amount }];
-      health -= amount / bo.health;
+      health -= amount;
       if (from && mode !== "held") {
         t1.copy(pos).sub(from);
         t1.y = Math.max(0.3, t1.y);
@@ -1118,6 +1120,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     },
     setBoost(b) {
       blades = Math.max(0, blades + b.spare - bo.spare);
+      spearAmmo = Math.max(0, spearAmmo + b.spears - bo.spears);
       bo = { ...b };
       mix();
     },

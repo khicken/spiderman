@@ -686,11 +686,6 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
             </span>
           </span>
         )}
-        {h.run.pending > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center self-center border border-bone bg-blood px-1 font-display text-sm leading-none tabular-nums shadow-[0_0_8px_rgba(255,40,20,0.8)]">
-            {h.run.pending}
-          </span>
-        )}
       </div>
       <Team h={h} />
       {h.supply && (
