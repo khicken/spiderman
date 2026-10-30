@@ -21,7 +21,7 @@ export function bossFor(n: number): BossKind | null {
 }
 
 export const heat = (n: number) => Math.max(0, n - 10);
-export const quotaFor = (n: number, boss: boolean) => (boss ? 8 + Math.min(n, 16) : 6 + 2 * Math.min(n, 17));
+export const quotaFor = (n: number, boss: boolean) => (boss ? 4 + Math.ceil(Math.min(n, 16) / 2) : 6 + 2 * Math.min(n, 17));
 export const damageK = (n: number) => Math.min(1.8, 1 + heat(n) * 0.05);
 export const speedK = (n: number) => Math.min(1.45, 1 + heat(n) * 0.03);
 
