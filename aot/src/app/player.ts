@@ -105,7 +105,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     const near = (lock && titans.partPos(lock.titan, lock.part, hv) && hv.distanceTo(pos) < 32) || ((ti) => ti && titans.partPos(ti, "nape", hv))(titans.nearest(pos, lastLook, 22));
     if (near) {
       const b = lock?.part === "nape" && isBoss(lock.titan.kind) ? titans.boss() : null;
-      if (b?.hardened) return lock!.titan.kind === "armored" ? tip(["lock", "cycle"], "Q", "Target a leg", "Tap Lock to target a leg") : tip(["lock", "cycle"], "Q", "Target a limb", "Tap Lock to target a limb");
+      if (b?.hardened) return lock!.titan.kind === "armored" || lock!.titan.kind === "jaw" ? tip(["lock", "cycle"], "Q", "Target a leg", "Tap Lock to target a leg") : tip(["lock", "cycle"], "Q", "Target a limb", "Tap Lock to target a limb");
       return tip(["attack"], "E", "Hold, release to strike", "Hold Slash, release to strike");
     }
     const on = hooks.some((h) => h.state === "on");
@@ -121,7 +121,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       localStorage.setItem(HINT_KEY, JSON.stringify(Object.fromEntries(used)));
     } catch {}
   };
-  const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, comboT: 0, comboBonus: 1, ammo: SPEARS, hint: null };
+  const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, chargeWin: 1, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, comboT: 0, comboBonus: 1, ammo: SPEARS, hint: null };
   const lockPoint = new THREE.Vector3();
   const view: CameraView = { pos, vel, mode, lockPoint: null, charge: 0 };
 
@@ -417,10 +417,12 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     }
   };
 
-  const isPerfect = () => chargeT >= PERFECT[0] * st.chargeTime && chargeT <= PERFECT[0] * st.chargeTime + PERFECT[1] - PERFECT[0];
+  const winStart = () => PERFECT[0] * st.chargeTime;
+  const winEnd = () => winStart() + PERFECT[1] - PERFECT[0];
+  const isPerfect = () => chargeT >= winStart() && chargeT <= winEnd();
   const chargeUp = (input: Input) => {
     if (input.held.has("attack")) chargeT = input.holdTime("attack");
-    if (!flashed && chargeT >= PERFECT[0] * st.chargeTime) {
+    if (!flashed && chargeT >= winStart()) {
       flashed = true;
       sfx("charge");
     }
@@ -1088,7 +1090,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       hud.sharp = sharp;
       hud.hooks[0] = hooks[0].state === "on";
       hud.hooks[1] = hooks[1].state === "on";
-      hud.charge = charging ? Math.min(1, chargeT / (PERFECT[1] * st.chargeTime)) : null;
+      hud.charge = charging ? Math.min(1, chargeT / winEnd()) : null;
+      hud.chargeWin = winStart() / winEnd();
       hud.aim = aim.kind;
       hud.aimDist = aim.dist;
       hud.supply = inSupply;

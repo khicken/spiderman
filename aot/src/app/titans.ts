@@ -401,6 +401,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
 
   function startAct(ti: T, act: Act) {
     if (ti.act === "throw" && act !== "throw") rocks.hold(null, 0);
+    if (ti.act === "bite" && act !== "bite") ti.speed = 0;
     ti.act = act;
     ti.at = 0;
     ti.hit = false;
@@ -433,6 +434,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       if (n >= 2 && ti.stun <= 0) {
         ti.stun = 6;
         if (heldBy === ti) heldBy = null;
+        ti.allyHold = false;
         if (ti.act !== "flinch") startAct(ti, "walk");
         const nv = new THREE.Vector3();
         fx.steamFollow(() => (ti.stun > 0 && ti.alive ? nv.copy(ti.nape) : null), H * 0.09, 6);
@@ -553,7 +555,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         { type: "sfx", name: hitSfx, at: pt }, { type: "sfx", name: "titanHurt", at: pt }, { type: "hitstop", duration: 0.07 }, { type: "impact", kind: crit ? "crit" : "hit" },
         { type: "shake", strength: 0.2 },
       );
-      if (t.act !== "hold" && t.act !== "climb") startAct(t, "flinch");
+      if (t.act !== "hold" && t.act !== "climb" && !(t.kind === "jaw" && t.act === "bite")) startAct(t, "flinch");
     } else if (part !== "body") {
       const k = LIMB_IDX[part];
       const need = ((k < 2 ? 1.9 : 2.2) * H + 6) * (t.kind === "armored" && k >= 2 ? 0.65 : 1);
@@ -561,7 +563,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       if (t.hp[part] <= 0) {
         sever(t, k, blade.dir, events);
         events.push({ type: "hitstop", duration: 0.09 }, { type: "impact", kind: "crit" }, { type: "shake", strength: 0.35 }, { type: "score", amount: 50, reason: k < 2 ? "Arm severed" : "Hamstrung" });
-        if (t.act !== "hold" && t.act !== "climb") startAct(t, "flinch");
+        if (t.act !== "hold" && t.act !== "climb" && !(t.kind === "jaw" && t.act === "bite")) startAct(t, "flinch");
       } else {
         fx.blood(pt, blade.dir, H * 0.06);
         events.push({ type: "sfx", name: hitSfx, at: pt }, { type: "hitstop", duration: 0.05 }, { type: "impact", kind: "hit" }, { type: "shake", strength: 0.12 });
@@ -642,7 +644,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           return startAct(ti, "punch");
         }
       }
-      if (legs && ti.special <= 0 && dh > 22 && dh < 150 && dy < H * 1.5 && fwd > 0.75) {
+      if (legs && ti.special <= 0 && dh > 22 && dh < 150 && dy < H * 1.5 && fwd > 0.75 && world.inside(ti.pos.x, ti.pos.z) === world.inside(player.pos.x, player.pos.z)) {
         out.push({ type: "sfx", name: "roar", at: ti.pos.clone(), volume: 1 }, { type: "shake", strength: 0.3 });
         return startAct(ti, "charge");
       }
@@ -995,8 +997,10 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         tg.lean = run ? 0.5 : 0.1;
         tg.jaw = 0.5;
         _b.copy(ti.pos).addScaledVector(_a, ti.speed * dt);
-        if (world.inside(_b.x, _b.z) !== world.inside(ti.pos.x, ti.pos.z)) ti.speed = 0;
-        else ti.pos.copy(_b);
+        if (world.inside(_b.x, _b.z) !== world.inside(ti.pos.x, ti.pos.z)) {
+          ti.speed = 0;
+          ti.mark = 0;
+        } else ti.pos.copy(_b);
         ti.smashT -= dt;
         if (ti.speed > 8 && ti.smashT <= 0) {
           for (const hy of [0.2, 0.5]) {
@@ -1695,6 +1699,9 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     holder() {
       return heldBy;
     },
+    holds(view) {
+      return (view as T).allyHold;
+    },
 
     struggle() {
       if (!heldBy) return [];
@@ -1805,6 +1812,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
           p.ik[0].set(s[o + 4], s[o + 5], s[o + 6]);
           p.ik[1].set(s[o + 7], s[o + 8], s[o + 9]);
           p.t += dt;
+          t.stun -= dt;
           const cr = t.rig.crystals[0];
           if (cr) {
             cr.visible = t.hard > 0.05;

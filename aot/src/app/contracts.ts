@@ -144,6 +144,7 @@ export interface Titans {
   start(): void; // starts wave 1
   drill(n: number): void; // bootcamp: spawns n small titans near the breach while wave is 0
   hold(titan: TitanView, side: "armL" | "armR", on: boolean): void; // an ally is held in that hand, off lets go
+  holds(titan: TitanView): boolean; // an ally is still held
   readonly wave: number;
   readonly kills: number;
   readonly left: number;
@@ -212,7 +213,8 @@ export type PlayerHud = {
   blades: number; // spare sets
   sharp: number; // current set, 0..1
   hooks: [boolean, boolean];
-  charge: number | null;
+  charge: number | null; // 1 when the perfect window closes
+  chargeWin: number; // where the perfect window opens on the charge ring
   aim: "none" | "world" | "titan";
   aimDist: number;
   supply: boolean;

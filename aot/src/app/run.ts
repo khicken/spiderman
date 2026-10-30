@@ -39,7 +39,7 @@ const BOSS_OBJ: Record<BossKind, [Spec, Spec]> = {
     { text: "Sever his throwing arm", need: 1, count: "sever", kind: "beast" },
   ],
   jaw: [
-    { text: "Bring down the Jaw Titan", hint: "Dodge his bite, then cut the nape", need: 1, count: "boss", kind: "jaw" },
+    { text: "Bring down the Jaw Titan", need: 1, count: "boss", kind: "jaw" },
     { text: "Cut his tendon to drop him", need: 1, count: "tendon", kind: "jaw" },
   ],
 };

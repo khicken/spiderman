@@ -195,7 +195,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   };
 
   const grab = (a: Ally, t: TitanView) => {
-    if (t.kind === "crawler" || squad.some((b) => b.heldBy === t)) return;
+    if (t.kind === "crawler" || titans.holder() === t || squad.some((b) => b.heldBy === t)) return;
     for (const side of ["armL", "armR"] as const) {
       if (!titans.partPos(t, side, v1) || v1.distanceTo(a.pos) > t.height * 0.12 + 2.5) continue;
       a.mode = "held";
@@ -214,7 +214,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   const held = (a: Ally, dt: number) => {
     const t = a.heldBy!;
     a.heldT += dt;
-    if (!t.alive || !titans.partPos(t, a.heldSide, v1)) {
+    if (!t.alive || !titans.holds(t) || !titans.partPos(t, a.heldSide, v1)) {
       titans.hold(t, a.heldSide, false);
       a.mode = "fly";
       a.heldBy = null;

@@ -14,7 +14,6 @@ export type Pop = UiEvent & { id: number };
 export type Msgs = { banner: Pop | null; radio: Pop | null; callout: Pop | null };
 type Lock = NonNullable<HudState["lock"]>;
 
-export const PERFECT = 0.61; // PERFECT[0] / PERFECT[1] in player.ts, the ring is full when the window closes
 const RED = "#ff3b2a";
 const BONE = "#efe6d2";
 const GLOW = "#9fe3ff";
@@ -367,7 +366,7 @@ function Crosshair({ h }: { h: HudState }) {
   const color = h.aim === "titan" ? RED : BONE;
   const dim = h.aim === "none" ? 0.3 : 0.95;
   const c = h.charge;
-  const perfect = c !== null && c >= PERFECT && c < 1;
+  const perfect = c !== null && c >= h.chargeWin && c < 1;
   return (
     <div className="hud-z absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
       <svg
@@ -403,7 +402,7 @@ function Crosshair({ h }: { h: HudState }) {
               strokeWidth="6"
             />
             <path
-              d={arc(38, PERFECT, 1)}
+              d={arc(38, h.chargeWin, 1)}
               fill="none"
               stroke="#c9a25a"
               strokeWidth="6"
@@ -832,7 +831,8 @@ function SpeedPanel({ h }: { h: HudState }) {
 }
 
 function KillBanner({ height, speed, kind }: { height: number; speed: number; kind: TitanKind }) {
-  if (isBoss(kind)) return <Banner jp={`${BOSS[kind].jp} 討伐`} en={`${BOSS[kind].name} down`} text={`${Math.round(speed)} km/h`} />;
+  const kmh = Math.round(speed * 3.6);
+  if (isBoss(kind)) return <Banner jp={`${BOSS[kind].jp} 討伐`} en={`${BOSS[kind].name} down`} text={`${kmh} km/h`} />;
   return (
     <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2 [.touch-hud_&]:left-[40%] [.touch-hud_&]:top-[12%] [.touch-hud_&]:w-[600px]">
       <div className="kill-banner">
@@ -849,7 +849,7 @@ function KillBanner({ height, speed, kind }: { height: number; speed: number; ki
         </div>
         <div className="mt-4 flex justify-center gap-6 font-display text-xl uppercase tracking-widest ink-shadow">
           <span>{Math.round(height)} m class</span>
-          <span className="text-brass">{Math.round(speed)} km/h</span>
+          <span className="text-brass">{kmh} km/h</span>
         </div>
       </div>
     </div>
