@@ -24,6 +24,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 const CHAIN_T = 3.5;
 const SPEARS = 4;
 const AIM = 0.55;
+const HINT_KEY = "aot-hints";
+const HOOK_BTNS: Action[] = ["anchorL", "anchorR"];
 
 type Act = { name: ScoutAnim | null; t: number; dur: number };
 
@@ -91,6 +93,10 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const lastLook = new THREE.Vector3(0, 0, 1);
   const hv = new THREE.Vector3();
   const used = new Map<string, number>();
+  try {
+    for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem(HINT_KEY) ?? "{}") as Record<string, number>)) used.set(k, v);
+  } catch {}
+  const fresh = new Set<Action>();
   let shown: (Hint & { acts: Action[]; rel?: boolean }) | null = null;
   const tip = (acts: Action[], key: string, text: string, touch: string, rel = false) => ((used.get(text) ?? 0) >= 3 ? null : { acts, key, text, touch, rel });
   const hint = () => {
@@ -109,7 +115,11 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     return tip(["anchorL", "anchorR"], "", "Click to anchor, Space for gas", "Tap L or R, hold Gas");
   };
   const countHint = (input: Input) => {
-    if (shown && shown.acts.some((a) => (shown!.rel ? input.released : input.pressed).has(a))) used.set(shown.text, (used.get(shown.text) ?? 0) + 1);
+    if (!shown || !shown.acts.some((a) => (shown!.rel ? input.released : input.pressed).has(a))) return;
+    used.set(shown.text, (used.get(shown.text) ?? 0) + 1);
+    try {
+      localStorage.setItem(HINT_KEY, JSON.stringify(Object.fromEntries(used)));
+    } catch {}
   };
   const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, comboT: 0, comboBonus: 1, ammo: SPEARS, hint: null };
   const lockPoint = new THREE.Vector3();
@@ -997,9 +1007,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         }
         return any;
       };
-      const hookBtns: Action[] = ["anchorL", "anchorR"];
-      const fresh = new Set<Action>();
-      for (const btn of hookBtns) {
+      fresh.clear();
+      for (const btn of HOOK_BTNS) {
         if (!input.pressed.has(btn)) continue;
         if (unlatch(btn)) continue;
         pressT.set(btn, time);
@@ -1013,7 +1022,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         if (aim.kind === "none") fire(i, btn, null, null, null, null, input.look);
         else fire(i, btn, aim.point, aim.obj, aim.titan, aim.kind === "world" ? aim.normal : null, input.look);
       }
-      for (const btn of hookBtns) {
+      for (const btn of HOOK_BTNS) {
         if (!input.released.has(btn) || time - (pressT.get(btn) ?? -9) > TAP) continue;
         pressT.delete(btn);
         for (const h of hooks) if (h.button === btn && (h.state === "fly" || h.state === "on")) h.latch = true;
