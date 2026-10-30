@@ -78,6 +78,7 @@ type T = {
 type Drop = { mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; t: number; base: number; pos: THREE.Vector3; r: number; rest: THREE.Quaternion | null };
 
 const MAX_ALIVE = 16;
+const HUNT_LEFT = 3;
 const CUT = [BN.armL, BN.armR, BN.shinL, BN.shinR];
 const LIMB_IDX: Record<string, number> = { armL: 0, armR: 1, legL: 2, legR: 3 };
 const LIMBS: Limb[] = ["armL", "armR", "legL", "legR"];
@@ -187,7 +188,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const queued: GameEvent[] = [];
   let nextId = 1;
   let lure: THREE.Vector3 | null = null;
-  let wave = 0, kills = 0, quota = 0, spawned = 0, killedWave = 0, spawnT = 0, breakT = 0, toastT = 0;
+  let wave = 0, kills = 0, quota = 0, spawned = 0, killedWave = 0, spawnT = 0, breakT = 0, toastT = 0, hunt = false;
   const told = new Set<string>();
   const once = (events: GameEvent[], key: string, text: string, title = key) => {
     if (told.has(key)) return;
@@ -1221,7 +1222,10 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       ti.goal.copy(ti.home);
       if (Math.hypot(ti.home.x - ti.pos.x, ti.home.z - ti.pos.z) < 6 && pl.alive) ti.goal.copy(ti.pos).addScaledVector(_a.copy(pl.pos).sub(ti.pos).setY(0).normalize(), 0.5);
     } else if (outside) ti.goal.copy(world.breach);
-    else if (lure && !isBoss(ti.kind) && ti.id % 2 === 0 && !(pl.alive && pl.pos.distanceTo(ti.pos) < 30)) ti.goal.copy(lure);
+    else if (hunt && !isBoss(ti.kind) && pl.alive) {
+      ti.goal.copy(pl.pos);
+      ti.ignore = false;
+    } else if (lure && !isBoss(ti.kind) && ti.id % 2 === 0 && !(pl.alive && pl.pos.distanceTo(ti.pos) < 30)) ti.goal.copy(lure);
     else if (ti.blind > 0 || ti.ignore || !pl.alive) {
       if (ti.wanderT <= 0) {
         ti.wanderT = R(2, 6);
@@ -1246,6 +1250,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     }
     _a.copy(ti.goal).sub(ti.pos);
     const dist = Math.hypot(_a.x, _a.z);
+    if (hunt && !isBoss(ti.kind) && dist > 40) want *= 1.8;
     if (ti.kind === "female" && dist > 40 && !outside) want = 11;
     if (ti.kind === "armored" && dist > 40 && !outside) want = 6;
     if (ti.kind === "runner") {
@@ -1547,26 +1552,29 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       }
       player = pv;
       if (dt <= 0) return out;
+      hunt = wave > 0 && breakT <= 0 && spawned >= quota && quota - killedWave <= HUNT_LEFT;
       if (wave > 0) {
         if (breakT > 0) {
           breakT -= dt;
           if (breakT <= 0) beginWave(wave + 1);
         } else if (spawned < quota && aliveCount() < MAX_ALIVE) {
+          const lull = aliveCount() < 3;
+          if (lull) spawnT = Math.min(spawnT, 0.5);
           spawnT -= dt;
           if (spawnT <= 0) {
             const early = spawned < 8;
-            spawnT = early ? R(0.7, 1.4) : R(1.2, 2.6);
+            spawnT = early ? R(0.7, 1.4) : R(1, 2);
             if (bossPending) {
               spawnBoss(bossPending);
               bossPending = null;
-            } else if (early) spawnNear(false);
+            } else if (early || lull) spawnNear(false);
             else {
               const [k, h] = pickKind();
               spawn(k, h, spawnPoint(_d));
             }
           }
         } else if (spawned >= quota && killedWave >= quota) {
-          breakT = 15;
+          breakT = bossFor(wave) ? 10 : 6;
           out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared` }, { type: "score", amount: 200 * wave, reason: "Wave cleared" });
         }
       }
