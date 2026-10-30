@@ -71,7 +71,7 @@ export function Hud({
       {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b || (touch && !!h.run.choice)} />}
       {free && <Prompt h={h} touch={touch} />}
       <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
-      <ScorePops pops={pops} />
+      <ScorePops pops={pops} shift={!touch && !!h.run.choice} />
       {h.combo > 1 && <Combo n={h.combo} t={h.comboT} bonus={h.comboBonus} />}
       <GearPanel h={h} who={who} />
       <SpeedPanel h={h} />
@@ -569,9 +569,9 @@ function Toasts({ pops, touch, low }: { pops: Pop[]; touch: boolean; low: boolea
   );
 }
 
-function ScorePops({ pops }: { pops: Pop[] }) {
+function ScorePops({ pops, shift }: { pops: Pop[]; shift: boolean }) {
   return (
-    <div className="hud-z absolute right-6 top-[38%] flex origin-right flex-col items-end gap-1">
+    <div className={`hud-z absolute ${shift ? "right-[272px]" : "right-6"} top-[38%] flex origin-right flex-col items-end gap-1`}>
       {pops.map((p) =>
         p.type === "score" ? (
           <div
