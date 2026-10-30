@@ -1582,6 +1582,11 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     },
     start() {
       if (wave !== 0) return;
+      for (const t of list) if (t.alive) {
+        t.alive = false;
+        remove(t);
+      }
+      heldBy = null;
       beginWave(1);
       queued.push(...out);
       out.length = 0;

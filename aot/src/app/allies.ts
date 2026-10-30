@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { ALLY_HALF, createFlares, createKit, type Pose, type Soldier } from "./allies-model";
 import type { Allies, Blade, Fx, GameEvent, Lock, SquadLead, SquadOrder, TitanPart, Titans, TitanView, World } from "./contracts";
 import { BN, type Rig } from "./titan-model";
+import { isBoss } from "./titan-waves";
 
 const MAX = 8;
 const BASE = 5;
@@ -115,7 +116,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     let i = 0;
     for (const a of squad) {
       if (a.mode !== "fly" || a.team) continue;
-      const t = order === "regroup" || !near.length ? null : locked ?? near[i++ % Math.min(2, near.length)];
+      const t = order === "regroup" || !near.length || titans.wave === 0 ? null : locked ?? near[i++ % Math.min(2, near.length)];
       if (t !== a.target) {
         a.target = t;
         a.run = 0;
@@ -137,6 +138,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     for (const e of events) {
       if (e.type === "sfx") out.push(e);
       else if (near && (e.type === "hitstop" || e.type === "shake" || e.type === "impact")) out.push(e);
+      else if (e.type === "feat" && e.name !== "perfect" && e.kind && isBoss(e.kind)) out.push(e);
     }
   };
 

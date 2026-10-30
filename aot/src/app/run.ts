@@ -47,7 +47,7 @@ const BOSS_OBJ: Record<BossKind, [Spec, Spec]> = {
 export function plan(n: number): [Spec, Spec] {
   const bk = bossFor(n);
   if (bk) return BOSS_OBJ[bk];
-  if (n === 1) return [{ text: "Kill 3 titans", need: 3, count: "kill" }, { text: "No deaths this wave", need: 1, until: "noDeath" }];
+  if (n === 1) return [{ text: `Kill ${quotaFor(1, false)} titans`, need: quotaFor(1, false), count: "waveKill" }, { text: "No deaths this wave", need: 1, until: "noDeath" }];
   if (n === 2) return [{ text: "Cut a tendon", hint: "Lock a leg, then strike", need: 1, count: "tendon" }, { text: "Kill an abnormal", need: 1, count: "abnormal" }];
   if (n === 3) return [{ text: "Land a perfect cut", hint: "Release when the blades glow", need: 1, count: "perfect" }, { text: "Kill 2 abnormals", need: 2, count: "abnormal" }];
   let k = 0;
@@ -126,12 +126,12 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     }
   };
 
-  const complete = (ob: Obj) => {
+  const complete = (ob: Obj, toast = false) => {
     ob.state = "done";
     if (!drill) done++;
     const x = ob.bonus ? 50 + 10 * wave : 80 + 15 * wave;
     out.push({ type: "stinger", name: "objective" });
-    if (!drill) out.push({ type: "toast", title: ob.bonus ? "Bonus complete" : "Objective complete", text: `${ob.text}. +${x} XP` });
+    if (toast) out.push({ type: "toast", title: ob.bonus ? "Bonus complete" : "Objective complete", text: `${ob.text}. +${x} XP` });
     gain(x);
   };
 
@@ -154,7 +154,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     ended = true;
     for (const ob of objs) {
       if (ob.state !== "on") continue;
-      if ((ob.spec.until === "noDeath" && deaths === 0) || (ob.spec.until === "depot" && depotHp > 0)) complete(ob);
+      if ((ob.spec.until === "noDeath" && deaths === 0) || (ob.spec.until === "depot" && depotHp > 0)) complete(ob, true);
       else fail(ob);
     }
     titans.lure(null);
