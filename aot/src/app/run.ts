@@ -59,7 +59,7 @@ export function plan(n: number): [Spec, Spec] {
     { text: "No deaths this wave", need: 1, until: "noDeath" },
     { text: "Kill 3 abnormals", need: 3, count: "abnormal" },
     { text: "Land 3 perfect cuts", need: 3, count: "perfect" },
-    { text: `Kill 2 above ${FAST} km/h`, need: 2, count: "fastKill" },
+    { text: `Kill 2 above ${Math.round(FAST * 3.6)} km/h`, need: 2, count: "fastKill" },
   ];
   return [mains[k % mains.length], bonus[k % bonus.length]];
 }
