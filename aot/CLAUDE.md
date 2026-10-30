@@ -19,7 +19,7 @@ Read `../AGENTS.md` first for code and performance rules. This file covers how t
 
 ## Controls
 
-- Gas is spent only when the player asks for it: boost (Space), dash (Shift), and wall flips. Hooking and reeling never cost gas.
+- Gas is spent only when the player asks for it: boost (Space) and dash (Shift). Hooking, reeling, slashing, and wall flips never cost gas.
 - Every input has one meaning. Do not overload a key by context unless the context is obvious on screen.
 
 ## Difficulty
