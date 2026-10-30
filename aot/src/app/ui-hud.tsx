@@ -14,7 +14,6 @@ export type Pop = UiEvent & { id: number };
 export type Msgs = { banner: Pop | null; radio: Pop | null; callout: Pop | null };
 type Lock = NonNullable<HudState["lock"]>;
 
-export const PERFECT = 0.61; // PERFECT[0] / PERFECT[1] in player.ts, the ring is full when the window closes
 const RED = "#ff3b2a";
 const BONE = "#efe6d2";
 const GLOW = "#9fe3ff";
@@ -47,7 +46,7 @@ export function Hud({
   msgs,
   touch,
   who,
-  final,
+  lives,
   onSkip,
 }: {
   h: HudState;
@@ -55,7 +54,7 @@ export function Hud({
   msgs: Msgs;
   touch: boolean;
   who: Character | null;
-  final: boolean;
+  lives: number;
   onSkip: () => void;
 }) {
   if (h.intro) return <Intro onSkip={onSkip} />;
@@ -72,14 +71,14 @@ export function Hud({
       {free && msgs.callout?.type === "callout" && <Callout key={msgs.callout.id} text={msgs.callout.text} low={!!b || (touch && !!h.run.choice)} />}
       {free && <Prompt h={h} touch={touch} />}
       <Toasts pops={pops} touch={touch} low={!!h.run.drill} />
-      <ScorePops pops={pops} />
+      <ScorePops pops={pops} shift={!touch && !!h.run.choice} />
       {h.combo > 1 && <Combo n={h.combo} t={h.comboT} bonus={h.comboBonus} />}
       <GearPanel h={h} who={who} />
       <SpeedPanel h={h} />
       {msgs.radio?.type === "radio" && <Radio key={msgs.radio.id} who={msgs.radio.who} text={msgs.radio.text} />}
       {b?.type === "kill" && <KillBanner key={b.id} height={b.height} speed={b.speed} kind={b.kind} />}
       {b?.type === "banner" && <Banner key={b.id} jp={b.jp} en={b.en} text={b.text} />}
-      {h.dead && <Dead final={final} />}
+      {h.dead && <Dead lives={lives} />}
     </div>
   );
 }
@@ -367,7 +366,7 @@ function Crosshair({ h }: { h: HudState }) {
   const color = h.aim === "titan" ? RED : BONE;
   const dim = h.aim === "none" ? 0.3 : 0.95;
   const c = h.charge;
-  const perfect = c !== null && c >= PERFECT && c < 1;
+  const perfect = c !== null && c >= h.chargeWin && c < 1;
   return (
     <div className="hud-z absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
       <svg
@@ -403,7 +402,7 @@ function Crosshair({ h }: { h: HudState }) {
               strokeWidth="6"
             />
             <path
-              d={arc(38, PERFECT, 1)}
+              d={arc(38, h.chargeWin, 1)}
               fill="none"
               stroke="#c9a25a"
               strokeWidth="6"
@@ -570,9 +569,9 @@ function Toasts({ pops, touch, low }: { pops: Pop[]; touch: boolean; low: boolea
   );
 }
 
-function ScorePops({ pops }: { pops: Pop[] }) {
+function ScorePops({ pops, shift }: { pops: Pop[]; shift: boolean }) {
   return (
-    <div className="hud-z absolute right-6 top-[38%] flex origin-right flex-col items-end gap-1">
+    <div className={`hud-z absolute ${shift ? "right-[272px]" : "right-6"} top-[38%] flex origin-right flex-col items-end gap-1`}>
       {pops.map((p) =>
         p.type === "score" ? (
           <div
@@ -678,17 +677,13 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
         {h.squad.max > 0 && (
           <span className="flex items-baseline gap-1.5 text-xs uppercase tracking-[0.2em] text-bone/80">
             <span className="font-jp text-bone/60">分隊</span>
+            Squad
             <span className="font-display text-base tabular-nums tracking-normal text-bone">
               {h.squad.alive}/{h.squad.max}
             </span>
             <span className={h.squad.order === "attack" ? "text-ember" : "text-[#8fd6a0]"}>
               {h.squad.order === "attack" ? "Attack" : "Regroup"}
             </span>
-          </span>
-        )}
-        {h.run.pending > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center self-center border border-bone bg-blood px-1 font-display text-sm leading-none tabular-nums shadow-[0_0_8px_rgba(255,40,20,0.8)]">
-            {h.run.pending}
           </span>
         )}
       </div>
@@ -836,7 +831,8 @@ function SpeedPanel({ h }: { h: HudState }) {
 }
 
 function KillBanner({ height, speed, kind }: { height: number; speed: number; kind: TitanKind }) {
-  if (isBoss(kind)) return <Banner jp={`${BOSS[kind].jp} 討伐`} en={`${BOSS[kind].name} down`} text={`${Math.round(speed)} km/h`} />;
+  const kmh = Math.round(speed * 3.6);
+  if (isBoss(kind)) return <Banner jp={`${BOSS[kind].jp} 討伐`} en={`${BOSS[kind].name} down`} text={`${kmh} km/h`} />;
   return (
     <div className="hud-z absolute left-1/2 top-[22%] w-[min(760px,90vw)] -translate-x-1/2 [.touch-hud_&]:left-[40%] [.touch-hud_&]:top-[12%] [.touch-hud_&]:w-[600px]">
       <div className="kill-banner">
@@ -853,14 +849,14 @@ function KillBanner({ height, speed, kind }: { height: number; speed: number; ki
         </div>
         <div className="mt-4 flex justify-center gap-6 font-display text-xl uppercase tracking-widest ink-shadow">
           <span>{Math.round(height)} m class</span>
-          <span className="text-brass">{Math.round(speed)} km/h</span>
+          <span className="text-brass">{kmh} km/h</span>
         </div>
       </div>
     </div>
   );
 }
 
-function Dead({ final }: { final: boolean }) {
+function Dead({ lives }: { lives: number }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(60,0,0,0.55),rgba(0,0,0,0.92))]">
       <div className="rise-in font-brush text-[clamp(6rem,22vh,13rem)] leading-none text-blood [text-shadow:0_0_40px_rgba(195,22,28,0.6)]">
@@ -869,9 +865,9 @@ function Dead({ final }: { final: boolean }) {
       <div className="mt-2 font-display text-[clamp(2rem,6vh,3.5rem)] uppercase tracking-[0.12em] text-bone">
         Fallen in the line of duty
       </div>
-      {!final && (
+      {lives > 0 && (
         <div className="slow-fade mt-3 text-sm uppercase tracking-[0.35em] text-parch/70">
-          Returning to a supply depot
+          Returning to a supply depot · {lives} {lives === 1 ? "life" : "lives"} left
         </div>
       )}
     </div>

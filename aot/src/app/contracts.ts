@@ -5,7 +5,7 @@ import type * as THREE from "three";
 
 export type Quality = "low" | "medium" | "high";
 
-export type TitanKind = "normal" | "abnormal" | "crawler" | "female" | "armored" | "beast" | "smiler" | "runner" | "climber";
+export type TitanKind = "normal" | "abnormal" | "crawler" | "female" | "armored" | "beast" | "smiler" | "runner" | "climber" | "jaw";
 export type TitanPart = "nape" | "eyes" | "armL" | "armR" | "legL" | "legR";
 export type HitZone = TitanPart | "body";
 
@@ -114,7 +114,6 @@ export interface World {
   inside(x: number, z: number): boolean; // inside the walls
   readonly depotDown: boolean[]; // per supply depot: fallen, no refills
   readonly depotTops: readonly THREE.Vector3[]; // per supply depot: where the green smoke rises
-  setBeckon(on: boolean): void; // denser depot smoke
   kickGate(): GameEvent[]; // the Colossal Titan breaks the gate, once
   smash(at: THREE.Vector3, radius: number): void; // flattens houses within radius of a ground point
   update(dt: number, t: number): GameEvent[];
@@ -145,6 +144,7 @@ export interface Titans {
   start(): void; // starts wave 1
   drill(n: number): void; // bootcamp: spawns n small titans near the breach while wave is 0
   hold(titan: TitanView, side: "armL" | "armR", on: boolean): void; // an ally is held in that hand, off lets go
+  holds(titan: TitanView): boolean; // an ally is still held
   readonly wave: number;
   readonly kills: number;
   readonly left: number;
@@ -213,7 +213,8 @@ export type PlayerHud = {
   blades: number; // spare sets
   sharp: number; // current set, 0..1
   hooks: [boolean, boolean];
-  charge: number | null;
+  charge: number | null; // 1 when the perfect window closes
+  chargeWin: number; // where the perfect window opens on the charge ring
   aim: "none" | "world" | "titan";
   aimDist: number;
   supply: boolean;
@@ -223,7 +224,7 @@ export type PlayerHud = {
   comboBonus: number; // damage multiplier from the chain, 1 is none
   ammo: number; // spears left
 };
-export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; health: number; spare: number }; // multipliers, spare adds
+export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; dash: number; spare: number; spears: number }; // multipliers, spare and spears add
 export interface Player {
   readonly pos: THREE.Vector3; // body center
   readonly vel: THREE.Vector3;
@@ -293,7 +294,7 @@ export type HudState = {
   run: RunHud;
 } & PlayerHud;
 
-export type UpgradeId = "tank" | "reel" | "blade" | "spare" | "damage" | "charge" | "health" | "squad";
+export type UpgradeId = "reel" | "dash" | "damage" | "charge" | "spears" | "squad";
 export type Upgrade = { id: UpgradeId; name: string; jp: string; text: string; level: number; max: number };
 export type Objective = { text: string; hint?: string; have: number; need: number; unit?: "%"; state: "on" | "done" | "failed"; bonus: boolean };
 export type RunHud = {
@@ -302,7 +303,7 @@ export type RunHud = {
   need: number;
   total: number;
   objectives: Objective[];
-  choice: Upgrade[] | null; // level-up picks, shown in a supply depot. Keys 1-3 or a tap pick
+  choice: Upgrade[] | null; // level-up picks, shown while playing. Keys 1-3 or a tap pick
   pending: number; // levels not yet spent
   done: number;
   count: number;

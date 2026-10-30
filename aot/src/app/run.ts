@@ -1,20 +1,18 @@
 import type * as THREE from "three";
 import type { Allies, Boost, Fx, GameEvent, Objective, Player, RunHud, TitanKind, Titans, Upgrade, UpgradeId, World } from "./contracts";
 import { gearBoost } from "./progression";
-import { bossFor, isBoss, quotaFor, type BossKind } from "./titan-waves";
+import { bossFor, isBoss, isHorde, quotaFor, type BossKind } from "./titan-waves";
 
 type Count = "hook" | "gas" | "kill" | "waveKill" | "abnormal" | "tendon" | "sever" | "limb" | "perfect" | "save" | "boss" | "fastKill" | "supply";
 type Spec = { text: string; hint?: string; need: number; count?: Count; kind?: TitanKind; until?: "noDeath" | "depot" };
 type Obj = Objective & { spec: Spec };
 
 const UPGRADES: Omit<Upgrade, "level">[] = [
-  { id: "tank", name: "Gas tank", jp: "大型ボンベ", text: "+15% gas capacity", max: 4 },
-  { id: "reel", name: "Reel power", jp: "巻き取り強化", text: "+8% reel pull and top speed", max: 4 },
-  { id: "blade", name: "Blade durability", jp: "刃の耐久", text: "Blades dull 15% slower", max: 4 },
-  { id: "spare", name: "Spare blades", jp: "予備の刃", text: "+2 spare blade sets", max: 3 },
-  { id: "damage", name: "Cut damage", jp: "斬撃強化", text: "+10% cut damage", max: 5 },
-  { id: "charge", name: "Faster charge", jp: "溜め短縮", text: "Charge strikes 12% faster", max: 3 },
-  { id: "health", name: "Health", jp: "体力強化", text: "+20% max health", max: 4 },
+  { id: "reel", name: "Reel power", jp: "巻き取り強化", text: "Faster reel and higher top speed", max: 3 },
+  { id: "dash", name: "Gas dash", jp: "噴射強化", text: "Stronger dash, shorter cooldown", max: 2 },
+  { id: "damage", name: "Deep cuts", jp: "斬撃強化", text: "+25% cut damage", max: 3 },
+  { id: "charge", name: "Quick draw", jp: "溜め短縮", text: "Perfect cuts come sooner", max: 2 },
+  { id: "spears", name: "Spear pack", jp: "雷槍", text: "+2 thunder spears", max: 2 },
   { id: "squad", name: "Squad size", jp: "増員", text: "+1 soldier in your squad", max: 2 },
 ];
 
@@ -29,27 +27,35 @@ const FAST = 40;
 const ABNORMAL: TitanKind[] = ["abnormal", "runner", "climber"];
 const BOSS_OBJ: Record<BossKind, [Spec, Spec]> = {
   female: [
-    { text: "Bring down the Female Titan", hint: "Cut two limbs, then the nape", need: 1, count: "boss", kind: "female" },
+    { text: "Bring down the Female Titan", need: 1, count: "boss", kind: "female" },
     { text: "Sever 2 of her limbs", need: 2, count: "limb", kind: "female" },
   ],
   armored: [
-    { text: "Bring down the Armored Titan", hint: "Knee joints first", need: 1, count: "boss", kind: "armored" },
+    { text: "Bring down the Armored Titan", need: 1, count: "boss", kind: "armored" },
     { text: "Cut both his knees", need: 2, count: "tendon", kind: "armored" },
   ],
   beast: [
-    { text: "Bring down the Beast Titan", hint: "Close in through the rocks", need: 1, count: "boss", kind: "beast" },
+    { text: "Bring down the Beast Titan", need: 1, count: "boss", kind: "beast" },
     { text: "Sever his throwing arm", need: 1, count: "sever", kind: "beast" },
+  ],
+  jaw: [
+    { text: "Bring down the Jaw Titan", need: 1, count: "boss", kind: "jaw" },
+    { text: "Cut his tendon to drop him", need: 1, count: "tendon", kind: "jaw" },
   ],
 };
 
 export function plan(n: number): [Spec, Spec] {
   const bk = bossFor(n);
   if (bk) return BOSS_OBJ[bk];
-  if (n === 1) return [{ text: "Kill 3 titans", need: 3, count: "kill" }, { text: "No deaths this wave", need: 1, until: "noDeath" }];
+  if (n === 1) return [{ text: `Kill ${quotaFor(1, false)} titans`, need: quotaFor(1, false), count: "waveKill" }, { text: "No deaths this wave", need: 1, until: "noDeath" }];
   if (n === 2) return [{ text: "Cut a tendon", hint: "Lock a leg, then strike", need: 1, count: "tendon" }, { text: "Kill an abnormal", need: 1, count: "abnormal" }];
   if (n === 3) return [{ text: "Land a perfect cut", hint: "Release when the blades glow", need: 1, count: "perfect" }, { text: "Kill 2 abnormals", need: 2, count: "abnormal" }];
   let k = 0;
   for (let m = 5; m < n; m++) if (!bossFor(m)) k++;
+  if (isHorde(n)) {
+    const q = Math.round(quotaFor(n, false) * 0.75);
+    return [{ text: `Cut down the horde: ${q} titans`, need: q, count: "waveKill" }, { text: "Kill 6 crawlers", need: 6, count: "kill", kind: "crawler" }];
+  }
   const hold = Math.min(quotaFor(n, false), 8 + Math.floor(n / 3));
   const mains: Spec[] = [
     { text: "Protect the supply depot", hint: "Titans march on it", need: 100, until: "depot" },
@@ -61,7 +67,8 @@ export function plan(n: number): [Spec, Spec] {
     { text: "No deaths this wave", need: 1, until: "noDeath" },
     { text: "Kill 3 abnormals", need: 3, count: "abnormal" },
     { text: "Land 3 perfect cuts", need: 3, count: "perfect" },
-    { text: "Kill 2 at top speed", need: 2, count: "fastKill" },
+    { text: `Kill 2 above ${Math.round(FAST * 3.6)} km/h`, need: 2, count: "fastKill" },
+    { text: "Sever 3 arms", need: 3, count: "sever" },
   ];
   return [mains[k % mains.length], bonus[k % bonus.length]];
 }
@@ -98,13 +105,12 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
   const boost = (): Boost => {
     const g = gearBoost(o.tier);
     return {
-      tank: g.tank * (1 + 0.15 * lv.tank),
-      reel: g.reel * (1 + 0.08 * lv.reel),
-      wear: g.wear * 0.85 ** lv.blade,
-      damage: g.damage * (1 + 0.1 * lv.damage),
-      chargeTime: g.chargeTime * 0.88 ** lv.charge,
-      health: g.health * (1 + 0.2 * lv.health),
-      spare: g.spare + 2 * lv.spare,
+      ...g,
+      reel: g.reel * (1 + 0.15 * lv.reel),
+      dash: g.dash * (1 + 0.3 * lv.dash),
+      damage: g.damage * (1 + 0.25 * lv.damage),
+      chargeTime: g.chargeTime * 0.85 ** lv.charge,
+      spears: g.spears + 2 * lv.spears,
     };
   };
   player.setBoost(boost());
@@ -120,12 +126,12 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     }
   };
 
-  const complete = (ob: Obj) => {
+  const complete = (ob: Obj, toast = false) => {
     ob.state = "done";
     if (!drill) done++;
     const x = ob.bonus ? 50 + 10 * wave : 80 + 15 * wave;
     out.push({ type: "stinger", name: "objective" });
-    if (!drill) out.push({ type: "toast", title: ob.bonus ? "Bonus complete" : "Objective complete", text: `${ob.text}. +${x} XP` });
+    if (toast) out.push({ type: "toast", title: ob.bonus ? "Bonus complete" : "Objective complete", text: `${ob.text}. +${x} XP` });
     gain(x);
   };
 
@@ -148,7 +154,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     ended = true;
     for (const ob of objs) {
       if (ob.state !== "on") continue;
-      if ((ob.spec.until === "noDeath" && deaths === 0) || (ob.spec.until === "depot" && depotHp > 0)) complete(ob);
+      if ((ob.spec.until === "noDeath" && deaths === 0) || (ob.spec.until === "depot" && depotHp > 0)) complete(ob, true);
       else fail(ob);
     }
     titans.lure(null);
@@ -178,7 +184,6 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         ob.unit = "%";
       }
       titans.lure(world.supplies[depot]);
-      out.push({ type: "radio", who: "Command", text: "Titans are heading for the depot!" });
     }
   };
 
@@ -201,7 +206,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     fx.steam(p, 6, 3);
     out.push({ type: "sfx", name: "gateBreak", at: p.clone(), volume: 0.8 }, { type: "shake", strength: 0.3 }, { type: "toast", title: "Depot lost", text: "No refills there this wave" });
     depot = -1;
-    if (ob) fail(ob);
+    if (ob) ob.state = "failed";
   };
 
   const roll = () => {
@@ -236,7 +241,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
       finT = 0;
       objs = DRILL.map((s) => ({ spec: s, text: s.text, hint: s.hint, have: 0, need: s.need, state: "on", bonus: false }));
       titans.drill(2);
-      out.push({ type: "banner", jp: "訓練", en: "Bootcamp", text: "Learn the gear on easy titans" });
+      out.push({ type: "banner", jp: "訓練", en: "Bootcamp" });
     },
     skip(): GameEvent[] {
       if (!drill || drillT < 1) return [];
@@ -259,11 +264,6 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         add(e.name, e.kind);
         if (e.name === "tendon" || e.name === "sever") add("limb", e.kind);
       }
-    },
-    dress<E extends GameEvent>(e: E): E {
-      if (e.type !== "banner" || e.en !== `Wave ${titans.wave}`) return e;
-      const [m, b] = plan(titans.wave);
-      return { ...e, text: `${m.text}. Bonus: ${b.text}` };
     },
     update(dt: number, real: number, live: boolean): GameEvent[] {
       if (titans.wave !== wave) {
@@ -295,14 +295,11 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
           if ((finT += real) > 2.5) endDrill();
         } else if (dt > 0 && objs.some((ob) => ob.spec.count === "kill" && ob.state === "on") && !titans.list().some((t) => t.alive)) titans.drill?.(1);
       }
-      world.setBeckon(pending > 0);
-      const was = open;
-      open = pending > 0 && player.inSupply && live && !dead && !titans.held();
+      open = pending > 0 && live && !dead;
       if (open && !choice) {
         choice = roll();
         if (!choice.length) choice = null, pending = 0, open = false;
       }
-      if (open && !was) out.push({ type: "sfx", name: "bladeDraw" });
       return out.splice(0);
     },
     pick(i: number): GameEvent[] {
@@ -318,9 +315,6 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     },
     hud(): RunHud {
       return { level, xp, need: needFor(level), total, objectives: objs, choice: open ? choice : null, pending, done, count, drill, showDepot: drill && objs.some((ob) => ob.spec.count === "supply" && ob.state === "on") };
-    },
-    get upgrades() {
-      return { ...lv };
     },
   };
 }

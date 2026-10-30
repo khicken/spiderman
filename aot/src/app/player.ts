@@ -24,6 +24,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 const CHAIN_T = 3.5;
 const SPEARS = 4;
 const AIM = 0.55;
+const HINT_KEY = "aot-hints";
+const HOOK_BTNS: Action[] = ["anchorL", "anchorR"];
 
 type Act = { name: ScoutAnim | null; t: number; dur: number };
 
@@ -31,11 +33,13 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   let scout = createScout();
   let base: CharStats = getCharacter("cadet").stats;
   let st: CharStats = base;
-  let bo: Boost = { tank: 1, reel: 1, wear: 1, damage: 1, chargeTime: 1, health: 1, spare: 0 };
+  let bo: Boost = { tank: 1, reel: 1, wear: 1, damage: 1, chargeTime: 1, dash: 1, spare: 0, spears: 0 };
   let spare = SPARE;
+  let spearMax = SPEARS;
   const mix = () => {
     st = { ...base, tank: base.tank * bo.tank, reel: base.reel * bo.reel, maxSpeed: base.maxSpeed * (1 + (bo.reel - 1) / 2), wear: base.wear * bo.wear, damage: base.damage * bo.damage, chargeTime: base.chargeTime * bo.chargeTime };
     spare = SPARE + bo.spare;
+    spearMax = SPEARS + bo.spears;
   };
   let charId = "cadet";
   const drain = () => st.gasDrain / st.tank;
@@ -89,6 +93,10 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
   const lastLook = new THREE.Vector3(0, 0, 1);
   const hv = new THREE.Vector3();
   const used = new Map<string, number>();
+  try {
+    for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem(HINT_KEY) ?? "{}") as Record<string, number>)) used.set(k, v);
+  } catch {}
+  const fresh = new Set<Action>();
   let shown: (Hint & { acts: Action[]; rel?: boolean }) | null = null;
   const tip = (acts: Action[], key: string, text: string, touch: string, rel = false) => ((used.get(text) ?? 0) >= 3 ? null : { acts, key, text, touch, rel });
   const hint = () => {
@@ -97,7 +105,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     const near = (lock && titans.partPos(lock.titan, lock.part, hv) && hv.distanceTo(pos) < 32) || ((ti) => ti && titans.partPos(ti, "nape", hv))(titans.nearest(pos, lastLook, 22));
     if (near) {
       const b = lock?.part === "nape" && isBoss(lock.titan.kind) ? titans.boss() : null;
-      if (b?.hardened) return lock!.titan.kind === "armored" ? tip(["lock", "cycle"], "Q", "Target a leg", "Tap Lock to target a leg") : tip(["lock", "cycle"], "Q", "Target a limb", "Tap Lock to target a limb");
+      if (b?.hardened) return lock!.titan.kind === "armored" || lock!.titan.kind === "jaw" ? tip(["lock", "cycle"], "Q", "Target a leg", "Tap Lock to target a leg") : tip(["lock", "cycle"], "Q", "Target a limb", "Tap Lock to target a limb");
       return tip(["attack"], "E", "Hold, release to strike", "Hold Slash, release to strike");
     }
     const on = hooks.some((h) => h.state === "on");
@@ -107,9 +115,13 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     return tip(["anchorL", "anchorR"], "", "Click to anchor, Space for gas", "Tap L or R, hold Gas");
   };
   const countHint = (input: Input) => {
-    if (shown && shown.acts.some((a) => (shown!.rel ? input.released : input.pressed).has(a))) used.set(shown.text, (used.get(shown.text) ?? 0) + 1);
+    if (!shown || !shown.acts.some((a) => (shown!.rel ? input.released : input.pressed).has(a))) return;
+    used.set(shown.text, (used.get(shown.text) ?? 0) + 1);
+    try {
+      localStorage.setItem(HINT_KEY, JSON.stringify(Object.fromEntries(used)));
+    } catch {}
   };
-  const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, comboT: 0, comboBonus: 1, ammo: SPEARS, hint: null };
+  const hud: PlayerHud = { health: 1, gas: 1, blades: SPARE, sharp: 1, hooks: [false, false], charge: null, chargeWin: 1, aim: "none", aimDist: 0, supply: false, dead: false, combo: 0, comboT: 0, comboBonus: 1, ammo: SPEARS, hint: null };
   const lockPoint = new THREE.Vector3();
   const view: CameraView = { pos, vel, mode, lockPoint: null, charge: 0 };
 
@@ -405,10 +417,12 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     }
   };
 
-  const isPerfect = () => chargeT >= PERFECT[0] * st.chargeTime && chargeT <= PERFECT[1] * st.chargeTime;
+  const winStart = () => PERFECT[0] * st.chargeTime;
+  const winEnd = () => winStart() + PERFECT[1] - PERFECT[0];
+  const isPerfect = () => chargeT >= winStart() && chargeT <= winEnd();
   const chargeUp = (input: Input) => {
     if (input.held.has("attack")) chargeT = input.holdTime("attack");
-    if (!flashed && chargeT >= PERFECT[0] * st.chargeTime) {
+    if (!flashed && chargeT >= winStart()) {
       flashed = true;
       sfx("charge");
     }
@@ -437,16 +451,14 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (slash.titan) slash.dir.copy(t1).sub(pos).normalize();
     else slash.dir.copy(input.look);
     const lunge = 14 + 30 * slash.charge;
-    const along = vel.dot(slash.dir);
-    t2.copy(vel).addScaledVector(slash.dir, -along).multiplyScalar(0.35);
-    vel.copy(slash.dir).multiplyScalar(Math.max(along, lunge)).add(t2);
+    const sp = vel.length();
+    const carry = sp * (0.6 + 0.4 * Math.max(0, vel.dot(slash.dir) / Math.max(sp, 1e-3)));
+    vel.copy(slash.dir).multiplyScalar(Math.max(carry, lunge));
     slash.speed = vel.length();
-    gas = Math.max(0, gas - 0.02 * drain());
     frame.side = slash.side;
     startAct("slash", SLASH_T);
     sfx("slash", 0.7 + 0.3 * slash.charge);
     if (perfect) out.push({ type: "shake", strength: 0.25 });
-    fx.gas(pos, t1.copy(slash.dir).negate(), 1.2);
   };
 
   const updateSlash = (dt: number) => {
@@ -505,7 +517,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     wasHeld = false;
     combo = 0;
     chain.clear();
-    spearAmmo = SPEARS;
+    spearAmmo = spearMax;
     spears.reset();
     for (const h of hooks) {
       h.state = "idle";
@@ -529,7 +541,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       lowArmed = false;
       sfx("lowSupply");
     }
-    const full = gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= SPEARS;
+    const full = gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= spearMax;
     if (near >= 0 && !inSupply) {
       fx.flare(world.depotTops[near]);
       sfx("resupply", full ? 0.3 : undefined);
@@ -544,9 +556,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       supplyT = 0;
       if (sharp < 1) sharp = 1;
       else if (blades < spare) blades++;
-      spearAmmo = Math.min(SPEARS, spearAmmo + 1);
+      spearAmmo = Math.min(spearMax, spearAmmo + 1);
     }
-    if (!chimed && gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= SPEARS) {
+    if (!chimed && gas >= 0.99 && blades >= spare && sharp >= 1 && health >= 1 && spearAmmo >= spearMax) {
       chimed = true;
       sfx("refilled");
     }
@@ -600,7 +612,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         const ramp = Math.min(1, reelT / 0.45);
         const curve = 0.3 + 0.7 * ramp * ramp * (3 - 2 * ramp);
         const arrive = THREE.MathUtils.clamp((d - 3) / 4, 0, 1);
-        const power = (n === 2 ? 72 : 50) * st.reel * curve * arrive * (gas > 0 ? 1 : 0.4) * (boosting ? 1.25 : 1);
+        const power = (n === 2 ? 72 : 50) * st.reel * curve * arrive * (boosting ? 1.25 : 1);
         const vr = vel.dot(t1);
         const cap = (n === 2 ? 58 : 46) * st.reel;
         if (vr < cap) a.addScaledVector(t1, power * Math.min(1, (cap - vr) / 10));
@@ -612,8 +624,6 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         t2.copy(wish).addScaledVector(t1, -wish.dot(t1));
         a.addScaledVector(t2, 26);
         if (d < 3.2 && vr > 0) vel.addScaledVector(t1, -vr * Math.min(1, 9 * dt));
-        gas = Math.max(0, gas - 0.012 * n * drain() * dt);
-        if (gas > 0 && !boosting) gasPuff(t2.copy(t1).negate(), 0.25 + 0.2 * ramp, dt, 0.07);
       }
     }
 
@@ -660,20 +670,20 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       a.addScaledVector(t1, (n ? 34 : 26) * Math.max(0.3, 1 - Math.max(0, along) / 48));
       if (n) a.y += 6;
       else if (vel.y < 0) a.y += 3;
-      gas = Math.max(0, gas - 0.09 * drain() * dt);
+      gas = Math.max(0, gas - 0.12 * drain() * dt);
       gasPuff(t2.copy(t1).negate(), 1, dt);
     }
 
     dashCd -= dt;
     if (input.pressed.has("dash") && dashCd <= 0 && gas > 0.02 && mode !== "held") {
-      dashCd = 0.45;
+      dashCd = 0.45 / bo.dash;
       dashAt = time;
-      gas = Math.max(0, gas - 0.05 * drain());
+      gas = Math.max(0, gas - 0.06 * drain());
       if (wish.lengthSq() > 0) t2.copy(wish).addScaledVector(UP, grounded ? 0.12 : 0.18).normalize();
       else if (n) t2.copy(look);
       else t2.copy(look).setY(0).normalize().addScaledVector(UP, 0.12).normalize();
       const along = vel.dot(t2);
-      vel.addScaledVector(t2, Math.max(16, 30 - Math.max(0, along) * 0.4));
+      vel.addScaledVector(t2, Math.max(16, 30 - Math.max(0, along) * 0.4) * bo.dash);
       startAct("dash", 0.28);
       sfx("gasDash");
       out.push({ type: "shake", strength: 0.12 });
@@ -999,9 +1009,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         }
         return any;
       };
-      const hookBtns: Action[] = ["anchorL", "anchorR"];
-      const fresh = new Set<Action>();
-      for (const btn of hookBtns) {
+      fresh.clear();
+      for (const btn of HOOK_BTNS) {
         if (!input.pressed.has(btn)) continue;
         if (unlatch(btn)) continue;
         pressT.set(btn, time);
@@ -1015,7 +1024,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
         if (aim.kind === "none") fire(i, btn, null, null, null, null, input.look);
         else fire(i, btn, aim.point, aim.obj, aim.titan, aim.kind === "world" ? aim.normal : null, input.look);
       }
-      for (const btn of hookBtns) {
+      for (const btn of HOOK_BTNS) {
         if (!input.released.has(btn) || time - (pressT.get(btn) ?? -9) > TAP) continue;
         pressT.delete(btn);
         for (const h of hooks) if (h.button === btn && (h.state === "fly" || h.state === "on")) h.latch = true;
@@ -1059,7 +1068,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     damage(amount, from) {
       if (mode === "dead") return [];
       const ev: GameEvent[] = [{ type: "sfx", name: "hurt" }, { type: "shake", strength: 0.35 + amount }];
-      health -= amount / bo.health;
+      health -= amount;
       if (from && mode !== "held") {
         t1.copy(pos).sub(from);
         t1.y = Math.max(0.3, t1.y);
@@ -1081,7 +1090,8 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
       hud.sharp = sharp;
       hud.hooks[0] = hooks[0].state === "on";
       hud.hooks[1] = hooks[1].state === "on";
-      hud.charge = charging ? Math.min(1, chargeT / (PERFECT[1] * st.chargeTime)) : null;
+      hud.charge = charging ? Math.min(1, chargeT / winEnd()) : null;
+      hud.chargeWin = winStart() / winEnd();
       hud.aim = aim.kind;
       hud.aimDist = aim.dist;
       hud.supply = inSupply;
@@ -1122,6 +1132,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     },
     setBoost(b) {
       blades = Math.max(0, blades + b.spare - bo.spare);
+      spearAmmo = Math.max(0, spearAmmo + b.spears - bo.spears);
       bo = { ...b };
       mix();
     },

@@ -82,7 +82,7 @@ export function createInput(canvas: HTMLCanvasElement, onSystem: (code: string) 
   };
   const onMouseDown = (e: MouseEvent) => {
     const a = BUTTONS[e.button];
-    if (enabled && a) {
+    if (enabled && a && e.target === canvas) {
       e.preventDefault();
       down(a, `m${e.button}`);
     }

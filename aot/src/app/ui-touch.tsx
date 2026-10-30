@@ -3,7 +3,7 @@
 import { useEffect, useRef, type PointerEvent, type ReactNode } from "react";
 import type { Action, HudState, VirtualPad } from "./contracts";
 import { ControlsGrid } from "./ui-controls";
-import { PARTS, PERFECT } from "./ui-hud";
+import { PARTS } from "./ui-hud";
 
 const STICK_R = 58;
 const LOOK_GAIN = 1.8;
@@ -121,7 +121,7 @@ export function TouchControls({ pad, h, onPause }: { pad: VirtualPad; h: HudStat
             cy="50"
             r="46"
             fill="none"
-            stroke={charge >= PERFECT && charge < 1 ? "#ffd27a" : "#ff4a2e"}
+            stroke={charge >= h.chargeWin && charge < 1 ? "#ffd27a" : "#ff4a2e"}
             strokeWidth="5"
             strokeDasharray="289"
             strokeDashoffset={289 * (1 - charge)}

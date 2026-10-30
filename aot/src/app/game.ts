@@ -95,8 +95,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         score += e.amount;
         onEvent(e);
       } else if (e.type === "kill") onEvent({ type: "kill", height: e.height, kind: e.kind, speed: e.speed });
-      else if (introT >= 0) introToasts.push(run.dress(e));
-      else onEvent(run.dress(e));
+      else if (introT >= 0) introToasts.push(e);
+      else onEvent(e);
     }
   };
 
@@ -180,8 +180,12 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
   const onLock = () => {
     if (document.pointerLockElement !== canvas && playing && introT < 0) pause();
   };
+  const relock = () => {
+    if (playing && document.pointerLockElement !== canvas && !window.matchMedia("(pointer: coarse)").matches) canvas.requestPointerLock()?.catch?.(() => {});
+  };
   window.addEventListener("resize", onResize);
   document.addEventListener("pointerlockchange", onLock);
+  canvas.addEventListener("mousedown", relock);
 
   const mouse = { x: 0, y: 0 };
   const proj = new THREE.Vector3();
@@ -356,7 +360,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       playing = true;
       everPlayed = true;
       input.enabled = true;
-      if (!window.matchMedia("(pointer: coarse)").matches) canvas.requestPointerLock()?.catch?.(() => {});
+      relock();
     },
     pause,
     skipIntro: endIntro,
@@ -387,6 +391,7 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("pointerlockchange", onLock);
+      canvas.removeEventListener("mousedown", relock);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
       input.dispose();
       audio?.dispose();

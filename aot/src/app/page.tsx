@@ -200,8 +200,19 @@ export default function TitanPage() {
       setMsgs((m) => ({ ...m, [slot]: p }));
       later(() => setMsgs((m) => (m[slot] === p ? { ...m, [slot]: null } : m)), POP_MS[slot]);
     };
+    let frameScore: { id: number; amount: number } | null = null;
     const onEvent = (e: UiEvent) => {
+      if (e.type === "score" && frameScore) {
+        const s = frameScore;
+        s.amount += e.amount;
+        setPops((list) => list.map((p) => (p.id === s.id && p.type === "score" ? { ...p, amount: s.amount } : p)));
+        return;
+      }
       const pop = { ...e, id: ++id } as Pop;
+      if (e.type === "score") {
+        frameScore = { id: pop.id, amount: e.amount };
+        queueMicrotask(() => (frameScore = null));
+      }
       if (e.type === "toast") {
         if (toastsOn.some((p) => same(p, e)) || toastQ.some((p) => same(p, e))) return;
         if (e.low) {
@@ -377,7 +388,7 @@ export default function TitanPage() {
             msgs={msgs}
             touch={touch}
             who={settings ? getCharacter(settings.character) : null}
-            final={runRef.current.deaths >= 3}
+            lives={3 - runRef.current.deaths}
             onSkip={() => gameRef.current?.skipIntro()}
           />
         </div>

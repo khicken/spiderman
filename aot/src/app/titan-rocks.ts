@@ -17,6 +17,13 @@ export function createRocks(scene: THREE.Scene, world: World, fx: Fx) {
   const rocks: Rock[] = [];
   const free: THREE.Mesh[] = [];
   let hurtT = 0;
+  const ev: GameEvent[] = [];
+  let hurtFn: (amount: number, from: THREE.Vector3, knock: number, up: number) => void = () => {};
+  const hit = (amount: number, at: THREE.Vector3, knock: number, up: number) => {
+    if (hurtT > 0) return;
+    hurtT = 0.4;
+    hurtFn(amount, at, knock, up);
+  };
   const held = new THREE.Mesh(geo, mat);
   held.visible = false;
   held.castShadow = true;
@@ -48,13 +55,9 @@ export function createRocks(scene: THREE.Scene, world: World, fx: Fx) {
       rocks.push({ mesh: m, vel: vel.clone(), spin: new THREE.Vector3(Math.random() * 6 - 3, Math.random() * 6 - 3, Math.random() * 6 - 3), r, t: 0, landed: -1 });
     },
     update(dt: number, player: PlayerView | null, hurt: (amount: number, from: THREE.Vector3, knock: number, up: number) => void) {
-      const ev: GameEvent[] = [];
+      ev.length = 0;
+      hurtFn = hurt;
       hurtT -= dt;
-      const hit = (amount: number, at: THREE.Vector3, knock: number, up: number) => {
-        if (hurtT > 0) return;
-        hurtT = 0.4;
-        hurt(amount, at, knock, up);
-      };
       for (let i = rocks.length - 1; i >= 0; i--) {
         const k = rocks[i];
         const p = k.mesh.position;

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { ALLY_HALF, createFlares, createKit, type Pose, type Soldier } from "./allies-model";
 import type { Allies, Blade, Fx, GameEvent, Lock, SquadLead, SquadOrder, TitanPart, Titans, TitanView, World } from "./contracts";
 import { BN, type Rig } from "./titan-model";
+import { isBoss } from "./titan-waves";
 
 const MAX = 8;
 const BASE = 5;
@@ -101,10 +102,9 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     out.push({ type: "sfx", name: "gasBurst", at: v1.clone(), volume: 0.6 });
     const n = alive().length;
     const add = wave <= 1 ? 0 : Math.min(size + 1 - n, Math.max(1, size - n));
-    if (!add) return say("Squad, move out!", "Command", true);
+    if (!add) return;
     let k = 0;
     for (const a of squad) if (a.mode === "dead" && k < add) enlist(a, wallPoint(k++, v2));
-    say(`${add} soldier${add > 1 ? "s" : ""} inbound from the wall!`, "Command", true);
   };
 
   const pick = () => {
@@ -116,7 +116,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     let i = 0;
     for (const a of squad) {
       if (a.mode !== "fly" || a.team) continue;
-      const t = order === "regroup" || !near.length ? null : locked ?? near[i++ % Math.min(2, near.length)];
+      const t = order === "regroup" || !near.length || titans.wave === 0 ? null : locked ?? near[i++ % Math.min(2, near.length)];
       if (t !== a.target) {
         a.target = t;
         a.run = 0;
@@ -129,7 +129,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
         const leg: TitanPart = k % 4 === 3 ? "legR" : "legL";
         const alt: TitanPart = leg === "legL" ? "legR" : "legL";
         a.part = titans.partPos(t, leg, v1) ? leg : titans.partPos(t, alt, v1) ? alt : t.kind === "female" ? "armL" : "nape";
-        if (a.part.startsWith("leg") && a.run === 0 && Math.random() < 0.08) say("I've got the legs!", a.name);
       } else a.part = "nape";
     }
   };
@@ -139,6 +138,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     for (const e of events) {
       if (e.type === "sfx") out.push(e);
       else if (near && (e.type === "hitstop" || e.type === "shake" || e.type === "impact")) out.push(e);
+      else if (e.type === "feat" && e.name !== "perfect" && e.kind && isBoss(e.kind)) out.push(e);
     }
   };
 
@@ -164,7 +164,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       fx.slash(v2, goal.copy(a.pos).addScaledVector(blade.dir, 1.4), v3);
     }
     if (r.killed) {
-      say(Math.random() < 0.5 ? "Got one!" : "Nape cut, it's down!", a.name);
       for (const b of squad) if (b.target === t) b.target = null;
     } else if (!nape && !titans.partPos(t, a.part, v1)) say("Hamstrung it! Go for the nape!", a.name);
     a.vel.y += 9;
@@ -198,7 +197,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   };
 
   const grab = (a: Ally, t: TitanView) => {
-    if (t.kind === "crawler" || squad.some((b) => b.heldBy === t)) return;
+    if (t.kind === "crawler" || titans.holder() === t || squad.some((b) => b.heldBy === t)) return;
     for (const side of ["armL", "armR"] as const) {
       if (!titans.partPos(t, side, v1) || v1.distanceTo(a.pos) > t.height * 0.12 + 2.5) continue;
       a.mode = "held";
@@ -217,14 +216,14 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
   const held = (a: Ally, dt: number) => {
     const t = a.heldBy!;
     a.heldT += dt;
-    if (!t.alive || !titans.partPos(t, a.heldSide, v1)) {
+    if (!t.alive || !titans.holds(t) || !titans.partPos(t, a.heldSide, v1)) {
       titans.hold(t, a.heldSide, false);
       a.mode = "fly";
       a.heldBy = null;
       a.vel.set(0, 6, 0);
       a.cd = 3;
       out.push({ type: "feat", name: "save", kind: t.kind });
-      return say("Thanks for the save!", a.name, true);
+      return;
     }
     const hand = (t as TitanView & { rig?: Rig }).rig?.bones[a.heldSide === "armL" ? BN.handL : BN.handR];
     if (hand) a.pos.set(0, -0.06, 0).applyMatrix4(hand.matrixWorld);
@@ -239,7 +238,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     out.push({ type: "sfx", name: "hurt", at: a.pos.clone() }, { type: "sfx", name: "bite", at: a.pos.clone() });
     if (lead!.pos.distanceTo(a.pos) < NEAR * 2) out.push({ type: "shake", strength: 0.25 });
     callT = CALL_GAP;
-    out.push({ type: "toast", title: "Squad member lost", text: `${a.name} was eaten` });
+    out.push({ type: "toast", title: `${a.name} was eaten` });
   };
 
   const step = (a: Ally, dt: number, i: number, yaw: number, near: boolean) => {
@@ -346,7 +345,7 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
     order = o;
     for (const a of squad) a.run = 0;
     pickT = 0;
-    const ev: GameEvent[] = [{ type: "radio", who: "You", text: o === "attack" ? "Attack my target!" : "Regroup on me!" }];
+    const ev: GameEvent[] = [{ type: "sfx", name: "ui", volume: 0.6 }];
     return ev;
   };
 
@@ -366,7 +365,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
           open = 0;
           if (titans.kills > killsWas) {
             out.push({ type: "score", amount: 300, reason: "Team attack" });
-            say("That's how it's done!", alive()[0]?.name ?? "Command", true);
           }
         }
       }
@@ -417,7 +415,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       teamCd = TEAM_CD;
       teamTi = t;
       return [
-        { type: "radio", who: "You", text: "Team attack! Hit it now!" },
         { type: "sfx", name: "horn", volume: 0.7 },
       ];
     },
@@ -429,7 +426,6 @@ export function createAllies(scene: THREE.Scene, world: World, titans: Titans, f
       size = Math.min(MAX - 1, size + 1);
       const a = squad.find((b) => b.mode === "dead");
       if (a) enlist(a, wallPoint(0, v2));
-      say("Another soldier joins your squad!", "Command", true);
       return out.slice();
     },
     hud() {
