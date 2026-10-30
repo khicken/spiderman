@@ -2,12 +2,13 @@ import * as THREE from "three";
 import type { Blade, Fx, GameEvent, HitZone, PlayerView, Sfx, StrikeResult, TitanHit, TitanKind, TitanPart, Titans, TitanView, World } from "./contracts";
 import { crawlPitch, newPose, pose, type Pose } from "./titan-anim";
 import { BN, buildVariant, makeRig, rand, type Limb, type Rig, type Spec, type Variant } from "./titan-model";
+import { createJaw } from "./titan-jaw";
 import { createRocks } from "./titan-rocks";
 import { BOSS, bossFor, damageK, isBoss, pickKind as pickFor, quotaFor, speedK, type BossKind } from "./titan-waves";
 import { toon } from "./toon";
 import { WALL_H, WALL_R, WALL_T } from "./world-town";
 
-type Act = "walk" | "grab" | "hold" | "chew" | "swat" | "stomp" | "leap" | "lunge" | "punch" | "kick" | "roar" | "flinch" | "charge" | "throw" | "climb";
+type Act = "walk" | "grab" | "hold" | "chew" | "swat" | "stomp" | "leap" | "lunge" | "punch" | "kick" | "roar" | "flinch" | "charge" | "throw" | "climb" | "bite";
 type Cap = { a: THREE.Vector3; b: THREE.Vector3; r: number; zone: HitZone; bone: THREE.Object3D };
 
 type T = {
@@ -104,6 +105,7 @@ const SPECS: Spec[] = [
   { body: "normal", face: "smile", hair: "long", hairColor: 0xd6b062, skin: 0xefc4ae, seed: 28 },
   { body: "runner", face: "bulge", hair: "none", hairColor: 0, skin: SKINS[5], seed: 29 },
   { body: "lanky", face: "grin", hair: "sparse", hairColor: 0x3b2a1e, skin: SKINS[3], seed: 30 },
+  { body: "muscular", face: "gape", hair: "long", hairColor: 0x1a1210, skin: 0xd99a80, seed: 31 },
 ];
 const POOL: Record<TitanKind, number[]> = {
   normal: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13],
@@ -115,6 +117,7 @@ const POOL: Record<TitanKind, number[]> = {
   smiler: [17],
   runner: [18],
   climber: [19],
+  jaw: [20],
 };
 const KIND_NAME: Partial<Record<TitanKind, string>> = { crawler: "Crawler", smiler: "Smiling Titan", runner: "Long-Legged Runner", climber: "Wall Climber", ...Object.fromEntries(Object.entries(BOSS).map(([k, b]) => [k, b.name])) };
 const SMALL = [10, 12];
@@ -196,6 +199,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   };
   let bossPending: BossKind | null = null;
   const rocks = createRocks(scene, world, fx);
+  const jaw = createJaw<T>({ world, fx, out, rnd, hurt, mouth: (ti, o) => mouth(ti, o), walk: (ti) => startAct(ti, "walk"), bite: (ti) => startAct(ti, "bite") });
   let heldBy: T | null = null;
   let holdSide: 0 | 1 = 0;
   const heldPos = new THREE.Vector3();
@@ -224,12 +228,12 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     mk("legL", BN.thighL); mk("legL", BN.shinL); mk("legR", BN.thighR); mk("legR", BN.shinR);
     const p = newPose(rnd());
     p.hunch = v.spec.body === "elderly" ? 0.45 : v.spec.body === "lanky" ? 0.15 : v.spec.body === "beast" ? 0.35 : 0;
-    const ws = speedK(wave) * ({ female: 4.5, armored: 4.2, beast: 3.6, crawler: 8 + rnd() * 2, abnormal: 2.8 + h * 0.24, runner: 3 + h * 0.3, smiler: 1.3 + h * 0.18, climber: 2 + h * 0.2, normal: 1.5 + h * 0.22 } as Record<TitanKind, number>)[kind];
+    const ws = speedK(wave) * ({ female: 4.5, armored: 4.2, beast: 3.6, crawler: 8 + rnd() * 2, abnormal: 2.8 + h * 0.24, runner: 3 + h * 0.3, smiler: 1.3 + h * 0.18, climber: 2 + h * 0.2, jaw: 8.5, normal: 1.5 + h * 0.22 } as Record<TitanKind, number>)[kind];
     const name = KIND_NAME[kind] ?? (kind === "abnormal" ? `Abnormal ${NOUN[v.spec.body]}` : `${ADJ[v.spec.face]} ${NOUN[v.spec.body]}`);
     const ti: T = {
       id: nextId++, kind, name, height: h, pos: at.clone(), yaw: Math.atan2(world.breach.x - at.x, world.breach.z - at.z), alive: true,
       v, rig, p, cp: crawlPitch(v.d), hp: { nape: 1, eyes: 1, armL: 1, armR: 1, legL: 1, legR: 1 }, sev: [0, 0, 0, 0], blind: 0,
-      act: isBoss(kind) ? "roar" : "walk", at: 0, side: 0, cool: 2, speed: 0, walkSpeed: ws, turn: kind === "normal" || kind === "smiler" ? 0.9 : kind === "female" ? 2.2 : kind === "armored" ? 1.5 : kind === "beast" ? 1.8 : 2.6,
+      act: isBoss(kind) ? "roar" : "walk", at: 0, side: 0, cool: 2, speed: 0, walkSpeed: ws, turn: kind === "normal" || kind === "smiler" ? 0.9 : kind === "female" ? 2.2 : kind === "armored" ? 1.5 : kind === "beast" ? 1.8 : kind === "jaw" ? 3.4 : 2.6,
       goal: new THREE.Vector3(), wanderT: 0, ignore: kind === "abnormal" && rnd() < 0.3, sprint: 0, sprintT: R(1, 4), stuck: 0, stuckN: 0, detour: 0, detourT: 0, wade: 0,
       prev: at.clone(), dead: 0, fall: rnd() < 0.7 ? 1 : -1, landed: false, hard: 0, hardened: false, aim: new THREE.Vector3(), aim2: new THREE.Vector3(), hit: false,
       flash: 0, tint, caps, nape: new THREE.Vector3(), eyes: new THREE.Vector3(), center: new THREE.Vector3(), steamT: R(1, 5), stepS: 0, roarT: 25, removed: false,
@@ -237,6 +241,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       home: new THREE.Vector3(), downT: 0, downArm: true, special: R(3, 5), smashT: 0, climb: 0, mark: 0, allyHold: false,
     };
     if (kind === "beast") ti.home.copy(homePoint());
+    if (kind === "jaw") jaw.dress(ti);
     if (kind === "climber") {
       const a = -Math.PI / 2 + (rnd() < 0.5 ? -1 : 1) * R(0.3, 0.6);
       ti.home.set(Math.cos(a), 0, Math.sin(a)).multiplyScalar(WALL_R + WALL_T / 2 + h * 0.14);
@@ -513,7 +518,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     if (part === "nape") {
       if (t.hardened && w !== "spears") {
         events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
-        once(events, `Hardened${t.id}`, t.kind === "female" ? "Cut two limbs" : "Cut a limb", "Hardened");
+        if (t.kind !== "jaw") once(events, `Hardened${t.id}`, t.kind === "female" ? "Cut two limbs" : "Cut a limb", "Hardened");
         fx.steam(pt, 1.5, 0.6);
         return { events, zone: "nape", titan: t, killed: false };
       }
@@ -610,6 +615,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       return;
     }
     if (ti.ignore && dh > H * 0.7) return;
+    if (ti.kind === "jaw" && jaw.decide(ti, dh, dy, fwd, legs)) return;
     if (ti.kind === "crawler") {
       if (dh < H * 1.4 + 4 && dy < H * 0.8 && fwd > 0.5) startAct(ti, "lunge");
       return;
@@ -684,6 +690,8 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     switch (ti.act) {
       case "walk":
         return;
+      case "bite":
+        return jaw.bite(ti, dt, tg, pl);
       case "grab": {
         tg.move = 0;
         tg.twist = clamp(p.lookYaw, -0.7, 0.7);
@@ -1204,7 +1212,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
 
     const kneeling = ti.kind !== "crawler" && (ti.sev[2] > 0 || ti.sev[3] > 0);
     const outside = !world.inside(ti.pos.x, ti.pos.z);
-    const scripted = ti.act === "charge" || ti.act === "climb";
+    const scripted = ti.act === "charge" || ti.act === "climb" || ti.act === "bite";
     ti.wanderT -= dt;
     if (ti.kind === "climber" && ti.climb === 0) {
       ti.goal.copy(ti.home);
@@ -1389,6 +1397,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       cr.visible = ti.hard > 0.05;
       cr.scale.copy(ti.crystalScale[0]).multiplyScalar(Math.max(0.05, ti.hard));
     }
+    if (ti.kind === "jaw") jaw.tick(ti, dt);
     if (ti.kind === "female") {
       const anySev = (ti.sev[0] > 0 ? 1 : 0) + (ti.sev[1] > 0 ? 1 : 0) + (ti.sev[2] > 0 ? 1 : 0) + (ti.sev[3] > 0 ? 1 : 0) >= 2;
       const want2 = !anySev && pl.alive && ti.nape.distanceTo(pl.pos) < 45;

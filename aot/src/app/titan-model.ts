@@ -406,7 +406,7 @@ export type Rig = {
 
 let crystalGeo: THREE.BufferGeometry | null = null;
 let crystalMat: THREE.Material | null = null;
-function crystal() {
+export function crystal() {
   if (!crystalGeo) {
     const gs: THREE.BufferGeometry[] = [];
     const r = rand(7);

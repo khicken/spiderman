@@ -1,7 +1,7 @@
 import type * as THREE from "three";
 import type { Allies, Boost, Fx, GameEvent, Objective, Player, RunHud, TitanKind, Titans, Upgrade, UpgradeId, World } from "./contracts";
 import { gearBoost } from "./progression";
-import { bossFor, isBoss, quotaFor, type BossKind } from "./titan-waves";
+import { bossFor, isBoss, isHorde, quotaFor, type BossKind } from "./titan-waves";
 
 type Count = "hook" | "gas" | "kill" | "waveKill" | "abnormal" | "tendon" | "sever" | "limb" | "perfect" | "save" | "boss" | "fastKill" | "supply";
 type Spec = { text: string; hint?: string; need: number; count?: Count; kind?: TitanKind; until?: "noDeath" | "depot" };
@@ -40,6 +40,10 @@ const BOSS_OBJ: Record<BossKind, [Spec, Spec]> = {
     { text: "Bring down the Beast Titan", hint: "Close in through the rocks", need: 1, count: "boss", kind: "beast" },
     { text: "Sever his throwing arm", need: 1, count: "sever", kind: "beast" },
   ],
+  jaw: [
+    { text: "Bring down the Jaw Titan", hint: "Dodge his bite, then cut the nape", need: 1, count: "boss", kind: "jaw" },
+    { text: "Cut his tendon to drop him", need: 1, count: "tendon", kind: "jaw" },
+  ],
 };
 
 export function plan(n: number): [Spec, Spec] {
@@ -50,6 +54,10 @@ export function plan(n: number): [Spec, Spec] {
   if (n === 3) return [{ text: "Land a perfect cut", hint: "Release when the blades glow", need: 1, count: "perfect" }, { text: "Kill 2 abnormals", need: 2, count: "abnormal" }];
   let k = 0;
   for (let m = 5; m < n; m++) if (!bossFor(m)) k++;
+  if (isHorde(n)) {
+    const q = Math.round(quotaFor(n, false) * 0.75);
+    return [{ text: `Cut down the horde: ${q} titans`, need: q, count: "waveKill" }, { text: "Kill 6 crawlers", need: 6, count: "kill", kind: "crawler" }];
+  }
   const hold = Math.min(quotaFor(n, false), 8 + Math.floor(n / 3));
   const mains: Spec[] = [
     { text: "Protect the supply depot", hint: "Titans march on it", need: 100, until: "depot" },
@@ -62,6 +70,8 @@ export function plan(n: number): [Spec, Spec] {
     { text: "Kill 3 abnormals", need: 3, count: "abnormal" },
     { text: "Land 3 perfect cuts", need: 3, count: "perfect" },
     { text: "Kill 2 at top speed", need: 2, count: "fastKill" },
+    { text: "Sever 3 arms", need: 3, count: "sever" },
+    { text: "Kill a Wall Climber", need: 1, count: "kill", kind: "climber" },
   ];
   return [mains[k % mains.length], bonus[k % bonus.length]];
 }

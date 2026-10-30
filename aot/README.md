@@ -14,7 +14,9 @@ Quick start: Q locks on a titan, F hooks it, hold E and release to strike the na
 - Q or the mouse wheel picks the part: nape, eyes, arms, legs. T fires a thunder spear. Blades swap by themselves when dull.
 - Only a nape cut kills. Cut legs to make a titan kneel, eyes to blind it, arms to stop a grab. Dash as a hand reaches for you to dodge it. If caught, hold E and release when the blades glow.
 - Phone or tablet: play in landscape. Use the left stick to move, drag to look, and the right buttons for anchors, gas, slash, and dash.
-- Bosses: the Female Titan (wave 4), the Armored Titan (wave 7), and the Beast Titan (wave 10). Waves never end after wave 10.
+- Bosses: the Female Titan (wave 4), the Armored Titan (wave 7), the Beast Titan (wave 10), and the Jaw Titan (wave 13). Waves never end after wave 10, and a boss comes every third wave.
+- The Jaw Titan crouches and roars before it lunges to bite. Dodge the bite or cut a tendon, then cut the nape while it is open.
+- Every third wave after 10, starting at wave 12, is a horde of small fast titans.
 - A Survey Corps squad fights with you. G orders them to attack your target or regroup. C and V fire single anchors.
 - Pick Eren, Mikasa, Levi, Armin, or a cadet under Soldiers. Ranks unlock Mikasa and Levi.
 
