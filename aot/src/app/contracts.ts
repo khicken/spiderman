@@ -5,7 +5,7 @@ import type * as THREE from "three";
 
 export type Quality = "low" | "medium" | "high";
 
-export type TitanKind = "normal" | "abnormal" | "crawler" | "female" | "armored" | "beast" | "smiler" | "runner" | "climber";
+export type TitanKind = "normal" | "abnormal" | "crawler" | "female" | "armored" | "beast" | "smiler" | "runner" | "climber" | "jaw";
 export type TitanPart = "nape" | "eyes" | "armL" | "armR" | "legL" | "legR";
 export type HitZone = TitanPart | "body";
 
