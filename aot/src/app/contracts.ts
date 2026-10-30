@@ -114,7 +114,6 @@ export interface World {
   inside(x: number, z: number): boolean; // inside the walls
   readonly depotDown: boolean[]; // per supply depot: fallen, no refills
   readonly depotTops: readonly THREE.Vector3[]; // per supply depot: where the green smoke rises
-  setBeckon(on: boolean): void; // denser depot smoke
   kickGate(): GameEvent[]; // the Colossal Titan breaks the gate, once
   smash(at: THREE.Vector3, radius: number): void; // flattens houses within radius of a ground point
   update(dt: number, t: number): GameEvent[];
@@ -223,7 +222,7 @@ export type PlayerHud = {
   comboBonus: number; // damage multiplier from the chain, 1 is none
   ammo: number; // spears left
 };
-export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; health: number; spare: number }; // multipliers, spare adds
+export type Boost = { tank: number; reel: number; wear: number; damage: number; chargeTime: number; dash: number; spare: number; spears: number }; // multipliers, spare and spears add
 export interface Player {
   readonly pos: THREE.Vector3; // body center
   readonly vel: THREE.Vector3;
@@ -293,7 +292,7 @@ export type HudState = {
   run: RunHud;
 } & PlayerHud;
 
-export type UpgradeId = "tank" | "reel" | "blade" | "spare" | "damage" | "charge" | "health" | "squad";
+export type UpgradeId = "reel" | "dash" | "damage" | "charge" | "spears" | "squad";
 export type Upgrade = { id: UpgradeId; name: string; jp: string; text: string; level: number; max: number };
 export type Objective = { text: string; hint?: string; have: number; need: number; unit?: "%"; state: "on" | "done" | "failed"; bonus: boolean };
 export type RunHud = {
@@ -302,7 +301,7 @@ export type RunHud = {
   need: number;
   total: number;
   objectives: Objective[];
-  choice: Upgrade[] | null; // level-up picks, shown in a supply depot. Keys 1-3 or a tap pick
+  choice: Upgrade[] | null; // level-up picks, shown while playing. Keys 1-3 or a tap pick
   pending: number; // levels not yet spent
   done: number;
   count: number;
