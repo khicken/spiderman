@@ -449,9 +449,9 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     if (slash.titan) slash.dir.copy(t1).sub(pos).normalize();
     else slash.dir.copy(input.look);
     const lunge = 14 + 30 * slash.charge;
-    const along = vel.dot(slash.dir);
-    t2.copy(vel).addScaledVector(slash.dir, -along).multiplyScalar(0.35);
-    vel.copy(slash.dir).multiplyScalar(Math.max(along, lunge)).add(t2);
+    const sp = vel.length();
+    const carry = sp * (0.6 + 0.4 * Math.max(0, vel.dot(slash.dir) / Math.max(sp, 1e-3)));
+    vel.copy(slash.dir).multiplyScalar(Math.max(carry, lunge));
     slash.speed = vel.length();
     frame.side = slash.side;
     startAct("slash", SLASH_T);
