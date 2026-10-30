@@ -95,8 +95,8 @@ export function startGame(canvas: HTMLCanvasElement, onHud: (h: HudState) => voi
         score += e.amount;
         onEvent(e);
       } else if (e.type === "kill") onEvent({ type: "kill", height: e.height, kind: e.kind, speed: e.speed });
-      else if (introT >= 0) introToasts.push(run.dress(e));
-      else onEvent(run.dress(e));
+      else if (introT >= 0) introToasts.push(e);
+      else onEvent(e);
     }
   };
 

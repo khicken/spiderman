@@ -377,7 +377,7 @@ export default function TitanPage() {
             msgs={msgs}
             touch={touch}
             who={settings ? getCharacter(settings.character) : null}
-            final={runRef.current.deaths >= 3}
+            lives={3 - runRef.current.deaths}
             onSkip={() => gameRef.current?.skipIntro()}
           />
         </div>

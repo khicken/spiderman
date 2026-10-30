@@ -27,15 +27,15 @@ const FAST = 40;
 const ABNORMAL: TitanKind[] = ["abnormal", "runner", "climber"];
 const BOSS_OBJ: Record<BossKind, [Spec, Spec]> = {
   female: [
-    { text: "Bring down the Female Titan", hint: "Cut two limbs, then the nape", need: 1, count: "boss", kind: "female" },
+    { text: "Bring down the Female Titan", need: 1, count: "boss", kind: "female" },
     { text: "Sever 2 of her limbs", need: 2, count: "limb", kind: "female" },
   ],
   armored: [
-    { text: "Bring down the Armored Titan", hint: "Knee joints first", need: 1, count: "boss", kind: "armored" },
+    { text: "Bring down the Armored Titan", need: 1, count: "boss", kind: "armored" },
     { text: "Cut both his knees", need: 2, count: "tendon", kind: "armored" },
   ],
   beast: [
-    { text: "Bring down the Beast Titan", hint: "Close in through the rocks", need: 1, count: "boss", kind: "beast" },
+    { text: "Bring down the Beast Titan", need: 1, count: "boss", kind: "beast" },
     { text: "Sever his throwing arm", need: 1, count: "sever", kind: "beast" },
   ],
 };
@@ -59,7 +59,7 @@ export function plan(n: number): [Spec, Spec] {
     { text: "No deaths this wave", need: 1, until: "noDeath" },
     { text: "Kill 3 abnormals", need: 3, count: "abnormal" },
     { text: "Land 3 perfect cuts", need: 3, count: "perfect" },
-    { text: "Kill 2 at top speed", need: 2, count: "fastKill" },
+    { text: `Kill 2 above ${FAST} km/h`, need: 2, count: "fastKill" },
   ];
   return [mains[k % mains.length], bonus[k % bonus.length]];
 }
@@ -175,7 +175,6 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         ob.unit = "%";
       }
       titans.lure(world.supplies[depot]);
-      out.push({ type: "radio", who: "Command", text: "Titans are heading for the depot!" });
     }
   };
 
@@ -198,7 +197,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
     fx.steam(p, 6, 3);
     out.push({ type: "sfx", name: "gateBreak", at: p.clone(), volume: 0.8 }, { type: "shake", strength: 0.3 }, { type: "toast", title: "Depot lost", text: "No refills there this wave" });
     depot = -1;
-    if (ob) fail(ob);
+    if (ob) ob.state = "failed";
   };
 
   const roll = () => {
@@ -233,7 +232,7 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
       finT = 0;
       objs = DRILL.map((s) => ({ spec: s, text: s.text, hint: s.hint, have: 0, need: s.need, state: "on", bonus: false }));
       titans.drill(2);
-      out.push({ type: "banner", jp: "訓練", en: "Bootcamp", text: "Learn the gear on easy titans" });
+      out.push({ type: "banner", jp: "訓練", en: "Bootcamp" });
     },
     skip(): GameEvent[] {
       if (!drill || drillT < 1) return [];
@@ -256,11 +255,6 @@ export function createRun(o: { world: World; titans: Titans; player: Player; all
         add(e.name, e.kind);
         if (e.name === "tendon" || e.name === "sever") add("limb", e.kind);
       }
-    },
-    dress<E extends GameEvent>(e: E): E {
-      if (e.type !== "banner" || e.en !== `Wave ${titans.wave}`) return e;
-      const [m, b] = plan(titans.wave);
-      return { ...e, text: `${m.text}. Bonus: ${b.text}` };
     },
     update(dt: number, real: number, live: boolean): GameEvent[] {
       if (titans.wave !== wave) {
