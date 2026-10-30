@@ -47,7 +47,7 @@ export function Hud({
   msgs,
   touch,
   who,
-  final,
+  lives,
   onSkip,
 }: {
   h: HudState;
@@ -55,7 +55,7 @@ export function Hud({
   msgs: Msgs;
   touch: boolean;
   who: Character | null;
-  final: boolean;
+  lives: number;
   onSkip: () => void;
 }) {
   if (h.intro) return <Intro onSkip={onSkip} />;
@@ -79,7 +79,7 @@ export function Hud({
       {msgs.radio?.type === "radio" && <Radio key={msgs.radio.id} who={msgs.radio.who} text={msgs.radio.text} />}
       {b?.type === "kill" && <KillBanner key={b.id} height={b.height} speed={b.speed} kind={b.kind} />}
       {b?.type === "banner" && <Banner key={b.id} jp={b.jp} en={b.en} text={b.text} />}
-      {h.dead && <Dead final={final} />}
+      {h.dead && <Dead lives={lives} />}
     </div>
   );
 }
@@ -678,6 +678,7 @@ function GearPanel({ h, who }: { h: HudState; who: Character | null }) {
         {h.squad.max > 0 && (
           <span className="flex items-baseline gap-1.5 text-xs uppercase tracking-[0.2em] text-bone/80">
             <span className="font-jp text-bone/60">分隊</span>
+            Squad
             <span className="font-display text-base tabular-nums tracking-normal text-bone">
               {h.squad.alive}/{h.squad.max}
             </span>
@@ -860,7 +861,7 @@ function KillBanner({ height, speed, kind }: { height: number; speed: number; ki
   );
 }
 
-function Dead({ final }: { final: boolean }) {
+function Dead({ lives }: { lives: number }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(60,0,0,0.55),rgba(0,0,0,0.92))]">
       <div className="rise-in font-brush text-[clamp(6rem,22vh,13rem)] leading-none text-blood [text-shadow:0_0_40px_rgba(195,22,28,0.6)]">
@@ -869,9 +870,9 @@ function Dead({ final }: { final: boolean }) {
       <div className="mt-2 font-display text-[clamp(2rem,6vh,3.5rem)] uppercase tracking-[0.12em] text-bone">
         Fallen in the line of duty
       </div>
-      {!final && (
+      {lives > 0 && (
         <div className="slow-fade mt-3 text-sm uppercase tracking-[0.35em] text-parch/70">
-          Returning to a supply depot
+          Returning to a supply depot · {lives} {lives === 1 ? "life" : "lives"} left
         </div>
       )}
     </div>

@@ -187,7 +187,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
   const queued: GameEvent[] = [];
   let nextId = 1;
   let lure: THREE.Vector3 | null = null;
-  let wave = 0, kills = 0, quota = 0, spawned = 0, killedWave = 0, spawnT = 0, breakT = 0, toastT = 0;
+  let wave = 0, kills = 0, quota = 0, spawned = 0, killedWave = 0, spawnT = 0, breakT = 0;
   const told = new Set<string>();
   const once = (events: GameEvent[], key: string, text: string, title = key) => {
     if (told.has(key)) return;
@@ -298,7 +298,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     spawnT = 0.4;
     breakT = 0;
     bossPending = bk;
-    out.push({ type: "stinger", name: "wave" }, { type: "banner", jp: `第${n}波`, en: `Wave ${n}`, text: boss ? "Something is coming" : n === 1 ? "Survey Corps, advance!" : n === 11 ? "Endless waves. Hold the line" : `${quota} titans incoming` });
+    out.push({ type: "stinger", name: "wave" }, { type: "banner", jp: `第${n}波`, en: `Wave ${n}`, text: boss ? "Something is coming" : n === 11 ? "Endless waves. Hold the line" : undefined });
     sfx("horn");
     for (let i = n === 1 ? 3 : 2; i > 0 && !boss && aliveCount() < MAX_ALIVE; i--) spawnNear(true);
   }
@@ -418,15 +418,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     events.push({ type: "sfx", name: "sever", at: _a.clone() }, { type: "sfx", name: "titanHurt", at: _a.clone(), volume: 0.8 }, { type: "feat", name: k >= 2 ? "tendon" : "sever", kind: ti.kind });
     if (ti.act === "grab" && ti.side === (k as 0 | 1)) startAct(ti, "flinch");
     if (k >= 2 && ti.kind !== "crawler") events.push({ type: "sfx", name: "titanFall", at: ti.pos.clone(), volume: 0.6 });
-    if (ti.kind === "armored" && k >= 2 && ti.sev[5 - k] <= 0) once(events, "Knee cut", "Now the other knee");
-    if (ti.kind === "beast" && k < 2) {
-      if (ti.sev[1 - k] > 0) once(events, "Both arms severed", "No more rocks. Go for the nape");
-    }
-    if (ti.kind === "female") {
-      const n = ti.sev.reduce((a, v) => a + (v > 0 ? 1 : 0), 0);
-      if (n >= 2) once(events, "Hardening broken", "Charged cut to the nape, now");
-      else once(events, "One more limb", "Her nape is still hardened");
-    }
+    if (ti.kind === "female" && ti.sev.reduce((a, v) => a + (v > 0 ? 1 : 0), 0) >= 2) once(events, "Hardening broken", "Charged cut to the nape, now");
   }
 
   function kill(ti: T, blade: Blade, crit: boolean, events: GameEvent[]) {
@@ -504,7 +496,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     if (w !== "spears" && t.kind === "armored" && part !== "eyes" && !(part === "nape" && !t.hardened) && !armorGap(t, part, blade)) {
       events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
       fx.steam(pt, 1.2, 0.4);
-      once(events, `Armor${t.id}`, part === "nape" ? "Drop him first. Cut behind both knees" : "Cut behind the knees or under the arms", "Armor");
+      once(events, "Armor", "Cut behind both knees to drop him");
       return { events, zone: part, titan: t, killed: false };
     }
     t.flash = 1;
@@ -513,7 +505,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     if (part === "nape") {
       if (t.hardened && w !== "spears") {
         events.push({ type: "sfx", name: "clang", at: pt }, { type: "hitstop", duration: 0.06 }, { type: "shake", strength: 0.3 });
-        once(events, `Hardened${t.id}`, t.kind === "female" ? "Cut two limbs" : "Cut a limb", "Hardened");
+        once(events, `Hardened${t.kind}`, t.kind === "female" ? "Cut two limbs first" : "Cut a limb first", "Hardened");
         fx.steam(pt, 1.5, 0.6);
         return { events, zone: "nape", titan: t, killed: false };
       }
@@ -1127,7 +1119,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
               quota++;
               n++;
             }
-            if (n) out.push({ type: "toast", title: ti.kind === "beast" ? "The Beast Titan roars" : "She called the titans", text: ti.kind === "beast" ? "Every titan turns on you" : `${n} more coming` });
+            if (n) out.push({ type: "toast", title: ti.kind === "beast" ? "The Beast Titan roars" : "She called the titans", text: ti.kind === "beast" ? "Every titan turns on you" : undefined });
           }
         }
         if (a > 2.1) {
@@ -1173,7 +1165,6 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
     ti.roarT -= dt;
     ti.special -= dt;
     ti.downT -= dt;
-    toastT -= dt;
     p.t += dt;
     ti.flash = Math.max(0, ti.flash - dt * 6);
     if (ti.blind > 0) {
@@ -1212,10 +1203,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
         ti.climb = 1;
         ti.mark = 0;
         startAct(ti, "climb");
-        if (toastT <= 0) {
-          toastT = 4;
-          out.push({ type: "toast", title: "Wall Climber", text: "A titan is scaling the wall" });
-        }
+        once(out, "Wall Climber", "A titan is scaling the wall");
       }
     } else if (ti.kind === "beast" && !(pl.alive && Math.hypot(pl.pos.x - ti.pos.x, pl.pos.z - ti.pos.z) < 40)) {
       ti.goal.copy(ti.home);
@@ -1718,7 +1706,7 @@ export function createTitans(scene: THREE.Scene, world: World, fx: Fx): Titans {
       },
       show(s, dt) {
         out.length = 0;
-        if (s[0] !== wave && s[0] > 0) out.push({ type: "stinger", name: "wave" }, { type: "banner", jp: `第${s[0]}波`, en: `Wave ${s[0]}`, text: "Hold the line together" });
+        if (s[0] !== wave && s[0] > 0) out.push({ type: "stinger", name: "wave" }, { type: "banner", jp: `第${s[0]}波`, en: `Wave ${s[0]}`, });
         else if (s[2] > 0 && breakT <= 0 && wave > 0) out.push({ type: "stinger", name: "waveClear" }, { type: "banner", jp: `第${wave}波 撃退`, en: `Wave ${wave} cleared` });
         wave = s[0];
         quota = s[1];
