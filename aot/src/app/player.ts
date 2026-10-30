@@ -407,7 +407,7 @@ export function createPlayer(scene: THREE.Scene, world: World, titans: Titans, f
     }
   };
 
-  const isPerfect = () => chargeT >= PERFECT[0] * st.chargeTime && chargeT <= PERFECT[1] * st.chargeTime;
+  const isPerfect = () => chargeT >= PERFECT[0] * st.chargeTime && chargeT <= PERFECT[0] * st.chargeTime + PERFECT[1] - PERFECT[0];
   const chargeUp = (input: Input) => {
     if (input.held.has("attack")) chargeT = input.holdTime("attack");
     if (!flashed && chargeT >= PERFECT[0] * st.chargeTime) {
