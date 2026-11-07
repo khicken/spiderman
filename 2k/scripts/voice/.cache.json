@@ -1,0 +1,3970 @@
+{
+"deep3_1": {
+"hash": "966b8be761a3",
+"durationSec": 2.955
+},
+"deep3_2": {
+"hash": "a3ca95180710",
+"durationSec": 2.808
+},
+"pa_kon-knueppel": {
+"hash": "c2f34100bf6b",
+"durationSec": 4.787
+},
+"intro_1": {
+"hash": "53cc39ef3b83",
+"durationSec": 3.576
+},
+"intro_2": {
+"hash": "e1911eb0cd89",
+"durationSec": 6.464
+},
+"intro_3": {
+"hash": "0e9d95d80b79",
+"durationSec": 5.867
+},
+"intro_4": {
+"hash": "9718c6fb4d01",
+"durationSec": 2.952
+},
+"intro_5": {
+"hash": "cebe55d74a0c",
+"durationSec": 4.829
+},
+"pa_welcome_1": {
+"hash": "3575998654d6",
+"durationSec": 3.157
+},
+"pa_welcome_2": {
+"hash": "6cc31e11414d",
+"durationSec": 3.336
+},
+"pa_welcome_3": {
+"hash": "228daa5acd4d",
+"durationSec": 6.32
+},
+"pa_welcome_4": {
+"hash": "28e6c6fd1922",
+"durationSec": 2.493
+},
+"pa_starting_1": {
+"hash": "cb753afb932f",
+"durationSec": 2.219
+},
+"pa_starting_2": {
+"hash": "8b696ffe97a8",
+"durationSec": 3.411
+},
+"pa_starting_3": {
+"hash": "6cead258eaee",
+"durationSec": 1.712
+},
+"pa_starting_4": {
+"hash": "59864da9b24d",
+"durationSec": 3.104
+},
+"tipoff_1": {
+"hash": "034cc2562d90",
+"durationSec": 2.387
+},
+"tipoff_2": {
+"hash": "559e4e390d2a",
+"durationSec": 2.163
+},
+"tipoff_3": {
+"hash": "835cc4b0def2",
+"durationSec": 2.544
+},
+"tipoff_4": {
+"hash": "774ae3e8bd96",
+"durationSec": 2.421
+},
+"tipoff_5": {
+"hash": "c1f8c05ca812",
+"durationSec": 2.477
+},
+"made3_1": {
+"hash": "800b51cf52d0",
+"durationSec": 1.608
+},
+"made3_2": {
+"hash": "cef82e2444e4",
+"durationSec": 2.136
+},
+"made3_3": {
+"hash": "8a7af1920fea",
+"durationSec": 3.093
+},
+"made3_4": {
+"hash": "d3ffc6447d35",
+"durationSec": 2.851
+},
+"made3_5": {
+"hash": "e7438807f3d7",
+"durationSec": 2.117
+},
+"made3_6": {
+"hash": "0f687dabc94d",
+"durationSec": 2.837
+},
+"made3_7": {
+"hash": "f62cdf89388b",
+"durationSec": 1.365
+},
+"deep3_3": {
+"hash": "00598d3b5094",
+"durationSec": 5.285
+},
+"deep3_4": {
+"hash": "182305518759",
+"durationSec": 4.504
+},
+"deep3_5": {
+"hash": "9369bbe20d34",
+"durationSec": 2.915
+},
+"dunk_1": {
+"hash": "948456f3b4af",
+"durationSec": 2.371
+},
+"dunk_2": {
+"hash": "d5891723a0b5",
+"durationSec": 2.507
+},
+"dunk_3": {
+"hash": "701c5ffd50ad",
+"durationSec": 2.715
+},
+"dunk_4": {
+"hash": "4465908c1441",
+"durationSec": 2.808
+},
+"dunk_5": {
+"hash": "cb96200d0757",
+"durationSec": 1.269
+},
+"dunk_6": {
+"hash": "4fdff3f693c3",
+"durationSec": 2.595
+},
+"poster_1": {
+"hash": "128bbcd3155f",
+"durationSec": 2.517
+},
+"poster_2": {
+"hash": "e12027d55fed",
+"durationSec": 3.485
+},
+"poster_3": {
+"hash": "eb1d0adc8b54",
+"durationSec": 3.915
+},
+"poster_4": {
+"hash": "e3fd97cbeb35",
+"durationSec": 3.107
+},
+"poster_5": {
+"hash": "7016339cca00",
+"durationSec": 3.765
+},
+"alleyoop_1": {
+"hash": "75e34435bdf4",
+"durationSec": 3.704
+},
+"alleyoop_2": {
+"hash": "fee003cff45f",
+"durationSec": 2.499
+},
+"alleyoop_3": {
+"hash": "0cc3004b672f",
+"durationSec": 3.973
+},
+"alleyoop_4": {
+"hash": "f2c19d02868e",
+"durationSec": 2.44
+},
+"alleyoop_5": {
+"hash": "56ce9f0e5524",
+"durationSec": 3.029
+},
+"andone_1": {
+"hash": "60a5b98a3d8f",
+"durationSec": 2.933
+},
+"andone_2": {
+"hash": "359da183de64",
+"durationSec": 2.328
+},
+"andone_3": {
+"hash": "c86f907671a1",
+"durationSec": 3.472
+},
+"andone_4": {
+"hash": "8700b386fb7f",
+"durationSec": 2.616
+},
+"andone_5": {
+"hash": "d873b64688dc",
+"durationSec": 3.192
+},
+"block_1": {
+"hash": "1e44c9f6f672",
+"durationSec": 0.808
+},
+"block_2": {
+"hash": "0fa9376ed82c",
+"durationSec": 1.064
+},
+"block_3": {
+"hash": "e7173880ba5b",
+"durationSec": 1.885
+},
+"block_4": {
+"hash": "c2d1dede1dec",
+"durationSec": 2.72
+},
+"block_5": {
+"hash": "9e38a3964256",
+"durationSec": 2.421
+},
+"block_6": {
+"hash": "7cd738a4041f",
+"durationSec": 1.723
+},
+"steal_1": {
+"hash": "b4b2c35b61aa",
+"durationSec": 0.691
+},
+"steal_2": {
+"hash": "a9978a9fac72",
+"durationSec": 2.443
+},
+"steal_3": {
+"hash": "1b1b11fc674d",
+"durationSec": 2.573
+},
+"steal_4": {
+"hash": "734ac11ceb48",
+"durationSec": 2.155
+},
+"steal_5": {
+"hash": "f641d62aa323",
+"durationSec": 2.384
+},
+"fastbreak_1": {
+"hash": "bff302540a5e",
+"durationSec": 2.651
+},
+"fastbreak_2": {
+"hash": "bf0819f86247",
+"durationSec": 1.613
+},
+"fastbreak_3": {
+"hash": "c6240581572e",
+"durationSec": 2.005
+},
+"fastbreak_4": {
+"hash": "dac4e7f34855",
+"durationSec": 1.832
+},
+"fastbreak_5": {
+"hash": "de295694c2a4",
+"durationSec": 2.323
+},
+"ankles_1": {
+"hash": "8848f3179718",
+"durationSec": 2.885
+},
+"ankles_2": {
+"hash": "d17b9150b719",
+"durationSec": 2.44
+},
+"ankles_3": {
+"hash": "79f952a118b0",
+"durationSec": 2.843
+},
+"ankles_4": {
+"hash": "7ea00b7fd1bf",
+"durationSec": 2.579
+},
+"ankles_5": {
+"hash": "bfd7635d1f08",
+"durationSec": 1.643
+},
+"miss_1": {
+"hash": "774cc8f2add2",
+"durationSec": 0.779
+},
+"miss_2": {
+"hash": "eff1e9c9fc22",
+"durationSec": 0.872
+},
+"miss_3": {
+"hash": "c4b9efda7e3d",
+"durationSec": 1.747
+},
+"miss_4": {
+"hash": "690bb93f64d8",
+"durationSec": 1.627
+},
+"miss_5": {
+"hash": "d0c56de7b7ca",
+"durationSec": 2.224
+},
+"miss_6": {
+"hash": "4d076e98fe44",
+"durationSec": 1.765
+},
+"miss_7": {
+"hash": "9507e28134e4",
+"durationSec": 2.293
+},
+"airball_1": {
+"hash": "68e8212d2af7",
+"durationSec": 2.709
+},
+"airball_2": {
+"hash": "871a9bfec990",
+"durationSec": 1.565
+},
+"airball_3": {
+"hash": "ab26d8dd8e0d",
+"durationSec": 2.192
+},
+"airball_4": {
+"hash": "d59ba567212e",
+"durationSec": 1.819
+},
+"shotclock_1": {
+"hash": "9af31d7d8413",
+"durationSec": 3.013
+},
+"shotclock_2": {
+"hash": "18ffc60d1a08",
+"durationSec": 3.4
+},
+"shotclock_3": {
+"hash": "ccdabcc521be",
+"durationSec": 2.315
+},
+"shotclock_4": {
+"hash": "efb2ed04d921",
+"durationSec": 2.971
+},
+"turnover_1": {
+"hash": "6c7e32430283",
+"durationSec": 2.419
+},
+"turnover_2": {
+"hash": "f07f754cdf31",
+"durationSec": 1.256
+},
+"turnover_3": {
+"hash": "aec742f23bb1",
+"durationSec": 2.491
+},
+"turnover_4": {
+"hash": "d34c9424a601",
+"durationSec": 2.571
+},
+"turnover_5": {
+"hash": "91598858a073",
+"durationSec": 2.093
+},
+"foul_1": {
+"hash": "822e1c2f0096",
+"durationSec": 2.547
+},
+"foul_2": {
+"hash": "06003c3dfb82",
+"durationSec": 1.211
+},
+"foul_3": {
+"hash": "c3d98cc25735",
+"durationSec": 1.885
+},
+"foul_4": {
+"hash": "b00531f72495",
+"durationSec": 1.893
+},
+"foul_5": {
+"hash": "e3c937a5aa15",
+"durationSec": 1.829
+},
+"freethrows_1": {
+"hash": "6c5277ee2e8d",
+"durationSec": 1.72
+},
+"freethrows_2": {
+"hash": "94c4b78188ca",
+"durationSec": 1.656
+},
+"freethrows_3": {
+"hash": "c939a9b808ef",
+"durationSec": 1.389
+},
+"freethrows_4": {
+"hash": "9dd34a6a7396",
+"durationSec": 1.235
+},
+"timeout_1": {
+"hash": "dfe9990c99bf",
+"durationSec": 1.195
+},
+"timeout_2": {
+"hash": "8b79c493809e",
+"durationSec": 1.843
+},
+"timeout_3": {
+"hash": "f458fe52814e",
+"durationSec": 2.728
+},
+"timeout_4": {
+"hash": "dba85d55945d",
+"durationSec": 2.104
+},
+"endq1_1": {
+"hash": "1ded5992a068",
+"durationSec": 2.072
+},
+"endq1_2": {
+"hash": "71a97c6e319b",
+"durationSec": 1.312
+},
+"endq1_3": {
+"hash": "a50d60e02f5a",
+"durationSec": 1.568
+},
+"endq2_1": {
+"hash": "54da3d8b8ec1",
+"durationSec": 1.877
+},
+"endq2_2": {
+"hash": "a61389ba74cc",
+"durationSec": 2.459
+},
+"endq2_3": {
+"hash": "2cd041392266",
+"durationSec": 1.883
+},
+"endq3_1": {
+"hash": "35eee7a62d96",
+"durationSec": 2.915
+},
+"endq3_2": {
+"hash": "622744c6a3c5",
+"durationSec": 3.299
+},
+"endq3_3": {
+"hash": "3283426b0f14",
+"durationSec": 1.707
+},
+"halftime_1": {
+"hash": "3fe082c11710",
+"durationSec": 3.109
+},
+"halftime_2": {
+"hash": "fe59a59506e1",
+"durationSec": 3.251
+},
+"halftime_3": {
+"hash": "5340645cf0ac",
+"durationSec": 2.859
+},
+"halftime_4": {
+"hash": "0575be432753",
+"durationSec": 2.997
+},
+"buzzer_1": {
+"hash": "21e96d45bd1c",
+"durationSec": 2.997
+},
+"buzzer_2": {
+"hash": "6089a06fb3a0",
+"durationSec": 2.341
+},
+"buzzer_3": {
+"hash": "3ea3a4af6140",
+"durationSec": 4.195
+},
+"buzzer_4": {
+"hash": "8bc95c757895",
+"durationSec": 3.435
+},
+"buzzer_5": {
+"hash": "446fdcb40718",
+"durationSec": 2.168
+},
+"closelate_1": {
+"hash": "a9cf16dbd86a",
+"durationSec": 1.731
+},
+"closelate_2": {
+"hash": "cb58d426f54b",
+"durationSec": 3.224
+},
+"closelate_3": {
+"hash": "94f1fdf0c609",
+"durationSec": 3.984
+},
+"closelate_4": {
+"hash": "6fbbeaf3287f",
+"durationSec": 2.088
+},
+"closelate_5": {
+"hash": "b4d931b339ea",
+"durationSec": 2.501
+},
+"blowout_1": {
+"hash": "d8cc3e1b3c05",
+"durationSec": 1.437
+},
+"blowout_2": {
+"hash": "c8e74e1c5e55",
+"durationSec": 1.592
+},
+"blowout_3": {
+"hash": "58897229e557",
+"durationSec": 2.64
+},
+"blowout_4": {
+"hash": "fe915c6a46dd",
+"durationSec": 3.576
+},
+"overtime_1": {
+"hash": "58d760f25965",
+"durationSec": 1.512
+},
+"overtime_2": {
+"hash": "e90e89de31a0",
+"durationSec": 3.011
+},
+"overtime_3": {
+"hash": "35ac22910701",
+"durationSec": 2.573
+},
+"overtime_4": {
+"hash": "77e62dc2a406",
+"durationSec": 2.797
+},
+"finalwin_1": {
+"hash": "14644601ac4b",
+"durationSec": 2.216
+},
+"finalwin_2": {
+"hash": "0db095cf5a48",
+"durationSec": 4.117
+},
+"finalwin_3": {
+"hash": "4d3a1f56b31a",
+"durationSec": 2.501
+},
+"finalwin_4": {
+"hash": "a70a247299a6",
+"durationSec": 2.192
+},
+"finalloss_1": {
+"hash": "bafa661b24f8",
+"durationSec": 2.544
+},
+"finalloss_2": {
+"hash": "1e1669c25155",
+"durationSec": 2.576
+},
+"finalloss_3": {
+"hash": "631aaf741f6a",
+"durationSec": 3.075
+},
+"finalloss_4": {
+"hash": "027b8ea71ad6",
+"durationSec": 2.848
+},
+"onfire_1": {
+"hash": "7f35824dfee5",
+"durationSec": 1.184
+},
+"onfire_2": {
+"hash": "4d17e43d5b82",
+"durationSec": 1.403
+},
+"onfire_3": {
+"hash": "8bdc7eac26b9",
+"durationSec": 2.173
+},
+"onfire_4": {
+"hash": "95835014fb4d",
+"durationSec": 2.28
+},
+"onfire_5": {
+"hash": "9ccecc27f255",
+"durationSec": 3.651
+},
+"run_1": {
+"hash": "de3352728e07",
+"durationSec": 3.019
+},
+"run_2": {
+"hash": "1d36a6cf4590",
+"durationSec": 2.48
+},
+"run_3": {
+"hash": "7b1308d973cb",
+"durationSec": 3.093
+},
+"pa_team_bos": {
+"hash": "c7432b0d2650",
+"durationSec": 4.133
+},
+"team_bos": {
+"hash": "514270a44615",
+"durationSec": 1.424
+},
+"pa_team_bkn": {
+"hash": "19a27a79e414",
+"durationSec": 4.811
+},
+"team_bkn": {
+"hash": "34325c9f2347",
+"durationSec": 1.213
+},
+"pa_team_nyk": {
+"hash": "f965f8a8636d",
+"durationSec": 4.587
+},
+"team_nyk": {
+"hash": "886ec6c33880",
+"durationSec": 1.333
+},
+"pa_team_phi": {
+"hash": "39d1ff237fe9",
+"durationSec": 5.36
+},
+"team_phi": {
+"hash": "06c42a30ddb4",
+"durationSec": 2.219
+},
+"pa_team_tor": {
+"hash": "b3004fc30c7f",
+"durationSec": 3.941
+},
+"team_tor": {
+"hash": "7aed7633a209",
+"durationSec": 1.515
+},
+"pa_team_chi": {
+"hash": "7b2e8b0ed805",
+"durationSec": 4.213
+},
+"team_chi": {
+"hash": "2098caf7c712",
+"durationSec": 1.653
+},
+"pa_team_cle": {
+"hash": "e45fa123d32d",
+"durationSec": 4.901
+},
+"team_cle": {
+"hash": "f89ce074ad83",
+"durationSec": 1.707
+},
+"pa_team_det": {
+"hash": "a6dd8c19699e",
+"durationSec": 4.248
+},
+"team_det": {
+"hash": "63aa923e72a5",
+"durationSec": 1.464
+},
+"pa_team_ind": {
+"hash": "95b50a260147",
+"durationSec": 4.621
+},
+"team_ind": {
+"hash": "44c0d4efcc81",
+"durationSec": 1.411
+},
+"pa_team_mil": {
+"hash": "9887b845a05e",
+"durationSec": 3.579
+},
+"team_mil": {
+"hash": "de58cbd3723b",
+"durationSec": 1.368
+},
+"pa_team_atl": {
+"hash": "ae8cd59434cf",
+"durationSec": 4.459
+},
+"team_atl": {
+"hash": "81dc33a439ce",
+"durationSec": 1.221
+},
+"pa_team_cha": {
+"hash": "797cf3667149",
+"durationSec": 3.939
+},
+"team_cha": {
+"hash": "f934c83f301a",
+"durationSec": 1.205
+},
+"pa_team_mia": {
+"hash": "6a6326e50382",
+"durationSec": 4.248
+},
+"team_mia": {
+"hash": "1b7351469dc5",
+"durationSec": 1.088
+},
+"pa_team_orl": {
+"hash": "dd641572f9b1",
+"durationSec": 4.619
+},
+"team_orl": {
+"hash": "935fe1269e10",
+"durationSec": 1.229
+},
+"pa_team_was": {
+"hash": "5aec0645d2a2",
+"durationSec": 4.403
+},
+"team_was": {
+"hash": "bb6e45b70217",
+"durationSec": 1.355
+},
+"pa_team_den": {
+"hash": "6eefc255f80b",
+"durationSec": 3.701
+},
+"team_den": {
+"hash": "044fc1a317e3",
+"durationSec": 1.424
+},
+"pa_team_min": {
+"hash": "68e69b776c0f",
+"durationSec": 4.8
+},
+"team_min": {
+"hash": "5599c04445d2",
+"durationSec": 1.773
+},
+"pa_team_okc": {
+"hash": "6ffa4a2e150c",
+"durationSec": 5.456
+},
+"team_okc": {
+"hash": "56ea6d558e20",
+"durationSec": 1.589
+},
+"pa_team_por": {
+"hash": "e9bbf8e509fc",
+"durationSec": 5.072
+},
+"team_por": {
+"hash": "5fe88fc36507",
+"durationSec": 1.653
+},
+"pa_team_uta": {
+"hash": "f1456679cdb7",
+"durationSec": 4.456
+},
+"team_uta": {
+"hash": "8885c5130db4",
+"durationSec": 1.645
+},
+"pa_team_gsw": {
+"hash": "ef0002339922",
+"durationSec": 5.736
+},
+"team_gsw": {
+"hash": "89c779e05309",
+"durationSec": 1.829
+},
+"pa_team_lal": {
+"hash": "8f92c111284b",
+"durationSec": 4.499
+},
+"team_lal": {
+"hash": "3e4c6d08f3e1",
+"durationSec": 1.608
+},
+"pa_team_lac": {
+"hash": "e8357abf3187",
+"durationSec": 4.232
+},
+"team_lac": {
+"hash": "c68f8ab4fcf0",
+"durationSec": 1.611
+},
+"pa_team_phx": {
+"hash": "0e9338e4d11c",
+"durationSec": 4.429
+},
+"team_phx": {
+"hash": "cbb77f848d1b",
+"durationSec": 1.312
+},
+"pa_team_sac": {
+"hash": "86db62b2c709",
+"durationSec": 4.32
+},
+"team_sac": {
+"hash": "9a260f13020f",
+"durationSec": 1.563
+},
+"pa_team_dal": {
+"hash": "12d9da3de547",
+"durationSec": 3.907
+},
+"team_dal": {
+"hash": "b36c03e911ed",
+"durationSec": 1.256
+},
+"pa_team_hou": {
+"hash": "12b4f2e75528",
+"durationSec": 4.219
+},
+"team_hou": {
+"hash": "9bba6ae30227",
+"durationSec": 1.563
+},
+"pa_team_mem": {
+"hash": "17cd67acde74",
+"durationSec": 4.659
+},
+"team_mem": {
+"hash": "e8a30f355d8f",
+"durationSec": 1.392
+},
+"pa_team_nop": {
+"hash": "708a601ab27f",
+"durationSec": 4.587
+},
+"team_nop": {
+"hash": "b777ad1ff0c3",
+"durationSec": 1.584
+},
+"pa_team_sas": {
+"hash": "7c4bce249d7f",
+"durationSec": 5.035
+},
+"team_sas": {
+"hash": "e4f873af9219",
+"durationSec": 1.667
+},
+"name_payton-pritchard": {
+"hash": "5de569edf3ef",
+"durationSec": 0.539
+},
+"name_derrick-white": {
+"hash": "5ed0d787434d",
+"durationSec": 0.621
+},
+"name_paul-george": {
+"hash": "6a30132b63b2",
+"durationSec": 0.773
+},
+"name_jayson-tatum": {
+"hash": "7d27c5dc1dbc",
+"durationSec": 0.565
+},
+"name_neemias-queta": {
+"hash": "98ede4e3f3fc",
+"durationSec": 0.907
+},
+"name_mitchell-robinson": {
+"hash": "ad776ef3dba2",
+"durationSec": 0.88
+},
+"name_mike-conley": {
+"hash": "931e5f69e723",
+"durationSec": 0.709
+},
+"name_sam-hauser": {
+"hash": "69cf24eb6804",
+"durationSec": 0.613
+},
+"name_baylor-scheierman": {
+"hash": "1a4089c10e88",
+"durationSec": 0.939
+},
+"name_hugo-gonzalez": {
+"hash": "fcd2ad7f17e8",
+"durationSec": 1.115
+},
+"name_jordan-walsh": {
+"hash": "4d5b366c393e",
+"durationSec": 0.629
+},
+"name_luka-garza": {
+"hash": "e5240322dd68",
+"durationSec": 0.653
+},
+"name_dillon-mitchell": {
+"hash": "7545f7d9af24",
+"durationSec": 0.68
+},
+"name_nolan-traore": {
+"hash": "f69186068320",
+"durationSec": 1.051
+},
+"name_egor-demin": {
+"hash": "ff324c421614",
+"durationSec": 0.584
+},
+"name_michael-porter-jr": {
+"hash": "03eedc6b58bb",
+"durationSec": 0.619
+},
+"name_julius-randle": {
+"hash": "26a46f6e09be",
+"durationSec": 0.696
+},
+"name_day-ron-sharpe": {
+"hash": "0e7cb34b0365",
+"durationSec": 0.699
+},
+"name_mikel-brown-jr": {
+"hash": "6200cde81f49",
+"durationSec": 0.771
+},
+"name_noah-clowney": {
+"hash": "7bcf70295eb2",
+"durationSec": 0.763
+},
+"name_terance-mann": {
+"hash": "f313018fb52e",
+"durationSec": 0.701
+},
+"name_danny-wolf": {
+"hash": "8a7f33ae9fbc",
+"durationSec": 0.515
+},
+"name_keon-ellis": {
+"hash": "100bf61f637f",
+"durationSec": 0.637
+},
+"name_drake-powell": {
+"hash": "931c3499aab6",
+"durationSec": 0.64
+},
+"name_josh-minott": {
+"hash": "ba69e8320974",
+"durationSec": 0.603
+},
+"name_moritz-wagner": {
+"hash": "014928b8f9d3",
+"durationSec": 0.659
+},
+"name_jalen-brunson": {
+"hash": "52b19871c081",
+"durationSec": 0.832
+},
+"name_mikal-bridges": {
+"hash": "27aed438c0e7",
+"durationSec": 0.813
+},
+"name_og-anunoby": {
+"hash": "5b1b110ace1e",
+"durationSec": 0.869
+},
+"name_josh-hart": {
+"hash": "9c83238fa79d",
+"durationSec": 0.509
+},
+"name_karl-anthony-towns": {
+"hash": "1c94ff9e3059",
+"durationSec": 0.939
+},
+"name_miles-mcbride": {
+"hash": "fda4069379ca",
+"durationSec": 0.925
+},
+"name_andre-drummond": {
+"hash": "f21bee0dbcaf",
+"durationSec": 0.699
+},
+"name_jordan-clarkson": {
+"hash": "d6fb94299a2b",
+"durationSec": 0.864
+},
+"name_landry-shamet": {
+"hash": "175dc1aafd7c",
+"durationSec": 0.683
+},
+"name_jose-alvarado": {
+"hash": "510d739d715c",
+"durationSec": 1.019
+},
+"name_tyler-kolek": {
+"hash": "2ec3ccbbd86e",
+"durationSec": 0.733
+},
+"name_james-wiseman": {
+"hash": "e90ff28435d5",
+"durationSec": 0.669
+},
+"name_mohamed-diawara": {
+"hash": "9d81f7140676",
+"durationSec": 1.107
+},
+"name_tyrese-maxey": {
+"hash": "1c002d790f75",
+"durationSec": 0.845
+},
+"name_vj-edgecombe": {
+"hash": "43c229cbb553",
+"durationSec": 0.851
+},
+"name_jaylen-brown": {
+"hash": "6200cde81f49",
+"durationSec": 0.595
+},
+"name_lebron-james": {
+"hash": "bafb800aa398",
+"durationSec": 0.699
+},
+"name_joel-embiid": {
+"hash": "1fc7396ee27b",
+"durationSec": 0.851
+},
+"name_anfernee-simons": {
+"hash": "2525cfe4cf86",
+"durationSec": 0.904
+},
+"name_kentavious-caldwell-pope": {
+"hash": "5eca73d7efd4",
+"durationSec": 1.395
+},
+"name_dean-wade": {
+"hash": "18cbba33dc22",
+"durationSec": 0.637
+},
+"name_adem-bona": {
+"hash": "c71b84ce939f",
+"durationSec": 0.637
+},
+"name_justin-edwards": {
+"hash": "998045680bda",
+"durationSec": 0.781
+},
+"name_jabari-walker": {
+"hash": "83cdfcf7f907",
+"durationSec": 0.587
+},
+"name_labaron-philon-jr": {
+"hash": "4063d6eeaa97",
+"durationSec": 0.893
+},
+"name_rayan-rupert": {
+"hash": "4df8ca3ae5ce",
+"durationSec": 0.675
+},
+"name_immanuel-quickley": {
+"hash": "757bc11066f5",
+"durationSec": 0.621
+},
+"name_rj-barrett": {
+"hash": "49348a2d455d",
+"durationSec": 0.725
+},
+"name_kawhi-leonard": {
+"hash": "ecc682685ecb",
+"durationSec": 0.76
+},
+"name_scottie-barnes": {
+"hash": "3b29eece0c22",
+"durationSec": 0.664
+},
+"name_jakob-poeltl": {
+"hash": "5352a8563091",
+"durationSec": 0.92
+},
+"name_ja-kobe-walter": {
+"hash": "d24ee3533ea4",
+"durationSec": 0.621
+},
+"name_collin-murray-boyles": {
+"hash": "7890bc06cc42",
+"durationSec": 1.248
+},
+"name_jamal-shead": {
+"hash": "605d70b600a3",
+"durationSec": 0.635
+},
+"name_kyle-anderson": {
+"hash": "29a6c832c44f",
+"durationSec": 0.96
+},
+"name_trayce-jackson-davis": {
+"hash": "74fbf17bdce3",
+"durationSec": 1.403
+},
+"name_jamison-battle": {
+"hash": "7accdde994fe",
+"durationSec": 0.531
+},
+"name_alijah-martin": {
+"hash": "5f0f74754563",
+"durationSec": 0.701
+},
+"name_allen-graves": {
+"hash": "8ea4d5aaa79d",
+"durationSec": 0.928
+},
+"name_josh-giddey": {
+"hash": "11264fa005a2",
+"durationSec": 0.645
+},
+"name_norman-powell": {
+"hash": "931c3499aab6",
+"durationSec": 0.592
+},
+"name_matas-buzelis": {
+"hash": "f4b24a364aab",
+"durationSec": 0.928
+},
+"name_caleb-wilson": {
+"hash": "a0693299a881",
+"durationSec": 0.936
+},
+"name_jalen-smith": {
+"hash": "8d155772d943",
+"durationSec": 0.584
+},
+"name_tre-jones": {
+"hash": "f36e44ac68ab",
+"durationSec": 0.944
+},
+"name_nic-claxton": {
+"hash": "2b9e375464e4",
+"durationSec": 0.795
+},
+"name_buddy-hield": {
+"hash": "678185d8c78d",
+"durationSec": 0.632
+},
+"name_isaac-okoro": {
+"hash": "0e06aa61dedc",
+"durationSec": 1.109
+},
+"name_patrick-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.811
+},
+"name_leonard-miller": {
+"hash": "793efa25fade",
+"durationSec": 0.568
+},
+"name_zach-collins": {
+"hash": "0c83752529b7",
+"durationSec": 0.899
+},
+"name_noa-essengue": {
+"hash": "8cca7ff8ce75",
+"durationSec": 0.736
+},
+"name_james-harden": {
+"hash": "e93afb60cc9e",
+"durationSec": 0.779
+},
+"name_donovan-mitchell": {
+"hash": "7545f7d9af24",
+"durationSec": 0.621
+},
+"name_peyton-watson": {
+"hash": "b1202bbf2555",
+"durationSec": 0.573
+},
+"name_evan-mobley": {
+"hash": "6c77ced8fd9d",
+"durationSec": 0.709
+},
+"name_jarrett-allen": {
+"hash": "62d657f6da32",
+"durationSec": 0.536
+},
+"name_sam-merrill": {
+"hash": "0dc571a74804",
+"durationSec": 0.765
+},
+"name_meleek-thomas": {
+"hash": "a7dd65029d82",
+"durationSec": 0.688
+},
+"name_jaylon-tyson": {
+"hash": "7abfe3a1715b",
+"durationSec": 0.672
+},
+"name_mario-hezonja": {
+"hash": "52826e4b891d",
+"durationSec": 0.901
+},
+"name_tyrese-proctor": {
+"hash": "d0095da67f43",
+"durationSec": 0.712
+},
+"name_thomas-bryant": {
+"hash": "b78656483b32",
+"durationSec": 1.051
+},
+"name_craig-porter-jr": {
+"hash": "03eedc6b58bb",
+"durationSec": 0.597
+},
+"name_nae-qwan-tomlin": {
+"hash": "55ef6d500a07",
+"durationSec": 0.749
+},
+"name_cade-cunningham": {
+"hash": "ab1d2967138e",
+"durationSec": 1.027
+},
+"name_duncan-robinson": {
+"hash": "ad776ef3dba2",
+"durationSec": 0.787
+},
+"name_ausar-thompson": {
+"hash": "cc99324e0f2b",
+"durationSec": 0.875
+},
+"name_john-collins": {
+"hash": "0c83752529b7",
+"durationSec": 0.72
+},
+"name_jalen-duren": {
+"hash": "2e52ba55176f",
+"durationSec": 0.651
+},
+"name_daniss-jenkins": {
+"hash": "a4800073c211",
+"durationSec": 1.069
+},
+"name_paul-reed": {
+"hash": "c0a3771c4822",
+"durationSec": 0.755
+},
+"name_kevin-huerter": {
+"hash": "23599a664c6d",
+"durationSec": 0.997
+},
+"name_ron-holland": {
+"hash": "d65823480e01",
+"durationSec": 0.605
+},
+"name_isaiah-joe": {
+"hash": "877ba27c4dea",
+"durationSec": 0.661
+},
+"name_javonte-green": {
+"hash": "e499a962182f",
+"durationSec": 0.725
+},
+"name_ebuka-okorie": {
+"hash": "7b997edac5f8",
+"durationSec": 0.771
+},
+"name_taurean-prince": {
+"hash": "863f2bd67355",
+"durationSec": 0.691
+},
+"name_tyrese-haliburton": {
+"hash": "1c9c51c82a5b",
+"durationSec": 0.779
+},
+"name_andrew-nembhard": {
+"hash": "82f4000d0746",
+"durationSec": 0.907
+},
+"name_aaron-nesmith": {
+"hash": "129e22f4de65",
+"durationSec": 0.731
+},
+"name_pascal-siakam": {
+"hash": "d32119c59f71",
+"durationSec": 1.04
+},
+"name_ivica-zubac": {
+"hash": "1ea3e42fc0f6",
+"durationSec": 0.912
+},
+"name_obi-toppin": {
+"hash": "fecc54f9abf9",
+"durationSec": 0.72
+},
+"name_quenton-jackson": {
+"hash": "7036d04ffc4f",
+"durationSec": 0.752
+},
+"name_kelly-oubre-jr": {
+"hash": "44fde42ddcff",
+"durationSec": 0.891
+},
+"name_jay-huff": {
+"hash": "01b6ef84d9e2",
+"durationSec": 0.461
+},
+"name_jarace-walker": {
+"hash": "83cdfcf7f907",
+"durationSec": 0.632
+},
+"name_t-j-mcconnell": {
+"hash": "5e81f9c04b5d",
+"durationSec": 0.819
+},
+"name_larry-nance-jr": {
+"hash": "6fc4c954528d",
+"durationSec": 0.795
+},
+"name_ben-sheppard": {
+"hash": "1bf6f300e495",
+"durationSec": 0.88
+},
+"name_ryan-rollins": {
+"hash": "b4c4e8c844f9",
+"durationSec": 0.744
+},
+"name_tyler-herro": {
+"hash": "953fe03fb10c",
+"durationSec": 0.536
+},
+"name_jaime-jaquez-jr": {
+"hash": "4675a60ef54f",
+"durationSec": 1.077
+},
+"name_kyle-kuzma": {
+"hash": "f86ef053c8f2",
+"durationSec": 0.792
+},
+"name_kel-el-ware": {
+"hash": "e25d16530c5b",
+"durationSec": 0.613
+},
+"name_myles-turner": {
+"hash": "6807cfe52caa",
+"durationSec": 0.587
+},
+"name_brayden-burries": {
+"hash": "c1ee4ea72f58",
+"durationSec": 0.781
+},
+"name_kasparas-jakucionis": {
+"hash": "be7e0e873bed",
+"durationSec": 1.309
+},
+"name_a-j-green": {
+"hash": "e499a962182f",
+"durationSec": 0.677
+},
+"name_nate-ament": {
+"hash": "83c3ed96c652",
+"durationSec": 0.731
+},
+"name_caris-levert": {
+"hash": "2c71cedd6ba4",
+"durationSec": 0.776
+},
+"name_gary-trent-jr": {
+"hash": "77256e05dc4d",
+"durationSec": 0.664
+},
+"name_ousmane-dieng": {
+"hash": "390b322c8d08",
+"durationSec": 0.523
+},
+"name_cj-mccollum": {
+"hash": "cb500297cf64",
+"durationSec": 0.803
+},
+"name_nickeil-alexander-walker": {
+"hash": "e6f91d1fd120",
+"durationSec": 1.251
+},
+"name_dyson-daniels": {
+"hash": "2ccf47d28be5",
+"durationSec": 1.053
+},
+"name_jalen-johnson": {
+"hash": "f3463be82c9a",
+"durationSec": 0.909
+},
+"name_onyeka-okongwu": {
+"hash": "c4caa18ab353",
+"durationSec": 1.307
+},
+"name_aaron-wiggins": {
+"hash": "7a8851489c74",
+"durationSec": 0.733
+},
+"name_luguentz-dort": {
+"hash": "fd40a68f607a",
+"durationSec": 0.677
+},
+"name_kingston-flemings": {
+"hash": "1d357f6ad50b",
+"durationSec": 0.784
+},
+"name_corey-kispert": {
+"hash": "f8d1800f3920",
+"durationSec": 0.688
+},
+"name_jock-landale": {
+"hash": "3de88af58fad",
+"durationSec": 0.96
+},
+"name_dorian-finney-smith": {
+"hash": "c4d0a66037e5",
+"durationSec": 0.797
+},
+"name_asa-newell": {
+"hash": "19400e4b8ecc",
+"durationSec": 0.795
+},
+"name_zuby-ejiofor": {
+"hash": "b9a6ebed844e",
+"durationSec": 1.448
+},
+"name_dennis-schroder": {
+"hash": "a24ce5dc7b3d",
+"durationSec": 0.779
+},
+"name_kon-knueppel": {
+"hash": "d5a5e3b311cd",
+"durationSec": 1.051
+},
+"name_brandon-miller": {
+"hash": "793efa25fade",
+"durationSec": 0.637
+},
+"name_naz-reid": {
+"hash": "80dfe5c1fd25",
+"durationSec": 0.829
+},
+"name_moussa-diabate": {
+"hash": "db25af69a40e",
+"durationSec": 1.856
+},
+"name_grayson-allen": {
+"hash": "62d657f6da32",
+"durationSec": 0.651
+},
+"name_coby-white": {
+"hash": "5ed0d787434d",
+"durationSec": 0.637
+},
+"name_sion-james": {
+"hash": "bafb800aa398",
+"durationSec": 0.72
+},
+"name_royce-o-neale": {
+"hash": "17bf500cb77e",
+"durationSec": 0.736
+},
+"name_ryan-kalkbrenner": {
+"hash": "03709de32a37",
+"durationSec": 0.835
+},
+"name_tidjane-salaun": {
+"hash": "be23c5b0710b",
+"durationSec": 1.157
+},
+"name_grant-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.96
+},
+"name_liam-mcneeley": {
+"hash": "6817caa976cf",
+"durationSec": 0.909
+},
+"name_davion-mitchell": {
+"hash": "7545f7d9af24",
+"durationSec": 0.637
+},
+"name_pelle-larsson": {
+"hash": "4b75b06fe4c5",
+"durationSec": 0.629
+},
+"name_andrew-wiggins": {
+"hash": "7a8851489c74",
+"durationSec": 0.803
+},
+"name_giannis-antetokounmpo": {
+"hash": "f07e17e8d192",
+"durationSec": 1.755
+},
+"name_bam-adebayo": {
+"hash": "e47f63bf7441",
+"durationSec": 0.853
+},
+"name_klay-thompson": {
+"hash": "cc99324e0f2b",
+"durationSec": 0.717
+},
+"name_bobby-portis": {
+"hash": "932339b9adde",
+"durationSec": 1.179
+},
+"name_tim-hardaway-jr": {
+"hash": "761efd00edfa",
+"durationSec": 0.736
+},
+"name_nikola-jovic": {
+"hash": "93e62fcf346e",
+"durationSec": 0.947
+},
+"name_nick-richards": {
+"hash": "f9e58df4153a",
+"durationSec": 0.949
+},
+"name_simone-fontecchio": {
+"hash": "1a4fe0b52353",
+"durationSec": 1.107
+},
+"name_dru-smith": {
+"hash": "8d155772d943",
+"durationSec": 0.563
+},
+"name_ryan-conwell": {
+"hash": "ea1f72229288",
+"durationSec": 0.864
+},
+"name_jalen-suggs": {
+"hash": "c6f2119405bd",
+"durationSec": 0.917
+},
+"name_desmond-bane": {
+"hash": "1d5672d724c8",
+"durationSec": 0.579
+},
+"name_franz-wagner": {
+"hash": "014928b8f9d3",
+"durationSec": 0.667
+},
+"name_paolo-banchero": {
+"hash": "ff49a26bdd64",
+"durationSec": 0.896
+},
+"name_wendell-carter-jr": {
+"hash": "4340b16a95a2",
+"durationSec": 0.595
+},
+"name_anthony-black": {
+"hash": "1a60f1713976",
+"durationSec": 0.613
+},
+"name_tristan-da-silva": {
+"hash": "c88d839f1a7c",
+"durationSec": 0.848
+},
+"name_nikola-vucevic": {
+"hash": "fde52827ea3d",
+"durationSec": 1.541
+},
+"name_jonathan-isaac": {
+"hash": "3719ba91b914",
+"durationSec": 0.709
+},
+"name_jase-richardson": {
+"hash": "2f1b38b3adf4",
+"durationSec": 0.997
+},
+"name_goga-bitadze": {
+"hash": "a280f26f562c",
+"durationSec": 1.069
+},
+"name_jevon-carter": {
+"hash": "4340b16a95a2",
+"durationSec": 0.531
+},
+"name_jamal-cain": {
+"hash": "18f9c0bc7acd",
+"durationSec": 0.608
+},
+"name_trae-young": {
+"hash": "9bb464024550",
+"durationSec": 0.829
+},
+"name_kyshawn-george": {
+"hash": "6a30132b63b2",
+"durationSec": 0.672
+},
+"name_aj-dybantsa": {
+"hash": "0c1dcec11d60",
+"durationSec": 1.048
+},
+"name_anthony-davis": {
+"hash": "eb9127f4dbc7",
+"durationSec": 0.76
+},
+"name_alex-sarr": {
+"hash": "6f0db0bf6c8a",
+"durationSec": 0.629
+},
+"name_bilal-coulibaly": {
+"hash": "af7fb4eff56c",
+"durationSec": 0.947
+},
+"name_deandre-ayton": {
+"hash": "21aea5cee17e",
+"durationSec": 0.616
+},
+"name_tre-johnson": {
+"hash": "f3463be82c9a",
+"durationSec": 0.808
+},
+"name_bub-carrington": {
+"hash": "f6f349cd8362",
+"durationSec": 0.813
+},
+"name_khris-middleton": {
+"hash": "e0c0f2df404f",
+"durationSec": 0.771
+},
+"name_justin-champagnie": {
+"hash": "947d4bd0eb88",
+"durationSec": 1.184
+},
+"name_tre-mann": {
+"hash": "f313018fb52e",
+"durationSec": 0.8
+},
+"name_will-riley": {
+"hash": "23665bd2cd62",
+"durationSec": 0.725
+},
+"name_jamal-murray": {
+"hash": "0f239f001762",
+"durationSec": 0.589
+},
+"name_christian-braun": {
+"hash": "fee9ae6b5ada",
+"durationSec": 0.672
+},
+"name_cameron-johnson": {
+"hash": "f3463be82c9a",
+"durationSec": 0.619
+},
+"name_aaron-gordon": {
+"hash": "0eab7396f71f",
+"durationSec": 0.715
+},
+"name_nikola-jokic": {
+"hash": "f973e7e2f4cb",
+"durationSec": 0.872
+},
+"name_demar-derozan": {
+"hash": "4045a184c947",
+"durationSec": 0.981
+},
+"name_trevon-brazile": {
+"hash": "6735fb2da8e9",
+"durationSec": 1.064
+},
+"name_marvin-bagley-iii": {
+"hash": "551c86ad06be",
+"durationSec": 0.701
+},
+"name_tyus-jones": {
+"hash": "f36e44ac68ab",
+"durationSec": 0.635
+},
+"name_julian-strawther": {
+"hash": "d59ba1757426",
+"durationSec": 1.013
+},
+"name_spencer-jones": {
+"hash": "f36e44ac68ab",
+"durationSec": 0.789
+},
+"name_bryce-hopkins": {
+"hash": "3bf895609321",
+"durationSec": 0.856
+},
+"name_daron-holmes-ii": {
+"hash": "87ce214a5296",
+"durationSec": 0.688
+},
+"name_lamelo-ball": {
+"hash": "1d778f20c519",
+"durationSec": 0.563
+},
+"name_anthony-edwards": {
+"hash": "998045680bda",
+"durationSec": 0.981
+},
+"name_jaden-mcdaniels": {
+"hash": "be26401ee94d",
+"durationSec": 1.088
+},
+"name_jonathan-kuminga": {
+"hash": "89f4441a6cfe",
+"durationSec": 0.803
+},
+"name_rudy-gobert": {
+"hash": "8bc5a221737e",
+"durationSec": 0.579
+},
+"name_ayo-dosunmu": {
+"hash": "7c71f9e34496",
+"durationSec": 1.248
+},
+"name_donte-divincenzo": {
+"hash": "c11606c7a0d0",
+"durationSec": 1.029
+},
+"name_terrence-shannon-jr": {
+"hash": "09a6a5154797",
+"durationSec": 0.755
+},
+"name_joan-beringer": {
+"hash": "35e757a539dc",
+"durationSec": 0.645
+},
+"name_trey-lyles": {
+"hash": "54c04c0bd917",
+"durationSec": 0.72
+},
+"name_bones-hyland": {
+"hash": "793a6c554feb",
+"durationSec": 0.819
+},
+"name_jaylen-clark": {
+"hash": "f55c0a88dbc4",
+"durationSec": 0.613
+},
+"name_cody-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.819
+},
+"name_shai-gilgeous-alexander": {
+"hash": "8ef44c333115",
+"durationSec": 1.501
+},
+"name_ajay-mitchell": {
+"hash": "7545f7d9af24",
+"durationSec": 0.683
+},
+"name_jalen-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.941
+},
+"name_chet-holmgren": {
+"hash": "b8ff96724dcb",
+"durationSec": 0.795
+},
+"name_isaiah-hartenstein": {
+"hash": "1662d1264ce5",
+"durationSec": 1.253
+},
+"name_alex-caruso": {
+"hash": "840152ededd3",
+"durationSec": 0.979
+},
+"name_cason-wallace": {
+"hash": "436bb7705dd4",
+"durationSec": 0.765
+},
+"name_jared-mccain": {
+"hash": "e9e3af68a7e6",
+"durationSec": 0.733
+},
+"name_aday-mara": {
+"hash": "5a1052dfef2a",
+"durationSec": 0.531
+},
+"name_jaylin-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.867
+},
+"name_kenrich-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.867
+},
+"name_bennett-stirtz": {
+"hash": "74d900c39297",
+"durationSec": 0.848
+},
+"name_nikola-topic": {
+"hash": "09f4fa31360e",
+"durationSec": 0.64
+},
+"name_damian-lillard": {
+"hash": "9db026e93318",
+"durationSec": 0.629
+},
+"name_jrue-holiday": {
+"hash": "0b8de539365a",
+"durationSec": 0.923
+},
+"name_deni-avdija": {
+"hash": "1814993ab05e",
+"durationSec": 0.797
+},
+"name_toumani-camara": {
+"hash": "774cd88964bc",
+"durationSec": 0.789
+},
+"name_donovan-clingan": {
+"hash": "3330076a82c4",
+"durationSec": 0.675
+},
+"name_ja-morant": {
+"hash": "48df48e63389",
+"durationSec": 0.749
+},
+"name_shaedon-sharpe": {
+"hash": "0e7cb34b0365",
+"durationSec": 0.749
+},
+"name_scoot-henderson": {
+"hash": "40601f09bbd5",
+"durationSec": 0.84
+},
+"name_robert-williams-iii": {
+"hash": "8196c33f9f29",
+"durationSec": 0.776
+},
+"name_sidy-cissoko": {
+"hash": "57ffc8d50721",
+"durationSec": 0.848
+},
+"name_vit-krejci": {
+"hash": "34da0b128b00",
+"durationSec": 0.933
+},
+"name_yang-hansen": {
+"hash": "cbc782e076bf",
+"durationSec": 0.773
+},
+"name_micah-potter": {
+"hash": "25ad93e54d3a",
+"durationSec": 0.536
+},
+"name_keyonte-george": {
+"hash": "6a30132b63b2",
+"durationSec": 0.563
+},
+"name_darryn-peterson": {
+"hash": "28c1cedb2ae9",
+"durationSec": 0.755
+},
+"name_ace-bailey": {
+"hash": "d3368040fa57",
+"durationSec": 0.64
+},
+"name_lauri-markkanen": {
+"hash": "4e775e519815",
+"durationSec": 0.824
+},
+"name_jaren-jackson-jr": {
+"hash": "7036d04ffc4f",
+"durationSec": 0.816
+},
+"name_brice-sensabaugh": {
+"hash": "4450d1c7e7d0",
+"durationSec": 0.909
+},
+"name_jaxson-hayes": {
+"hash": "6977f502c74e",
+"durationSec": 0.709
+},
+"name_isaiah-collier": {
+"hash": "ca4cae4dcaf1",
+"durationSec": 0.68
+},
+"name_kyle-filipowski": {
+"hash": "14cbc474e03f",
+"durationSec": 1.107
+},
+"name_svi-mykhailiuk": {
+"hash": "7bc33b3b3c70",
+"durationSec": 0.936
+},
+"name_mo-bamba": {
+"hash": "9347fc7c6293",
+"durationSec": 0.715
+},
+"name_josh-okogie": {
+"hash": "8d4cdf2e276b",
+"durationSec": 0.704
+},
+"name_josh-green": {
+"hash": "e499a962182f",
+"durationSec": 0.773
+},
+"name_stephen-curry": {
+"hash": "612468d9535e",
+"durationSec": 0.624
+},
+"name_brandin-podziemski": {
+"hash": "cd0cf50a2f2e",
+"durationSec": 1.296
+},
+"name_yaxel-lendeborg": {
+"hash": "575892145c23",
+"durationSec": 1.091
+},
+"name_draymond-green": {
+"hash": "e499a962182f",
+"durationSec": 0.616
+},
+"name_kristaps-porzingis": {
+"hash": "336a75863c71",
+"durationSec": 1.059
+},
+"name_jimmy-butler": {
+"hash": "4ac7e003860a",
+"durationSec": 0.525
+},
+"name_moses-moody": {
+"hash": "116632f24315",
+"durationSec": 0.707
+},
+"name_de-anthony-melton": {
+"hash": "6f1eb523c908",
+"durationSec": 0.771
+},
+"name_brandon-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 1.0
+},
+"name_al-horford": {
+"hash": "a19224805399",
+"durationSec": 0.765
+},
+"name_gui-santos": {
+"hash": "fdfb5857ee4e",
+"durationSec": 1.037
+},
+"name_gary-payton-ii": {
+"hash": "34bf3b1368d2",
+"durationSec": 0.696
+},
+"name_georges-niang": {
+"hash": "7762fb4a1bb2",
+"durationSec": 0.581
+},
+"name_luka-doncic": {
+"hash": "b306f2ab3d07",
+"durationSec": 0.733
+},
+"name_austin-reaves": {
+"hash": "3d8918fce19f",
+"durationSec": 0.827
+},
+"name_matisse-thybulle": {
+"hash": "76d2d50678b1",
+"durationSec": 0.717
+},
+"name_jake-laravia": {
+"hash": "0c8db203661b",
+"durationSec": 0.8
+},
+"name_walker-kessler": {
+"hash": "f78a225bfe19",
+"durationSec": 0.701
+},
+"name_quentin-grimes": {
+"hash": "bc4a8d5c8ead",
+"durationSec": 0.869
+},
+"name_collin-sexton": {
+"hash": "6c8b47b70f8d",
+"durationSec": 0.824
+},
+"name_ziaire-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.856
+},
+"name_sandro-mamukelashvili": {
+"hash": "acdba3c6f230",
+"durationSec": 1.493
+},
+"name_jarred-vanderbilt": {
+"hash": "a81a22d52a94",
+"durationSec": 1.003
+},
+"name_kevon-looney": {
+"hash": "e83791ce02dc",
+"durationSec": 0.635
+},
+"name_jaden-hardy": {
+"hash": "9428aa0a1502",
+"durationSec": 0.547
+},
+"name_bronny-james": {
+"hash": "bafb800aa398",
+"durationSec": 0.832
+},
+"name_darius-garland": {
+"hash": "e15023297c54",
+"durationSec": 0.781
+},
+"name_kris-dunn": {
+"hash": "ceda9a5084a3",
+"durationSec": 0.765
+},
+"name_brandon-ingram": {
+"hash": "b098b1c95ade",
+"durationSec": 0.741
+},
+"name_rui-hachimura": {
+"hash": "34eb204777e5",
+"durationSec": 1.973
+},
+"name_isaiah-jackson": {
+"hash": "7036d04ffc4f",
+"durationSec": 0.795
+},
+"name_derrick-jones-jr": {
+"hash": "f36e44ac68ab",
+"durationSec": 0.747
+},
+"name_brook-lopez": {
+"hash": "a60fdcd1a801",
+"durationSec": 0.856
+},
+"name_keaton-wagler": {
+"hash": "9a73bc4c48c7",
+"durationSec": 0.736
+},
+"name_max-strus": {
+"hash": "e580f5588b06",
+"durationSec": 0.795
+},
+"name_kobe-sanders": {
+"hash": "19fde27f3f64",
+"durationSec": 0.835
+},
+"name_bradley-beal": {
+"hash": "5874c661bbd7",
+"durationSec": 0.811
+},
+"name_gradey-dick": {
+"hash": "cda172cc2464",
+"durationSec": 0.515
+},
+"name_baba-miller": {
+"hash": "793efa25fade",
+"durationSec": 0.557
+},
+"name_devin-booker": {
+"hash": "903c5a0ab648",
+"durationSec": 0.547
+},
+"name_jalen-green": {
+"hash": "e499a962182f",
+"durationSec": 0.829
+},
+"name_dillon-brooks": {
+"hash": "e59878dce92e",
+"durationSec": 0.677
+},
+"name_miles-bridges": {
+"hash": "27aed438c0e7",
+"durationSec": 0.861
+},
+"name_khaman-maluach": {
+"hash": "ac0b0a412ebe",
+"durationSec": 1.256
+},
+"name_mark-williams": {
+"hash": "8196c33f9f29",
+"durationSec": 0.843
+},
+"name_collin-gillespie": {
+"hash": "fdfd97005980",
+"durationSec": 0.872
+},
+"name_luke-kennard": {
+"hash": "1291c5e4780d",
+"durationSec": 0.787
+},
+"name_jordan-goodwin": {
+"hash": "47ca2c90e079",
+"durationSec": 0.603
+},
+"name_oso-ighodaro": {
+"hash": "80cf38f913a3",
+"durationSec": 0.995
+},
+"name_ryan-dunn": {
+"hash": "ceda9a5084a3",
+"durationSec": 0.611
+},
+"name_duop-reath": {
+"hash": "6dba12cee4ee",
+"durationSec": 0.539
+},
+"name_koa-peat": {
+"hash": "fca5dde97c1b",
+"durationSec": 0.651
+},
+"name_darius-acuff-jr": {
+"hash": "ded9475e1e63",
+"durationSec": 0.736
+},
+"name_zach-lavine": {
+"hash": "38a187e4a72f",
+"durationSec": 0.819
+},
+"name_de-andre-hunter": {
+"hash": "49abb13d64e3",
+"durationSec": 0.576
+},
+"name_keegan-murray": {
+"hash": "0f239f001762",
+"durationSec": 0.611
+},
+"name_domantas-sabonis": {
+"hash": "4fccefdb6730",
+"durationSec": 1.104
+},
+"name_malik-monk": {
+"hash": "86aa54b447a1",
+"durationSec": 0.645
+},
+"name_precious-achiuwa": {
+"hash": "f7fc7e5d49c4",
+"durationSec": 0.899
+},
+"name_maxime-raynaud": {
+"hash": "9f449d09359a",
+"durationSec": 0.752
+},
+"name_nique-clifford": {
+"hash": "0a73a0133621",
+"durationSec": 0.584
+},
+"name_ben-simmons": {
+"hash": "fc41d1f1cb0f",
+"durationSec": 0.853
+},
+"name_jonathan-mogbo": {
+"hash": "bd8d527c82e2",
+"durationSec": 0.923
+},
+"name_emanuel-sharp": {
+"hash": "a1c300187b9e",
+"durationSec": 0.453
+},
+"name_leaky-black": {
+"hash": "1a60f1713976",
+"durationSec": 0.64
+},
+"name_kyrie-irving": {
+"hash": "2847c781db2d",
+"durationSec": 0.848
+},
+"name_max-christie": {
+"hash": "9201e46ae6c3",
+"durationSec": 0.651
+},
+"name_cooper-flagg": {
+"hash": "101165356d88",
+"durationSec": 0.64
+},
+"name_pj-washington": {
+"hash": "ad5d6f90057d",
+"durationSec": 0.747
+},
+"name_daniel-gafford": {
+"hash": "7eb3199ee3f0",
+"durationSec": 0.725
+},
+"name_naji-marshall": {
+"hash": "d31f36c8fec9",
+"durationSec": 0.64
+},
+"name_zaccharie-risacher": {
+"hash": "543ed8b31a89",
+"durationSec": 0.875
+},
+"name_santi-aldama": {
+"hash": "6e3d7d729455",
+"durationSec": 0.795
+},
+"name_dereck-lively-ii": {
+"hash": "c6632144e8a0",
+"durationSec": 0.752
+},
+"name_caleb-martin": {
+"hash": "5f0f74754563",
+"durationSec": 0.669
+},
+"name_marcus-sasser": {
+"hash": "28a4fc71d377",
+"durationSec": 0.64
+},
+"name_morez-johnson-jr": {
+"hash": "f3463be82c9a",
+"durationSec": 0.693
+},
+"name_sergio-de-larrea": {
+"hash": "034aa514110c",
+"durationSec": 0.877
+},
+"name_fred-vanvleet": {
+"hash": "235a37722b16",
+"durationSec": 0.989
+},
+"name_amen-thompson": {
+"hash": "cc99324e0f2b",
+"durationSec": 0.757
+},
+"name_kevin-durant": {
+"hash": "ff2a4558654d",
+"durationSec": 0.88
+},
+"name_jabari-smith-jr": {
+"hash": "8d155772d943",
+"durationSec": 0.579
+},
+"name_alperen-sengun": {
+"hash": "aad804302702",
+"durationSec": 0.848
+},
+"name_tari-eason": {
+"hash": "fe255a97b1f7",
+"durationSec": 0.763
+},
+"name_reed-sheppard": {
+"hash": "1bf6f300e495",
+"durationSec": 0.685
+},
+"name_marcus-smart": {
+"hash": "ca0f9512c594",
+"durationSec": 1.019
+},
+"name_clint-capela": {
+"hash": "ca8d25af5708",
+"durationSec": 1.037
+},
+"name_bogdan-bogdanovic": {
+"hash": "9aed01376893",
+"durationSec": 2.013
+},
+"name_steven-adams": {
+"hash": "5c3dd8d33f43",
+"durationSec": 0.627
+},
+"name_jae-sean-tate": {
+"hash": "f29fde6723da",
+"durationSec": 0.592
+},
+"name_isaiah-crawford": {
+"hash": "9626ca53463b",
+"durationSec": 0.693
+},
+"name_ty-jerome": {
+"hash": "0f9c5bc7b85f",
+"durationSec": 0.677
+},
+"name_jaylen-wells": {
+"hash": "e03578f4dfd7",
+"durationSec": 0.84
+},
+"name_cedric-coward": {
+"hash": "221da55f83d2",
+"durationSec": 0.816
+},
+"name_cameron-boozer": {
+"hash": "38418c34231f",
+"durationSec": 0.867
+},
+"name_zach-edey": {
+"hash": "3e8c9663c3fe",
+"durationSec": 0.923
+},
+"name_jerami-grant": {
+"hash": "beac1a23ae36",
+"durationSec": 0.755
+},
+"name_cam-spencer": {
+"hash": "a3a6ce56c549",
+"durationSec": 0.816
+},
+"name_isaiah-stewart": {
+"hash": "cebdea68bcfb",
+"durationSec": 0.723
+},
+"name_gg-jackson-ii": {
+"hash": "7036d04ffc4f",
+"durationSec": 0.875
+},
+"name_quinten-post": {
+"hash": "7f21c6bfc54a",
+"durationSec": 0.653
+},
+"name_scotty-pippen-jr": {
+"hash": "6493c59060b4",
+"durationSec": 0.667
+},
+"name_kris-murray": {
+"hash": "0f239f001762",
+"durationSec": 0.595
+},
+"name_taylor-hendricks": {
+"hash": "40eaf86228ab",
+"durationSec": 0.747
+},
+"name_dejounte-murray": {
+"hash": "0f239f001762",
+"durationSec": 0.563
+},
+"name_jeremiah-fears": {
+"hash": "a52fa4bd0d11",
+"durationSec": 0.683
+},
+"name_trey-murphy-iii": {
+"hash": "d64d1d97f946",
+"durationSec": 0.672
+},
+"name_zion-williamson": {
+"hash": "0d72f79c96e3",
+"durationSec": 0.893
+},
+"name_karlo-matkovic": {
+"hash": "47ff36ac15ea",
+"durationSec": 1.296
+},
+"name_saddiq-bey": {
+"hash": "5010a4eec074",
+"durationSec": 1.72
+},
+"name_derik-queen": {
+"hash": "5fe49c6281ab",
+"durationSec": 0.867
+},
+"name_herbert-jones": {
+"hash": "f36e44ac68ab",
+"durationSec": 0.677
+},
+"name_bennedict-mathurin": {
+"hash": "d6ec02755822",
+"durationSec": 0.797
+},
+"name_yves-missi": {
+"hash": "1cadbc18b698",
+"durationSec": 0.547
+},
+"name_jordan-poole": {
+"hash": "3d21b60aee44",
+"durationSec": 0.635
+},
+"name_trendon-watford": {
+"hash": "5e58e469efd8",
+"durationSec": 0.629
+},
+"name_deandre-jordan": {
+"hash": "a8b0869ad79d",
+"durationSec": 0.576
+},
+"name_de-aaron-fox": {
+"hash": "a7d1a177c54d",
+"durationSec": 0.733
+},
+"name_dylan-harper": {
+"hash": "fc7d12896fe6",
+"durationSec": 0.621
+},
+"name_devin-vassell": {
+"hash": "80643de8eef5",
+"durationSec": 0.624
+},
+"name_stephon-castle": {
+"hash": "e9e397ce853c",
+"durationSec": 0.664
+},
+"name_victor-wembanyama": {
+"hash": "a28544fd98ee",
+"durationSec": 1.141
+},
+"name_julian-champagnie": {
+"hash": "947d4bd0eb88",
+"durationSec": 1.003
+},
+"name_keldon-johnson": {
+"hash": "f3463be82c9a",
+"durationSec": 0.707
+},
+"name_luke-kornet": {
+"hash": "b59941db84f8",
+"durationSec": 0.539
+},
+"name_harrison-barnes": {
+"hash": "3b29eece0c22",
+"durationSec": 0.709
+},
+"name_tobias-harris": {
+"hash": "d69283cd1472",
+"durationSec": 0.629
+},
+"name_carter-bryant": {
+"hash": "b78656483b32",
+"durationSec": 0.749
+},
+"name_jordan-mclaughlin": {
+"hash": "60e5365180bd",
+"durationSec": 0.955
+},
+"name_tarris-reed-jr": {
+"hash": "c0a3771c4822",
+"durationSec": 0.659
+},
+"pa_payton-pritchard": {
+"hash": "c491a7673f9e",
+"durationSec": 4.317
+},
+"pa_derrick-white": {
+"hash": "9e34f145af65",
+"durationSec": 3.613
+},
+"pa_paul-george": {
+"hash": "ab84f20c075a",
+"durationSec": 4.195
+},
+"pa_jayson-tatum": {
+"hash": "a7aaf8f4f362",
+"durationSec": 4.331
+},
+"pa_neemias-queta": {
+"hash": "7d8eb3473c3b",
+"durationSec": 3.843
+},
+"pa_mitchell-robinson": {
+"hash": "ad064fda2531",
+"durationSec": 4.051
+},
+"pa_mike-conley": {
+"hash": "95591a6db221",
+"durationSec": 4.019
+},
+"pa_sam-hauser": {
+"hash": "f1717a534e41",
+"durationSec": 3.493
+},
+"pa_baylor-scheierman": {
+"hash": "7a72354d9d03",
+"durationSec": 4.568
+},
+"pa_hugo-gonzalez": {
+"hash": "9ce51f3076be",
+"durationSec": 4.931
+},
+"pa_jordan-walsh": {
+"hash": "0c2355090a39",
+"durationSec": 4.744
+},
+"pa_luka-garza": {
+"hash": "dd02c05402e3",
+"durationSec": 4.365
+},
+"pa_dillon-mitchell": {
+"hash": "3e544d3aee78",
+"durationSec": 4.371
+},
+"pa_nolan-traore": {
+"hash": "9b97b6343dba",
+"durationSec": 4.899
+},
+"pa_egor-demin": {
+"hash": "c92d5c09b5d2",
+"durationSec": 3.955
+},
+"pa_michael-porter-jr": {
+"hash": "ba0b01d84ab5",
+"durationSec": 4.333
+},
+"pa_julius-randle": {
+"hash": "c8f54486491f",
+"durationSec": 3.531
+},
+"pa_day-ron-sharpe": {
+"hash": "b5ad5d083bfc",
+"durationSec": 4.245
+},
+"pa_mikel-brown-jr": {
+"hash": "12354dc6cdef",
+"durationSec": 4.771
+},
+"pa_noah-clowney": {
+"hash": "8319f3dda0d8",
+"durationSec": 4.536
+},
+"pa_terance-mann": {
+"hash": "02d0d7acccca",
+"durationSec": 3.445
+},
+"pa_danny-wolf": {
+"hash": "725719960493",
+"durationSec": 4.053
+},
+"pa_keon-ellis": {
+"hash": "699428fa5d95",
+"durationSec": 3.667
+},
+"pa_drake-powell": {
+"hash": "b6dd2fe1937a",
+"durationSec": 5.661
+},
+"pa_josh-minott": {
+"hash": "9c3cd9bc1e63",
+"durationSec": 3.773
+},
+"pa_moritz-wagner": {
+"hash": "8b14c7a67c34",
+"durationSec": 4.432
+},
+"pa_jalen-brunson": {
+"hash": "3442fd265509",
+"durationSec": 3.581
+},
+"pa_mikal-bridges": {
+"hash": "0bb736c72785",
+"durationSec": 5.067
+},
+"pa_og-anunoby": {
+"hash": "ce91e583e49d",
+"durationSec": 3.816
+},
+"pa_josh-hart": {
+"hash": "29c163027667",
+"durationSec": 4.016
+},
+"pa_karl-anthony-towns": {
+"hash": "39f35346b905",
+"durationSec": 4.131
+},
+"pa_miles-mcbride": {
+"hash": "23976b1c146c",
+"durationSec": 4.395
+},
+"pa_andre-drummond": {
+"hash": "ed34e605c78a",
+"durationSec": 3.525
+},
+"pa_jordan-clarkson": {
+"hash": "1a6fd40b3599",
+"durationSec": 4.064
+},
+"pa_landry-shamet": {
+"hash": "7627648a56b9",
+"durationSec": 3.965
+},
+"pa_jose-alvarado": {
+"hash": "147ae9c0d21e",
+"durationSec": 4.256
+},
+"pa_tyler-kolek": {
+"hash": "f51c5ba09564",
+"durationSec": 3.627
+},
+"pa_james-wiseman": {
+"hash": "1ac1f4f6c571",
+"durationSec": 4.595
+},
+"pa_mohamed-diawara": {
+"hash": "e0ee0d5c1e7b",
+"durationSec": 3.901
+},
+"pa_tyrese-maxey": {
+"hash": "3ce62974f47b",
+"durationSec": 5.453
+},
+"pa_vj-edgecombe": {
+"hash": "519f3646d0ff",
+"durationSec": 4.328
+},
+"pa_jaylen-brown": {
+"hash": "68f4f6bb9162",
+"durationSec": 3.419
+},
+"pa_lebron-james": {
+"hash": "16b4ec6b020c",
+"durationSec": 4.421
+},
+"pa_joel-embiid": {
+"hash": "6df1be21e40f",
+"durationSec": 4.595
+},
+"pa_anfernee-simons": {
+"hash": "ff9617d69185",
+"durationSec": 3.901
+},
+"pa_kentavious-caldwell-pope": {
+"hash": "1021be5eea78",
+"durationSec": 4.547
+},
+"pa_dean-wade": {
+"hash": "5e4f2962574c",
+"durationSec": 3.885
+},
+"pa_adem-bona": {
+"hash": "0743c9f1775d",
+"durationSec": 3.52
+},
+"pa_justin-edwards": {
+"hash": "c1f9215eac42",
+"durationSec": 4.197
+},
+"pa_jabari-walker": {
+"hash": "422771976624",
+"durationSec": 3.947
+},
+"pa_labaron-philon-jr": {
+"hash": "b1b095f675df",
+"durationSec": 4.813
+},
+"pa_rayan-rupert": {
+"hash": "76fee8226478",
+"durationSec": 4.155
+},
+"pa_immanuel-quickley": {
+"hash": "fe001a21dbf9",
+"durationSec": 3.44
+},
+"pa_rj-barrett": {
+"hash": "372c954b7554",
+"durationSec": 3.176
+},
+"pa_kawhi-leonard": {
+"hash": "c144313779ac",
+"durationSec": 3.872
+},
+"pa_scottie-barnes": {
+"hash": "c930be8aa0be",
+"durationSec": 3.976
+},
+"pa_jakob-poeltl": {
+"hash": "954197401130",
+"durationSec": 4.248
+},
+"pa_ja-kobe-walter": {
+"hash": "d6ecb6d42911",
+"durationSec": 3.947
+},
+"pa_collin-murray-boyles": {
+"hash": "6df46560b631",
+"durationSec": 4.029
+},
+"pa_jamal-shead": {
+"hash": "bd9486913410",
+"durationSec": 3.811
+},
+"pa_kyle-anderson": {
+"hash": "8ca26813ddc3",
+"durationSec": 3.629
+},
+"pa_trayce-jackson-davis": {
+"hash": "122b9a98a344",
+"durationSec": 4.424
+},
+"pa_jamison-battle": {
+"hash": "d09e511ec47b",
+"durationSec": 3.688
+},
+"pa_alijah-martin": {
+"hash": "28324583bbe0",
+"durationSec": 4.699
+},
+"pa_allen-graves": {
+"hash": "7354f572a179",
+"durationSec": 4.264
+},
+"pa_josh-giddey": {
+"hash": "15f7d4f1caac",
+"durationSec": 4.091
+},
+"pa_norman-powell": {
+"hash": "a9080465710f",
+"durationSec": 3.424
+},
+"pa_matas-buzelis": {
+"hash": "33eaf5bde766",
+"durationSec": 4.408
+},
+"pa_caleb-wilson": {
+"hash": "b903286161c2",
+"durationSec": 2.712
+},
+"pa_jalen-smith": {
+"hash": "82d4140a59d9",
+"durationSec": 3.595
+},
+"pa_tre-jones": {
+"hash": "cbd22bc8f0d4",
+"durationSec": 2.435
+},
+"pa_nic-claxton": {
+"hash": "63c5055e9210",
+"durationSec": 4.357
+},
+"pa_buddy-hield": {
+"hash": "ccb382a2f337",
+"durationSec": 4.131
+},
+"pa_isaac-okoro": {
+"hash": "93cbddd46fd9",
+"durationSec": 4.325
+},
+"pa_patrick-williams": {
+"hash": "cb7673ff4b42",
+"durationSec": 5.035
+},
+"pa_leonard-miller": {
+"hash": "4f3e700fbe20",
+"durationSec": 3.712
+},
+"pa_zach-collins": {
+"hash": "78e0b7234797",
+"durationSec": 4.227
+},
+"pa_noa-essengue": {
+"hash": "b717cb77ba46",
+"durationSec": 4.771
+},
+"pa_james-harden": {
+"hash": "8674f7a5cd63",
+"durationSec": 3.728
+},
+"pa_donovan-mitchell": {
+"hash": "a953fda0200c",
+"durationSec": 3.965
+},
+"pa_peyton-watson": {
+"hash": "56d283181233",
+"durationSec": 3.477
+},
+"pa_evan-mobley": {
+"hash": "aa275559e267",
+"durationSec": 4.323
+},
+"pa_jarrett-allen": {
+"hash": "bd8630be714a",
+"durationSec": 3.805
+},
+"pa_sam-merrill": {
+"hash": "d9a8f9dec1c6",
+"durationSec": 4.099
+},
+"pa_meleek-thomas": {
+"hash": "55ab60e91d84",
+"durationSec": 4.723
+},
+"pa_jaylon-tyson": {
+"hash": "7f39dbca3325",
+"durationSec": 2.499
+},
+"pa_mario-hezonja": {
+"hash": "009695ed513f",
+"durationSec": 4.709
+},
+"pa_tyrese-proctor": {
+"hash": "bd417c5fb7e7",
+"durationSec": 4.443
+},
+"pa_thomas-bryant": {
+"hash": "b7c125f05b58",
+"durationSec": 3.709
+},
+"pa_craig-porter-jr": {
+"hash": "3607e6ae0d4a",
+"durationSec": 4.339
+},
+"pa_nae-qwan-tomlin": {
+"hash": "3297b8cd6356",
+"durationSec": 4.749
+},
+"pa_cade-cunningham": {
+"hash": "91c2b7594e53",
+"durationSec": 3.619
+},
+"pa_duncan-robinson": {
+"hash": "e8a8fa7933b6",
+"durationSec": 4.379
+},
+"pa_ausar-thompson": {
+"hash": "22dd196c77b0",
+"durationSec": 4.408
+},
+"pa_john-collins": {
+"hash": "5b893682b093",
+"durationSec": 4.059
+},
+"pa_jalen-duren": {
+"hash": "f6dc6235f144",
+"durationSec": 3.851
+},
+"pa_daniss-jenkins": {
+"hash": "5fd8aefb2338",
+"durationSec": 3.533
+},
+"pa_paul-reed": {
+"hash": "49d8a2ba4b89",
+"durationSec": 4.029
+},
+"pa_kevin-huerter": {
+"hash": "9bce31d6bfce",
+"durationSec": 4.291
+},
+"pa_ron-holland": {
+"hash": "896543ec6e5a",
+"durationSec": 3.824
+},
+"pa_isaiah-joe": {
+"hash": "43d1f292bac0",
+"durationSec": 4.083
+},
+"pa_javonte-green": {
+"hash": "9177ffd286d5",
+"durationSec": 4.861
+},
+"pa_ebuka-okorie": {
+"hash": "4a8e6b9f5939",
+"durationSec": 3.653
+},
+"pa_taurean-prince": {
+"hash": "529a248c2435",
+"durationSec": 3.355
+},
+"pa_tyrese-haliburton": {
+"hash": "f4ab9e68f722",
+"durationSec": 4.971
+},
+"pa_andrew-nembhard": {
+"hash": "7f1b16125deb",
+"durationSec": 3.528
+},
+"pa_aaron-nesmith": {
+"hash": "ea4cc8252619",
+"durationSec": 4.299
+},
+"pa_pascal-siakam": {
+"hash": "bf38dcf7de87",
+"durationSec": 4.656
+},
+"pa_ivica-zubac": {
+"hash": "66bfce4e0c57",
+"durationSec": 2.781
+},
+"pa_obi-toppin": {
+"hash": "126c896b3a19",
+"durationSec": 3.059
+},
+"pa_quenton-jackson": {
+"hash": "f0ec4a47e2b7",
+"durationSec": 4.536
+},
+"pa_kelly-oubre-jr": {
+"hash": "e2f1c98e70c1",
+"durationSec": 4.651
+},
+"pa_jay-huff": {
+"hash": "66c3f2776292",
+"durationSec": 4.227
+},
+"pa_jarace-walker": {
+"hash": "80200f56dc8b",
+"durationSec": 4.336
+},
+"pa_t-j-mcconnell": {
+"hash": "9cbf5158ff1d",
+"durationSec": 4.368
+},
+"pa_larry-nance-jr": {
+"hash": "f80dfa6c346c",
+"durationSec": 4.437
+},
+"pa_ben-sheppard": {
+"hash": "70dfedbc1ee0",
+"durationSec": 3.845
+},
+"pa_ryan-rollins": {
+"hash": "9f9bdc60bb11",
+"durationSec": 3.837
+},
+"pa_tyler-herro": {
+"hash": "9292d6a78df0",
+"durationSec": 4.195
+},
+"pa_jaime-jaquez-jr": {
+"hash": "d1b2e6fbdec9",
+"durationSec": 4.224
+},
+"pa_kyle-kuzma": {
+"hash": "58f20fd42bfc",
+"durationSec": 3.84
+},
+"pa_kel-el-ware": {
+"hash": "a345949ccd12",
+"durationSec": 4.688
+},
+"pa_myles-turner": {
+"hash": "fe9dbab066bf",
+"durationSec": 3.419
+},
+"pa_brayden-burries": {
+"hash": "9555fd5ec5f3",
+"durationSec": 4.277
+},
+"pa_kasparas-jakucionis": {
+"hash": "7174144860f7",
+"durationSec": 5.133
+},
+"pa_a-j-green": {
+"hash": "bcafdfe6bd93",
+"durationSec": 2.992
+},
+"pa_nate-ament": {
+"hash": "c61400f50005",
+"durationSec": 3.392
+},
+"pa_caris-levert": {
+"hash": "8464e5014579",
+"durationSec": 3.195
+},
+"pa_gary-trent-jr": {
+"hash": "0c5566348003",
+"durationSec": 4.395
+},
+"pa_ousmane-dieng": {
+"hash": "23a7697101b1",
+"durationSec": 5.405
+},
+"pa_cj-mccollum": {
+"hash": "bae501bc5c32",
+"durationSec": 4.744
+},
+"pa_nickeil-alexander-walker": {
+"hash": "4f44d6dff091",
+"durationSec": 5.491
+},
+"pa_dyson-daniels": {
+"hash": "a2df91d20703",
+"durationSec": 3.443
+},
+"pa_jalen-johnson": {
+"hash": "cf31d9af7e5d",
+"durationSec": 4.235
+},
+"pa_onyeka-okongwu": {
+"hash": "b015b3b6b691",
+"durationSec": 5.08
+},
+"pa_aaron-wiggins": {
+"hash": "73f5a024b20b",
+"durationSec": 3.413
+},
+"pa_luguentz-dort": {
+"hash": "5573d4bcd0eb",
+"durationSec": 4.611
+},
+"pa_kingston-flemings": {
+"hash": "df66a5f63384",
+"durationSec": 4.176
+},
+"pa_corey-kispert": {
+"hash": "563043ba7ea6",
+"durationSec": 3.891
+},
+"pa_jock-landale": {
+"hash": "aae399bf5a5b",
+"durationSec": 4.056
+},
+"pa_dorian-finney-smith": {
+"hash": "4adcb5b7800f",
+"durationSec": 4.205
+},
+"pa_asa-newell": {
+"hash": "f6af75199eaf",
+"durationSec": 3.979
+},
+"pa_zuby-ejiofor": {
+"hash": "b4e203d884fc",
+"durationSec": 6.373
+},
+"pa_dennis-schroder": {
+"hash": "3d8ec09933f4",
+"durationSec": 4.005
+},
+"pa_brandon-miller": {
+"hash": "a8c6456de733",
+"durationSec": 3.877
+},
+"pa_naz-reid": {
+"hash": "d17ed3dc2cbd",
+"durationSec": 3.259
+},
+"pa_moussa-diabate": {
+"hash": "f477c8abb5c0",
+"durationSec": 4.504
+},
+"pa_grayson-allen": {
+"hash": "130376d9e95a",
+"durationSec": 4.616
+},
+"pa_coby-white": {
+"hash": "4950158f9e4f",
+"durationSec": 3.005
+},
+"pa_sion-james": {
+"hash": "73b8eba427a1",
+"durationSec": 3.587
+},
+"pa_royce-o-neale": {
+"hash": "d75fb76ab47f",
+"durationSec": 5.0
+},
+"pa_ryan-kalkbrenner": {
+"hash": "353abaf05452",
+"durationSec": 4.08
+},
+"pa_tidjane-salaun": {
+"hash": "08c33e51eeaa",
+"durationSec": 6.408
+},
+"pa_grant-williams": {
+"hash": "4f2f3f0881f2",
+"durationSec": 3.901
+},
+"pa_liam-mcneeley": {
+"hash": "ef498ffb3d34",
+"durationSec": 3.808
+},
+"pa_davion-mitchell": {
+"hash": "d4c146811452",
+"durationSec": 3.877
+},
+"pa_pelle-larsson": {
+"hash": "54e78442b916",
+"durationSec": 4.115
+},
+"pa_andrew-wiggins": {
+"hash": "d52706ce69c3",
+"durationSec": 4.043
+},
+"pa_giannis-antetokounmpo": {
+"hash": "6dbd65c79129",
+"durationSec": 6.307
+},
+"pa_bam-adebayo": {
+"hash": "ee6aec2b2d67",
+"durationSec": 4.267
+},
+"pa_klay-thompson": {
+"hash": "63e73460dbe9",
+"durationSec": 3.968
+},
+"pa_bobby-portis": {
+"hash": "83af94a2fa6b",
+"durationSec": 2.768
+},
+"pa_tim-hardaway-jr": {
+"hash": "4fc7bbc7b7e1",
+"durationSec": 4.528
+},
+"pa_nikola-jovic": {
+"hash": "0473b8a80fc9",
+"durationSec": 5.939
+},
+"pa_nick-richards": {
+"hash": "8485e4bc832f",
+"durationSec": 3.507
+},
+"pa_simone-fontecchio": {
+"hash": "878d883ced8b",
+"durationSec": 4.72
+},
+"pa_dru-smith": {
+"hash": "39b8d3ccd19a",
+"durationSec": 4.235
+},
+"pa_ryan-conwell": {
+"hash": "9ce06778b6a0",
+"durationSec": 3.792
+},
+"pa_jalen-suggs": {
+"hash": "840a569fb10f",
+"durationSec": 3.381
+},
+"pa_desmond-bane": {
+"hash": "8f027d40e11d",
+"durationSec": 3.069
+},
+"pa_franz-wagner": {
+"hash": "33cffe300a05",
+"durationSec": 4.464
+},
+"pa_paolo-banchero": {
+"hash": "448caeb88ba6",
+"durationSec": 4.051
+},
+"pa_wendell-carter-jr": {
+"hash": "8b7906444905",
+"durationSec": 4.232
+},
+"pa_anthony-black": {
+"hash": "71fb076f8f38",
+"durationSec": 3.128
+},
+"pa_tristan-da-silva": {
+"hash": "793afaed948c",
+"durationSec": 4.869
+},
+"pa_nikola-vucevic": {
+"hash": "5f002b7326b3",
+"durationSec": 5.632
+},
+"pa_jonathan-isaac": {
+"hash": "e9fe4d8d6478",
+"durationSec": 3.459
+},
+"pa_jase-richardson": {
+"hash": "3128dac3e9e7",
+"durationSec": 5.064
+},
+"pa_goga-bitadze": {
+"hash": "24db24b47ad2",
+"durationSec": 4.616
+},
+"pa_jevon-carter": {
+"hash": "ee284f34cc87",
+"durationSec": 3.859
+},
+"pa_jamal-cain": {
+"hash": "9b7d534dd765",
+"durationSec": 3.789
+},
+"pa_trae-young": {
+"hash": "1f5af5ba3f4a",
+"durationSec": 3.08
+},
+"pa_kyshawn-george": {
+"hash": "9a75fa8a2ccb",
+"durationSec": 4.507
+},
+"pa_aj-dybantsa": {
+"hash": "8bf21073932d",
+"durationSec": 4.027
+},
+"pa_anthony-davis": {
+"hash": "ddf780a70281",
+"durationSec": 3.899
+},
+"pa_alex-sarr": {
+"hash": "b8f46734025e",
+"durationSec": 3.525
+},
+"pa_bilal-coulibaly": {
+"hash": "a04d1d9040ad",
+"durationSec": 4.901
+},
+"pa_deandre-ayton": {
+"hash": "7830388b19e0",
+"durationSec": 4.384
+},
+"pa_tre-johnson": {
+"hash": "cb2218b33642",
+"durationSec": 3.848
+},
+"pa_bub-carrington": {
+"hash": "a365a4a8a25f",
+"durationSec": 3.317
+},
+"pa_khris-middleton": {
+"hash": "4145a31a7a58",
+"durationSec": 4.144
+},
+"pa_justin-champagnie": {
+"hash": "709141f17ed7",
+"durationSec": 3.554
+},
+"pa_tre-mann": {
+"hash": "1267d201c933",
+"durationSec": 3.605
+},
+"pa_will-riley": {
+"hash": "e7b3f1651f5a",
+"durationSec": 3.869
+},
+"pa_jamal-murray": {
+"hash": "dd21e8384697",
+"durationSec": 4.507
+},
+"pa_christian-braun": {
+"hash": "871c21866064",
+"durationSec": 4.091
+},
+"pa_cameron-johnson": {
+"hash": "4c0c01106d6f",
+"durationSec": 4.512
+},
+"pa_aaron-gordon": {
+"hash": "a62af3eae127",
+"durationSec": 4.547
+},
+"pa_nikola-jokic": {
+"hash": "c9a27a168f80",
+"durationSec": 3.747
+},
+"pa_demar-derozan": {
+"hash": "89003a3335f6",
+"durationSec": 4.16
+},
+"pa_trevon-brazile": {
+"hash": "b6229b7f1a18",
+"durationSec": 4.315
+},
+"pa_marvin-bagley-iii": {
+"hash": "974610513ca7",
+"durationSec": 4.291
+},
+"pa_tyus-jones": {
+"hash": "981ab383a57a",
+"durationSec": 4.496
+},
+"pa_julian-strawther": {
+"hash": "e7a19a445046",
+"durationSec": 3.942
+},
+"pa_spencer-jones": {
+"hash": "1765559d0565",
+"durationSec": 4.499
+},
+"pa_bryce-hopkins": {
+"hash": "0304791daaaa",
+"durationSec": 4.184
+},
+"pa_daron-holmes-ii": {
+"hash": "0c1a0fa3299d",
+"durationSec": 4.701
+},
+"pa_lamelo-ball": {
+"hash": "49a715e7f9cd",
+"durationSec": 4.248
+},
+"pa_anthony-edwards": {
+"hash": "37730a08f116",
+"durationSec": 3.605
+},
+"pa_jaden-mcdaniels": {
+"hash": "89753b28219d",
+"durationSec": 4.344
+},
+"pa_jonathan-kuminga": {
+"hash": "0b709fc2204d",
+"durationSec": 4.368
+},
+"pa_rudy-gobert": {
+"hash": "ce374ba58a26",
+"durationSec": 4.152
+},
+"pa_ayo-dosunmu": {
+"hash": "b76ebf18363c",
+"durationSec": 3.795
+},
+"pa_donte-divincenzo": {
+"hash": "5fee5eb8a3f9",
+"durationSec": 5.211
+},
+"pa_terrence-shannon-jr": {
+"hash": "222ae2927d53",
+"durationSec": 4.357
+},
+"pa_joan-beringer": {
+"hash": "cdd43e1651a5",
+"durationSec": 4.384
+},
+"pa_trey-lyles": {
+"hash": "dc3206ce5b48",
+"durationSec": 4.096
+},
+"pa_bones-hyland": {
+"hash": "8c39a2756b43",
+"durationSec": 3.672
+},
+"pa_jaylen-clark": {
+"hash": "3e8cc3089805",
+"durationSec": 4.371
+},
+"pa_cody-williams": {
+"hash": "1115567d8f9d",
+"durationSec": 3.797
+},
+"pa_shai-gilgeous-alexander": {
+"hash": "21863c517cfa",
+"durationSec": 6.051
+},
+"pa_ajay-mitchell": {
+"hash": "f5c02d2ccbe4",
+"durationSec": 5.536
+},
+"pa_jalen-williams": {
+"hash": "10f2b10c4c04",
+"durationSec": 3.448
+},
+"pa_chet-holmgren": {
+"hash": "2b0b348828d6",
+"durationSec": 4.056
+},
+"pa_isaiah-hartenstein": {
+"hash": "834cb358ad6e",
+"durationSec": 4.992
+},
+"pa_alex-caruso": {
+"hash": "156e90f80bfa",
+"durationSec": 4.605
+},
+"pa_cason-wallace": {
+"hash": "f7cf66bad26f",
+"durationSec": 4.563
+},
+"pa_jared-mccain": {
+"hash": "b530396ac396",
+"durationSec": 4.808
+},
+"pa_aday-mara": {
+"hash": "894bf40e3c3d",
+"durationSec": 4.003
+},
+"pa_jaylin-williams": {
+"hash": "5a4751b0e1d9",
+"durationSec": 4.555
+},
+"pa_kenrich-williams": {
+"hash": "acb952bbcc48",
+"durationSec": 4.392
+},
+"pa_bennett-stirtz": {
+"hash": "671d92f550c5",
+"durationSec": 4.36
+},
+"pa_nikola-topic": {
+"hash": "e144799312b2",
+"durationSec": 5.013
+},
+"pa_damian-lillard": {
+"hash": "1cd335e350cd",
+"durationSec": 4.003
+},
+"pa_jrue-holiday": {
+"hash": "e9749b8f222e",
+"durationSec": 4.349
+},
+"pa_deni-avdija": {
+"hash": "cb8c6dee5840",
+"durationSec": 4.747
+},
+"pa_toumani-camara": {
+"hash": "bbac2ef81f2d",
+"durationSec": 3.605
+},
+"pa_donovan-clingan": {
+"hash": "73c2d4a93d80",
+"durationSec": 4.189
+},
+"pa_ja-morant": {
+"hash": "e98f907a1daf",
+"durationSec": 3.731
+},
+"pa_shaedon-sharpe": {
+"hash": "4b68f383aba4",
+"durationSec": 4.683
+},
+"pa_scoot-henderson": {
+"hash": "63d1149c44e6",
+"durationSec": 3.579
+},
+"pa_robert-williams-iii": {
+"hash": "9dae56f601a7",
+"durationSec": 5.731
+},
+"pa_sidy-cissoko": {
+"hash": "e10b76b62b4a",
+"durationSec": 4.021
+},
+"pa_vit-krejci": {
+"hash": "b3534caeb0c7",
+"durationSec": 4.883
+},
+"pa_yang-hansen": {
+"hash": "6a0c9c35f3d1",
+"durationSec": 3.773
+},
+"pa_micah-potter": {
+"hash": "559a26c5abee",
+"durationSec": 3.619
+},
+"pa_keyonte-george": {
+"hash": "087d5ee7ca55",
+"durationSec": 3.339
+},
+"pa_darryn-peterson": {
+"hash": "027673953500",
+"durationSec": 4.299
+},
+"pa_ace-bailey": {
+"hash": "dd3851edcf6f",
+"durationSec": 3.245
+},
+"pa_lauri-markkanen": {
+"hash": "3929a10cefa7",
+"durationSec": 5.107
+},
+"pa_jaren-jackson-jr": {
+"hash": "7e4905e0b7e4",
+"durationSec": 4.009
+},
+"pa_brice-sensabaugh": {
+"hash": "9fa9d58ad751",
+"durationSec": 4.408
+},
+"pa_jaxson-hayes": {
+"hash": "da5f2a2e3693",
+"durationSec": 3.757
+},
+"pa_isaiah-collier": {
+"hash": "1e7386fa7258",
+"durationSec": 3.899
+},
+"pa_kyle-filipowski": {
+"hash": "4ad0d959fda4",
+"durationSec": 5.355
+},
+"pa_svi-mykhailiuk": {
+"hash": "d0a55ae20160",
+"durationSec": 4.384
+},
+"pa_mo-bamba": {
+"hash": "447973100602",
+"durationSec": 4.261
+},
+"pa_josh-okogie": {
+"hash": "652a22e7e5bb",
+"durationSec": 5.355
+},
+"pa_josh-green": {
+"hash": "25a39572f8ab",
+"durationSec": 4.093
+},
+"pa_stephen-curry": {
+"hash": "bf0636fe11b2",
+"durationSec": 3.584
+},
+"pa_brandin-podziemski": {
+"hash": "6fd557ca2117",
+"durationSec": 4.867
+},
+"pa_yaxel-lendeborg": {
+"hash": "39c6fb57b40b",
+"durationSec": 4.896
+},
+"pa_draymond-green": {
+"hash": "c3005eeff747",
+"durationSec": 4.064
+},
+"pa_kristaps-porzingis": {
+"hash": "41b723b13367",
+"durationSec": 4.901
+},
+"pa_jimmy-butler": {
+"hash": "7b5af9953c6b",
+"durationSec": 3.712
+},
+"pa_moses-moody": {
+"hash": "41b03d18ba52",
+"durationSec": 3.725
+},
+"pa_de-anthony-melton": {
+"hash": "7ada172c39d1",
+"durationSec": 3.901
+},
+"pa_brandon-williams": {
+"hash": "aef1c8ab0c71",
+"durationSec": 3.683
+},
+"pa_al-horford": {
+"hash": "43da20efd725",
+"durationSec": 3.872
+},
+"pa_gui-santos": {
+"hash": "0ebeef06d1d3",
+"durationSec": 4.285
+},
+"pa_gary-payton-ii": {
+"hash": "0532a52e59fd",
+"durationSec": 4.805
+},
+"pa_georges-niang": {
+"hash": "5926ab6308a1",
+"durationSec": 4.585
+},
+"pa_luka-doncic": {
+"hash": "ef71b71e530a",
+"durationSec": 4.608
+},
+"pa_austin-reaves": {
+"hash": "5b3d05f75b8e",
+"durationSec": 4.032
+},
+"pa_matisse-thybulle": {
+"hash": "a2c4dc6afdb5",
+"durationSec": 4.141
+},
+"pa_jake-laravia": {
+"hash": "892f0d255b5d",
+"durationSec": 4.435
+},
+"pa_walker-kessler": {
+"hash": "69d8f7bf5ff1",
+"durationSec": 4.136
+},
+"pa_quentin-grimes": {
+"hash": "74b54d1c601d",
+"durationSec": 3.568
+},
+"pa_collin-sexton": {
+"hash": "cddf7c2a8c7e",
+"durationSec": 3.939
+},
+"pa_ziaire-williams": {
+"hash": "f4af84666ffa",
+"durationSec": 3.984
+},
+"pa_sandro-mamukelashvili": {
+"hash": "3fd6379ae183",
+"durationSec": 5.344
+},
+"pa_jarred-vanderbilt": {
+"hash": "31c912e0aa3b",
+"durationSec": 3.968
+},
+"pa_kevon-looney": {
+"hash": "4d3617aeaba9",
+"durationSec": 4.421
+},
+"pa_jaden-hardy": {
+"hash": "62d8f8d4fd24",
+"durationSec": 3.888
+},
+"pa_bronny-james": {
+"hash": "bec2a243e8f5",
+"durationSec": 4.453
+},
+"pa_darius-garland": {
+"hash": "0229ecd98bb7",
+"durationSec": 3.768
+},
+"pa_kris-dunn": {
+"hash": "5a56cf60ecca",
+"durationSec": 3.149
+},
+"pa_brandon-ingram": {
+"hash": "f2efa09e6945",
+"durationSec": 4.128
+},
+"pa_rui-hachimura": {
+"hash": "a93db7fe6b31",
+"durationSec": 6.416
+},
+"pa_isaiah-jackson": {
+"hash": "1a213d924f88",
+"durationSec": 3.669
+},
+"pa_derrick-jones-jr": {
+"hash": "7372251a535d",
+"durationSec": 3.936
+},
+"pa_brook-lopez": {
+"hash": "379e463ae21e",
+"durationSec": 4.955
+},
+"pa_keaton-wagler": {
+"hash": "844f15c6894c",
+"durationSec": 3.56
+},
+"pa_max-strus": {
+"hash": "8aabd0bf9914",
+"durationSec": 4.0
+},
+"pa_kobe-sanders": {
+"hash": "95af8983f58c",
+"durationSec": 3.125
+},
+"pa_bradley-beal": {
+"hash": "26991d9a89aa",
+"durationSec": 2.936
+},
+"pa_gradey-dick": {
+"hash": "89ee94a48e2b",
+"durationSec": 3.056
+},
+"pa_baba-miller": {
+"hash": "b73dad04c460",
+"durationSec": 3.925
+},
+"pa_devin-booker": {
+"hash": "2aa8c3db613b",
+"durationSec": 3.8
+},
+"pa_jalen-green": {
+"hash": "e1086fbeadb8",
+"durationSec": 3.856
+},
+"pa_dillon-brooks": {
+"hash": "f11b89413d4d",
+"durationSec": 5.811
+},
+"pa_miles-bridges": {
+"hash": "15d4d80b36b9",
+"durationSec": 4.389
+},
+"pa_khaman-maluach": {
+"hash": "9cedb2586625",
+"durationSec": 3.427
+},
+"pa_mark-williams": {
+"hash": "494e79c87dbb",
+"durationSec": 3.979
+},
+"pa_collin-gillespie": {
+"hash": "b07206a157b3",
+"durationSec": 5.613
+},
+"pa_luke-kennard": {
+"hash": "c36f3afd35ad",
+"durationSec": 3.797
+},
+"pa_jordan-goodwin": {
+"hash": "02599e23290c",
+"durationSec": 4.136
+},
+"pa_oso-ighodaro": {
+"hash": "78a23063b446",
+"durationSec": 3.925
+},
+"pa_ryan-dunn": {
+"hash": "b734c3edafde",
+"durationSec": 3.803
+},
+"pa_duop-reath": {
+"hash": "afdc34c72f36",
+"durationSec": 4.677
+},
+"pa_koa-peat": {
+"hash": "7662784ae41b",
+"durationSec": 3.621
+},
+"pa_darius-acuff-jr": {
+"hash": "27ae7ae4e950",
+"durationSec": 4.32
+},
+"pa_zach-lavine": {
+"hash": "ccf8a3958355",
+"durationSec": 4.403
+},
+"pa_de-andre-hunter": {
+"hash": "5c9d8623d618",
+"durationSec": 3.76
+},
+"pa_keegan-murray": {
+"hash": "fd7239f0e1ae",
+"durationSec": 3.661
+},
+"pa_domantas-sabonis": {
+"hash": "f4020b476f58",
+"durationSec": 4.549
+},
+"pa_malik-monk": {
+"hash": "21f41fc2f9a0",
+"durationSec": 2.611
+},
+"pa_precious-achiuwa": {
+"hash": "8f716859755a",
+"durationSec": 4.336
+},
+"pa_maxime-raynaud": {
+"hash": "7db479c40104",
+"durationSec": 4.605
+},
+"pa_nique-clifford": {
+"hash": "a746d505aabd",
+"durationSec": 3.651
+},
+"pa_ben-simmons": {
+"hash": "206b7bb92ed3",
+"durationSec": 4.619
+},
+"pa_jonathan-mogbo": {
+"hash": "e56f13f2cece",
+"durationSec": 3.917
+},
+"pa_emanuel-sharp": {
+"hash": "ffae66512e52",
+"durationSec": 3.877
+},
+"pa_leaky-black": {
+"hash": "306f6ac5051f",
+"durationSec": 3.795
+},
+"pa_kyrie-irving": {
+"hash": "273a78c93a65",
+"durationSec": 4.085
+},
+"pa_max-christie": {
+"hash": "ddec4c7b99a7",
+"durationSec": 3.621
+},
+"pa_cooper-flagg": {
+"hash": "5671413eced4",
+"durationSec": 4.829
+},
+"pa_pj-washington": {
+"hash": "6b3ea2d2ec5d",
+"durationSec": 3.645
+},
+"pa_daniel-gafford": {
+"hash": "53b921a29d73",
+"durationSec": 4.84
+},
+"pa_naji-marshall": {
+"hash": "aa22dc44e05c",
+"durationSec": 5.085
+},
+"pa_zaccharie-risacher": {
+"hash": "8ccbf54ff7e5",
+"durationSec": 3.744
+},
+"pa_santi-aldama": {
+"hash": "e69cf2065ad4",
+"durationSec": 4.371
+},
+"pa_dereck-lively-ii": {
+"hash": "d8a6d81f4f30",
+"durationSec": 5.333
+},
+"pa_caleb-martin": {
+"hash": "3b6693d58539",
+"durationSec": 3.704
+},
+"pa_marcus-sasser": {
+"hash": "9d3ee81bc985",
+"durationSec": 3.776
+},
+"pa_morez-johnson-jr": {
+"hash": "4b5b65a2b42e",
+"durationSec": 5.712
+},
+"pa_sergio-de-larrea": {
+"hash": "555409d20943",
+"durationSec": 4.64
+},
+"pa_fred-vanvleet": {
+"hash": "961ef5733054",
+"durationSec": 4.325
+},
+"pa_amen-thompson": {
+"hash": "25116c907be7",
+"durationSec": 3.352
+},
+"pa_kevin-durant": {
+"hash": "041f65277e34",
+"durationSec": 3.933
+},
+"pa_jabari-smith-jr": {
+"hash": "362730e0bb22",
+"durationSec": 3.979
+},
+"pa_alperen-sengun": {
+"hash": "db51d3d81b29",
+"durationSec": 4.216
+},
+"pa_tari-eason": {
+"hash": "3ac7feee2168",
+"durationSec": 4.149
+},
+"pa_reed-sheppard": {
+"hash": "500cbdea01c3",
+"durationSec": 4.013
+},
+"pa_marcus-smart": {
+"hash": "80ee670e9de9",
+"durationSec": 4.139
+},
+"pa_clint-capela": {
+"hash": "8c2a348b94f8",
+"durationSec": 3.907
+},
+"pa_bogdan-bogdanovic": {
+"hash": "e407fa535d7d",
+"durationSec": 5.827
+},
+"pa_steven-adams": {
+"hash": "e4e61d7f481a",
+"durationSec": 4.235
+},
+"pa_jae-sean-tate": {
+"hash": "d5d6e715a92d",
+"durationSec": 3.493
+},
+"pa_isaiah-crawford": {
+"hash": "d86113cd7d3b",
+"durationSec": 4.869
+},
+"pa_ty-jerome": {
+"hash": "1346d8efa049",
+"durationSec": 2.685
+},
+"pa_jaylen-wells": {
+"hash": "38e2eb9f9938",
+"durationSec": 3.611
+},
+"pa_cedric-coward": {
+"hash": "4c1d3a41a28b",
+"durationSec": 3.984
+},
+"pa_cameron-boozer": {
+"hash": "64424799f001",
+"durationSec": 3.805
+},
+"pa_zach-edey": {
+"hash": "ec9fbcbe0521",
+"durationSec": 4.08
+},
+"pa_jerami-grant": {
+"hash": "c6cb81ec2e2d",
+"durationSec": 3.496
+},
+"pa_cam-spencer": {
+"hash": "49ca8639eb30",
+"durationSec": 4.477
+},
+"pa_isaiah-stewart": {
+"hash": "55d111f9e070",
+"durationSec": 4.645
+},
+"pa_gg-jackson-ii": {
+"hash": "675a88e2533c",
+"durationSec": 4.794
+},
+"pa_quinten-post": {
+"hash": "a039663d51b6",
+"durationSec": 4.288
+},
+"pa_scotty-pippen-jr": {
+"hash": "6b96291cf212",
+"durationSec": 5.011
+},
+"pa_kris-murray": {
+"hash": "2ca73f417887",
+"durationSec": 3.152
+},
+"pa_taylor-hendricks": {
+"hash": "d04e5c247019",
+"durationSec": 4.448
+},
+"pa_dejounte-murray": {
+"hash": "6706a5fd1e4f",
+"durationSec": 4.403
+},
+"pa_jeremiah-fears": {
+"hash": "221ca422ddb1",
+"durationSec": 4.085
+},
+"pa_trey-murphy-iii": {
+"hash": "4aa7c3c107cb",
+"durationSec": 4.925
+},
+"pa_zion-williamson": {
+"hash": "b2d4d4c112b7",
+"durationSec": 4.943
+},
+"pa_karlo-matkovic": {
+"hash": "36a907d23a7e",
+"durationSec": 5.016
+},
+"pa_saddiq-bey": {
+"hash": "9b43b97c12eb",
+"durationSec": 4.568
+},
+"pa_derik-queen": {
+"hash": "6da63c29a950",
+"durationSec": 4.224
+},
+"pa_herbert-jones": {
+"hash": "715e3ab6ea36",
+"durationSec": 4.44
+},
+"pa_bennedict-mathurin": {
+"hash": "793043053e1c",
+"durationSec": 4.675
+},
+"pa_yves-missi": {
+"hash": "bec45f2c06bd",
+"durationSec": 5.259
+},
+"pa_jordan-poole": {
+"hash": "538f62a6a96d",
+"durationSec": 3.163
+},
+"pa_trendon-watford": {
+"hash": "f5d932bce698",
+"durationSec": 3.907
+},
+"pa_deandre-jordan": {
+"hash": "5b03872e6931",
+"durationSec": 3.624
+},
+"pa_de-aaron-fox": {
+"hash": "2e3ec0349bd7",
+"durationSec": 4.173
+},
+"pa_dylan-harper": {
+"hash": "28e4db36e2ec",
+"durationSec": 3.813
+},
+"pa_devin-vassell": {
+"hash": "289862a237d0",
+"durationSec": 6.661
+},
+"pa_stephon-castle": {
+"hash": "59b3455f800c",
+"durationSec": 3.451
+},
+"pa_victor-wembanyama": {
+"hash": "4f938e3d800b",
+"durationSec": 4.885
+},
+"pa_julian-champagnie": {
+"hash": "e546a22e7bdb",
+"durationSec": 3.813
+},
+"pa_keldon-johnson": {
+"hash": "c3a574ca03e1",
+"durationSec": 3.733
+},
+"pa_luke-kornet": {
+"hash": "7a904b3060c1",
+"durationSec": 4.376
+},
+"pa_harrison-barnes": {
+"hash": "d8728645eebc",
+"durationSec": 3.184
+},
+"pa_tobias-harris": {
+"hash": "e5d75e73728f",
+"durationSec": 3.392
+},
+"pa_carter-bryant": {
+"hash": "f96a4995f802",
+"durationSec": 3.421
+},
+"pa_jordan-mclaughlin": {
+"hash": "3e043311bc85",
+"durationSec": 5.019
+},
+"pa_tarris-reed-jr": {
+"hash": "91d70e282c47",
+"durationSec": 4.544
+}
+}

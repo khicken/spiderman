@@ -1,0 +1,3332 @@
+[
+ {
+  "abbr": "BOS",
+  "city": "Boston",
+  "name": "Celtics",
+  "players": [
+   {
+    "id": "payton-pritchard",
+    "first": "Payton",
+    "last": "Pritchard",
+    "jersey": 11,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "derrick-white",
+    "first": "Derrick",
+    "last": "White",
+    "jersey": 9,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "paul-george",
+    "first": "Paul",
+    "last": "George",
+    "jersey": 13,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "jayson-tatum",
+    "first": "Jayson",
+    "last": "Tatum",
+    "jersey": 0,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "neemias-queta",
+    "first": "Neemias",
+    "last": "Queta",
+    "jersey": 88,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "mitchell-robinson",
+    "first": "Mitchell",
+    "last": "Robinson",
+    "jersey": 4,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "mike-conley",
+    "first": "Mike",
+    "last": "Conley",
+    "jersey": 45,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "sam-hauser",
+    "first": "Sam",
+    "last": "Hauser",
+    "jersey": 30,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "baylor-scheierman",
+    "first": "Baylor",
+    "last": "Scheierman",
+    "jersey": 55,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "hugo-gonzalez",
+    "first": "Hugo",
+    "last": "González",
+    "jersey": 28,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "jordan-walsh",
+    "first": "Jordan",
+    "last": "Walsh",
+    "jersey": 27,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "luka-garza",
+    "first": "Luka",
+    "last": "Garza",
+    "jersey": 52,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "dillon-mitchell",
+    "first": "Dillon",
+    "last": "Mitchell",
+    "jersey": 20,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "BKN",
+  "city": "Brooklyn",
+  "name": "Nets",
+  "players": [
+   {
+    "id": "nolan-traore",
+    "first": "Nolan",
+    "last": "Traoré",
+    "jersey": 10,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "egor-demin",
+    "first": "Egor",
+    "last": "Demin",
+    "jersey": 8,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "michael-porter-jr",
+    "first": "Michael",
+    "last": "Porter Jr.",
+    "jersey": 17,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "julius-randle",
+    "first": "Julius",
+    "last": "Randle",
+    "jersey": 30,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "day-ron-sharpe",
+    "first": "Day'Ron",
+    "last": "Sharpe",
+    "jersey": 20,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "mikel-brown-jr",
+    "first": "Mikel",
+    "last": "Brown Jr.",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "noah-clowney",
+    "first": "Noah",
+    "last": "Clowney",
+    "jersey": 21,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "terance-mann",
+    "first": "Terance",
+    "last": "Mann",
+    "jersey": 14,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "danny-wolf",
+    "first": "Danny",
+    "last": "Wolf",
+    "jersey": 2,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "keon-ellis",
+    "first": "Keon",
+    "last": "Ellis",
+    "jersey": 1,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "drake-powell",
+    "first": "Drake",
+    "last": "Powell",
+    "jersey": 4,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "josh-minott",
+    "first": "Josh",
+    "last": "Minott",
+    "jersey": 0,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "moritz-wagner",
+    "first": "Moritz",
+    "last": "Wagner",
+    "jersey": 13,
+    "pos": "C",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "NYK",
+  "city": "New York",
+  "name": "Knicks",
+  "players": [
+   {
+    "id": "jalen-brunson",
+    "first": "Jalen",
+    "last": "Brunson",
+    "jersey": 11,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "mikal-bridges",
+    "first": "Mikal",
+    "last": "Bridges",
+    "jersey": 25,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "og-anunoby",
+    "first": "OG",
+    "last": "Anunoby",
+    "jersey": 8,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "josh-hart",
+    "first": "Josh",
+    "last": "Hart",
+    "jersey": 3,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "karl-anthony-towns",
+    "first": "Karl-Anthony",
+    "last": "Towns",
+    "jersey": 32,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "miles-mcbride",
+    "first": "Miles",
+    "last": "McBride",
+    "jersey": 2,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "andre-drummond",
+    "first": "Andre",
+    "last": "Drummond",
+    "jersey": 0,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jordan-clarkson",
+    "first": "Jordan",
+    "last": "Clarkson",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "landry-shamet",
+    "first": "Landry",
+    "last": "Shamet",
+    "jersey": 44,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "jose-alvarado",
+    "first": "Jose",
+    "last": "Alvarado",
+    "jersey": 5,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "tyler-kolek",
+    "first": "Tyler",
+    "last": "Kolek",
+    "jersey": 13,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "james-wiseman",
+    "first": "James",
+    "last": "Wiseman",
+    "jersey": 35,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "mohamed-diawara",
+    "first": "Mohamed",
+    "last": "Diawara",
+    "jersey": 51,
+    "pos": "SF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "PHI",
+  "city": "Philadelphia",
+  "name": "76ers",
+  "players": [
+   {
+    "id": "tyrese-maxey",
+    "first": "Tyrese",
+    "last": "Maxey",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "vj-edgecombe",
+    "first": "VJ",
+    "last": "Edgecombe",
+    "jersey": 77,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "jaylen-brown",
+    "first": "Jaylen",
+    "last": "Brown",
+    "jersey": 7,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "lebron-james",
+    "first": "LeBron",
+    "last": "James",
+    "jersey": 23,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "joel-embiid",
+    "first": "Joel",
+    "last": "Embiid",
+    "jersey": 21,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "anfernee-simons",
+    "first": "Anfernee",
+    "last": "Simons",
+    "jersey": 5,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "kentavious-caldwell-pope",
+    "first": "Kentavious",
+    "last": "Caldwell-Pope",
+    "jersey": 1,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "dean-wade",
+    "first": "Dean",
+    "last": "Wade",
+    "jersey": 45,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "adem-bona",
+    "first": "Adem",
+    "last": "Bona",
+    "jersey": 30,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "justin-edwards",
+    "first": "Justin",
+    "last": "Edwards",
+    "jersey": 11,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "jabari-walker",
+    "first": "Jabari",
+    "last": "Walker",
+    "jersey": 33,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "labaron-philon-jr",
+    "first": "Labaron",
+    "last": "Philon Jr.",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "rayan-rupert",
+    "first": "Rayan",
+    "last": "Rupert",
+    "jersey": 12,
+    "pos": "SG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "TOR",
+  "city": "Toronto",
+  "name": "Raptors",
+  "players": [
+   {
+    "id": "immanuel-quickley",
+    "first": "Immanuel",
+    "last": "Quickley",
+    "jersey": 5,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "rj-barrett",
+    "first": "RJ",
+    "last": "Barrett",
+    "jersey": 9,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "kawhi-leonard",
+    "first": "Kawhi",
+    "last": "Leonard",
+    "jersey": 2,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "scottie-barnes",
+    "first": "Scottie",
+    "last": "Barnes",
+    "jersey": 4,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "jakob-poeltl",
+    "first": "Jakob",
+    "last": "Poeltl",
+    "jersey": 19,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "ja-kobe-walter",
+    "first": "Ja'Kobe",
+    "last": "Walter",
+    "jersey": 14,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "collin-murray-boyles",
+    "first": "Collin",
+    "last": "Murray-Boyles",
+    "jersey": 30,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "jamal-shead",
+    "first": "Jamal",
+    "last": "Shead",
+    "jersey": 1,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "kyle-anderson",
+    "first": "Kyle",
+    "last": "Anderson",
+    "jersey": 13,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "trayce-jackson-davis",
+    "first": "Trayce",
+    "last": "Jackson-Davis",
+    "jersey": 32,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jamison-battle",
+    "first": "Jamison",
+    "last": "Battle",
+    "jersey": 77,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "alijah-martin",
+    "first": "Alijah",
+    "last": "Martin",
+    "jersey": 55,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "allen-graves",
+    "first": "Allen",
+    "last": "Graves",
+    "jersey": 22,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "CHI",
+  "city": "Chicago",
+  "name": "Bulls",
+  "players": [
+   {
+    "id": "josh-giddey",
+    "first": "Josh",
+    "last": "Giddey",
+    "jersey": 3,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "norman-powell",
+    "first": "Norman",
+    "last": "Powell",
+    "jersey": 24,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "matas-buzelis",
+    "first": "Matas",
+    "last": "Buzelis",
+    "jersey": 14,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "caleb-wilson",
+    "first": "Caleb",
+    "last": "Wilson",
+    "jersey": 8,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "jalen-smith",
+    "first": "Jalen",
+    "last": "Smith",
+    "jersey": 25,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "tre-jones",
+    "first": "Tre",
+    "last": "Jones",
+    "jersey": 30,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "nic-claxton",
+    "first": "Nic",
+    "last": "Claxton",
+    "jersey": 33,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "buddy-hield",
+    "first": "Buddy",
+    "last": "Hield",
+    "jersey": 7,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "isaac-okoro",
+    "first": "Isaac",
+    "last": "Okoro",
+    "jersey": 35,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "patrick-williams",
+    "first": "Patrick",
+    "last": "Williams",
+    "jersey": 44,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "leonard-miller",
+    "first": "Leonard",
+    "last": "Miller",
+    "jersey": 11,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "zach-collins",
+    "first": "Zach",
+    "last": "Collins",
+    "jersey": 12,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "noa-essengue",
+    "first": "Noa",
+    "last": "Essengue",
+    "jersey": 2,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "CLE",
+  "city": "Cleveland",
+  "name": "Cavaliers",
+  "players": [
+   {
+    "id": "james-harden",
+    "first": "James",
+    "last": "Harden",
+    "jersey": 1,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "donovan-mitchell",
+    "first": "Donovan",
+    "last": "Mitchell",
+    "jersey": 45,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "peyton-watson",
+    "first": "Peyton",
+    "last": "Watson",
+    "jersey": 8,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "evan-mobley",
+    "first": "Evan",
+    "last": "Mobley",
+    "jersey": 4,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "jarrett-allen",
+    "first": "Jarrett",
+    "last": "Allen",
+    "jersey": 31,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "sam-merrill",
+    "first": "Sam",
+    "last": "Merrill",
+    "jersey": 5,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "meleek-thomas",
+    "first": "Meleek",
+    "last": "Thomas",
+    "jersey": 15,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "jaylon-tyson",
+    "first": "Jaylon",
+    "last": "Tyson",
+    "jersey": 20,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "mario-hezonja",
+    "first": "Mario",
+    "last": "Hezonja",
+    "jersey": 33,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "tyrese-proctor",
+    "first": "Tyrese",
+    "last": "Proctor",
+    "jersey": 24,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "thomas-bryant",
+    "first": "Thomas",
+    "last": "Bryant",
+    "jersey": 3,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "craig-porter-jr",
+    "first": "Craig",
+    "last": "Porter Jr.",
+    "jersey": 9,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "nae-qwan-tomlin",
+    "first": "Nae'Qwan",
+    "last": "Tomlin",
+    "jersey": 35,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "DET",
+  "city": "Detroit",
+  "name": "Pistons",
+  "players": [
+   {
+    "id": "cade-cunningham",
+    "first": "Cade",
+    "last": "Cunningham",
+    "jersey": 2,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "duncan-robinson",
+    "first": "Duncan",
+    "last": "Robinson",
+    "jersey": 55,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "ausar-thompson",
+    "first": "Ausar",
+    "last": "Thompson",
+    "jersey": 9,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "john-collins",
+    "first": "John",
+    "last": "Collins",
+    "jersey": 20,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "jalen-duren",
+    "first": "Jalen",
+    "last": "Duren",
+    "jersey": 0,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "daniss-jenkins",
+    "first": "Daniss",
+    "last": "Jenkins",
+    "jersey": 24,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "paul-reed",
+    "first": "Paul",
+    "last": "Reed",
+    "jersey": 7,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "kevin-huerter",
+    "first": "Kevin",
+    "last": "Huerter",
+    "jersey": 27,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "ron-holland",
+    "first": "Ron",
+    "last": "Holland",
+    "jersey": 5,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "isaiah-joe",
+    "first": "Isaiah",
+    "last": "Joe",
+    "jersey": 17,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "javonte-green",
+    "first": "Javonte",
+    "last": "Green",
+    "jersey": 31,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "ebuka-okorie",
+    "first": "Ebuka",
+    "last": "Okorie",
+    "jersey": 23,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "taurean-prince",
+    "first": "Taurean",
+    "last": "Prince",
+    "jersey": 12,
+    "pos": "SF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "IND",
+  "city": "Indiana",
+  "name": "Pacers",
+  "players": [
+   {
+    "id": "tyrese-haliburton",
+    "first": "Tyrese",
+    "last": "Haliburton",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "andrew-nembhard",
+    "first": "Andrew",
+    "last": "Nembhard",
+    "jersey": 2,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "aaron-nesmith",
+    "first": "Aaron",
+    "last": "Nesmith",
+    "jersey": 23,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "pascal-siakam",
+    "first": "Pascal",
+    "last": "Siakam",
+    "jersey": 43,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "ivica-zubac",
+    "first": "Ivica",
+    "last": "Zubac",
+    "jersey": 40,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "obi-toppin",
+    "first": "Obi",
+    "last": "Toppin",
+    "jersey": 1,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "quenton-jackson",
+    "first": "Quenton",
+    "last": "Jackson",
+    "jersey": 29,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "kelly-oubre-jr",
+    "first": "Kelly",
+    "last": "Oubre Jr.",
+    "jersey": 10,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "jay-huff",
+    "first": "Jay",
+    "last": "Huff",
+    "jersey": 32,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jarace-walker",
+    "first": "Jarace",
+    "last": "Walker",
+    "jersey": 5,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "t-j-mcconnell",
+    "first": "T.J.",
+    "last": "McConnell",
+    "jersey": 9,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "larry-nance-jr",
+    "first": "Larry",
+    "last": "Nance Jr.",
+    "jersey": 22,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "ben-sheppard",
+    "first": "Ben",
+    "last": "Sheppard",
+    "jersey": 26,
+    "pos": "SG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "MIL",
+  "city": "Milwaukee",
+  "name": "Bucks",
+  "players": [
+   {
+    "id": "ryan-rollins",
+    "first": "Ryan",
+    "last": "Rollins",
+    "jersey": 13,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "tyler-herro",
+    "first": "Tyler",
+    "last": "Herro",
+    "jersey": 11,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "jaime-jaquez-jr",
+    "first": "Jaime",
+    "last": "Jaquez Jr.",
+    "jersey": 24,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "kyle-kuzma",
+    "first": "Kyle",
+    "last": "Kuzma",
+    "jersey": 18,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "kel-el-ware",
+    "first": "Kel'el",
+    "last": "Ware",
+    "jersey": 9,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "myles-turner",
+    "first": "Myles",
+    "last": "Turner",
+    "jersey": 3,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "brayden-burries",
+    "first": "Brayden",
+    "last": "Burries",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "kasparas-jakucionis",
+    "first": "Kasparas",
+    "last": "Jakucionis",
+    "jersey": 25,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "a-j-green",
+    "first": "A.J.",
+    "last": "Green",
+    "jersey": 20,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "nate-ament",
+    "first": "Nate",
+    "last": "Ament",
+    "jersey": 15,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "caris-levert",
+    "first": "Caris",
+    "last": "LeVert",
+    "jersey": 22,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "gary-trent-jr",
+    "first": "Gary",
+    "last": "Trent Jr.",
+    "jersey": 5,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "ousmane-dieng",
+    "first": "Ousmane",
+    "last": "Dieng",
+    "jersey": 21,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "ATL",
+  "city": "Atlanta",
+  "name": "Hawks",
+  "players": [
+   {
+    "id": "cj-mccollum",
+    "first": "CJ",
+    "last": "McCollum",
+    "jersey": 3,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "nickeil-alexander-walker",
+    "first": "Nickeil",
+    "last": "Alexander-Walker",
+    "jersey": 7,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "dyson-daniels",
+    "first": "Dyson",
+    "last": "Daniels",
+    "jersey": 5,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "jalen-johnson",
+    "first": "Jalen",
+    "last": "Johnson",
+    "jersey": 1,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "onyeka-okongwu",
+    "first": "Onyeka",
+    "last": "Okongwu",
+    "jersey": 17,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "aaron-wiggins",
+    "first": "Aaron",
+    "last": "Wiggins",
+    "jersey": 2,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "luguentz-dort",
+    "first": "Luguentz",
+    "last": "Dort",
+    "jersey": 0,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "kingston-flemings",
+    "first": "Kingston",
+    "last": "Flemings",
+    "jersey": 4,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "corey-kispert",
+    "first": "Corey",
+    "last": "Kispert",
+    "jersey": 24,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "jock-landale",
+    "first": "Jock",
+    "last": "Landale",
+    "jersey": 31,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "dorian-finney-smith",
+    "first": "Dorian",
+    "last": "Finney-Smith",
+    "jersey": 8,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "asa-newell",
+    "first": "Asa",
+    "last": "Newell",
+    "jersey": 14,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "zuby-ejiofor",
+    "first": "Zuby",
+    "last": "Ejiofor",
+    "jersey": 20,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "CHA",
+  "city": "Charlotte",
+  "name": "Hornets",
+  "players": [
+   {
+    "id": "dennis-schroder",
+    "first": "Dennis",
+    "last": "Schröder",
+    "jersey": 17,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "kon-knueppel",
+    "first": "Kon",
+    "last": "Knueppel",
+    "jersey": 7,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "brandon-miller",
+    "first": "Brandon",
+    "last": "Miller",
+    "jersey": 24,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "naz-reid",
+    "first": "Naz",
+    "last": "Reid",
+    "jersey": 0,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "moussa-diabate",
+    "first": "Moussa",
+    "last": "Diabaté",
+    "jersey": 14,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "grayson-allen",
+    "first": "Grayson",
+    "last": "Allen",
+    "jersey": 8,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "coby-white",
+    "first": "Coby",
+    "last": "White",
+    "jersey": 3,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "sion-james",
+    "first": "Sion",
+    "last": "James",
+    "jersey": 4,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "royce-o-neale",
+    "first": "Royce",
+    "last": "O'Neale",
+    "jersey": 0,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "ryan-kalkbrenner",
+    "first": "Ryan",
+    "last": "Kalkbrenner",
+    "jersey": 11,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "tidjane-salaun",
+    "first": "Tidjane",
+    "last": "Salaün",
+    "jersey": 31,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "grant-williams",
+    "first": "Grant",
+    "last": "Williams",
+    "jersey": 2,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "liam-mcneeley",
+    "first": "Liam",
+    "last": "McNeeley",
+    "jersey": 33,
+    "pos": "SF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "MIA",
+  "city": "Miami",
+  "name": "Heat",
+  "players": [
+   {
+    "id": "davion-mitchell",
+    "first": "Davion",
+    "last": "Mitchell",
+    "jersey": 2,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "pelle-larsson",
+    "first": "Pelle",
+    "last": "Larsson",
+    "jersey": 9,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "andrew-wiggins",
+    "first": "Andrew",
+    "last": "Wiggins",
+    "jersey": 22,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "giannis-antetokounmpo",
+    "first": "Giannis",
+    "last": "Antetokounmpo",
+    "jersey": 7,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "bam-adebayo",
+    "first": "Bam",
+    "last": "Adebayo",
+    "jersey": 13,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "klay-thompson",
+    "first": "Klay",
+    "last": "Thompson",
+    "jersey": 11,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "bobby-portis",
+    "first": "Bobby",
+    "last": "Portis",
+    "jersey": 95,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "tim-hardaway-jr",
+    "first": "Tim",
+    "last": "Hardaway Jr.",
+    "jersey": 10,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "nikola-jovic",
+    "first": "Nikola",
+    "last": "Jović",
+    "jersey": 5,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "nick-richards",
+    "first": "Nick",
+    "last": "Richards",
+    "jersey": 8,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "simone-fontecchio",
+    "first": "Simone",
+    "last": "Fontecchio",
+    "jersey": 0,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "dru-smith",
+    "first": "Dru",
+    "last": "Smith",
+    "jersey": 12,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "ryan-conwell",
+    "first": "Ryan",
+    "last": "Conwell",
+    "jersey": 4,
+    "pos": "SG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "ORL",
+  "city": "Orlando",
+  "name": "Magic",
+  "players": [
+   {
+    "id": "jalen-suggs",
+    "first": "Jalen",
+    "last": "Suggs",
+    "jersey": 4,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "desmond-bane",
+    "first": "Desmond",
+    "last": "Bane",
+    "jersey": 3,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "franz-wagner",
+    "first": "Franz",
+    "last": "Wagner",
+    "jersey": 22,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "paolo-banchero",
+    "first": "Paolo",
+    "last": "Banchero",
+    "jersey": 5,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "wendell-carter-jr",
+    "first": "Wendell",
+    "last": "Carter Jr.",
+    "jersey": 34,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "anthony-black",
+    "first": "Anthony",
+    "last": "Black",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "tristan-da-silva",
+    "first": "Tristan",
+    "last": "Da Silva",
+    "jersey": 23,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "nikola-vucevic",
+    "first": "Nikola",
+    "last": "Vučević",
+    "jersey": 9,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jonathan-isaac",
+    "first": "Jonathan",
+    "last": "Isaac",
+    "jersey": 1,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "jase-richardson",
+    "first": "Jase",
+    "last": "Richardson",
+    "jersey": 11,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "goga-bitadze",
+    "first": "Goga",
+    "last": "Bitadze",
+    "jersey": 35,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jevon-carter",
+    "first": "Jevon",
+    "last": "Carter",
+    "jersey": 2,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "jamal-cain",
+    "first": "Jamal",
+    "last": "Cain",
+    "jersey": 8,
+    "pos": "SF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "WAS",
+  "city": "Washington",
+  "name": "Wizards",
+  "players": [
+   {
+    "id": "trae-young",
+    "first": "Trae",
+    "last": "Young",
+    "jersey": 3,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "kyshawn-george",
+    "first": "Kyshawn",
+    "last": "George",
+    "jersey": 18,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "aj-dybantsa",
+    "first": "AJ",
+    "last": "Dybantsa",
+    "jersey": 4,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "anthony-davis",
+    "first": "Anthony",
+    "last": "Davis",
+    "jersey": 23,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "alex-sarr",
+    "first": "Alex",
+    "last": "Sarr",
+    "jersey": 20,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "bilal-coulibaly",
+    "first": "Bilal",
+    "last": "Coulibaly",
+    "jersey": 0,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "deandre-ayton",
+    "first": "Deandre",
+    "last": "Ayton",
+    "jersey": 8,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "tre-johnson",
+    "first": "Tre",
+    "last": "Johnson",
+    "jersey": 12,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "bub-carrington",
+    "first": "Bub",
+    "last": "Carrington",
+    "jersey": 7,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "khris-middleton",
+    "first": "Khris",
+    "last": "Middleton",
+    "jersey": 22,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "justin-champagnie",
+    "first": "Justin",
+    "last": "Champagnie",
+    "jersey": 9,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "tre-mann",
+    "first": "Tre",
+    "last": "Mann",
+    "jersey": 1,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "will-riley",
+    "first": "Will",
+    "last": "Riley",
+    "jersey": 27,
+    "pos": "SF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "DEN",
+  "city": "Denver",
+  "name": "Nuggets",
+  "players": [
+   {
+    "id": "jamal-murray",
+    "first": "Jamal",
+    "last": "Murray",
+    "jersey": 27,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "christian-braun",
+    "first": "Christian",
+    "last": "Braun",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "cameron-johnson",
+    "first": "Cameron",
+    "last": "Johnson",
+    "jersey": 23,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "aaron-gordon",
+    "first": "Aaron",
+    "last": "Gordon",
+    "jersey": 32,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "nikola-jokic",
+    "first": "Nikola",
+    "last": "Jokic",
+    "jersey": 15,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "demar-derozan",
+    "first": "DeMar",
+    "last": "DeRozan",
+    "jersey": 10,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "trevon-brazile",
+    "first": "Trevon",
+    "last": "Brazile",
+    "jersey": 7,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "marvin-bagley-iii",
+    "first": "Marvin",
+    "last": "Bagley III",
+    "jersey": 3,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "tyus-jones",
+    "first": "Tyus",
+    "last": "Jones",
+    "jersey": 5,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "julian-strawther",
+    "first": "Julian",
+    "last": "Strawther",
+    "jersey": 12,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "spencer-jones",
+    "first": "Spencer",
+    "last": "Jones",
+    "jersey": 21,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "bryce-hopkins",
+    "first": "Bryce",
+    "last": "Hopkins",
+    "jersey": 13,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "daron-holmes-ii",
+    "first": "DaRon",
+    "last": "Holmes II",
+    "jersey": 14,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "MIN",
+  "city": "Minnesota",
+  "name": "Timberwolves",
+  "players": [
+   {
+    "id": "lamelo-ball",
+    "first": "LaMelo",
+    "last": "Ball",
+    "jersey": 1,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "anthony-edwards",
+    "first": "Anthony",
+    "last": "Edwards",
+    "jersey": 5,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "jaden-mcdaniels",
+    "first": "Jaden",
+    "last": "McDaniels",
+    "jersey": 3,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "jonathan-kuminga",
+    "first": "Jonathan",
+    "last": "Kuminga",
+    "jersey": 24,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "rudy-gobert",
+    "first": "Rudy",
+    "last": "Gobert",
+    "jersey": 27,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "ayo-dosunmu",
+    "first": "Ayo",
+    "last": "Dosunmu",
+    "jersey": 13,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "donte-divincenzo",
+    "first": "Donte",
+    "last": "DiVincenzo",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "terrence-shannon-jr",
+    "first": "Terrence",
+    "last": "Shannon Jr.",
+    "jersey": 4,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "joan-beringer",
+    "first": "Joan",
+    "last": "Beringer",
+    "jersey": 19,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "trey-lyles",
+    "first": "Trey",
+    "last": "Lyles",
+    "jersey": 41,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "bones-hyland",
+    "first": "Bones",
+    "last": "Hyland",
+    "jersey": 8,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "jaylen-clark",
+    "first": "Jaylen",
+    "last": "Clark",
+    "jersey": 7,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "cody-williams",
+    "first": "Cody",
+    "last": "Williams",
+    "jersey": 9,
+    "pos": "SG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "OKC",
+  "city": "Oklahoma City",
+  "name": "Thunder",
+  "players": [
+   {
+    "id": "shai-gilgeous-alexander",
+    "first": "Shai",
+    "last": "Gilgeous-Alexander",
+    "jersey": 2,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "ajay-mitchell",
+    "first": "Ajay",
+    "last": "Mitchell",
+    "jersey": 25,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "jalen-williams",
+    "first": "Jalen",
+    "last": "Williams",
+    "jersey": 8,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "chet-holmgren",
+    "first": "Chet",
+    "last": "Holmgren",
+    "jersey": 7,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "isaiah-hartenstein",
+    "first": "Isaiah",
+    "last": "Hartenstein",
+    "jersey": 55,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "alex-caruso",
+    "first": "Alex",
+    "last": "Caruso",
+    "jersey": 9,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "cason-wallace",
+    "first": "Cason",
+    "last": "Wallace",
+    "jersey": 22,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "jared-mccain",
+    "first": "Jared",
+    "last": "McCain",
+    "jersey": 3,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "aday-mara",
+    "first": "Aday",
+    "last": "Mara",
+    "jersey": 15,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jaylin-williams",
+    "first": "Jaylin",
+    "last": "Williams",
+    "jersey": 6,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "kenrich-williams",
+    "first": "Kenrich",
+    "last": "Williams",
+    "jersey": 34,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "bennett-stirtz",
+    "first": "Bennett",
+    "last": "Stirtz",
+    "jersey": 14,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "nikola-topic",
+    "first": "Nikola",
+    "last": "Topic",
+    "jersey": 44,
+    "pos": "PG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "POR",
+  "city": "Portland",
+  "name": "Trail Blazers",
+  "players": [
+   {
+    "id": "damian-lillard",
+    "first": "Damian",
+    "last": "Lillard",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "jrue-holiday",
+    "first": "Jrue",
+    "last": "Holiday",
+    "jersey": 5,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "deni-avdija",
+    "first": "Deni",
+    "last": "Avdija",
+    "jersey": 8,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "toumani-camara",
+    "first": "Toumani",
+    "last": "Camara",
+    "jersey": 33,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "donovan-clingan",
+    "first": "Donovan",
+    "last": "Clingan",
+    "jersey": 23,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "ja-morant",
+    "first": "Ja",
+    "last": "Morant",
+    "jersey": 1,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "shaedon-sharpe",
+    "first": "Shaedon",
+    "last": "Sharpe",
+    "jersey": 17,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "scoot-henderson",
+    "first": "Scoot",
+    "last": "Henderson",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "robert-williams-iii",
+    "first": "Robert",
+    "last": "Williams III",
+    "jersey": 35,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "sidy-cissoko",
+    "first": "Sidy",
+    "last": "Cissoko",
+    "jersey": 91,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "vit-krejci",
+    "first": "Vit",
+    "last": "Krejci",
+    "jersey": 27,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "yang-hansen",
+    "first": "Yang",
+    "last": "Hansen",
+    "jersey": 16,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "micah-potter",
+    "first": "Micah",
+    "last": "Potter",
+    "jersey": 9,
+    "pos": "C",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "UTA",
+  "city": "Utah",
+  "name": "Jazz",
+  "players": [
+   {
+    "id": "keyonte-george",
+    "first": "Keyonte",
+    "last": "George",
+    "jersey": 3,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "darryn-peterson",
+    "first": "Darryn",
+    "last": "Peterson",
+    "jersey": 22,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "ace-bailey",
+    "first": "Ace",
+    "last": "Bailey",
+    "jersey": 19,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "lauri-markkanen",
+    "first": "Lauri",
+    "last": "Markkanen",
+    "jersey": 23,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "jaren-jackson-jr",
+    "first": "Jaren",
+    "last": "Jackson Jr.",
+    "jersey": 20,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "brice-sensabaugh",
+    "first": "Brice",
+    "last": "Sensabaugh",
+    "jersey": 28,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "jaxson-hayes",
+    "first": "Jaxson",
+    "last": "Hayes",
+    "jersey": 11,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "isaiah-collier",
+    "first": "Isaiah",
+    "last": "Collier",
+    "jersey": 8,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "kyle-filipowski",
+    "first": "Kyle",
+    "last": "Filipowski",
+    "jersey": 2,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "svi-mykhailiuk",
+    "first": "Svi",
+    "last": "Mykhailiuk",
+    "jersey": 10,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "mo-bamba",
+    "first": "Mo",
+    "last": "Bamba",
+    "jersey": 44,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "josh-okogie",
+    "first": "Josh",
+    "last": "Okogie",
+    "jersey": 21,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "josh-green",
+    "first": "Josh",
+    "last": "Green",
+    "jersey": 5,
+    "pos": "SG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "GSW",
+  "city": "Golden State",
+  "name": "Warriors",
+  "players": [
+   {
+    "id": "stephen-curry",
+    "first": "Stephen",
+    "last": "Curry",
+    "jersey": 30,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "brandin-podziemski",
+    "first": "Brandin",
+    "last": "Podziemski",
+    "jersey": 2,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "yaxel-lendeborg",
+    "first": "Yaxel",
+    "last": "Lendeborg",
+    "jersey": 1,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "draymond-green",
+    "first": "Draymond",
+    "last": "Green",
+    "jersey": 23,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "kristaps-porzingis",
+    "first": "Kristaps",
+    "last": "Porzingis",
+    "jersey": 7,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "jimmy-butler",
+    "first": "Jimmy",
+    "last": "Butler",
+    "jersey": 10,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "moses-moody",
+    "first": "Moses",
+    "last": "Moody",
+    "jersey": 4,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "de-anthony-melton",
+    "first": "De'Anthony",
+    "last": "Melton",
+    "jersey": 8,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "brandon-williams",
+    "first": "Brandon",
+    "last": "Williams",
+    "jersey": 12,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "al-horford",
+    "first": "Al",
+    "last": "Horford",
+    "jersey": 20,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "gui-santos",
+    "first": "Gui",
+    "last": "Santos",
+    "jersey": 15,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "gary-payton-ii",
+    "first": "Gary",
+    "last": "Payton II",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "georges-niang",
+    "first": "Georges",
+    "last": "Niang",
+    "jersey": 32,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "LAL",
+  "city": "Los Angeles",
+  "name": "Lakers",
+  "players": [
+   {
+    "id": "luka-doncic",
+    "first": "Luka",
+    "last": "Doncic",
+    "jersey": 77,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "austin-reaves",
+    "first": "Austin",
+    "last": "Reaves",
+    "jersey": 15,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "matisse-thybulle",
+    "first": "Matisse",
+    "last": "Thybulle",
+    "jersey": 4,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "jake-laravia",
+    "first": "Jake",
+    "last": "LaRavia",
+    "jersey": 12,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "walker-kessler",
+    "first": "Walker",
+    "last": "Kessler",
+    "jersey": 14,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "quentin-grimes",
+    "first": "Quentin",
+    "last": "Grimes",
+    "jersey": 5,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "collin-sexton",
+    "first": "Collin",
+    "last": "Sexton",
+    "jersey": 10,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "ziaire-williams",
+    "first": "Ziaire",
+    "last": "Williams",
+    "jersey": 11,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "sandro-mamukelashvili",
+    "first": "Sandro",
+    "last": "Mamukelashvili",
+    "jersey": 54,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "jarred-vanderbilt",
+    "first": "Jarred",
+    "last": "Vanderbilt",
+    "jersey": 2,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "kevon-looney",
+    "first": "Kevon",
+    "last": "Looney",
+    "jersey": 55,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jaden-hardy",
+    "first": "Jaden",
+    "last": "Hardy",
+    "jersey": 7,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "bronny-james",
+    "first": "Bronny",
+    "last": "James",
+    "jersey": 9,
+    "pos": "PG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "LAC",
+  "city": "Los Angeles",
+  "name": "Clippers",
+  "players": [
+   {
+    "id": "darius-garland",
+    "first": "Darius",
+    "last": "Garland",
+    "jersey": 10,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "kris-dunn",
+    "first": "Kris",
+    "last": "Dunn",
+    "jersey": 8,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "brandon-ingram",
+    "first": "Brandon",
+    "last": "Ingram",
+    "jersey": 7,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "rui-hachimura",
+    "first": "Rui",
+    "last": "Hachimura",
+    "jersey": 28,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "isaiah-jackson",
+    "first": "Isaiah",
+    "last": "Jackson",
+    "jersey": 23,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "derrick-jones-jr",
+    "first": "Derrick",
+    "last": "Jones Jr.",
+    "jersey": 5,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "brook-lopez",
+    "first": "Brook",
+    "last": "Lopez",
+    "jersey": 11,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "keaton-wagler",
+    "first": "Keaton",
+    "last": "Wagler",
+    "jersey": 1,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "max-strus",
+    "first": "Max",
+    "last": "Strus",
+    "jersey": 31,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "kobe-sanders",
+    "first": "Kobe",
+    "last": "Sanders",
+    "jersey": 4,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "bradley-beal",
+    "first": "Bradley",
+    "last": "Beal",
+    "jersey": 3,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "gradey-dick",
+    "first": "Gradey",
+    "last": "Dick",
+    "jersey": 9,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "baba-miller",
+    "first": "Baba",
+    "last": "Miller",
+    "jersey": 18,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "PHX",
+  "city": "Phoenix",
+  "name": "Suns",
+  "players": [
+   {
+    "id": "devin-booker",
+    "first": "Devin",
+    "last": "Booker",
+    "jersey": 15,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "jalen-green",
+    "first": "Jalen",
+    "last": "Green",
+    "jersey": 4,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "dillon-brooks",
+    "first": "Dillon",
+    "last": "Brooks",
+    "jersey": 3,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "miles-bridges",
+    "first": "Miles",
+    "last": "Bridges",
+    "jersey": 22,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "khaman-maluach",
+    "first": "Khaman",
+    "last": "Maluach",
+    "jersey": 10,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "mark-williams",
+    "first": "Mark",
+    "last": "Williams",
+    "jersey": 25,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "collin-gillespie",
+    "first": "Collin",
+    "last": "Gillespie",
+    "jersey": 12,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "luke-kennard",
+    "first": "Luke",
+    "last": "Kennard",
+    "jersey": 8,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "jordan-goodwin",
+    "first": "Jordan",
+    "last": "Goodwin",
+    "jersey": 23,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "oso-ighodaro",
+    "first": "Oso",
+    "last": "Ighodaro",
+    "jersey": 11,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "ryan-dunn",
+    "first": "Ryan",
+    "last": "Dunn",
+    "jersey": 0,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "duop-reath",
+    "first": "Duop",
+    "last": "Reath",
+    "jersey": 26,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "koa-peat",
+    "first": "Koa",
+    "last": "Peat",
+    "jersey": 18,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "SAC",
+  "city": "Sacramento",
+  "name": "Kings",
+  "players": [
+   {
+    "id": "darius-acuff-jr",
+    "first": "Darius",
+    "last": "Acuff Jr.",
+    "jersey": 5,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "zach-lavine",
+    "first": "Zach",
+    "last": "LaVine",
+    "jersey": 8,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "de-andre-hunter",
+    "first": "De'Andre",
+    "last": "Hunter",
+    "jersey": 15,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "keegan-murray",
+    "first": "Keegan",
+    "last": "Murray",
+    "jersey": 13,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "domantas-sabonis",
+    "first": "Domantas",
+    "last": "Sabonis",
+    "jersey": 11,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "malik-monk",
+    "first": "Malik",
+    "last": "Monk",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "precious-achiuwa",
+    "first": "Precious",
+    "last": "Achiuwa",
+    "jersey": 9,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "maxime-raynaud",
+    "first": "Maxime",
+    "last": "Raynaud",
+    "jersey": 42,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "nique-clifford",
+    "first": "Nique",
+    "last": "Clifford",
+    "jersey": 10,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "ben-simmons",
+    "first": "Ben",
+    "last": "Simmons",
+    "jersey": 25,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "jonathan-mogbo",
+    "first": "Jonathan",
+    "last": "Mogbo",
+    "jersey": 22,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "emanuel-sharp",
+    "first": "Emanuel",
+    "last": "Sharp",
+    "jersey": 34,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "leaky-black",
+    "first": "Leaky",
+    "last": "Black",
+    "jersey": 19,
+    "pos": "SF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "DAL",
+  "city": "Dallas",
+  "name": "Mavericks",
+  "players": [
+   {
+    "id": "kyrie-irving",
+    "first": "Kyrie",
+    "last": "Irving",
+    "jersey": 11,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "max-christie",
+    "first": "Max",
+    "last": "Christie",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "cooper-flagg",
+    "first": "Cooper",
+    "last": "Flagg",
+    "jersey": 32,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "pj-washington",
+    "first": "PJ",
+    "last": "Washington",
+    "jersey": 25,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "daniel-gafford",
+    "first": "Daniel",
+    "last": "Gafford",
+    "jersey": 21,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "naji-marshall",
+    "first": "Naji",
+    "last": "Marshall",
+    "jersey": 3,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "zaccharie-risacher",
+    "first": "Zaccharie",
+    "last": "Risacher",
+    "jersey": 10,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "santi-aldama",
+    "first": "Santi",
+    "last": "Aldama",
+    "jersey": 7,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "dereck-lively-ii",
+    "first": "Dereck",
+    "last": "Lively II",
+    "jersey": 2,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "caleb-martin",
+    "first": "Caleb",
+    "last": "Martin",
+    "jersey": 16,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "marcus-sasser",
+    "first": "Marcus",
+    "last": "Sasser",
+    "jersey": 8,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "morez-johnson-jr",
+    "first": "Morez",
+    "last": "Johnson Jr.",
+    "jersey": 14,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "sergio-de-larrea",
+    "first": "Sergio",
+    "last": "de Larrea",
+    "jersey": 55,
+    "pos": "PG",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "HOU",
+  "city": "Houston",
+  "name": "Rockets",
+  "players": [
+   {
+    "id": "fred-vanvleet",
+    "first": "Fred",
+    "last": "VanVleet",
+    "jersey": 5,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "amen-thompson",
+    "first": "Amen",
+    "last": "Thompson",
+    "jersey": 1,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "kevin-durant",
+    "first": "Kevin",
+    "last": "Durant",
+    "jersey": 7,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "jabari-smith-jr",
+    "first": "Jabari",
+    "last": "Smith Jr.",
+    "jersey": 10,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "alperen-sengun",
+    "first": "Alperen",
+    "last": "Şengün",
+    "jersey": 28,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "tari-eason",
+    "first": "Tari",
+    "last": "Eason",
+    "jersey": 17,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "reed-sheppard",
+    "first": "Reed",
+    "last": "Sheppard",
+    "jersey": 15,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "marcus-smart",
+    "first": "Marcus",
+    "last": "Smart",
+    "jersey": 36,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "clint-capela",
+    "first": "Clint",
+    "last": "Capela",
+    "jersey": 30,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "bogdan-bogdanovic",
+    "first": "Bogdan",
+    "last": "Bogdanović",
+    "jersey": 31,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "steven-adams",
+    "first": "Steven",
+    "last": "Adams",
+    "jersey": 12,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jae-sean-tate",
+    "first": "Jae'Sean",
+    "last": "Tate",
+    "jersey": 8,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "isaiah-crawford",
+    "first": "Isaiah",
+    "last": "Crawford",
+    "jersey": 27,
+    "pos": "SF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "MEM",
+  "city": "Memphis",
+  "name": "Grizzlies",
+  "players": [
+   {
+    "id": "ty-jerome",
+    "first": "Ty",
+    "last": "Jerome",
+    "jersey": 2,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "jaylen-wells",
+    "first": "Jaylen",
+    "last": "Wells",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "cedric-coward",
+    "first": "Cedric",
+    "last": "Coward",
+    "jersey": 23,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "cameron-boozer",
+    "first": "Cameron",
+    "last": "Boozer",
+    "jersey": 27,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "zach-edey",
+    "first": "Zach",
+    "last": "Edey",
+    "jersey": 14,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "jerami-grant",
+    "first": "Jerami",
+    "last": "Grant",
+    "jersey": 3,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "cam-spencer",
+    "first": "Cam",
+    "last": "Spencer",
+    "jersey": 24,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "isaiah-stewart",
+    "first": "Isaiah",
+    "last": "Stewart",
+    "jersey": 28,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "gg-jackson-ii",
+    "first": "GG",
+    "last": "Jackson II",
+    "jersey": 45,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "quinten-post",
+    "first": "Quinten",
+    "last": "Post",
+    "jersey": 41,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "scotty-pippen-jr",
+    "first": "Scotty",
+    "last": "Pippen Jr.",
+    "jersey": 1,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "kris-murray",
+    "first": "Kris",
+    "last": "Murray",
+    "jersey": 17,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "taylor-hendricks",
+    "first": "Taylor",
+    "last": "Hendricks",
+    "jersey": 22,
+    "pos": "PF",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "NOP",
+  "city": "New Orleans",
+  "name": "Pelicans",
+  "players": [
+   {
+    "id": "dejounte-murray",
+    "first": "Dejounte",
+    "last": "Murray",
+    "jersey": 5,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "jeremiah-fears",
+    "first": "Jeremiah",
+    "last": "Fears",
+    "jersey": 0,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "trey-murphy-iii",
+    "first": "Trey",
+    "last": "Murphy III",
+    "jersey": 25,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "zion-williamson",
+    "first": "Zion",
+    "last": "Williamson",
+    "jersey": 1,
+    "pos": "PF",
+    "starter": true
+   },
+   {
+    "id": "karlo-matkovic",
+    "first": "Karlo",
+    "last": "Matković",
+    "jersey": 17,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "saddiq-bey",
+    "first": "Saddiq",
+    "last": "Bey",
+    "jersey": 41,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "derik-queen",
+    "first": "Derik",
+    "last": "Queen",
+    "jersey": 22,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "herbert-jones",
+    "first": "Herbert",
+    "last": "Jones",
+    "jersey": 2,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "bennedict-mathurin",
+    "first": "Bennedict",
+    "last": "Mathurin",
+    "jersey": 24,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "yves-missi",
+    "first": "Yves",
+    "last": "Missi",
+    "jersey": 21,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "jordan-poole",
+    "first": "Jordan",
+    "last": "Poole",
+    "jersey": 3,
+    "pos": "SG",
+    "starter": false
+   },
+   {
+    "id": "trendon-watford",
+    "first": "Trendon",
+    "last": "Watford",
+    "jersey": 9,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "deandre-jordan",
+    "first": "DeAndre",
+    "last": "Jordan",
+    "jersey": 6,
+    "pos": "C",
+    "starter": false
+   }
+  ]
+ },
+ {
+  "abbr": "SAS",
+  "city": "San Antonio",
+  "name": "Spurs",
+  "players": [
+   {
+    "id": "de-aaron-fox",
+    "first": "De'Aaron",
+    "last": "Fox",
+    "jersey": 4,
+    "pos": "PG",
+    "starter": true
+   },
+   {
+    "id": "dylan-harper",
+    "first": "Dylan",
+    "last": "Harper",
+    "jersey": 2,
+    "pos": "SG",
+    "starter": true
+   },
+   {
+    "id": "devin-vassell",
+    "first": "Devin",
+    "last": "Vassell",
+    "jersey": 24,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "stephon-castle",
+    "first": "Stephon",
+    "last": "Castle",
+    "jersey": 5,
+    "pos": "SF",
+    "starter": true
+   },
+   {
+    "id": "victor-wembanyama",
+    "first": "Victor",
+    "last": "Wembanyama",
+    "jersey": 1,
+    "pos": "C",
+    "starter": true
+   },
+   {
+    "id": "julian-champagnie",
+    "first": "Julian",
+    "last": "Champagnie",
+    "jersey": 30,
+    "pos": "SF",
+    "starter": false
+   },
+   {
+    "id": "keldon-johnson",
+    "first": "Keldon",
+    "last": "Johnson",
+    "jersey": 3,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "luke-kornet",
+    "first": "Luke",
+    "last": "Kornet",
+    "jersey": 7,
+    "pos": "C",
+    "starter": false
+   },
+   {
+    "id": "harrison-barnes",
+    "first": "Harrison",
+    "last": "Barnes",
+    "jersey": 40,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "tobias-harris",
+    "first": "Tobias",
+    "last": "Harris",
+    "jersey": 12,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "carter-bryant",
+    "first": "Carter",
+    "last": "Bryant",
+    "jersey": 11,
+    "pos": "PF",
+    "starter": false
+   },
+   {
+    "id": "jordan-mclaughlin",
+    "first": "Jordan",
+    "last": "McLaughlin",
+    "jersey": 0,
+    "pos": "PG",
+    "starter": false
+   },
+   {
+    "id": "tarris-reed-jr",
+    "first": "Tarris",
+    "last": "Reed Jr.",
+    "jersey": 10,
+    "pos": "C",
+    "starter": false
+   }
+  ]
+ }
+]

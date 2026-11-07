@@ -13,6 +13,7 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 ## Architecture
 
 - Use no asset files. Build everything with three.js geometry, canvas textures, and Web Audio.
+- Exception: recorded voice clips. Do not use the browser speechSynthesis voice. Generate voice lines one time with a local TTS model (Chatterbox) and ship them in `public/voice/` with a manifest. See `2k/scripts/voice/`.
 - Each module is a `createX()` factory that returns a plain object with `update` and `dispose`.
 - `game.ts` owns the one `requestAnimationFrame` loop. Modules return `GameEvent[]`, and `game.ts` routes them to audio, camera, and UI.
 - React renders only the menu and the HUD. Push HUD state at 8 to 10 Hz.

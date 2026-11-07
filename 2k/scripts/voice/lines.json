@@ -1,0 +1,7422 @@
+{
+ "intro_1": {
+  "text": "Welcome in, everybody! We've got a great one on tap tonight, so settle in.",
+  "speaker": "pbp",
+  "category": "intro"
+ },
+ "intro_2": {
+  "text": "Good evening, and welcome to a packed house! Both teams look ready to go.",
+  "speaker": "pbp",
+  "category": "intro"
+ },
+ "intro_3": {
+  "text": "Hello again, everyone! The lights are bright, the crowd is loud, and we are just about ready for tip-off.",
+  "speaker": "pbp",
+  "category": "intro"
+ },
+ "intro_4": {
+  "text": "What an atmosphere tonight! Welcome to the show, folks.",
+  "speaker": "pbp",
+  "category": "intro"
+ },
+ "intro_5": {
+  "text": "Welcome back to another night of hoops! This matchup has been circled on the calendar for weeks.",
+  "speaker": "pbp",
+  "category": "intro"
+ },
+ "pa_welcome_1": {
+  "text": "Ladies and gentlemen... welcome... to the arena!",
+  "speaker": "pa",
+  "category": "pa_welcome"
+ },
+ "pa_welcome_2": {
+  "text": "Ladies and gentlemen... it's... GAME TIME!",
+  "speaker": "pa",
+  "category": "pa_welcome"
+ },
+ "pa_welcome_3": {
+  "text": "Good evening, basketball fans! Are... you... READY?",
+  "speaker": "pa",
+  "category": "pa_welcome"
+ },
+ "pa_welcome_4": {
+  "text": "Let's hear it... for tonight's matchup!",
+  "speaker": "pa",
+  "category": "pa_welcome"
+ },
+ "pa_starting_1": {
+  "text": "And now... the starting lineups!",
+  "speaker": "pa",
+  "category": "pa_starting"
+ },
+ "pa_starting_2": {
+  "text": "Ladies and gentlemen... please welcome... tonight's starters!",
+  "speaker": "pa",
+  "category": "pa_starting"
+ },
+ "pa_starting_3": {
+  "text": "Now... starting...",
+  "speaker": "pa",
+  "category": "pa_starting"
+ },
+ "pa_starting_4": {
+  "text": "Put your hands together... for the starting five!",
+  "speaker": "pa",
+  "category": "pa_starting"
+ },
+ "tipoff_1": {
+  "text": "Here's the jump... and we are underway!",
+  "speaker": "pbp",
+  "category": "tipoff"
+ },
+ "tipoff_2": {
+  "text": "The ball goes up, and we're off!",
+  "speaker": "pbp",
+  "category": "tipoff"
+ },
+ "tipoff_3": {
+  "text": "Tip-off! Let's play some basketball!",
+  "speaker": "pbp",
+  "category": "tipoff"
+ },
+ "tipoff_4": {
+  "text": "Up it goes... and they control the tip!",
+  "speaker": "pbp",
+  "category": "tipoff"
+ },
+ "tipoff_5": {
+  "text": "And here we go! The ball is in the air.",
+  "speaker": "pbp",
+  "category": "tipoff"
+ },
+ "made3_1": {
+  "text": "From downtown... got it!",
+  "speaker": "pbp",
+  "category": "made3"
+ },
+ "made3_2": {
+  "text": "Catch, shoot, splash!",
+  "speaker": "pbp",
+  "category": "made3"
+ },
+ "made3_3": {
+  "text": "He lets it fly... bang! Three points!",
+  "speaker": "pbp",
+  "category": "made3"
+ },
+ "made3_4": {
+  "text": "Wide open from the corner... and he knocks it down!",
+  "speaker": "pbp",
+  "category": "made3"
+ },
+ "made3_5": {
+  "text": "That's a triple! Nothing but net!",
+  "speaker": "pbp",
+  "category": "made3"
+ },
+ "made3_6": {
+  "text": "He rises from beyond the arc... money!",
+  "speaker": "pbp",
+  "category": "made3"
+ },
+ "made3_7": {
+  "text": "Three-pointer is good!",
+  "speaker": "pbp",
+  "category": "made3"
+ },
+ "deep3_1": {
+  "text": "From way, way downtown... are you kidding me?!",
+  "speaker": "pbp",
+  "category": "deep3"
+ },
+ "deep3_2": {
+  "text": "He pulls up from the logo... and it is GOOD!",
+  "speaker": "pbp",
+  "category": "deep3"
+ },
+ "deep3_3": {
+  "text": "That is a long, long way out... and it drops! Unbelievable range!",
+  "speaker": "pbp",
+  "category": "deep3"
+ },
+ "deep3_4": {
+  "text": "Pull-up from thirty feet... splash! He's got the green light tonight!",
+  "speaker": "pbp",
+  "category": "deep3"
+ },
+ "deep3_5": {
+  "text": "Deep, deep three... got it! What a shot!",
+  "speaker": "pbp",
+  "category": "deep3"
+ },
+ "dunk_1": {
+  "text": "He rises... and throws it DOWN!",
+  "speaker": "pbp",
+  "category": "dunk"
+ },
+ "dunk_2": {
+  "text": "Slam dunk! Big-time finish!",
+  "speaker": "pbp",
+  "category": "dunk"
+ },
+ "dunk_3": {
+  "text": "Into the lane... and he hammers it home!",
+  "speaker": "pbp",
+  "category": "dunk"
+ },
+ "dunk_4": {
+  "text": "Two hands... jam! The crowd loves it!",
+  "speaker": "pbp",
+  "category": "dunk"
+ },
+ "dunk_5": {
+  "text": "A thunderous slam!",
+  "speaker": "pbp",
+  "category": "dunk"
+ },
+ "dunk_6": {
+  "text": "Off the bounce... and he flushes it!",
+  "speaker": "pbp",
+  "category": "dunk"
+ },
+ "poster_1": {
+  "text": "OH! He just put him on a poster!",
+  "speaker": "pbp",
+  "category": "poster"
+ },
+ "poster_2": {
+  "text": "Right on top of the defender! That one's going on the wall!",
+  "speaker": "pbp",
+  "category": "poster"
+ },
+ "poster_3": {
+  "text": "He dunked it right in his face! Somebody check on the defender!",
+  "speaker": "pbp",
+  "category": "poster"
+ },
+ "poster_4": {
+  "text": "Posterized! That is absolutely disrespectful!",
+  "speaker": "pbp",
+  "category": "poster"
+ },
+ "poster_5": {
+  "text": "He went up through the contact... and threw it DOWN! Wow!",
+  "speaker": "pbp",
+  "category": "poster"
+ },
+ "alleyoop_1": {
+  "text": "Lob is up... and it's slammed home! Alley-oop!",
+  "speaker": "pbp",
+  "category": "alleyoop"
+ },
+ "alleyoop_2": {
+  "text": "Alley... OOP! What a connection!",
+  "speaker": "pbp",
+  "category": "alleyoop"
+ },
+ "alleyoop_3": {
+  "text": "Throws it up to the rim... and he finishes the oop!",
+  "speaker": "pbp",
+  "category": "alleyoop"
+ },
+ "alleyoop_4": {
+  "text": "Look at that lob! Perfect timing!",
+  "speaker": "pbp",
+  "category": "alleyoop"
+ },
+ "alleyoop_5": {
+  "text": "Up top... and in! That's a highlight right there!",
+  "speaker": "pbp",
+  "category": "alleyoop"
+ },
+ "andone_1": {
+  "text": "And one! He scores through the contact!",
+  "speaker": "pbp",
+  "category": "andone"
+ },
+ "andone_2": {
+  "text": "Bucket, AND the foul! Count it!",
+  "speaker": "pbp",
+  "category": "andone"
+ },
+ "andone_3": {
+  "text": "He gets hit... and it still goes in! And one!",
+  "speaker": "pbp",
+  "category": "andone"
+ },
+ "andone_4": {
+  "text": "Strong to the rim... plus the foul!",
+  "speaker": "pbp",
+  "category": "andone"
+ },
+ "andone_5": {
+  "text": "Count it, and he's going to the line for one more!",
+  "speaker": "pbp",
+  "category": "andone"
+ },
+ "block_1": {
+  "text": "Rejected!",
+  "speaker": "pbp",
+  "category": "block"
+ },
+ "block_2": {
+  "text": "Get that out of here!",
+  "speaker": "pbp",
+  "category": "block"
+ },
+ "block_3": {
+  "text": "Blocked! Not in this house!",
+  "speaker": "pbp",
+  "category": "block"
+ },
+ "block_4": {
+  "text": "Swatted away! What a defensive play!",
+  "speaker": "pbp",
+  "category": "block"
+ },
+ "block_5": {
+  "text": "He met him at the summit... BLOCKED!",
+  "speaker": "pbp",
+  "category": "block"
+ },
+ "block_6": {
+  "text": "Denied at the rim!",
+  "speaker": "pbp",
+  "category": "block"
+ },
+ "steal_1": {
+  "text": "Picked off!",
+  "speaker": "pbp",
+  "category": "steal"
+ },
+ "steal_2": {
+  "text": "Stolen! Quick hands on defense!",
+  "speaker": "pbp",
+  "category": "steal"
+ },
+ "steal_3": {
+  "text": "He jumps the passing lane... and takes it away!",
+  "speaker": "pbp",
+  "category": "steal"
+ },
+ "steal_4": {
+  "text": "Ripped away! Great defense!",
+  "speaker": "pbp",
+  "category": "steal"
+ },
+ "steal_5": {
+  "text": "Steal! And they're going the other way!",
+  "speaker": "pbp",
+  "category": "steal"
+ },
+ "fastbreak_1": {
+  "text": "Out in transition... they're off to the races!",
+  "speaker": "pbp",
+  "category": "fastbreak"
+ },
+ "fastbreak_2": {
+  "text": "Here comes the fast break!",
+  "speaker": "pbp",
+  "category": "fastbreak"
+ },
+ "fastbreak_3": {
+  "text": "They're running! Numbers advantage!",
+  "speaker": "pbp",
+  "category": "fastbreak"
+ },
+ "fastbreak_4": {
+  "text": "Two-on-one the other way!",
+  "speaker": "pbp",
+  "category": "fastbreak"
+ },
+ "fastbreak_5": {
+  "text": "Push it ahead... nobody back on defense!",
+  "speaker": "pbp",
+  "category": "fastbreak"
+ },
+ "ankles_1": {
+  "text": "OH! He sent him to the floor! Ankles broken!",
+  "speaker": "pbp",
+  "category": "ankles"
+ },
+ "ankles_2": {
+  "text": "Crossover... and the defender goes down!",
+  "speaker": "pbp",
+  "category": "ankles"
+ },
+ "ankles_3": {
+  "text": "Stop-and-go... and the defender just fell over!",
+  "speaker": "pbp",
+  "category": "ankles"
+ },
+ "ankles_4": {
+  "text": "Somebody get that man a new pair of ankles!",
+  "speaker": "pbp",
+  "category": "ankles"
+ },
+ "ankles_5": {
+  "text": "Shook him right out of his shoes!",
+  "speaker": "pbp",
+  "category": "ankles"
+ },
+ "miss_1": {
+  "text": "No good.",
+  "speaker": "pbp",
+  "category": "miss"
+ },
+ "miss_2": {
+  "text": "Off the rim.",
+  "speaker": "pbp",
+  "category": "miss"
+ },
+ "miss_3": {
+  "text": "Long... and it rattles out.",
+  "speaker": "pbp",
+  "category": "miss"
+ },
+ "miss_4": {
+  "text": "Front iron. No good.",
+  "speaker": "pbp",
+  "category": "miss"
+ },
+ "miss_5": {
+  "text": "Clanks off the back of the rim.",
+  "speaker": "pbp",
+  "category": "miss"
+ },
+ "miss_6": {
+  "text": "In and out! So close!",
+  "speaker": "pbp",
+  "category": "miss"
+ },
+ "miss_7": {
+  "text": "Short. The rebound is up for grabs.",
+  "speaker": "pbp",
+  "category": "miss"
+ },
+ "airball_1": {
+  "text": "Airball! [chuckle] He'll want that one back.",
+  "speaker": "pbp",
+  "category": "airball"
+ },
+ "airball_2": {
+  "text": "Oh... that missed everything.",
+  "speaker": "pbp",
+  "category": "airball"
+ },
+ "airball_3": {
+  "text": "Air ball! The crowd is letting him hear it!",
+  "speaker": "pbp",
+  "category": "airball"
+ },
+ "airball_4": {
+  "text": "That one didn't even draw iron.",
+  "speaker": "pbp",
+  "category": "airball"
+ },
+ "shotclock_1": {
+  "text": "Shot clock violation! Great defense forced that one.",
+  "speaker": "pbp",
+  "category": "shotclock"
+ },
+ "shotclock_2": {
+  "text": "They couldn't get a shot off in time. Shot clock violation!",
+  "speaker": "pbp",
+  "category": "shotclock"
+ },
+ "shotclock_3": {
+  "text": "And the shot clock expires! Turnover!",
+  "speaker": "pbp",
+  "category": "shotclock"
+ },
+ "shotclock_4": {
+  "text": "Time ran out on that possession. Shot clock violation.",
+  "speaker": "pbp",
+  "category": "shotclock"
+ },
+ "turnover_1": {
+  "text": "Turnover. Careless with the ball.",
+  "speaker": "pbp",
+  "category": "turnover"
+ },
+ "turnover_2": {
+  "text": "Lost it out of bounds!",
+  "speaker": "pbp",
+  "category": "turnover"
+ },
+ "turnover_3": {
+  "text": "Bad pass, and that's a turnover.",
+  "speaker": "pbp",
+  "category": "turnover"
+ },
+ "turnover_4": {
+  "text": "Coughed it up. That's one they'd like back.",
+  "speaker": "pbp",
+  "category": "turnover"
+ },
+ "turnover_5": {
+  "text": "Sloppy possession. Turnover.",
+  "speaker": "pbp",
+  "category": "turnover"
+ },
+ "foul_1": {
+  "text": "Whistle. Foul on the defense.",
+  "speaker": "pbp",
+  "category": "foul"
+ },
+ "foul_2": {
+  "text": "And there's the foul.",
+  "speaker": "pbp",
+  "category": "foul"
+ },
+ "foul_3": {
+  "text": "Reach-in, and that's a foul.",
+  "speaker": "pbp",
+  "category": "foul"
+ },
+ "foul_4": {
+  "text": "They call the foul on that one.",
+  "speaker": "pbp",
+  "category": "foul"
+ },
+ "foul_5": {
+  "text": "Too much contact. Foul.",
+  "speaker": "pbp",
+  "category": "foul"
+ },
+ "freethrows_1": {
+  "text": "He'll head to the line for two.",
+  "speaker": "pbp",
+  "category": "freethrows"
+ },
+ "freethrows_2": {
+  "text": "Going to the free throw line.",
+  "speaker": "pbp",
+  "category": "freethrows"
+ },
+ "freethrows_3": {
+  "text": "Two shots coming up.",
+  "speaker": "pbp",
+  "category": "freethrows"
+ },
+ "freethrows_4": {
+  "text": "Free throws on the way.",
+  "speaker": "pbp",
+  "category": "freethrows"
+ },
+ "timeout_1": {
+  "text": "Timeout on the floor.",
+  "speaker": "pbp",
+  "category": "timeout"
+ },
+ "timeout_2": {
+  "text": "And they call timeout to regroup.",
+  "speaker": "pbp",
+  "category": "timeout"
+ },
+ "timeout_3": {
+  "text": "We'll take a timeout here. Plenty to talk about.",
+  "speaker": "pbp",
+  "category": "timeout"
+ },
+ "timeout_4": {
+  "text": "The coach has seen enough. Timeout.",
+  "speaker": "pbp",
+  "category": "timeout"
+ },
+ "endq1_1": {
+  "text": "And that'll do it for the first quarter!",
+  "speaker": "pbp",
+  "category": "endq1"
+ },
+ "endq1_2": {
+  "text": "That's the end of one!",
+  "speaker": "pbp",
+  "category": "endq1"
+ },
+ "endq1_3": {
+  "text": "First quarter is in the books!",
+  "speaker": "pbp",
+  "category": "endq1"
+ },
+ "endq2_1": {
+  "text": "That's the end of the second quarter!",
+  "speaker": "pbp",
+  "category": "endq2"
+ },
+ "endq2_2": {
+  "text": "And the horn sounds to end the first half!",
+  "speaker": "pbp",
+  "category": "endq2"
+ },
+ "endq2_3": {
+  "text": "Two quarters down, two to go!",
+  "speaker": "pbp",
+  "category": "endq2"
+ },
+ "endq3_1": {
+  "text": "End of three! Twelve minutes to decide it!",
+  "speaker": "pbp",
+  "category": "endq3"
+ },
+ "endq3_2": {
+  "text": "Third quarter is in the books, and it all comes down to the fourth!",
+  "speaker": "pbp",
+  "category": "endq3"
+ },
+ "endq3_3": {
+  "text": "That'll wrap up the third quarter!",
+  "speaker": "pbp",
+  "category": "endq3"
+ },
+ "halftime_1": {
+  "text": "That's halftime! Let's take a breath and reset.",
+  "speaker": "pbp",
+  "category": "halftime"
+ },
+ "halftime_2": {
+  "text": "We've reached the break! Plenty of basketball still to play.",
+  "speaker": "pbp",
+  "category": "halftime"
+ },
+ "halftime_3": {
+  "text": "Halftime here. What a first half that was!",
+  "speaker": "pbp",
+  "category": "halftime"
+ },
+ "halftime_4": {
+  "text": "Into the locker rooms they go. See you in the second half!",
+  "speaker": "pbp",
+  "category": "halftime"
+ },
+ "buzzer_1": {
+  "text": "At the buzzer... GOT IT! Are you kidding me?!",
+  "speaker": "pbp",
+  "category": "buzzer"
+ },
+ "buzzer_2": {
+  "text": "Beat the horn! Unbelievable!",
+  "speaker": "pbp",
+  "category": "buzzer"
+ },
+ "buzzer_3": {
+  "text": "Time winding down... he fires... BANG! At the buzzer!",
+  "speaker": "pbp",
+  "category": "buzzer"
+ },
+ "buzzer_4": {
+  "text": "With no time left... it's GOOD! Pandemonium!",
+  "speaker": "pbp",
+  "category": "buzzer"
+ },
+ "buzzer_5": {
+  "text": "Buzzer beater! What a moment!",
+  "speaker": "pbp",
+  "category": "buzzer"
+ },
+ "closelate_1": {
+  "text": "This one is going down to the wire!",
+  "speaker": "pbp",
+  "category": "closelate"
+ },
+ "closelate_2": {
+  "text": "Every possession counts now. Nobody can breathe in here.",
+  "speaker": "pbp",
+  "category": "closelate"
+ },
+ "closelate_3": {
+  "text": "Tight ballgame, late in the fourth. This is what it's all about!",
+  "speaker": "pbp",
+  "category": "closelate"
+ },
+ "closelate_4": {
+  "text": "Neck and neck in the closing minutes!",
+  "speaker": "pbp",
+  "category": "closelate"
+ },
+ "closelate_5": {
+  "text": "Crunch time, folks! Who wants it more?",
+  "speaker": "pbp",
+  "category": "closelate"
+ },
+ "blowout_1": {
+  "text": "This one's getting out of hand.",
+  "speaker": "pbp",
+  "category": "blowout"
+ },
+ "blowout_2": {
+  "text": "It's turning into a rout!",
+  "speaker": "pbp",
+  "category": "blowout"
+ },
+ "blowout_3": {
+  "text": "A total runaway tonight. Complete domination.",
+  "speaker": "pbp",
+  "category": "blowout"
+ },
+ "blowout_4": {
+  "text": "The lead keeps growing. This could be a long night for the other side.",
+  "speaker": "pbp",
+  "category": "blowout"
+ },
+ "overtime_1": {
+  "text": "We're going to overtime!",
+  "speaker": "pbp",
+  "category": "overtime"
+ },
+ "overtime_2": {
+  "text": "Regulation can't separate them! Bonus basketball!",
+  "speaker": "pbp",
+  "category": "overtime"
+ },
+ "overtime_3": {
+  "text": "Free basketball, everybody! Five more minutes!",
+  "speaker": "pbp",
+  "category": "overtime"
+ },
+ "overtime_4": {
+  "text": "Tied at the end of regulation... we need overtime!",
+  "speaker": "pbp",
+  "category": "overtime"
+ },
+ "finalwin_1": {
+  "text": "That's the ballgame! What a win!",
+  "speaker": "pbp",
+  "category": "finalwin"
+ },
+ "finalwin_2": {
+  "text": "Final horn! They get the victory, and the crowd is going wild!",
+  "speaker": "pbp",
+  "category": "finalwin"
+ },
+ "finalwin_3": {
+  "text": "Ballgame! A statement win tonight!",
+  "speaker": "pbp",
+  "category": "finalwin"
+ },
+ "finalwin_4": {
+  "text": "And that'll do it! Victory!",
+  "speaker": "pbp",
+  "category": "finalwin"
+ },
+ "finalloss_1": {
+  "text": "That's the final. A tough one tonight.",
+  "speaker": "pbp",
+  "category": "finalloss"
+ },
+ "finalloss_2": {
+  "text": "The horn sounds, and that one slips away.",
+  "speaker": "pbp",
+  "category": "finalloss"
+ },
+ "finalloss_3": {
+  "text": "Final score is in. They'll have to regroup for next time.",
+  "speaker": "pbp",
+  "category": "finalloss"
+ },
+ "finalloss_4": {
+  "text": "Ballgame. Not their night, but they fought hard.",
+  "speaker": "pbp",
+  "category": "finalloss"
+ },
+ "onfire_1": {
+  "text": "He is on FIRE!",
+  "speaker": "pbp",
+  "category": "onfire"
+ },
+ "onfire_2": {
+  "text": "He can't miss right now!",
+  "speaker": "pbp",
+  "category": "onfire"
+ },
+ "onfire_3": {
+  "text": "He's heating up! Somebody stop him!",
+  "speaker": "pbp",
+  "category": "onfire"
+ },
+ "onfire_4": {
+  "text": "Another one! He is in the zone!",
+  "speaker": "pbp",
+  "category": "onfire"
+ },
+ "onfire_5": {
+  "text": "Feeling it tonight! The basket looks as big as an ocean right now!",
+  "speaker": "pbp",
+  "category": "onfire"
+ },
+ "run_1": {
+  "text": "That's a big run! The momentum has completely flipped!",
+  "speaker": "pbp",
+  "category": "run"
+ },
+ "run_2": {
+  "text": "Unanswered points! They're rolling!",
+  "speaker": "pbp",
+  "category": "run"
+ },
+ "run_3": {
+  "text": "What a stretch! They're taking over this game!",
+  "speaker": "pbp",
+  "category": "run"
+ },
+ "pa_team_bos": {
+  "text": "And now... the starting lineup... for the... Boston Celtics!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "BOS",
+  "display": "Boston Celtics"
+ },
+ "team_bos": {
+  "text": "The Boston Celtics!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "BOS",
+  "display": "Boston Celtics"
+ },
+ "pa_payton-pritchard": {
+  "text": "At guard... number eleven... Payton... PRITCHARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "payton-pritchard",
+  "teamAbbr": "BOS",
+  "display": "Payton Pritchard"
+ },
+ "name_payton-pritchard": {
+  "text": "Pritchard!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "payton-pritchard",
+  "teamAbbr": "BOS",
+  "display": "Pritchard"
+ },
+ "pa_derrick-white": {
+  "text": "At guard... number nine... Derrick... WHITE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "derrick-white",
+  "teamAbbr": "BOS",
+  "display": "Derrick White"
+ },
+ "name_derrick-white": {
+  "text": "White!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "derrick-white",
+  "teamAbbr": "BOS",
+  "display": "White"
+ },
+ "pa_paul-george": {
+  "text": "At forward... number thirteen... Paul... GEORGE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "paul-george",
+  "teamAbbr": "BOS",
+  "display": "Paul George"
+ },
+ "name_paul-george": {
+  "text": "George!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "paul-george",
+  "teamAbbr": "BOS",
+  "display": "George"
+ },
+ "pa_jayson-tatum": {
+  "text": "At forward... number zero... Jayson... TATUM!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jayson-tatum",
+  "teamAbbr": "BOS",
+  "display": "Jayson Tatum"
+ },
+ "name_jayson-tatum": {
+  "text": "Tatum!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jayson-tatum",
+  "teamAbbr": "BOS",
+  "display": "Tatum"
+ },
+ "pa_neemias-queta": {
+  "text": "At center... number eighty-eight... Neemias... QUETA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "neemias-queta",
+  "teamAbbr": "BOS",
+  "display": "Neemias Queta"
+ },
+ "name_neemias-queta": {
+  "text": "Queta!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "neemias-queta",
+  "teamAbbr": "BOS",
+  "display": "Queta"
+ },
+ "pa_mitchell-robinson": {
+  "text": "At center... number four... Mitchell... ROBINSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mitchell-robinson",
+  "teamAbbr": "BOS",
+  "display": "Mitchell Robinson"
+ },
+ "name_mitchell-robinson": {
+  "text": "Robinson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mitchell-robinson",
+  "teamAbbr": "BOS",
+  "display": "Robinson"
+ },
+ "pa_mike-conley": {
+  "text": "At guard... number forty-five... Mike... CONLEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mike-conley",
+  "teamAbbr": "BOS",
+  "display": "Mike Conley"
+ },
+ "name_mike-conley": {
+  "text": "Conley!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mike-conley",
+  "teamAbbr": "BOS",
+  "display": "Conley"
+ },
+ "pa_sam-hauser": {
+  "text": "At forward... number thirty... Sam... HAUSER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "sam-hauser",
+  "teamAbbr": "BOS",
+  "display": "Sam Hauser"
+ },
+ "name_sam-hauser": {
+  "text": "Hauser!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "sam-hauser",
+  "teamAbbr": "BOS",
+  "display": "Hauser"
+ },
+ "pa_baylor-scheierman": {
+  "text": "At guard... number fifty-five... Baylor... SCHEIERMAN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "baylor-scheierman",
+  "teamAbbr": "BOS",
+  "display": "Baylor Scheierman"
+ },
+ "name_baylor-scheierman": {
+  "text": "Scheierman!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "baylor-scheierman",
+  "teamAbbr": "BOS",
+  "display": "Scheierman"
+ },
+ "pa_hugo-gonzalez": {
+  "text": "At forward... number twenty-eight... Hugo... GONZALEZ!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "hugo-gonzalez",
+  "teamAbbr": "BOS",
+  "display": "Hugo González"
+ },
+ "name_hugo-gonzalez": {
+  "text": "Gonzalez!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "hugo-gonzalez",
+  "teamAbbr": "BOS",
+  "display": "González"
+ },
+ "pa_jordan-walsh": {
+  "text": "At forward... number twenty-seven... Jordan... WALSH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jordan-walsh",
+  "teamAbbr": "BOS",
+  "display": "Jordan Walsh"
+ },
+ "name_jordan-walsh": {
+  "text": "Walsh!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jordan-walsh",
+  "teamAbbr": "BOS",
+  "display": "Walsh"
+ },
+ "pa_luka-garza": {
+  "text": "At center... number fifty-two... Luka... GARZA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "luka-garza",
+  "teamAbbr": "BOS",
+  "display": "Luka Garza"
+ },
+ "name_luka-garza": {
+  "text": "Garza!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "luka-garza",
+  "teamAbbr": "BOS",
+  "display": "Garza"
+ },
+ "pa_dillon-mitchell": {
+  "text": "At forward... number twenty... Dillon... MITCHELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dillon-mitchell",
+  "teamAbbr": "BOS",
+  "display": "Dillon Mitchell"
+ },
+ "name_dillon-mitchell": {
+  "text": "Mitchell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dillon-mitchell",
+  "teamAbbr": "BOS",
+  "display": "Mitchell"
+ },
+ "pa_team_bkn": {
+  "text": "And now... the starting lineup... for the... Brooklyn Nets!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "BKN",
+  "display": "Brooklyn Nets"
+ },
+ "team_bkn": {
+  "text": "The Brooklyn Nets!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "BKN",
+  "display": "Brooklyn Nets"
+ },
+ "pa_nolan-traore": {
+  "text": "At guard... number ten... Nolan... TRAH-OH-RAY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nolan-traore",
+  "teamAbbr": "BKN",
+  "display": "Nolan Traoré"
+ },
+ "name_nolan-traore": {
+  "text": "Trah-oh-ray!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nolan-traore",
+  "teamAbbr": "BKN",
+  "display": "Traoré"
+ },
+ "pa_egor-demin": {
+  "text": "At guard... number eight... Egor... DEMIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "egor-demin",
+  "teamAbbr": "BKN",
+  "display": "Egor Demin"
+ },
+ "name_egor-demin": {
+  "text": "Demin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "egor-demin",
+  "teamAbbr": "BKN",
+  "display": "Demin"
+ },
+ "pa_michael-porter-jr": {
+  "text": "At forward... number seventeen... Michael... PORTER JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "michael-porter-jr",
+  "teamAbbr": "BKN",
+  "display": "Michael Porter Jr."
+ },
+ "name_michael-porter-jr": {
+  "text": "Porter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "michael-porter-jr",
+  "teamAbbr": "BKN",
+  "display": "Porter Jr."
+ },
+ "pa_julius-randle": {
+  "text": "At forward... number thirty... Julius... RANDLE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "julius-randle",
+  "teamAbbr": "BKN",
+  "display": "Julius Randle"
+ },
+ "name_julius-randle": {
+  "text": "Randle!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "julius-randle",
+  "teamAbbr": "BKN",
+  "display": "Randle"
+ },
+ "pa_day-ron-sharpe": {
+  "text": "At center... number twenty... Day'Ron... SHARPE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "day-ron-sharpe",
+  "teamAbbr": "BKN",
+  "display": "Day'Ron Sharpe"
+ },
+ "name_day-ron-sharpe": {
+  "text": "Sharpe!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "day-ron-sharpe",
+  "teamAbbr": "BKN",
+  "display": "Sharpe"
+ },
+ "pa_mikel-brown-jr": {
+  "text": "At guard... number zero... Mikel... BROWN JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mikel-brown-jr",
+  "teamAbbr": "BKN",
+  "display": "Mikel Brown Jr."
+ },
+ "name_mikel-brown-jr": {
+  "text": "Brown!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mikel-brown-jr",
+  "teamAbbr": "BKN",
+  "display": "Brown Jr."
+ },
+ "pa_noah-clowney": {
+  "text": "At forward... number twenty-one... Noah... CLOWNEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "noah-clowney",
+  "teamAbbr": "BKN",
+  "display": "Noah Clowney"
+ },
+ "name_noah-clowney": {
+  "text": "Clowney!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "noah-clowney",
+  "teamAbbr": "BKN",
+  "display": "Clowney"
+ },
+ "pa_terance-mann": {
+  "text": "At guard... number fourteen... Terance... MANN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "terance-mann",
+  "teamAbbr": "BKN",
+  "display": "Terance Mann"
+ },
+ "name_terance-mann": {
+  "text": "Mann!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "terance-mann",
+  "teamAbbr": "BKN",
+  "display": "Mann"
+ },
+ "pa_danny-wolf": {
+  "text": "At forward... number two... Danny... WOLF!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "danny-wolf",
+  "teamAbbr": "BKN",
+  "display": "Danny Wolf"
+ },
+ "name_danny-wolf": {
+  "text": "Wolf!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "danny-wolf",
+  "teamAbbr": "BKN",
+  "display": "Wolf"
+ },
+ "pa_keon-ellis": {
+  "text": "At guard... number one... Keon... ELLIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "keon-ellis",
+  "teamAbbr": "BKN",
+  "display": "Keon Ellis"
+ },
+ "name_keon-ellis": {
+  "text": "Ellis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "keon-ellis",
+  "teamAbbr": "BKN",
+  "display": "Ellis"
+ },
+ "pa_drake-powell": {
+  "text": "At guard... number four... Drake... POWELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "drake-powell",
+  "teamAbbr": "BKN",
+  "display": "Drake Powell"
+ },
+ "name_drake-powell": {
+  "text": "Powell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "drake-powell",
+  "teamAbbr": "BKN",
+  "display": "Powell"
+ },
+ "pa_josh-minott": {
+  "text": "At forward... number zero... Josh... MINOTT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "josh-minott",
+  "teamAbbr": "BKN",
+  "display": "Josh Minott"
+ },
+ "name_josh-minott": {
+  "text": "Minott!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "josh-minott",
+  "teamAbbr": "BKN",
+  "display": "Minott"
+ },
+ "pa_moritz-wagner": {
+  "text": "At center... number thirteen... Moritz... WAGNER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "moritz-wagner",
+  "teamAbbr": "BKN",
+  "display": "Moritz Wagner"
+ },
+ "name_moritz-wagner": {
+  "text": "Wagner!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "moritz-wagner",
+  "teamAbbr": "BKN",
+  "display": "Wagner"
+ },
+ "pa_team_nyk": {
+  "text": "And now... the starting lineup... for the... New York Knicks!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "NYK",
+  "display": "New York Knicks"
+ },
+ "team_nyk": {
+  "text": "The New York Knicks!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "NYK",
+  "display": "New York Knicks"
+ },
+ "pa_jalen-brunson": {
+  "text": "At guard... number eleven... Jalen... BRUNSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jalen-brunson",
+  "teamAbbr": "NYK",
+  "display": "Jalen Brunson"
+ },
+ "name_jalen-brunson": {
+  "text": "Brunson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jalen-brunson",
+  "teamAbbr": "NYK",
+  "display": "Brunson"
+ },
+ "pa_mikal-bridges": {
+  "text": "At guard... number twenty-five... Mikal... BRIDGES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mikal-bridges",
+  "teamAbbr": "NYK",
+  "display": "Mikal Bridges"
+ },
+ "name_mikal-bridges": {
+  "text": "Bridges!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mikal-bridges",
+  "teamAbbr": "NYK",
+  "display": "Bridges"
+ },
+ "pa_og-anunoby": {
+  "text": "At forward... number eight... OG... ANUNOBY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "og-anunoby",
+  "teamAbbr": "NYK",
+  "display": "OG Anunoby"
+ },
+ "name_og-anunoby": {
+  "text": "Anunoby!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "og-anunoby",
+  "teamAbbr": "NYK",
+  "display": "Anunoby"
+ },
+ "pa_josh-hart": {
+  "text": "At forward... number three... Josh... HART!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "josh-hart",
+  "teamAbbr": "NYK",
+  "display": "Josh Hart"
+ },
+ "name_josh-hart": {
+  "text": "Hart!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "josh-hart",
+  "teamAbbr": "NYK",
+  "display": "Hart"
+ },
+ "pa_karl-anthony-towns": {
+  "text": "At center... number thirty-two... Karl Anthony... TOWNS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "karl-anthony-towns",
+  "teamAbbr": "NYK",
+  "display": "Karl-Anthony Towns"
+ },
+ "name_karl-anthony-towns": {
+  "text": "Towns!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "karl-anthony-towns",
+  "teamAbbr": "NYK",
+  "display": "Towns"
+ },
+ "pa_miles-mcbride": {
+  "text": "At guard... number two... Miles... MCBRIDE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "miles-mcbride",
+  "teamAbbr": "NYK",
+  "display": "Miles McBride"
+ },
+ "name_miles-mcbride": {
+  "text": "McBride!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "miles-mcbride",
+  "teamAbbr": "NYK",
+  "display": "McBride"
+ },
+ "pa_andre-drummond": {
+  "text": "At center... number zero... Andre... DRUMMOND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "andre-drummond",
+  "teamAbbr": "NYK",
+  "display": "Andre Drummond"
+ },
+ "name_andre-drummond": {
+  "text": "Drummond!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "andre-drummond",
+  "teamAbbr": "NYK",
+  "display": "Drummond"
+ },
+ "pa_jordan-clarkson": {
+  "text": "At guard... number zero... Jordan... CLARKSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jordan-clarkson",
+  "teamAbbr": "NYK",
+  "display": "Jordan Clarkson"
+ },
+ "name_jordan-clarkson": {
+  "text": "Clarkson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jordan-clarkson",
+  "teamAbbr": "NYK",
+  "display": "Clarkson"
+ },
+ "pa_landry-shamet": {
+  "text": "At guard... number forty-four... Landry... SHAMET!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "landry-shamet",
+  "teamAbbr": "NYK",
+  "display": "Landry Shamet"
+ },
+ "name_landry-shamet": {
+  "text": "Shamet!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "landry-shamet",
+  "teamAbbr": "NYK",
+  "display": "Shamet"
+ },
+ "pa_jose-alvarado": {
+  "text": "At guard... number five... Jose... ALVARADO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jose-alvarado",
+  "teamAbbr": "NYK",
+  "display": "Jose Alvarado"
+ },
+ "name_jose-alvarado": {
+  "text": "Alvarado!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jose-alvarado",
+  "teamAbbr": "NYK",
+  "display": "Alvarado"
+ },
+ "pa_tyler-kolek": {
+  "text": "At guard... number thirteen... Tyler... KOLEK!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tyler-kolek",
+  "teamAbbr": "NYK",
+  "display": "Tyler Kolek"
+ },
+ "name_tyler-kolek": {
+  "text": "Kolek!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tyler-kolek",
+  "teamAbbr": "NYK",
+  "display": "Kolek"
+ },
+ "pa_james-wiseman": {
+  "text": "At center... number thirty-five... James... WISEMAN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "james-wiseman",
+  "teamAbbr": "NYK",
+  "display": "James Wiseman"
+ },
+ "name_james-wiseman": {
+  "text": "Wiseman!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "james-wiseman",
+  "teamAbbr": "NYK",
+  "display": "Wiseman"
+ },
+ "pa_mohamed-diawara": {
+  "text": "At forward... number fifty-one... Mohamed... DIAWARA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mohamed-diawara",
+  "teamAbbr": "NYK",
+  "display": "Mohamed Diawara"
+ },
+ "name_mohamed-diawara": {
+  "text": "Diawara!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mohamed-diawara",
+  "teamAbbr": "NYK",
+  "display": "Diawara"
+ },
+ "pa_team_phi": {
+  "text": "And now... the starting lineup... for the... Philadelphia 76ers!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "PHI",
+  "display": "Philadelphia 76ers"
+ },
+ "team_phi": {
+  "text": "The Philadelphia 76ers!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "PHI",
+  "display": "Philadelphia 76ers"
+ },
+ "pa_tyrese-maxey": {
+  "text": "At guard... number zero... Tyrese... MAXEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tyrese-maxey",
+  "teamAbbr": "PHI",
+  "display": "Tyrese Maxey"
+ },
+ "name_tyrese-maxey": {
+  "text": "Maxey!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tyrese-maxey",
+  "teamAbbr": "PHI",
+  "display": "Maxey"
+ },
+ "pa_vj-edgecombe": {
+  "text": "At guard... number seventy-seven... VJ... EDGECOMBE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "vj-edgecombe",
+  "teamAbbr": "PHI",
+  "display": "VJ Edgecombe"
+ },
+ "name_vj-edgecombe": {
+  "text": "Edgecombe!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "vj-edgecombe",
+  "teamAbbr": "PHI",
+  "display": "Edgecombe"
+ },
+ "pa_jaylen-brown": {
+  "text": "At forward... number seven... Jaylen... BROWN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaylen-brown",
+  "teamAbbr": "PHI",
+  "display": "Jaylen Brown"
+ },
+ "name_jaylen-brown": {
+  "text": "Brown!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaylen-brown",
+  "teamAbbr": "PHI",
+  "display": "Brown"
+ },
+ "pa_lebron-james": {
+  "text": "At forward... number twenty-three... LeBron... JAMES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "lebron-james",
+  "teamAbbr": "PHI",
+  "display": "LeBron James"
+ },
+ "name_lebron-james": {
+  "text": "James!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "lebron-james",
+  "teamAbbr": "PHI",
+  "display": "James"
+ },
+ "pa_joel-embiid": {
+  "text": "At center... number twenty-one... Joel... EMBIID!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "joel-embiid",
+  "teamAbbr": "PHI",
+  "display": "Joel Embiid"
+ },
+ "name_joel-embiid": {
+  "text": "Embiid!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "joel-embiid",
+  "teamAbbr": "PHI",
+  "display": "Embiid"
+ },
+ "pa_anfernee-simons": {
+  "text": "At guard... number five... Anfernee... SIMONS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "anfernee-simons",
+  "teamAbbr": "PHI",
+  "display": "Anfernee Simons"
+ },
+ "name_anfernee-simons": {
+  "text": "Simons!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "anfernee-simons",
+  "teamAbbr": "PHI",
+  "display": "Simons"
+ },
+ "pa_kentavious-caldwell-pope": {
+  "text": "At guard... number one... Kentavious... CALDWELL POPE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kentavious-caldwell-pope",
+  "teamAbbr": "PHI",
+  "display": "Kentavious Caldwell-Pope"
+ },
+ "name_kentavious-caldwell-pope": {
+  "text": "Caldwell Pope!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kentavious-caldwell-pope",
+  "teamAbbr": "PHI",
+  "display": "Caldwell-Pope"
+ },
+ "pa_dean-wade": {
+  "text": "At forward... number forty-five... Dean... WADE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dean-wade",
+  "teamAbbr": "PHI",
+  "display": "Dean Wade"
+ },
+ "name_dean-wade": {
+  "text": "Wade!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dean-wade",
+  "teamAbbr": "PHI",
+  "display": "Wade"
+ },
+ "pa_adem-bona": {
+  "text": "At center... number thirty... Adem... BONA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "adem-bona",
+  "teamAbbr": "PHI",
+  "display": "Adem Bona"
+ },
+ "name_adem-bona": {
+  "text": "Bona!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "adem-bona",
+  "teamAbbr": "PHI",
+  "display": "Bona"
+ },
+ "pa_justin-edwards": {
+  "text": "At forward... number eleven... Justin... EDWARDS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "justin-edwards",
+  "teamAbbr": "PHI",
+  "display": "Justin Edwards"
+ },
+ "name_justin-edwards": {
+  "text": "Edwards!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "justin-edwards",
+  "teamAbbr": "PHI",
+  "display": "Edwards"
+ },
+ "pa_jabari-walker": {
+  "text": "At forward... number thirty-three... Jabari... WALKER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jabari-walker",
+  "teamAbbr": "PHI",
+  "display": "Jabari Walker"
+ },
+ "name_jabari-walker": {
+  "text": "Walker!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jabari-walker",
+  "teamAbbr": "PHI",
+  "display": "Walker"
+ },
+ "pa_labaron-philon-jr": {
+  "text": "At guard... number zero... Labaron... PHILON JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "labaron-philon-jr",
+  "teamAbbr": "PHI",
+  "display": "Labaron Philon Jr."
+ },
+ "name_labaron-philon-jr": {
+  "text": "Philon!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "labaron-philon-jr",
+  "teamAbbr": "PHI",
+  "display": "Philon Jr."
+ },
+ "pa_rayan-rupert": {
+  "text": "At guard... number twelve... Rayan... RUPERT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "rayan-rupert",
+  "teamAbbr": "PHI",
+  "display": "Rayan Rupert"
+ },
+ "name_rayan-rupert": {
+  "text": "Rupert!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "rayan-rupert",
+  "teamAbbr": "PHI",
+  "display": "Rupert"
+ },
+ "pa_team_tor": {
+  "text": "And now... the starting lineup... for the... Toronto Raptors!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "TOR",
+  "display": "Toronto Raptors"
+ },
+ "team_tor": {
+  "text": "The Toronto Raptors!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "TOR",
+  "display": "Toronto Raptors"
+ },
+ "pa_immanuel-quickley": {
+  "text": "At guard... number five... Immanuel... QUICKLEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "immanuel-quickley",
+  "teamAbbr": "TOR",
+  "display": "Immanuel Quickley"
+ },
+ "name_immanuel-quickley": {
+  "text": "Quickley!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "immanuel-quickley",
+  "teamAbbr": "TOR",
+  "display": "Quickley"
+ },
+ "pa_rj-barrett": {
+  "text": "At guard... number nine... RJ... BARRETT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "rj-barrett",
+  "teamAbbr": "TOR",
+  "display": "RJ Barrett"
+ },
+ "name_rj-barrett": {
+  "text": "Barrett!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "rj-barrett",
+  "teamAbbr": "TOR",
+  "display": "Barrett"
+ },
+ "pa_kawhi-leonard": {
+  "text": "At forward... number two... Kawhi... LEONARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kawhi-leonard",
+  "teamAbbr": "TOR",
+  "display": "Kawhi Leonard"
+ },
+ "name_kawhi-leonard": {
+  "text": "Leonard!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kawhi-leonard",
+  "teamAbbr": "TOR",
+  "display": "Leonard"
+ },
+ "pa_scottie-barnes": {
+  "text": "At forward... number four... Scottie... BARNES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "scottie-barnes",
+  "teamAbbr": "TOR",
+  "display": "Scottie Barnes"
+ },
+ "name_scottie-barnes": {
+  "text": "Barnes!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "scottie-barnes",
+  "teamAbbr": "TOR",
+  "display": "Barnes"
+ },
+ "pa_jakob-poeltl": {
+  "text": "At center... number nineteen... Jakob... POELTL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jakob-poeltl",
+  "teamAbbr": "TOR",
+  "display": "Jakob Poeltl"
+ },
+ "name_jakob-poeltl": {
+  "text": "Poeltl!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jakob-poeltl",
+  "teamAbbr": "TOR",
+  "display": "Poeltl"
+ },
+ "pa_ja-kobe-walter": {
+  "text": "At guard... number fourteen... Ja'Kobe... WALTER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ja-kobe-walter",
+  "teamAbbr": "TOR",
+  "display": "Ja'Kobe Walter"
+ },
+ "name_ja-kobe-walter": {
+  "text": "Walter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ja-kobe-walter",
+  "teamAbbr": "TOR",
+  "display": "Walter"
+ },
+ "pa_collin-murray-boyles": {
+  "text": "At forward... number thirty... Collin... MURRAY BOYLES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "collin-murray-boyles",
+  "teamAbbr": "TOR",
+  "display": "Collin Murray-Boyles"
+ },
+ "name_collin-murray-boyles": {
+  "text": "Murray Boyles!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "collin-murray-boyles",
+  "teamAbbr": "TOR",
+  "display": "Murray-Boyles"
+ },
+ "pa_jamal-shead": {
+  "text": "At guard... number one... Jamal... SHEAD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jamal-shead",
+  "teamAbbr": "TOR",
+  "display": "Jamal Shead"
+ },
+ "name_jamal-shead": {
+  "text": "Shead!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jamal-shead",
+  "teamAbbr": "TOR",
+  "display": "Shead"
+ },
+ "pa_kyle-anderson": {
+  "text": "At forward... number thirteen... Kyle... ANDERSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kyle-anderson",
+  "teamAbbr": "TOR",
+  "display": "Kyle Anderson"
+ },
+ "name_kyle-anderson": {
+  "text": "Anderson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kyle-anderson",
+  "teamAbbr": "TOR",
+  "display": "Anderson"
+ },
+ "pa_trayce-jackson-davis": {
+  "text": "At center... number thirty-two... Trayce... JACKSON DAVIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "trayce-jackson-davis",
+  "teamAbbr": "TOR",
+  "display": "Trayce Jackson-Davis"
+ },
+ "name_trayce-jackson-davis": {
+  "text": "Jackson Davis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "trayce-jackson-davis",
+  "teamAbbr": "TOR",
+  "display": "Jackson-Davis"
+ },
+ "pa_jamison-battle": {
+  "text": "At forward... number seventy-seven... Jamison... BATTLE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jamison-battle",
+  "teamAbbr": "TOR",
+  "display": "Jamison Battle"
+ },
+ "name_jamison-battle": {
+  "text": "Battle!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jamison-battle",
+  "teamAbbr": "TOR",
+  "display": "Battle"
+ },
+ "pa_alijah-martin": {
+  "text": "At guard... number fifty-five... Alijah... MARTIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "alijah-martin",
+  "teamAbbr": "TOR",
+  "display": "Alijah Martin"
+ },
+ "name_alijah-martin": {
+  "text": "Martin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "alijah-martin",
+  "teamAbbr": "TOR",
+  "display": "Martin"
+ },
+ "pa_allen-graves": {
+  "text": "At forward... number twenty-two... Allen... GRAVES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "allen-graves",
+  "teamAbbr": "TOR",
+  "display": "Allen Graves"
+ },
+ "name_allen-graves": {
+  "text": "Graves!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "allen-graves",
+  "teamAbbr": "TOR",
+  "display": "Graves"
+ },
+ "pa_team_chi": {
+  "text": "And now... the starting lineup... for the... Chicago Bulls!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "CHI",
+  "display": "Chicago Bulls"
+ },
+ "team_chi": {
+  "text": "The Chicago Bulls!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "CHI",
+  "display": "Chicago Bulls"
+ },
+ "pa_josh-giddey": {
+  "text": "At guard... number three... Josh... GIDDEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "josh-giddey",
+  "teamAbbr": "CHI",
+  "display": "Josh Giddey"
+ },
+ "name_josh-giddey": {
+  "text": "Giddey!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "josh-giddey",
+  "teamAbbr": "CHI",
+  "display": "Giddey"
+ },
+ "pa_norman-powell": {
+  "text": "At guard... number twenty-four... Norman... POWELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "norman-powell",
+  "teamAbbr": "CHI",
+  "display": "Norman Powell"
+ },
+ "name_norman-powell": {
+  "text": "Powell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "norman-powell",
+  "teamAbbr": "CHI",
+  "display": "Powell"
+ },
+ "pa_matas-buzelis": {
+  "text": "At forward... number fourteen... Matas... BUZELIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "matas-buzelis",
+  "teamAbbr": "CHI",
+  "display": "Matas Buzelis"
+ },
+ "name_matas-buzelis": {
+  "text": "Buzelis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "matas-buzelis",
+  "teamAbbr": "CHI",
+  "display": "Buzelis"
+ },
+ "pa_caleb-wilson": {
+  "text": "At forward... number eight... Caleb... WILSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "caleb-wilson",
+  "teamAbbr": "CHI",
+  "display": "Caleb Wilson"
+ },
+ "name_caleb-wilson": {
+  "text": "Wilson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "caleb-wilson",
+  "teamAbbr": "CHI",
+  "display": "Wilson"
+ },
+ "pa_jalen-smith": {
+  "text": "At center... number twenty-five... Jalen... SMITH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jalen-smith",
+  "teamAbbr": "CHI",
+  "display": "Jalen Smith"
+ },
+ "name_jalen-smith": {
+  "text": "Smith!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jalen-smith",
+  "teamAbbr": "CHI",
+  "display": "Smith"
+ },
+ "pa_tre-jones": {
+  "text": "At guard... number thirty... Tre... JONES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tre-jones",
+  "teamAbbr": "CHI",
+  "display": "Tre Jones"
+ },
+ "name_tre-jones": {
+  "text": "Jones!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tre-jones",
+  "teamAbbr": "CHI",
+  "display": "Jones"
+ },
+ "pa_nic-claxton": {
+  "text": "At center... number thirty-three... Nic... CLAXTON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nic-claxton",
+  "teamAbbr": "CHI",
+  "display": "Nic Claxton"
+ },
+ "name_nic-claxton": {
+  "text": "Claxton!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nic-claxton",
+  "teamAbbr": "CHI",
+  "display": "Claxton"
+ },
+ "pa_buddy-hield": {
+  "text": "At guard... number seven... Buddy... HIELD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "buddy-hield",
+  "teamAbbr": "CHI",
+  "display": "Buddy Hield"
+ },
+ "name_buddy-hield": {
+  "text": "Hield!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "buddy-hield",
+  "teamAbbr": "CHI",
+  "display": "Hield"
+ },
+ "pa_isaac-okoro": {
+  "text": "At guard... number thirty-five... Isaac... OKORO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "isaac-okoro",
+  "teamAbbr": "CHI",
+  "display": "Isaac Okoro"
+ },
+ "name_isaac-okoro": {
+  "text": "Okoro!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "isaac-okoro",
+  "teamAbbr": "CHI",
+  "display": "Okoro"
+ },
+ "pa_patrick-williams": {
+  "text": "At forward... number forty-four... Patrick... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "patrick-williams",
+  "teamAbbr": "CHI",
+  "display": "Patrick Williams"
+ },
+ "name_patrick-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "patrick-williams",
+  "teamAbbr": "CHI",
+  "display": "Williams"
+ },
+ "pa_leonard-miller": {
+  "text": "At forward... number eleven... Leonard... MILLER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "leonard-miller",
+  "teamAbbr": "CHI",
+  "display": "Leonard Miller"
+ },
+ "name_leonard-miller": {
+  "text": "Miller!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "leonard-miller",
+  "teamAbbr": "CHI",
+  "display": "Miller"
+ },
+ "pa_zach-collins": {
+  "text": "At center... number twelve... Zach... COLLINS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "zach-collins",
+  "teamAbbr": "CHI",
+  "display": "Zach Collins"
+ },
+ "name_zach-collins": {
+  "text": "Collins!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "zach-collins",
+  "teamAbbr": "CHI",
+  "display": "Collins"
+ },
+ "pa_noa-essengue": {
+  "text": "At forward... number two... Noa... ESSENGUE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "noa-essengue",
+  "teamAbbr": "CHI",
+  "display": "Noa Essengue"
+ },
+ "name_noa-essengue": {
+  "text": "Essengue!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "noa-essengue",
+  "teamAbbr": "CHI",
+  "display": "Essengue"
+ },
+ "pa_team_cle": {
+  "text": "And now... the starting lineup... for the... Cleveland Cavaliers!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "CLE",
+  "display": "Cleveland Cavaliers"
+ },
+ "team_cle": {
+  "text": "The Cleveland Cavaliers!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "CLE",
+  "display": "Cleveland Cavaliers"
+ },
+ "pa_james-harden": {
+  "text": "At guard... number one... James... HARDEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "james-harden",
+  "teamAbbr": "CLE",
+  "display": "James Harden"
+ },
+ "name_james-harden": {
+  "text": "Harden!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "james-harden",
+  "teamAbbr": "CLE",
+  "display": "Harden"
+ },
+ "pa_donovan-mitchell": {
+  "text": "At guard... number forty-five... Donovan... MITCHELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "donovan-mitchell",
+  "teamAbbr": "CLE",
+  "display": "Donovan Mitchell"
+ },
+ "name_donovan-mitchell": {
+  "text": "Mitchell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "donovan-mitchell",
+  "teamAbbr": "CLE",
+  "display": "Mitchell"
+ },
+ "pa_peyton-watson": {
+  "text": "At forward... number eight... Peyton... WATSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "peyton-watson",
+  "teamAbbr": "CLE",
+  "display": "Peyton Watson"
+ },
+ "name_peyton-watson": {
+  "text": "Watson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "peyton-watson",
+  "teamAbbr": "CLE",
+  "display": "Watson"
+ },
+ "pa_evan-mobley": {
+  "text": "At forward... number four... Evan... MOBLEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "evan-mobley",
+  "teamAbbr": "CLE",
+  "display": "Evan Mobley"
+ },
+ "name_evan-mobley": {
+  "text": "Mobley!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "evan-mobley",
+  "teamAbbr": "CLE",
+  "display": "Mobley"
+ },
+ "pa_jarrett-allen": {
+  "text": "At center... number thirty-one... Jarrett... ALLEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jarrett-allen",
+  "teamAbbr": "CLE",
+  "display": "Jarrett Allen"
+ },
+ "name_jarrett-allen": {
+  "text": "Allen!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jarrett-allen",
+  "teamAbbr": "CLE",
+  "display": "Allen"
+ },
+ "pa_sam-merrill": {
+  "text": "At guard... number five... Sam... MERRILL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "sam-merrill",
+  "teamAbbr": "CLE",
+  "display": "Sam Merrill"
+ },
+ "name_sam-merrill": {
+  "text": "Merrill!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "sam-merrill",
+  "teamAbbr": "CLE",
+  "display": "Merrill"
+ },
+ "pa_meleek-thomas": {
+  "text": "At guard... number fifteen... Meleek... THOMAS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "meleek-thomas",
+  "teamAbbr": "CLE",
+  "display": "Meleek Thomas"
+ },
+ "name_meleek-thomas": {
+  "text": "Thomas!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "meleek-thomas",
+  "teamAbbr": "CLE",
+  "display": "Thomas"
+ },
+ "pa_jaylon-tyson": {
+  "text": "At forward... number twenty... Jaylon... TYSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaylon-tyson",
+  "teamAbbr": "CLE",
+  "display": "Jaylon Tyson"
+ },
+ "name_jaylon-tyson": {
+  "text": "Tyson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaylon-tyson",
+  "teamAbbr": "CLE",
+  "display": "Tyson"
+ },
+ "pa_mario-hezonja": {
+  "text": "At forward... number thirty-three... Mario... HEZONJA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mario-hezonja",
+  "teamAbbr": "CLE",
+  "display": "Mario Hezonja"
+ },
+ "name_mario-hezonja": {
+  "text": "Hezonja!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mario-hezonja",
+  "teamAbbr": "CLE",
+  "display": "Hezonja"
+ },
+ "pa_tyrese-proctor": {
+  "text": "At guard... number twenty-four... Tyrese... PROCTOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tyrese-proctor",
+  "teamAbbr": "CLE",
+  "display": "Tyrese Proctor"
+ },
+ "name_tyrese-proctor": {
+  "text": "Proctor!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tyrese-proctor",
+  "teamAbbr": "CLE",
+  "display": "Proctor"
+ },
+ "pa_thomas-bryant": {
+  "text": "At center... number three... Thomas... BRYANT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "thomas-bryant",
+  "teamAbbr": "CLE",
+  "display": "Thomas Bryant"
+ },
+ "name_thomas-bryant": {
+  "text": "Bryant!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "thomas-bryant",
+  "teamAbbr": "CLE",
+  "display": "Bryant"
+ },
+ "pa_craig-porter-jr": {
+  "text": "At guard... number nine... Craig... PORTER JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "craig-porter-jr",
+  "teamAbbr": "CLE",
+  "display": "Craig Porter Jr."
+ },
+ "name_craig-porter-jr": {
+  "text": "Porter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "craig-porter-jr",
+  "teamAbbr": "CLE",
+  "display": "Porter Jr."
+ },
+ "pa_nae-qwan-tomlin": {
+  "text": "At forward... number thirty-five... Nae'Qwan... TOMLIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nae-qwan-tomlin",
+  "teamAbbr": "CLE",
+  "display": "Nae'Qwan Tomlin"
+ },
+ "name_nae-qwan-tomlin": {
+  "text": "Tomlin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nae-qwan-tomlin",
+  "teamAbbr": "CLE",
+  "display": "Tomlin"
+ },
+ "pa_team_det": {
+  "text": "And now... the starting lineup... for the... Detroit Pistons!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "DET",
+  "display": "Detroit Pistons"
+ },
+ "team_det": {
+  "text": "The Detroit Pistons!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "DET",
+  "display": "Detroit Pistons"
+ },
+ "pa_cade-cunningham": {
+  "text": "At guard... number two... Cade... CUNNINGHAM!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cade-cunningham",
+  "teamAbbr": "DET",
+  "display": "Cade Cunningham"
+ },
+ "name_cade-cunningham": {
+  "text": "Cunningham!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cade-cunningham",
+  "teamAbbr": "DET",
+  "display": "Cunningham"
+ },
+ "pa_duncan-robinson": {
+  "text": "At guard... number fifty-five... Duncan... ROBINSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "duncan-robinson",
+  "teamAbbr": "DET",
+  "display": "Duncan Robinson"
+ },
+ "name_duncan-robinson": {
+  "text": "Robinson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "duncan-robinson",
+  "teamAbbr": "DET",
+  "display": "Robinson"
+ },
+ "pa_ausar-thompson": {
+  "text": "At forward... number nine... Ausar... THOMPSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ausar-thompson",
+  "teamAbbr": "DET",
+  "display": "Ausar Thompson"
+ },
+ "name_ausar-thompson": {
+  "text": "Thompson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ausar-thompson",
+  "teamAbbr": "DET",
+  "display": "Thompson"
+ },
+ "pa_john-collins": {
+  "text": "At forward... number twenty... John... COLLINS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "john-collins",
+  "teamAbbr": "DET",
+  "display": "John Collins"
+ },
+ "name_john-collins": {
+  "text": "Collins!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "john-collins",
+  "teamAbbr": "DET",
+  "display": "Collins"
+ },
+ "pa_jalen-duren": {
+  "text": "At center... number zero... Jalen... DUREN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jalen-duren",
+  "teamAbbr": "DET",
+  "display": "Jalen Duren"
+ },
+ "name_jalen-duren": {
+  "text": "Duren!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jalen-duren",
+  "teamAbbr": "DET",
+  "display": "Duren"
+ },
+ "pa_daniss-jenkins": {
+  "text": "At guard... number twenty-four... Daniss... JENKINS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "daniss-jenkins",
+  "teamAbbr": "DET",
+  "display": "Daniss Jenkins"
+ },
+ "name_daniss-jenkins": {
+  "text": "Jenkins!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "daniss-jenkins",
+  "teamAbbr": "DET",
+  "display": "Jenkins"
+ },
+ "pa_paul-reed": {
+  "text": "At center... number seven... Paul... REED!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "paul-reed",
+  "teamAbbr": "DET",
+  "display": "Paul Reed"
+ },
+ "name_paul-reed": {
+  "text": "Reed!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "paul-reed",
+  "teamAbbr": "DET",
+  "display": "Reed"
+ },
+ "pa_kevin-huerter": {
+  "text": "At guard... number twenty-seven... Kevin... HUERTER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kevin-huerter",
+  "teamAbbr": "DET",
+  "display": "Kevin Huerter"
+ },
+ "name_kevin-huerter": {
+  "text": "Huerter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kevin-huerter",
+  "teamAbbr": "DET",
+  "display": "Huerter"
+ },
+ "pa_ron-holland": {
+  "text": "At forward... number five... Ron... HOLLAND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ron-holland",
+  "teamAbbr": "DET",
+  "display": "Ron Holland"
+ },
+ "name_ron-holland": {
+  "text": "Holland!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ron-holland",
+  "teamAbbr": "DET",
+  "display": "Holland"
+ },
+ "pa_isaiah-joe": {
+  "text": "At guard... number seventeen... Isaiah... JOE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "isaiah-joe",
+  "teamAbbr": "DET",
+  "display": "Isaiah Joe"
+ },
+ "name_isaiah-joe": {
+  "text": "Joe!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "isaiah-joe",
+  "teamAbbr": "DET",
+  "display": "Joe"
+ },
+ "pa_javonte-green": {
+  "text": "At guard... number thirty-one... Javonte... GREEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "javonte-green",
+  "teamAbbr": "DET",
+  "display": "Javonte Green"
+ },
+ "name_javonte-green": {
+  "text": "Green!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "javonte-green",
+  "teamAbbr": "DET",
+  "display": "Green"
+ },
+ "pa_ebuka-okorie": {
+  "text": "At guard... number twenty-three... Ebuka... OKORIE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ebuka-okorie",
+  "teamAbbr": "DET",
+  "display": "Ebuka Okorie"
+ },
+ "name_ebuka-okorie": {
+  "text": "Okorie!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ebuka-okorie",
+  "teamAbbr": "DET",
+  "display": "Okorie"
+ },
+ "pa_taurean-prince": {
+  "text": "At forward... number twelve... Taurean... PRINCE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "taurean-prince",
+  "teamAbbr": "DET",
+  "display": "Taurean Prince"
+ },
+ "name_taurean-prince": {
+  "text": "Prince!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "taurean-prince",
+  "teamAbbr": "DET",
+  "display": "Prince"
+ },
+ "pa_team_ind": {
+  "text": "And now... the starting lineup... for the... Indiana Pacers!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "IND",
+  "display": "Indiana Pacers"
+ },
+ "team_ind": {
+  "text": "The Indiana Pacers!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "IND",
+  "display": "Indiana Pacers"
+ },
+ "pa_tyrese-haliburton": {
+  "text": "At guard... number zero... Tyrese... HALIBURTON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tyrese-haliburton",
+  "teamAbbr": "IND",
+  "display": "Tyrese Haliburton"
+ },
+ "name_tyrese-haliburton": {
+  "text": "Haliburton!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tyrese-haliburton",
+  "teamAbbr": "IND",
+  "display": "Haliburton"
+ },
+ "pa_andrew-nembhard": {
+  "text": "At guard... number two... Andrew... NEMBHARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "andrew-nembhard",
+  "teamAbbr": "IND",
+  "display": "Andrew Nembhard"
+ },
+ "name_andrew-nembhard": {
+  "text": "Nembhard!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "andrew-nembhard",
+  "teamAbbr": "IND",
+  "display": "Nembhard"
+ },
+ "pa_aaron-nesmith": {
+  "text": "At forward... number twenty-three... Aaron... NESMITH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "aaron-nesmith",
+  "teamAbbr": "IND",
+  "display": "Aaron Nesmith"
+ },
+ "name_aaron-nesmith": {
+  "text": "Nesmith!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "aaron-nesmith",
+  "teamAbbr": "IND",
+  "display": "Nesmith"
+ },
+ "pa_pascal-siakam": {
+  "text": "At forward... number forty-three... Pascal... SIAKAM!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "pascal-siakam",
+  "teamAbbr": "IND",
+  "display": "Pascal Siakam"
+ },
+ "name_pascal-siakam": {
+  "text": "Siakam!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "pascal-siakam",
+  "teamAbbr": "IND",
+  "display": "Siakam"
+ },
+ "pa_ivica-zubac": {
+  "text": "At center... number forty... Ivica... ZUBAC!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ivica-zubac",
+  "teamAbbr": "IND",
+  "display": "Ivica Zubac"
+ },
+ "name_ivica-zubac": {
+  "text": "Zubac!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ivica-zubac",
+  "teamAbbr": "IND",
+  "display": "Zubac"
+ },
+ "pa_obi-toppin": {
+  "text": "At forward... number one... Obi... TOPPIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "obi-toppin",
+  "teamAbbr": "IND",
+  "display": "Obi Toppin"
+ },
+ "name_obi-toppin": {
+  "text": "Toppin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "obi-toppin",
+  "teamAbbr": "IND",
+  "display": "Toppin"
+ },
+ "pa_quenton-jackson": {
+  "text": "At guard... number twenty-nine... Quenton... JACKSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "quenton-jackson",
+  "teamAbbr": "IND",
+  "display": "Quenton Jackson"
+ },
+ "name_quenton-jackson": {
+  "text": "Jackson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "quenton-jackson",
+  "teamAbbr": "IND",
+  "display": "Jackson"
+ },
+ "pa_kelly-oubre-jr": {
+  "text": "At forward... number ten... Kelly... OUBRE JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kelly-oubre-jr",
+  "teamAbbr": "IND",
+  "display": "Kelly Oubre Jr."
+ },
+ "name_kelly-oubre-jr": {
+  "text": "Oubre!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kelly-oubre-jr",
+  "teamAbbr": "IND",
+  "display": "Oubre Jr."
+ },
+ "pa_jay-huff": {
+  "text": "At center... number thirty-two... Jay... HUFF!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jay-huff",
+  "teamAbbr": "IND",
+  "display": "Jay Huff"
+ },
+ "name_jay-huff": {
+  "text": "Huff!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jay-huff",
+  "teamAbbr": "IND",
+  "display": "Huff"
+ },
+ "pa_jarace-walker": {
+  "text": "At forward... number five... Jarace... WALKER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jarace-walker",
+  "teamAbbr": "IND",
+  "display": "Jarace Walker"
+ },
+ "name_jarace-walker": {
+  "text": "Walker!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jarace-walker",
+  "teamAbbr": "IND",
+  "display": "Walker"
+ },
+ "pa_t-j-mcconnell": {
+  "text": "At guard... number nine... T J... MCCONNELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "t-j-mcconnell",
+  "teamAbbr": "IND",
+  "display": "T.J. McConnell"
+ },
+ "name_t-j-mcconnell": {
+  "text": "McConnell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "t-j-mcconnell",
+  "teamAbbr": "IND",
+  "display": "McConnell"
+ },
+ "pa_larry-nance-jr": {
+  "text": "At forward... number twenty-two... Larry... NANCE JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "larry-nance-jr",
+  "teamAbbr": "IND",
+  "display": "Larry Nance Jr."
+ },
+ "name_larry-nance-jr": {
+  "text": "Nance!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "larry-nance-jr",
+  "teamAbbr": "IND",
+  "display": "Nance Jr."
+ },
+ "pa_ben-sheppard": {
+  "text": "At guard... number twenty-six... Ben... SHEPPARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ben-sheppard",
+  "teamAbbr": "IND",
+  "display": "Ben Sheppard"
+ },
+ "name_ben-sheppard": {
+  "text": "Sheppard!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ben-sheppard",
+  "teamAbbr": "IND",
+  "display": "Sheppard"
+ },
+ "pa_team_mil": {
+  "text": "And now... the starting lineup... for the... Milwaukee Bucks!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "MIL",
+  "display": "Milwaukee Bucks"
+ },
+ "team_mil": {
+  "text": "The Milwaukee Bucks!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "MIL",
+  "display": "Milwaukee Bucks"
+ },
+ "pa_ryan-rollins": {
+  "text": "At guard... number thirteen... Ryan... ROLLINS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ryan-rollins",
+  "teamAbbr": "MIL",
+  "display": "Ryan Rollins"
+ },
+ "name_ryan-rollins": {
+  "text": "Rollins!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ryan-rollins",
+  "teamAbbr": "MIL",
+  "display": "Rollins"
+ },
+ "pa_tyler-herro": {
+  "text": "At guard... number eleven... Tyler... HERRO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tyler-herro",
+  "teamAbbr": "MIL",
+  "display": "Tyler Herro"
+ },
+ "name_tyler-herro": {
+  "text": "Herro!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tyler-herro",
+  "teamAbbr": "MIL",
+  "display": "Herro"
+ },
+ "pa_jaime-jaquez-jr": {
+  "text": "At forward... number twenty-four... Jaime... JAQUEZ JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaime-jaquez-jr",
+  "teamAbbr": "MIL",
+  "display": "Jaime Jaquez Jr."
+ },
+ "name_jaime-jaquez-jr": {
+  "text": "Jaquez!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaime-jaquez-jr",
+  "teamAbbr": "MIL",
+  "display": "Jaquez Jr."
+ },
+ "pa_kyle-kuzma": {
+  "text": "At forward... number eighteen... Kyle... KUZMA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kyle-kuzma",
+  "teamAbbr": "MIL",
+  "display": "Kyle Kuzma"
+ },
+ "name_kyle-kuzma": {
+  "text": "Kuzma!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kyle-kuzma",
+  "teamAbbr": "MIL",
+  "display": "Kuzma"
+ },
+ "pa_kel-el-ware": {
+  "text": "At center... number nine... Kel'el... WARE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kel-el-ware",
+  "teamAbbr": "MIL",
+  "display": "Kel'el Ware"
+ },
+ "name_kel-el-ware": {
+  "text": "Ware!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kel-el-ware",
+  "teamAbbr": "MIL",
+  "display": "Ware"
+ },
+ "pa_myles-turner": {
+  "text": "At center... number three... Myles... TURNER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "myles-turner",
+  "teamAbbr": "MIL",
+  "display": "Myles Turner"
+ },
+ "name_myles-turner": {
+  "text": "Turner!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "myles-turner",
+  "teamAbbr": "MIL",
+  "display": "Turner"
+ },
+ "pa_brayden-burries": {
+  "text": "At guard... number zero... Brayden... BURRIES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "brayden-burries",
+  "teamAbbr": "MIL",
+  "display": "Brayden Burries"
+ },
+ "name_brayden-burries": {
+  "text": "Burries!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "brayden-burries",
+  "teamAbbr": "MIL",
+  "display": "Burries"
+ },
+ "pa_kasparas-jakucionis": {
+  "text": "At guard... number twenty-five... Kasparas... JAKUCIONIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kasparas-jakucionis",
+  "teamAbbr": "MIL",
+  "display": "Kasparas Jakucionis"
+ },
+ "name_kasparas-jakucionis": {
+  "text": "Jakucionis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kasparas-jakucionis",
+  "teamAbbr": "MIL",
+  "display": "Jakucionis"
+ },
+ "pa_a-j-green": {
+  "text": "At guard... number twenty... A J... GREEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "a-j-green",
+  "teamAbbr": "MIL",
+  "display": "A.J. Green"
+ },
+ "name_a-j-green": {
+  "text": "Green!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "a-j-green",
+  "teamAbbr": "MIL",
+  "display": "Green"
+ },
+ "pa_nate-ament": {
+  "text": "At forward... number fifteen... Nate... AMENT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nate-ament",
+  "teamAbbr": "MIL",
+  "display": "Nate Ament"
+ },
+ "name_nate-ament": {
+  "text": "Ament!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nate-ament",
+  "teamAbbr": "MIL",
+  "display": "Ament"
+ },
+ "pa_caris-levert": {
+  "text": "At guard... number twenty-two... Caris... LEVERT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "caris-levert",
+  "teamAbbr": "MIL",
+  "display": "Caris LeVert"
+ },
+ "name_caris-levert": {
+  "text": "LeVert!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "caris-levert",
+  "teamAbbr": "MIL",
+  "display": "LeVert"
+ },
+ "pa_gary-trent-jr": {
+  "text": "At guard... number five... Gary... TRENT JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "gary-trent-jr",
+  "teamAbbr": "MIL",
+  "display": "Gary Trent Jr."
+ },
+ "name_gary-trent-jr": {
+  "text": "Trent!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "gary-trent-jr",
+  "teamAbbr": "MIL",
+  "display": "Trent Jr."
+ },
+ "pa_ousmane-dieng": {
+  "text": "At forward... number twenty-one... Ousmane... DIENG!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ousmane-dieng",
+  "teamAbbr": "MIL",
+  "display": "Ousmane Dieng"
+ },
+ "name_ousmane-dieng": {
+  "text": "Dieng!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ousmane-dieng",
+  "teamAbbr": "MIL",
+  "display": "Dieng"
+ },
+ "pa_team_atl": {
+  "text": "And now... the starting lineup... for the... Atlanta Hawks!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "ATL",
+  "display": "Atlanta Hawks"
+ },
+ "team_atl": {
+  "text": "The Atlanta Hawks!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "ATL",
+  "display": "Atlanta Hawks"
+ },
+ "pa_cj-mccollum": {
+  "text": "At guard... number three... CJ... MCCOLLUM!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cj-mccollum",
+  "teamAbbr": "ATL",
+  "display": "CJ McCollum"
+ },
+ "name_cj-mccollum": {
+  "text": "McCollum!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cj-mccollum",
+  "teamAbbr": "ATL",
+  "display": "McCollum"
+ },
+ "pa_nickeil-alexander-walker": {
+  "text": "At guard... number seven... Nickeil... ALEXANDER WALKER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nickeil-alexander-walker",
+  "teamAbbr": "ATL",
+  "display": "Nickeil Alexander-Walker"
+ },
+ "name_nickeil-alexander-walker": {
+  "text": "Alexander Walker!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nickeil-alexander-walker",
+  "teamAbbr": "ATL",
+  "display": "Alexander-Walker"
+ },
+ "pa_dyson-daniels": {
+  "text": "At forward... number five... Dyson... DANIELS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dyson-daniels",
+  "teamAbbr": "ATL",
+  "display": "Dyson Daniels"
+ },
+ "name_dyson-daniels": {
+  "text": "Daniels!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dyson-daniels",
+  "teamAbbr": "ATL",
+  "display": "Daniels"
+ },
+ "pa_jalen-johnson": {
+  "text": "At forward... number one... Jalen... JOHNSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jalen-johnson",
+  "teamAbbr": "ATL",
+  "display": "Jalen Johnson"
+ },
+ "name_jalen-johnson": {
+  "text": "Johnson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jalen-johnson",
+  "teamAbbr": "ATL",
+  "display": "Johnson"
+ },
+ "pa_onyeka-okongwu": {
+  "text": "At center... number seventeen... Onyeka... OH-KONG-WOO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "onyeka-okongwu",
+  "teamAbbr": "ATL",
+  "display": "Onyeka Okongwu"
+ },
+ "name_onyeka-okongwu": {
+  "text": "Oh-kong-woo!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "onyeka-okongwu",
+  "teamAbbr": "ATL",
+  "display": "Okongwu"
+ },
+ "pa_aaron-wiggins": {
+  "text": "At guard... number two... Aaron... WIGGINS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "aaron-wiggins",
+  "teamAbbr": "ATL",
+  "display": "Aaron Wiggins"
+ },
+ "name_aaron-wiggins": {
+  "text": "Wiggins!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "aaron-wiggins",
+  "teamAbbr": "ATL",
+  "display": "Wiggins"
+ },
+ "pa_luguentz-dort": {
+  "text": "At forward... number zero... Luguentz... DORT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "luguentz-dort",
+  "teamAbbr": "ATL",
+  "display": "Luguentz Dort"
+ },
+ "name_luguentz-dort": {
+  "text": "Dort!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "luguentz-dort",
+  "teamAbbr": "ATL",
+  "display": "Dort"
+ },
+ "pa_kingston-flemings": {
+  "text": "At guard... number four... Kingston... FLEMINGS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kingston-flemings",
+  "teamAbbr": "ATL",
+  "display": "Kingston Flemings"
+ },
+ "name_kingston-flemings": {
+  "text": "Flemings!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kingston-flemings",
+  "teamAbbr": "ATL",
+  "display": "Flemings"
+ },
+ "pa_corey-kispert": {
+  "text": "At forward... number twenty-four... Corey... KISPERT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "corey-kispert",
+  "teamAbbr": "ATL",
+  "display": "Corey Kispert"
+ },
+ "name_corey-kispert": {
+  "text": "Kispert!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "corey-kispert",
+  "teamAbbr": "ATL",
+  "display": "Kispert"
+ },
+ "pa_jock-landale": {
+  "text": "At center... number thirty-one... Jock... LANDALE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jock-landale",
+  "teamAbbr": "ATL",
+  "display": "Jock Landale"
+ },
+ "name_jock-landale": {
+  "text": "Landale!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jock-landale",
+  "teamAbbr": "ATL",
+  "display": "Landale"
+ },
+ "pa_dorian-finney-smith": {
+  "text": "At forward... number eight... Dorian... FINNEY SMITH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dorian-finney-smith",
+  "teamAbbr": "ATL",
+  "display": "Dorian Finney-Smith"
+ },
+ "name_dorian-finney-smith": {
+  "text": "Finney Smith!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dorian-finney-smith",
+  "teamAbbr": "ATL",
+  "display": "Finney-Smith"
+ },
+ "pa_asa-newell": {
+  "text": "At forward... number fourteen... Asa... NEWELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "asa-newell",
+  "teamAbbr": "ATL",
+  "display": "Asa Newell"
+ },
+ "name_asa-newell": {
+  "text": "Newell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "asa-newell",
+  "teamAbbr": "ATL",
+  "display": "Newell"
+ },
+ "pa_zuby-ejiofor": {
+  "text": "At forward... number twenty... Zuby... EDGE-EE-OH-FOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "zuby-ejiofor",
+  "teamAbbr": "ATL",
+  "display": "Zuby Ejiofor"
+ },
+ "name_zuby-ejiofor": {
+  "text": "Edge-ee-oh-for!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "zuby-ejiofor",
+  "teamAbbr": "ATL",
+  "display": "Ejiofor"
+ },
+ "pa_team_cha": {
+  "text": "And now... the starting lineup... for the... Charlotte Hornets!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "CHA",
+  "display": "Charlotte Hornets"
+ },
+ "team_cha": {
+  "text": "The Charlotte Hornets!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "CHA",
+  "display": "Charlotte Hornets"
+ },
+ "pa_dennis-schroder": {
+  "text": "At guard... number seventeen... Dennis... SHRO-DER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dennis-schroder",
+  "teamAbbr": "CHA",
+  "display": "Dennis Schröder"
+ },
+ "name_dennis-schroder": {
+  "text": "Shro-der!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dennis-schroder",
+  "teamAbbr": "CHA",
+  "display": "Schröder"
+ },
+ "pa_kon-knueppel": {
+  "text": "At guard... number seven... Kon... KUH-NEPPEL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kon-knueppel",
+  "teamAbbr": "CHA",
+  "display": "Kon Knueppel"
+ },
+ "name_kon-knueppel": {
+  "text": "Kuh-neppel!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kon-knueppel",
+  "teamAbbr": "CHA",
+  "display": "Knueppel"
+ },
+ "pa_brandon-miller": {
+  "text": "At forward... number twenty-four... Brandon... MILLER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "brandon-miller",
+  "teamAbbr": "CHA",
+  "display": "Brandon Miller"
+ },
+ "name_brandon-miller": {
+  "text": "Miller!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "brandon-miller",
+  "teamAbbr": "CHA",
+  "display": "Miller"
+ },
+ "pa_naz-reid": {
+  "text": "At forward... number zero... Naz... REID!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "naz-reid",
+  "teamAbbr": "CHA",
+  "display": "Naz Reid"
+ },
+ "name_naz-reid": {
+  "text": "Reid!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "naz-reid",
+  "teamAbbr": "CHA",
+  "display": "Reid"
+ },
+ "pa_moussa-diabate": {
+  "text": "At center... number fourteen... Moussa... DEE-AH-BAH-TAY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "moussa-diabate",
+  "teamAbbr": "CHA",
+  "display": "Moussa Diabaté"
+ },
+ "name_moussa-diabate": {
+  "text": "Dee-ah-bah-tay!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "moussa-diabate",
+  "teamAbbr": "CHA",
+  "display": "Diabaté"
+ },
+ "pa_grayson-allen": {
+  "text": "At guard... number eight... Grayson... ALLEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "grayson-allen",
+  "teamAbbr": "CHA",
+  "display": "Grayson Allen"
+ },
+ "name_grayson-allen": {
+  "text": "Allen!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "grayson-allen",
+  "teamAbbr": "CHA",
+  "display": "Allen"
+ },
+ "pa_coby-white": {
+  "text": "At guard... number three... Coby... WHITE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "coby-white",
+  "teamAbbr": "CHA",
+  "display": "Coby White"
+ },
+ "name_coby-white": {
+  "text": "White!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "coby-white",
+  "teamAbbr": "CHA",
+  "display": "White"
+ },
+ "pa_sion-james": {
+  "text": "At guard... number four... Sion... JAMES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "sion-james",
+  "teamAbbr": "CHA",
+  "display": "Sion James"
+ },
+ "name_sion-james": {
+  "text": "James!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "sion-james",
+  "teamAbbr": "CHA",
+  "display": "James"
+ },
+ "pa_royce-o-neale": {
+  "text": "At forward... number zero... Royce... O'NEALE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "royce-o-neale",
+  "teamAbbr": "CHA",
+  "display": "Royce O'Neale"
+ },
+ "name_royce-o-neale": {
+  "text": "O'Neale!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "royce-o-neale",
+  "teamAbbr": "CHA",
+  "display": "O'Neale"
+ },
+ "pa_ryan-kalkbrenner": {
+  "text": "At center... number eleven... Ryan... KALKBRENNER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ryan-kalkbrenner",
+  "teamAbbr": "CHA",
+  "display": "Ryan Kalkbrenner"
+ },
+ "name_ryan-kalkbrenner": {
+  "text": "Kalkbrenner!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ryan-kalkbrenner",
+  "teamAbbr": "CHA",
+  "display": "Kalkbrenner"
+ },
+ "pa_tidjane-salaun": {
+  "text": "At forward... number thirty-one... Tidjane... SAH-LAH-OON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tidjane-salaun",
+  "teamAbbr": "CHA",
+  "display": "Tidjane Salaün"
+ },
+ "name_tidjane-salaun": {
+  "text": "Sah-lah-oon!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tidjane-salaun",
+  "teamAbbr": "CHA",
+  "display": "Salaün"
+ },
+ "pa_grant-williams": {
+  "text": "At forward... number two... Grant... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "grant-williams",
+  "teamAbbr": "CHA",
+  "display": "Grant Williams"
+ },
+ "name_grant-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "grant-williams",
+  "teamAbbr": "CHA",
+  "display": "Williams"
+ },
+ "pa_liam-mcneeley": {
+  "text": "At forward... number thirty-three... Liam... MCNEELEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "liam-mcneeley",
+  "teamAbbr": "CHA",
+  "display": "Liam McNeeley"
+ },
+ "name_liam-mcneeley": {
+  "text": "McNeeley!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "liam-mcneeley",
+  "teamAbbr": "CHA",
+  "display": "McNeeley"
+ },
+ "pa_team_mia": {
+  "text": "And now... the starting lineup... for the... Miami Heat!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "MIA",
+  "display": "Miami Heat"
+ },
+ "team_mia": {
+  "text": "The Miami Heat!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "MIA",
+  "display": "Miami Heat"
+ },
+ "pa_davion-mitchell": {
+  "text": "At guard... number two... Davion... MITCHELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "davion-mitchell",
+  "teamAbbr": "MIA",
+  "display": "Davion Mitchell"
+ },
+ "name_davion-mitchell": {
+  "text": "Mitchell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "davion-mitchell",
+  "teamAbbr": "MIA",
+  "display": "Mitchell"
+ },
+ "pa_pelle-larsson": {
+  "text": "At guard... number nine... Pelle... LARSSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "pelle-larsson",
+  "teamAbbr": "MIA",
+  "display": "Pelle Larsson"
+ },
+ "name_pelle-larsson": {
+  "text": "Larsson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "pelle-larsson",
+  "teamAbbr": "MIA",
+  "display": "Larsson"
+ },
+ "pa_andrew-wiggins": {
+  "text": "At forward... number twenty-two... Andrew... WIGGINS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "andrew-wiggins",
+  "teamAbbr": "MIA",
+  "display": "Andrew Wiggins"
+ },
+ "name_andrew-wiggins": {
+  "text": "Wiggins!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "andrew-wiggins",
+  "teamAbbr": "MIA",
+  "display": "Wiggins"
+ },
+ "pa_giannis-antetokounmpo": {
+  "text": "At forward... number seven... Giannis... AHN-TEH-TOH-KOON-PO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "giannis-antetokounmpo",
+  "teamAbbr": "MIA",
+  "display": "Giannis Antetokounmpo"
+ },
+ "name_giannis-antetokounmpo": {
+  "text": "Ahn-teh-toh-koon-po!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "giannis-antetokounmpo",
+  "teamAbbr": "MIA",
+  "display": "Antetokounmpo"
+ },
+ "pa_bam-adebayo": {
+  "text": "At center... number thirteen... Bam... ADEBAYO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bam-adebayo",
+  "teamAbbr": "MIA",
+  "display": "Bam Adebayo"
+ },
+ "name_bam-adebayo": {
+  "text": "Adebayo!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bam-adebayo",
+  "teamAbbr": "MIA",
+  "display": "Adebayo"
+ },
+ "pa_klay-thompson": {
+  "text": "At guard... number eleven... Klay... THOMPSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "klay-thompson",
+  "teamAbbr": "MIA",
+  "display": "Klay Thompson"
+ },
+ "name_klay-thompson": {
+  "text": "Thompson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "klay-thompson",
+  "teamAbbr": "MIA",
+  "display": "Thompson"
+ },
+ "pa_bobby-portis": {
+  "text": "At forward... number ninety-five... Bobby... PORTIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bobby-portis",
+  "teamAbbr": "MIA",
+  "display": "Bobby Portis"
+ },
+ "name_bobby-portis": {
+  "text": "Portis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bobby-portis",
+  "teamAbbr": "MIA",
+  "display": "Portis"
+ },
+ "pa_tim-hardaway-jr": {
+  "text": "At guard... number ten... Tim... HARDAWAY JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tim-hardaway-jr",
+  "teamAbbr": "MIA",
+  "display": "Tim Hardaway Jr."
+ },
+ "name_tim-hardaway-jr": {
+  "text": "Hardaway!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tim-hardaway-jr",
+  "teamAbbr": "MIA",
+  "display": "Hardaway Jr."
+ },
+ "pa_nikola-jovic": {
+  "text": "At forward... number five... Nikola... YO-VICH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nikola-jovic",
+  "teamAbbr": "MIA",
+  "display": "Nikola Jović"
+ },
+ "name_nikola-jovic": {
+  "text": "Yo-vich!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nikola-jovic",
+  "teamAbbr": "MIA",
+  "display": "Jović"
+ },
+ "pa_nick-richards": {
+  "text": "At center... number eight... Nick... RICHARDS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nick-richards",
+  "teamAbbr": "MIA",
+  "display": "Nick Richards"
+ },
+ "name_nick-richards": {
+  "text": "Richards!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nick-richards",
+  "teamAbbr": "MIA",
+  "display": "Richards"
+ },
+ "pa_simone-fontecchio": {
+  "text": "At forward... number zero... Simone... FONTECCHIO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "simone-fontecchio",
+  "teamAbbr": "MIA",
+  "display": "Simone Fontecchio"
+ },
+ "name_simone-fontecchio": {
+  "text": "Fontecchio!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "simone-fontecchio",
+  "teamAbbr": "MIA",
+  "display": "Fontecchio"
+ },
+ "pa_dru-smith": {
+  "text": "At guard... number twelve... Dru... SMITH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dru-smith",
+  "teamAbbr": "MIA",
+  "display": "Dru Smith"
+ },
+ "name_dru-smith": {
+  "text": "Smith!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dru-smith",
+  "teamAbbr": "MIA",
+  "display": "Smith"
+ },
+ "pa_ryan-conwell": {
+  "text": "At guard... number four... Ryan... CONWELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ryan-conwell",
+  "teamAbbr": "MIA",
+  "display": "Ryan Conwell"
+ },
+ "name_ryan-conwell": {
+  "text": "Conwell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ryan-conwell",
+  "teamAbbr": "MIA",
+  "display": "Conwell"
+ },
+ "pa_team_orl": {
+  "text": "And now... the starting lineup... for the... Orlando Magic!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "ORL",
+  "display": "Orlando Magic"
+ },
+ "team_orl": {
+  "text": "The Orlando Magic!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "ORL",
+  "display": "Orlando Magic"
+ },
+ "pa_jalen-suggs": {
+  "text": "At guard... number four... Jalen... SUGGS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jalen-suggs",
+  "teamAbbr": "ORL",
+  "display": "Jalen Suggs"
+ },
+ "name_jalen-suggs": {
+  "text": "Suggs!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jalen-suggs",
+  "teamAbbr": "ORL",
+  "display": "Suggs"
+ },
+ "pa_desmond-bane": {
+  "text": "At guard... number three... Desmond... BANE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "desmond-bane",
+  "teamAbbr": "ORL",
+  "display": "Desmond Bane"
+ },
+ "name_desmond-bane": {
+  "text": "Bane!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "desmond-bane",
+  "teamAbbr": "ORL",
+  "display": "Bane"
+ },
+ "pa_franz-wagner": {
+  "text": "At forward... number twenty-two... Franz... WAGNER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "franz-wagner",
+  "teamAbbr": "ORL",
+  "display": "Franz Wagner"
+ },
+ "name_franz-wagner": {
+  "text": "Wagner!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "franz-wagner",
+  "teamAbbr": "ORL",
+  "display": "Wagner"
+ },
+ "pa_paolo-banchero": {
+  "text": "At forward... number five... Paolo... BANCHERO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "paolo-banchero",
+  "teamAbbr": "ORL",
+  "display": "Paolo Banchero"
+ },
+ "name_paolo-banchero": {
+  "text": "Banchero!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "paolo-banchero",
+  "teamAbbr": "ORL",
+  "display": "Banchero"
+ },
+ "pa_wendell-carter-jr": {
+  "text": "At center... number thirty-four... Wendell... CARTER JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "wendell-carter-jr",
+  "teamAbbr": "ORL",
+  "display": "Wendell Carter Jr."
+ },
+ "name_wendell-carter-jr": {
+  "text": "Carter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "wendell-carter-jr",
+  "teamAbbr": "ORL",
+  "display": "Carter Jr."
+ },
+ "pa_anthony-black": {
+  "text": "At guard... number zero... Anthony... BLACK!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "anthony-black",
+  "teamAbbr": "ORL",
+  "display": "Anthony Black"
+ },
+ "name_anthony-black": {
+  "text": "Black!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "anthony-black",
+  "teamAbbr": "ORL",
+  "display": "Black"
+ },
+ "pa_tristan-da-silva": {
+  "text": "At forward... number twenty-three... Tristan... DA SILVA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tristan-da-silva",
+  "teamAbbr": "ORL",
+  "display": "Tristan Da Silva"
+ },
+ "name_tristan-da-silva": {
+  "text": "Da Silva!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tristan-da-silva",
+  "teamAbbr": "ORL",
+  "display": "Da Silva"
+ },
+ "pa_nikola-vucevic": {
+  "text": "At center... number nine... Nikola... VOO-CHEH-VICH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nikola-vucevic",
+  "teamAbbr": "ORL",
+  "display": "Nikola Vučević"
+ },
+ "name_nikola-vucevic": {
+  "text": "Voo-cheh-vich!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nikola-vucevic",
+  "teamAbbr": "ORL",
+  "display": "Vučević"
+ },
+ "pa_jonathan-isaac": {
+  "text": "At forward... number one... Jonathan... ISAAC!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jonathan-isaac",
+  "teamAbbr": "ORL",
+  "display": "Jonathan Isaac"
+ },
+ "name_jonathan-isaac": {
+  "text": "Isaac!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jonathan-isaac",
+  "teamAbbr": "ORL",
+  "display": "Isaac"
+ },
+ "pa_jase-richardson": {
+  "text": "At guard... number eleven... Jase... RICHARDSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jase-richardson",
+  "teamAbbr": "ORL",
+  "display": "Jase Richardson"
+ },
+ "name_jase-richardson": {
+  "text": "Richardson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jase-richardson",
+  "teamAbbr": "ORL",
+  "display": "Richardson"
+ },
+ "pa_goga-bitadze": {
+  "text": "At center... number thirty-five... Goga... BITADZE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "goga-bitadze",
+  "teamAbbr": "ORL",
+  "display": "Goga Bitadze"
+ },
+ "name_goga-bitadze": {
+  "text": "Bitadze!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "goga-bitadze",
+  "teamAbbr": "ORL",
+  "display": "Bitadze"
+ },
+ "pa_jevon-carter": {
+  "text": "At guard... number two... Jevon... CARTER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jevon-carter",
+  "teamAbbr": "ORL",
+  "display": "Jevon Carter"
+ },
+ "name_jevon-carter": {
+  "text": "Carter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jevon-carter",
+  "teamAbbr": "ORL",
+  "display": "Carter"
+ },
+ "pa_jamal-cain": {
+  "text": "At forward... number eight... Jamal... CAIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jamal-cain",
+  "teamAbbr": "ORL",
+  "display": "Jamal Cain"
+ },
+ "name_jamal-cain": {
+  "text": "Cain!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jamal-cain",
+  "teamAbbr": "ORL",
+  "display": "Cain"
+ },
+ "pa_team_was": {
+  "text": "And now... the starting lineup... for the... Washington Wizards!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "WAS",
+  "display": "Washington Wizards"
+ },
+ "team_was": {
+  "text": "The Washington Wizards!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "WAS",
+  "display": "Washington Wizards"
+ },
+ "pa_trae-young": {
+  "text": "At guard... number three... Trae... YOUNG!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "trae-young",
+  "teamAbbr": "WAS",
+  "display": "Trae Young"
+ },
+ "name_trae-young": {
+  "text": "Young!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "trae-young",
+  "teamAbbr": "WAS",
+  "display": "Young"
+ },
+ "pa_kyshawn-george": {
+  "text": "At guard... number eighteen... Kyshawn... GEORGE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kyshawn-george",
+  "teamAbbr": "WAS",
+  "display": "Kyshawn George"
+ },
+ "name_kyshawn-george": {
+  "text": "George!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kyshawn-george",
+  "teamAbbr": "WAS",
+  "display": "George"
+ },
+ "pa_aj-dybantsa": {
+  "text": "At forward... number four... AJ... DYBANTSA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "aj-dybantsa",
+  "teamAbbr": "WAS",
+  "display": "AJ Dybantsa"
+ },
+ "name_aj-dybantsa": {
+  "text": "Dybantsa!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "aj-dybantsa",
+  "teamAbbr": "WAS",
+  "display": "Dybantsa"
+ },
+ "pa_anthony-davis": {
+  "text": "At forward... number twenty-three... Anthony... DAVIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "anthony-davis",
+  "teamAbbr": "WAS",
+  "display": "Anthony Davis"
+ },
+ "name_anthony-davis": {
+  "text": "Davis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "anthony-davis",
+  "teamAbbr": "WAS",
+  "display": "Davis"
+ },
+ "pa_alex-sarr": {
+  "text": "At center... number twenty... Alex... SARR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "alex-sarr",
+  "teamAbbr": "WAS",
+  "display": "Alex Sarr"
+ },
+ "name_alex-sarr": {
+  "text": "Sarr!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "alex-sarr",
+  "teamAbbr": "WAS",
+  "display": "Sarr"
+ },
+ "pa_bilal-coulibaly": {
+  "text": "At forward... number zero... Bilal... COULIBALY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bilal-coulibaly",
+  "teamAbbr": "WAS",
+  "display": "Bilal Coulibaly"
+ },
+ "name_bilal-coulibaly": {
+  "text": "Coulibaly!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bilal-coulibaly",
+  "teamAbbr": "WAS",
+  "display": "Coulibaly"
+ },
+ "pa_deandre-ayton": {
+  "text": "At center... number eight... Deandre... AYTON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "deandre-ayton",
+  "teamAbbr": "WAS",
+  "display": "Deandre Ayton"
+ },
+ "name_deandre-ayton": {
+  "text": "Ayton!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "deandre-ayton",
+  "teamAbbr": "WAS",
+  "display": "Ayton"
+ },
+ "pa_tre-johnson": {
+  "text": "At guard... number twelve... Tre... JOHNSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tre-johnson",
+  "teamAbbr": "WAS",
+  "display": "Tre Johnson"
+ },
+ "name_tre-johnson": {
+  "text": "Johnson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tre-johnson",
+  "teamAbbr": "WAS",
+  "display": "Johnson"
+ },
+ "pa_bub-carrington": {
+  "text": "At guard... number seven... Bub... CARRINGTON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bub-carrington",
+  "teamAbbr": "WAS",
+  "display": "Bub Carrington"
+ },
+ "name_bub-carrington": {
+  "text": "Carrington!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bub-carrington",
+  "teamAbbr": "WAS",
+  "display": "Carrington"
+ },
+ "pa_khris-middleton": {
+  "text": "At forward... number twenty-two... Khris... MIDDLETON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "khris-middleton",
+  "teamAbbr": "WAS",
+  "display": "Khris Middleton"
+ },
+ "name_khris-middleton": {
+  "text": "Middleton!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "khris-middleton",
+  "teamAbbr": "WAS",
+  "display": "Middleton"
+ },
+ "pa_justin-champagnie": {
+  "text": "At forward... number nine... Justin... CHAMPAGNIE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "justin-champagnie",
+  "teamAbbr": "WAS",
+  "display": "Justin Champagnie"
+ },
+ "name_justin-champagnie": {
+  "text": "Champagnie!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "justin-champagnie",
+  "teamAbbr": "WAS",
+  "display": "Champagnie"
+ },
+ "pa_tre-mann": {
+  "text": "At guard... number one... Tre... MANN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tre-mann",
+  "teamAbbr": "WAS",
+  "display": "Tre Mann"
+ },
+ "name_tre-mann": {
+  "text": "Mann!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tre-mann",
+  "teamAbbr": "WAS",
+  "display": "Mann"
+ },
+ "pa_will-riley": {
+  "text": "At forward... number twenty-seven... Will... RILEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "will-riley",
+  "teamAbbr": "WAS",
+  "display": "Will Riley"
+ },
+ "name_will-riley": {
+  "text": "Riley!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "will-riley",
+  "teamAbbr": "WAS",
+  "display": "Riley"
+ },
+ "pa_team_den": {
+  "text": "And now... the starting lineup... for the... Denver Nuggets!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "DEN",
+  "display": "Denver Nuggets"
+ },
+ "team_den": {
+  "text": "The Denver Nuggets!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "DEN",
+  "display": "Denver Nuggets"
+ },
+ "pa_jamal-murray": {
+  "text": "At guard... number twenty-seven... Jamal... MURRAY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jamal-murray",
+  "teamAbbr": "DEN",
+  "display": "Jamal Murray"
+ },
+ "name_jamal-murray": {
+  "text": "Murray!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jamal-murray",
+  "teamAbbr": "DEN",
+  "display": "Murray"
+ },
+ "pa_christian-braun": {
+  "text": "At guard... number zero... Christian... BRAUN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "christian-braun",
+  "teamAbbr": "DEN",
+  "display": "Christian Braun"
+ },
+ "name_christian-braun": {
+  "text": "Braun!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "christian-braun",
+  "teamAbbr": "DEN",
+  "display": "Braun"
+ },
+ "pa_cameron-johnson": {
+  "text": "At forward... number twenty-three... Cameron... JOHNSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cameron-johnson",
+  "teamAbbr": "DEN",
+  "display": "Cameron Johnson"
+ },
+ "name_cameron-johnson": {
+  "text": "Johnson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cameron-johnson",
+  "teamAbbr": "DEN",
+  "display": "Johnson"
+ },
+ "pa_aaron-gordon": {
+  "text": "At forward... number thirty-two... Aaron... GORDON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "aaron-gordon",
+  "teamAbbr": "DEN",
+  "display": "Aaron Gordon"
+ },
+ "name_aaron-gordon": {
+  "text": "Gordon!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "aaron-gordon",
+  "teamAbbr": "DEN",
+  "display": "Gordon"
+ },
+ "pa_nikola-jokic": {
+  "text": "At center... number fifteen... Nikola... JOKIC!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nikola-jokic",
+  "teamAbbr": "DEN",
+  "display": "Nikola Jokic"
+ },
+ "name_nikola-jokic": {
+  "text": "Jokic!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nikola-jokic",
+  "teamAbbr": "DEN",
+  "display": "Jokic"
+ },
+ "pa_demar-derozan": {
+  "text": "At forward... number ten... DeMar... DEROZAN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "demar-derozan",
+  "teamAbbr": "DEN",
+  "display": "DeMar DeRozan"
+ },
+ "name_demar-derozan": {
+  "text": "DeRozan!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "demar-derozan",
+  "teamAbbr": "DEN",
+  "display": "DeRozan"
+ },
+ "pa_trevon-brazile": {
+  "text": "At forward... number seven... Trevon... BRAZILE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "trevon-brazile",
+  "teamAbbr": "DEN",
+  "display": "Trevon Brazile"
+ },
+ "name_trevon-brazile": {
+  "text": "Brazile!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "trevon-brazile",
+  "teamAbbr": "DEN",
+  "display": "Brazile"
+ },
+ "pa_marvin-bagley-iii": {
+  "text": "At forward... number three... Marvin... BAGLEY THE THIRD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "marvin-bagley-iii",
+  "teamAbbr": "DEN",
+  "display": "Marvin Bagley III"
+ },
+ "name_marvin-bagley-iii": {
+  "text": "Bagley!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "marvin-bagley-iii",
+  "teamAbbr": "DEN",
+  "display": "Bagley III"
+ },
+ "pa_tyus-jones": {
+  "text": "At guard... number five... Tyus... JONES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tyus-jones",
+  "teamAbbr": "DEN",
+  "display": "Tyus Jones"
+ },
+ "name_tyus-jones": {
+  "text": "Jones!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tyus-jones",
+  "teamAbbr": "DEN",
+  "display": "Jones"
+ },
+ "pa_julian-strawther": {
+  "text": "At guard... number twelve... Julian... STRAWTHER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "julian-strawther",
+  "teamAbbr": "DEN",
+  "display": "Julian Strawther"
+ },
+ "name_julian-strawther": {
+  "text": "Strawther!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "julian-strawther",
+  "teamAbbr": "DEN",
+  "display": "Strawther"
+ },
+ "pa_spencer-jones": {
+  "text": "At forward... number twenty-one... Spencer... JONES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "spencer-jones",
+  "teamAbbr": "DEN",
+  "display": "Spencer Jones"
+ },
+ "name_spencer-jones": {
+  "text": "Jones!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "spencer-jones",
+  "teamAbbr": "DEN",
+  "display": "Jones"
+ },
+ "pa_bryce-hopkins": {
+  "text": "At forward... number thirteen... Bryce... HOPKINS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bryce-hopkins",
+  "teamAbbr": "DEN",
+  "display": "Bryce Hopkins"
+ },
+ "name_bryce-hopkins": {
+  "text": "Hopkins!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bryce-hopkins",
+  "teamAbbr": "DEN",
+  "display": "Hopkins"
+ },
+ "pa_daron-holmes-ii": {
+  "text": "At forward... number fourteen... DaRon... HOLMES THE SECOND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "daron-holmes-ii",
+  "teamAbbr": "DEN",
+  "display": "DaRon Holmes II"
+ },
+ "name_daron-holmes-ii": {
+  "text": "Holmes!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "daron-holmes-ii",
+  "teamAbbr": "DEN",
+  "display": "Holmes II"
+ },
+ "pa_team_min": {
+  "text": "And now... the starting lineup... for the... Minnesota Timberwolves!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "MIN",
+  "display": "Minnesota Timberwolves"
+ },
+ "team_min": {
+  "text": "The Minnesota Timberwolves!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "MIN",
+  "display": "Minnesota Timberwolves"
+ },
+ "pa_lamelo-ball": {
+  "text": "At guard... number one... LaMelo... BALL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "lamelo-ball",
+  "teamAbbr": "MIN",
+  "display": "LaMelo Ball"
+ },
+ "name_lamelo-ball": {
+  "text": "Ball!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "lamelo-ball",
+  "teamAbbr": "MIN",
+  "display": "Ball"
+ },
+ "pa_anthony-edwards": {
+  "text": "At guard... number five... Anthony... EDWARDS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "anthony-edwards",
+  "teamAbbr": "MIN",
+  "display": "Anthony Edwards"
+ },
+ "name_anthony-edwards": {
+  "text": "Edwards!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "anthony-edwards",
+  "teamAbbr": "MIN",
+  "display": "Edwards"
+ },
+ "pa_jaden-mcdaniels": {
+  "text": "At forward... number three... Jaden... MCDANIELS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaden-mcdaniels",
+  "teamAbbr": "MIN",
+  "display": "Jaden McDaniels"
+ },
+ "name_jaden-mcdaniels": {
+  "text": "McDaniels!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaden-mcdaniels",
+  "teamAbbr": "MIN",
+  "display": "McDaniels"
+ },
+ "pa_jonathan-kuminga": {
+  "text": "At forward... number twenty-four... Jonathan... KUMINGA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jonathan-kuminga",
+  "teamAbbr": "MIN",
+  "display": "Jonathan Kuminga"
+ },
+ "name_jonathan-kuminga": {
+  "text": "Kuminga!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jonathan-kuminga",
+  "teamAbbr": "MIN",
+  "display": "Kuminga"
+ },
+ "pa_rudy-gobert": {
+  "text": "At center... number twenty-seven... Rudy... GOBERT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "rudy-gobert",
+  "teamAbbr": "MIN",
+  "display": "Rudy Gobert"
+ },
+ "name_rudy-gobert": {
+  "text": "Gobert!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "rudy-gobert",
+  "teamAbbr": "MIN",
+  "display": "Gobert"
+ },
+ "pa_ayo-dosunmu": {
+  "text": "At guard... number thirteen... Ayo... DOSUNMU!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ayo-dosunmu",
+  "teamAbbr": "MIN",
+  "display": "Ayo Dosunmu"
+ },
+ "name_ayo-dosunmu": {
+  "text": "Dosunmu!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ayo-dosunmu",
+  "teamAbbr": "MIN",
+  "display": "Dosunmu"
+ },
+ "pa_donte-divincenzo": {
+  "text": "At guard... number zero... Donte... DIVINCENZO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "donte-divincenzo",
+  "teamAbbr": "MIN",
+  "display": "Donte DiVincenzo"
+ },
+ "name_donte-divincenzo": {
+  "text": "DiVincenzo!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "donte-divincenzo",
+  "teamAbbr": "MIN",
+  "display": "DiVincenzo"
+ },
+ "pa_terrence-shannon-jr": {
+  "text": "At guard... number four... Terrence... SHANNON JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "terrence-shannon-jr",
+  "teamAbbr": "MIN",
+  "display": "Terrence Shannon Jr."
+ },
+ "name_terrence-shannon-jr": {
+  "text": "Shannon!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "terrence-shannon-jr",
+  "teamAbbr": "MIN",
+  "display": "Shannon Jr."
+ },
+ "pa_joan-beringer": {
+  "text": "At center... number nineteen... Joan... BERINGER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "joan-beringer",
+  "teamAbbr": "MIN",
+  "display": "Joan Beringer"
+ },
+ "name_joan-beringer": {
+  "text": "Beringer!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "joan-beringer",
+  "teamAbbr": "MIN",
+  "display": "Beringer"
+ },
+ "pa_trey-lyles": {
+  "text": "At forward... number forty-one... Trey... LYLES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "trey-lyles",
+  "teamAbbr": "MIN",
+  "display": "Trey Lyles"
+ },
+ "name_trey-lyles": {
+  "text": "Lyles!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "trey-lyles",
+  "teamAbbr": "MIN",
+  "display": "Lyles"
+ },
+ "pa_bones-hyland": {
+  "text": "At guard... number eight... Bones... HYLAND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bones-hyland",
+  "teamAbbr": "MIN",
+  "display": "Bones Hyland"
+ },
+ "name_bones-hyland": {
+  "text": "Hyland!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bones-hyland",
+  "teamAbbr": "MIN",
+  "display": "Hyland"
+ },
+ "pa_jaylen-clark": {
+  "text": "At guard... number seven... Jaylen... CLARK!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaylen-clark",
+  "teamAbbr": "MIN",
+  "display": "Jaylen Clark"
+ },
+ "name_jaylen-clark": {
+  "text": "Clark!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaylen-clark",
+  "teamAbbr": "MIN",
+  "display": "Clark"
+ },
+ "pa_cody-williams": {
+  "text": "At guard... number nine... Cody... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cody-williams",
+  "teamAbbr": "MIN",
+  "display": "Cody Williams"
+ },
+ "name_cody-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cody-williams",
+  "teamAbbr": "MIN",
+  "display": "Williams"
+ },
+ "pa_team_okc": {
+  "text": "And now... the starting lineup... for the... Oklahoma City Thunder!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "OKC",
+  "display": "Oklahoma City Thunder"
+ },
+ "team_okc": {
+  "text": "The Oklahoma City Thunder!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "OKC",
+  "display": "Oklahoma City Thunder"
+ },
+ "pa_shai-gilgeous-alexander": {
+  "text": "At guard... number two... Shai... GIL-JUS ALEXANDER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "shai-gilgeous-alexander",
+  "teamAbbr": "OKC",
+  "display": "Shai Gilgeous-Alexander"
+ },
+ "name_shai-gilgeous-alexander": {
+  "text": "Gil-jus Alexander!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "shai-gilgeous-alexander",
+  "teamAbbr": "OKC",
+  "display": "Gilgeous-Alexander"
+ },
+ "pa_ajay-mitchell": {
+  "text": "At guard... number twenty-five... Ajay... MITCHELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ajay-mitchell",
+  "teamAbbr": "OKC",
+  "display": "Ajay Mitchell"
+ },
+ "name_ajay-mitchell": {
+  "text": "Mitchell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ajay-mitchell",
+  "teamAbbr": "OKC",
+  "display": "Mitchell"
+ },
+ "pa_jalen-williams": {
+  "text": "At forward... number eight... Jalen... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jalen-williams",
+  "teamAbbr": "OKC",
+  "display": "Jalen Williams"
+ },
+ "name_jalen-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jalen-williams",
+  "teamAbbr": "OKC",
+  "display": "Williams"
+ },
+ "pa_chet-holmgren": {
+  "text": "At forward... number seven... Chet... HOLMGREN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "chet-holmgren",
+  "teamAbbr": "OKC",
+  "display": "Chet Holmgren"
+ },
+ "name_chet-holmgren": {
+  "text": "Holmgren!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "chet-holmgren",
+  "teamAbbr": "OKC",
+  "display": "Holmgren"
+ },
+ "pa_isaiah-hartenstein": {
+  "text": "At center... number fifty-five... Isaiah... HARTENSTEIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "isaiah-hartenstein",
+  "teamAbbr": "OKC",
+  "display": "Isaiah Hartenstein"
+ },
+ "name_isaiah-hartenstein": {
+  "text": "Hartenstein!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "isaiah-hartenstein",
+  "teamAbbr": "OKC",
+  "display": "Hartenstein"
+ },
+ "pa_alex-caruso": {
+  "text": "At guard... number nine... Alex... CARUSO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "alex-caruso",
+  "teamAbbr": "OKC",
+  "display": "Alex Caruso"
+ },
+ "name_alex-caruso": {
+  "text": "Caruso!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "alex-caruso",
+  "teamAbbr": "OKC",
+  "display": "Caruso"
+ },
+ "pa_cason-wallace": {
+  "text": "At guard... number twenty-two... Cason... WALLACE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cason-wallace",
+  "teamAbbr": "OKC",
+  "display": "Cason Wallace"
+ },
+ "name_cason-wallace": {
+  "text": "Wallace!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cason-wallace",
+  "teamAbbr": "OKC",
+  "display": "Wallace"
+ },
+ "pa_jared-mccain": {
+  "text": "At guard... number three... Jared... MCCAIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jared-mccain",
+  "teamAbbr": "OKC",
+  "display": "Jared McCain"
+ },
+ "name_jared-mccain": {
+  "text": "McCain!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jared-mccain",
+  "teamAbbr": "OKC",
+  "display": "McCain"
+ },
+ "pa_aday-mara": {
+  "text": "At center... number fifteen... Aday... MARA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "aday-mara",
+  "teamAbbr": "OKC",
+  "display": "Aday Mara"
+ },
+ "name_aday-mara": {
+  "text": "Mara!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "aday-mara",
+  "teamAbbr": "OKC",
+  "display": "Mara"
+ },
+ "pa_jaylin-williams": {
+  "text": "At center... number six... Jaylin... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaylin-williams",
+  "teamAbbr": "OKC",
+  "display": "Jaylin Williams"
+ },
+ "name_jaylin-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaylin-williams",
+  "teamAbbr": "OKC",
+  "display": "Williams"
+ },
+ "pa_kenrich-williams": {
+  "text": "At forward... number thirty-four... Kenrich... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kenrich-williams",
+  "teamAbbr": "OKC",
+  "display": "Kenrich Williams"
+ },
+ "name_kenrich-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kenrich-williams",
+  "teamAbbr": "OKC",
+  "display": "Williams"
+ },
+ "pa_bennett-stirtz": {
+  "text": "At guard... number fourteen... Bennett... STIRTZ!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bennett-stirtz",
+  "teamAbbr": "OKC",
+  "display": "Bennett Stirtz"
+ },
+ "name_bennett-stirtz": {
+  "text": "Stirtz!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bennett-stirtz",
+  "teamAbbr": "OKC",
+  "display": "Stirtz"
+ },
+ "pa_nikola-topic": {
+  "text": "At guard... number forty-four... Nikola... TOPIC!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nikola-topic",
+  "teamAbbr": "OKC",
+  "display": "Nikola Topic"
+ },
+ "name_nikola-topic": {
+  "text": "Topic!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nikola-topic",
+  "teamAbbr": "OKC",
+  "display": "Topic"
+ },
+ "pa_team_por": {
+  "text": "And now... the starting lineup... for the... Portland Trail Blazers!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "POR",
+  "display": "Portland Trail Blazers"
+ },
+ "team_por": {
+  "text": "The Portland Trail Blazers!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "POR",
+  "display": "Portland Trail Blazers"
+ },
+ "pa_damian-lillard": {
+  "text": "At guard... number zero... Damian... LILLARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "damian-lillard",
+  "teamAbbr": "POR",
+  "display": "Damian Lillard"
+ },
+ "name_damian-lillard": {
+  "text": "Lillard!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "damian-lillard",
+  "teamAbbr": "POR",
+  "display": "Lillard"
+ },
+ "pa_jrue-holiday": {
+  "text": "At guard... number five... Jrue... HOLIDAY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jrue-holiday",
+  "teamAbbr": "POR",
+  "display": "Jrue Holiday"
+ },
+ "name_jrue-holiday": {
+  "text": "Holiday!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jrue-holiday",
+  "teamAbbr": "POR",
+  "display": "Holiday"
+ },
+ "pa_deni-avdija": {
+  "text": "At forward... number eight... Deni... AVDIJA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "deni-avdija",
+  "teamAbbr": "POR",
+  "display": "Deni Avdija"
+ },
+ "name_deni-avdija": {
+  "text": "Avdija!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "deni-avdija",
+  "teamAbbr": "POR",
+  "display": "Avdija"
+ },
+ "pa_toumani-camara": {
+  "text": "At forward... number thirty-three... Toumani... CAMARA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "toumani-camara",
+  "teamAbbr": "POR",
+  "display": "Toumani Camara"
+ },
+ "name_toumani-camara": {
+  "text": "Camara!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "toumani-camara",
+  "teamAbbr": "POR",
+  "display": "Camara"
+ },
+ "pa_donovan-clingan": {
+  "text": "At center... number twenty-three... Donovan... CLINGAN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "donovan-clingan",
+  "teamAbbr": "POR",
+  "display": "Donovan Clingan"
+ },
+ "name_donovan-clingan": {
+  "text": "Clingan!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "donovan-clingan",
+  "teamAbbr": "POR",
+  "display": "Clingan"
+ },
+ "pa_ja-morant": {
+  "text": "At guard... number one... Ja... MORANT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ja-morant",
+  "teamAbbr": "POR",
+  "display": "Ja Morant"
+ },
+ "name_ja-morant": {
+  "text": "Morant!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ja-morant",
+  "teamAbbr": "POR",
+  "display": "Morant"
+ },
+ "pa_shaedon-sharpe": {
+  "text": "At guard... number seventeen... Shaedon... SHARPE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "shaedon-sharpe",
+  "teamAbbr": "POR",
+  "display": "Shaedon Sharpe"
+ },
+ "name_shaedon-sharpe": {
+  "text": "Sharpe!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "shaedon-sharpe",
+  "teamAbbr": "POR",
+  "display": "Sharpe"
+ },
+ "pa_scoot-henderson": {
+  "text": "At guard... number zero... Scoot... HENDERSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "scoot-henderson",
+  "teamAbbr": "POR",
+  "display": "Scoot Henderson"
+ },
+ "name_scoot-henderson": {
+  "text": "Henderson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "scoot-henderson",
+  "teamAbbr": "POR",
+  "display": "Henderson"
+ },
+ "pa_robert-williams-iii": {
+  "text": "At center... number thirty-five... Robert... WILLIAMS THE THIRD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "robert-williams-iii",
+  "teamAbbr": "POR",
+  "display": "Robert Williams III"
+ },
+ "name_robert-williams-iii": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "robert-williams-iii",
+  "teamAbbr": "POR",
+  "display": "Williams III"
+ },
+ "pa_sidy-cissoko": {
+  "text": "At forward... number ninety-one... Sidy... CISSOKO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "sidy-cissoko",
+  "teamAbbr": "POR",
+  "display": "Sidy Cissoko"
+ },
+ "name_sidy-cissoko": {
+  "text": "Cissoko!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "sidy-cissoko",
+  "teamAbbr": "POR",
+  "display": "Cissoko"
+ },
+ "pa_vit-krejci": {
+  "text": "At guard... number twenty-seven... Vit... KREJCI!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "vit-krejci",
+  "teamAbbr": "POR",
+  "display": "Vit Krejci"
+ },
+ "name_vit-krejci": {
+  "text": "Krejci!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "vit-krejci",
+  "teamAbbr": "POR",
+  "display": "Krejci"
+ },
+ "pa_yang-hansen": {
+  "text": "At center... number sixteen... Yang... HANSEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "yang-hansen",
+  "teamAbbr": "POR",
+  "display": "Yang Hansen"
+ },
+ "name_yang-hansen": {
+  "text": "Hansen!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "yang-hansen",
+  "teamAbbr": "POR",
+  "display": "Hansen"
+ },
+ "pa_micah-potter": {
+  "text": "At center... number nine... Micah... POTTER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "micah-potter",
+  "teamAbbr": "POR",
+  "display": "Micah Potter"
+ },
+ "name_micah-potter": {
+  "text": "Potter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "micah-potter",
+  "teamAbbr": "POR",
+  "display": "Potter"
+ },
+ "pa_team_uta": {
+  "text": "And now... the starting lineup... for the... Utah Jazz!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "UTA",
+  "display": "Utah Jazz"
+ },
+ "team_uta": {
+  "text": "The Utah Jazz!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "UTA",
+  "display": "Utah Jazz"
+ },
+ "pa_keyonte-george": {
+  "text": "At guard... number three... Keyonte... GEORGE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "keyonte-george",
+  "teamAbbr": "UTA",
+  "display": "Keyonte George"
+ },
+ "name_keyonte-george": {
+  "text": "George!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "keyonte-george",
+  "teamAbbr": "UTA",
+  "display": "George"
+ },
+ "pa_darryn-peterson": {
+  "text": "At guard... number twenty-two... Darryn... PETERSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "darryn-peterson",
+  "teamAbbr": "UTA",
+  "display": "Darryn Peterson"
+ },
+ "name_darryn-peterson": {
+  "text": "Peterson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "darryn-peterson",
+  "teamAbbr": "UTA",
+  "display": "Peterson"
+ },
+ "pa_ace-bailey": {
+  "text": "At forward... number nineteen... Ace... BAILEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ace-bailey",
+  "teamAbbr": "UTA",
+  "display": "Ace Bailey"
+ },
+ "name_ace-bailey": {
+  "text": "Bailey!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ace-bailey",
+  "teamAbbr": "UTA",
+  "display": "Bailey"
+ },
+ "pa_lauri-markkanen": {
+  "text": "At forward... number twenty-three... Lauri... MARKKANEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "lauri-markkanen",
+  "teamAbbr": "UTA",
+  "display": "Lauri Markkanen"
+ },
+ "name_lauri-markkanen": {
+  "text": "Markkanen!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "lauri-markkanen",
+  "teamAbbr": "UTA",
+  "display": "Markkanen"
+ },
+ "pa_jaren-jackson-jr": {
+  "text": "At center... number twenty... Jaren... JACKSON JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaren-jackson-jr",
+  "teamAbbr": "UTA",
+  "display": "Jaren Jackson Jr."
+ },
+ "name_jaren-jackson-jr": {
+  "text": "Jackson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaren-jackson-jr",
+  "teamAbbr": "UTA",
+  "display": "Jackson Jr."
+ },
+ "pa_brice-sensabaugh": {
+  "text": "At forward... number twenty-eight... Brice... SENSABAUGH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "brice-sensabaugh",
+  "teamAbbr": "UTA",
+  "display": "Brice Sensabaugh"
+ },
+ "name_brice-sensabaugh": {
+  "text": "Sensabaugh!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "brice-sensabaugh",
+  "teamAbbr": "UTA",
+  "display": "Sensabaugh"
+ },
+ "pa_jaxson-hayes": {
+  "text": "At center... number eleven... Jaxson... HAYES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaxson-hayes",
+  "teamAbbr": "UTA",
+  "display": "Jaxson Hayes"
+ },
+ "name_jaxson-hayes": {
+  "text": "Hayes!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaxson-hayes",
+  "teamAbbr": "UTA",
+  "display": "Hayes"
+ },
+ "pa_isaiah-collier": {
+  "text": "At guard... number eight... Isaiah... COLLIER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "isaiah-collier",
+  "teamAbbr": "UTA",
+  "display": "Isaiah Collier"
+ },
+ "name_isaiah-collier": {
+  "text": "Collier!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "isaiah-collier",
+  "teamAbbr": "UTA",
+  "display": "Collier"
+ },
+ "pa_kyle-filipowski": {
+  "text": "At center... number two... Kyle... FILIPOWSKI!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kyle-filipowski",
+  "teamAbbr": "UTA",
+  "display": "Kyle Filipowski"
+ },
+ "name_kyle-filipowski": {
+  "text": "Filipowski!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kyle-filipowski",
+  "teamAbbr": "UTA",
+  "display": "Filipowski"
+ },
+ "pa_svi-mykhailiuk": {
+  "text": "At forward... number ten... Svi... MYKHAILIUK!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "svi-mykhailiuk",
+  "teamAbbr": "UTA",
+  "display": "Svi Mykhailiuk"
+ },
+ "name_svi-mykhailiuk": {
+  "text": "Mykhailiuk!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "svi-mykhailiuk",
+  "teamAbbr": "UTA",
+  "display": "Mykhailiuk"
+ },
+ "pa_mo-bamba": {
+  "text": "At center... number forty-four... Mo... BAMBA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mo-bamba",
+  "teamAbbr": "UTA",
+  "display": "Mo Bamba"
+ },
+ "name_mo-bamba": {
+  "text": "Bamba!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mo-bamba",
+  "teamAbbr": "UTA",
+  "display": "Bamba"
+ },
+ "pa_josh-okogie": {
+  "text": "At guard... number twenty-one... Josh... OKOGIE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "josh-okogie",
+  "teamAbbr": "UTA",
+  "display": "Josh Okogie"
+ },
+ "name_josh-okogie": {
+  "text": "Okogie!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "josh-okogie",
+  "teamAbbr": "UTA",
+  "display": "Okogie"
+ },
+ "pa_josh-green": {
+  "text": "At guard... number five... Josh... GREEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "josh-green",
+  "teamAbbr": "UTA",
+  "display": "Josh Green"
+ },
+ "name_josh-green": {
+  "text": "Green!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "josh-green",
+  "teamAbbr": "UTA",
+  "display": "Green"
+ },
+ "pa_team_gsw": {
+  "text": "And now... the starting lineup... for the... Golden State Warriors!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "GSW",
+  "display": "Golden State Warriors"
+ },
+ "team_gsw": {
+  "text": "The Golden State Warriors!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "GSW",
+  "display": "Golden State Warriors"
+ },
+ "pa_stephen-curry": {
+  "text": "At guard... number thirty... Stephen... CURRY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "stephen-curry",
+  "teamAbbr": "GSW",
+  "display": "Stephen Curry"
+ },
+ "name_stephen-curry": {
+  "text": "Curry!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "stephen-curry",
+  "teamAbbr": "GSW",
+  "display": "Curry"
+ },
+ "pa_brandin-podziemski": {
+  "text": "At guard... number two... Brandin... PODZIEMSKI!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "brandin-podziemski",
+  "teamAbbr": "GSW",
+  "display": "Brandin Podziemski"
+ },
+ "name_brandin-podziemski": {
+  "text": "Podziemski!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "brandin-podziemski",
+  "teamAbbr": "GSW",
+  "display": "Podziemski"
+ },
+ "pa_yaxel-lendeborg": {
+  "text": "At forward... number one... Yaxel... LENDEBORG!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "yaxel-lendeborg",
+  "teamAbbr": "GSW",
+  "display": "Yaxel Lendeborg"
+ },
+ "name_yaxel-lendeborg": {
+  "text": "Lendeborg!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "yaxel-lendeborg",
+  "teamAbbr": "GSW",
+  "display": "Lendeborg"
+ },
+ "pa_draymond-green": {
+  "text": "At forward... number twenty-three... Draymond... GREEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "draymond-green",
+  "teamAbbr": "GSW",
+  "display": "Draymond Green"
+ },
+ "name_draymond-green": {
+  "text": "Green!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "draymond-green",
+  "teamAbbr": "GSW",
+  "display": "Green"
+ },
+ "pa_kristaps-porzingis": {
+  "text": "At center... number seven... Kristaps... PORZINGIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kristaps-porzingis",
+  "teamAbbr": "GSW",
+  "display": "Kristaps Porzingis"
+ },
+ "name_kristaps-porzingis": {
+  "text": "Porzingis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kristaps-porzingis",
+  "teamAbbr": "GSW",
+  "display": "Porzingis"
+ },
+ "pa_jimmy-butler": {
+  "text": "At forward... number ten... Jimmy... BUTLER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jimmy-butler",
+  "teamAbbr": "GSW",
+  "display": "Jimmy Butler"
+ },
+ "name_jimmy-butler": {
+  "text": "Butler!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jimmy-butler",
+  "teamAbbr": "GSW",
+  "display": "Butler"
+ },
+ "pa_moses-moody": {
+  "text": "At guard... number four... Moses... MOODY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "moses-moody",
+  "teamAbbr": "GSW",
+  "display": "Moses Moody"
+ },
+ "name_moses-moody": {
+  "text": "Moody!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "moses-moody",
+  "teamAbbr": "GSW",
+  "display": "Moody"
+ },
+ "pa_de-anthony-melton": {
+  "text": "At guard... number eight... De'Anthony... MELTON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "de-anthony-melton",
+  "teamAbbr": "GSW",
+  "display": "De'Anthony Melton"
+ },
+ "name_de-anthony-melton": {
+  "text": "Melton!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "de-anthony-melton",
+  "teamAbbr": "GSW",
+  "display": "Melton"
+ },
+ "pa_brandon-williams": {
+  "text": "At guard... number twelve... Brandon... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "brandon-williams",
+  "teamAbbr": "GSW",
+  "display": "Brandon Williams"
+ },
+ "name_brandon-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "brandon-williams",
+  "teamAbbr": "GSW",
+  "display": "Williams"
+ },
+ "pa_al-horford": {
+  "text": "At center... number twenty... Al... HORFORD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "al-horford",
+  "teamAbbr": "GSW",
+  "display": "Al Horford"
+ },
+ "name_al-horford": {
+  "text": "Horford!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "al-horford",
+  "teamAbbr": "GSW",
+  "display": "Horford"
+ },
+ "pa_gui-santos": {
+  "text": "At forward... number fifteen... Gui... SANTOS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "gui-santos",
+  "teamAbbr": "GSW",
+  "display": "Gui Santos"
+ },
+ "name_gui-santos": {
+  "text": "Santos!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "gui-santos",
+  "teamAbbr": "GSW",
+  "display": "Santos"
+ },
+ "pa_gary-payton-ii": {
+  "text": "At guard... number zero... Gary... PAYTON THE SECOND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "gary-payton-ii",
+  "teamAbbr": "GSW",
+  "display": "Gary Payton II"
+ },
+ "name_gary-payton-ii": {
+  "text": "Payton!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "gary-payton-ii",
+  "teamAbbr": "GSW",
+  "display": "Payton II"
+ },
+ "pa_georges-niang": {
+  "text": "At forward... number thirty-two... Georges... NIANG!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "georges-niang",
+  "teamAbbr": "GSW",
+  "display": "Georges Niang"
+ },
+ "name_georges-niang": {
+  "text": "Niang!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "georges-niang",
+  "teamAbbr": "GSW",
+  "display": "Niang"
+ },
+ "pa_team_lal": {
+  "text": "And now... the starting lineup... for the... Los Angeles Lakers!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "LAL",
+  "display": "Los Angeles Lakers"
+ },
+ "team_lal": {
+  "text": "The Los Angeles Lakers!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "LAL",
+  "display": "Los Angeles Lakers"
+ },
+ "pa_luka-doncic": {
+  "text": "At guard... number seventy-seven... Luka... DONCIC!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "luka-doncic",
+  "teamAbbr": "LAL",
+  "display": "Luka Doncic"
+ },
+ "name_luka-doncic": {
+  "text": "Doncic!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "luka-doncic",
+  "teamAbbr": "LAL",
+  "display": "Doncic"
+ },
+ "pa_austin-reaves": {
+  "text": "At guard... number fifteen... Austin... REAVES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "austin-reaves",
+  "teamAbbr": "LAL",
+  "display": "Austin Reaves"
+ },
+ "name_austin-reaves": {
+  "text": "Reaves!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "austin-reaves",
+  "teamAbbr": "LAL",
+  "display": "Reaves"
+ },
+ "pa_matisse-thybulle": {
+  "text": "At forward... number four... Matisse... THYBULLE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "matisse-thybulle",
+  "teamAbbr": "LAL",
+  "display": "Matisse Thybulle"
+ },
+ "name_matisse-thybulle": {
+  "text": "Thybulle!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "matisse-thybulle",
+  "teamAbbr": "LAL",
+  "display": "Thybulle"
+ },
+ "pa_jake-laravia": {
+  "text": "At forward... number twelve... Jake... LARAVIA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jake-laravia",
+  "teamAbbr": "LAL",
+  "display": "Jake LaRavia"
+ },
+ "name_jake-laravia": {
+  "text": "LaRavia!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jake-laravia",
+  "teamAbbr": "LAL",
+  "display": "LaRavia"
+ },
+ "pa_walker-kessler": {
+  "text": "At center... number fourteen... Walker... KESSLER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "walker-kessler",
+  "teamAbbr": "LAL",
+  "display": "Walker Kessler"
+ },
+ "name_walker-kessler": {
+  "text": "Kessler!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "walker-kessler",
+  "teamAbbr": "LAL",
+  "display": "Kessler"
+ },
+ "pa_quentin-grimes": {
+  "text": "At guard... number five... Quentin... GRIMES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "quentin-grimes",
+  "teamAbbr": "LAL",
+  "display": "Quentin Grimes"
+ },
+ "name_quentin-grimes": {
+  "text": "Grimes!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "quentin-grimes",
+  "teamAbbr": "LAL",
+  "display": "Grimes"
+ },
+ "pa_collin-sexton": {
+  "text": "At guard... number ten... Collin... SEXTON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "collin-sexton",
+  "teamAbbr": "LAL",
+  "display": "Collin Sexton"
+ },
+ "name_collin-sexton": {
+  "text": "Sexton!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "collin-sexton",
+  "teamAbbr": "LAL",
+  "display": "Sexton"
+ },
+ "pa_ziaire-williams": {
+  "text": "At forward... number eleven... Ziaire... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ziaire-williams",
+  "teamAbbr": "LAL",
+  "display": "Ziaire Williams"
+ },
+ "name_ziaire-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ziaire-williams",
+  "teamAbbr": "LAL",
+  "display": "Williams"
+ },
+ "pa_sandro-mamukelashvili": {
+  "text": "At forward... number fifty-four... Sandro... MAMUKELASHVILI!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "sandro-mamukelashvili",
+  "teamAbbr": "LAL",
+  "display": "Sandro Mamukelashvili"
+ },
+ "name_sandro-mamukelashvili": {
+  "text": "Mamukelashvili!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "sandro-mamukelashvili",
+  "teamAbbr": "LAL",
+  "display": "Mamukelashvili"
+ },
+ "pa_jarred-vanderbilt": {
+  "text": "At forward... number two... Jarred... VANDERBILT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jarred-vanderbilt",
+  "teamAbbr": "LAL",
+  "display": "Jarred Vanderbilt"
+ },
+ "name_jarred-vanderbilt": {
+  "text": "Vanderbilt!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jarred-vanderbilt",
+  "teamAbbr": "LAL",
+  "display": "Vanderbilt"
+ },
+ "pa_kevon-looney": {
+  "text": "At center... number fifty-five... Kevon... LOONEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kevon-looney",
+  "teamAbbr": "LAL",
+  "display": "Kevon Looney"
+ },
+ "name_kevon-looney": {
+  "text": "Looney!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kevon-looney",
+  "teamAbbr": "LAL",
+  "display": "Looney"
+ },
+ "pa_jaden-hardy": {
+  "text": "At guard... number seven... Jaden... HARDY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaden-hardy",
+  "teamAbbr": "LAL",
+  "display": "Jaden Hardy"
+ },
+ "name_jaden-hardy": {
+  "text": "Hardy!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaden-hardy",
+  "teamAbbr": "LAL",
+  "display": "Hardy"
+ },
+ "pa_bronny-james": {
+  "text": "At guard... number nine... Bronny... JAMES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bronny-james",
+  "teamAbbr": "LAL",
+  "display": "Bronny James"
+ },
+ "name_bronny-james": {
+  "text": "James!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bronny-james",
+  "teamAbbr": "LAL",
+  "display": "James"
+ },
+ "pa_team_lac": {
+  "text": "And now... the starting lineup... for the... Los Angeles Clippers!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "LAC",
+  "display": "Los Angeles Clippers"
+ },
+ "team_lac": {
+  "text": "The Los Angeles Clippers!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "LAC",
+  "display": "Los Angeles Clippers"
+ },
+ "pa_darius-garland": {
+  "text": "At guard... number ten... Darius... GARLAND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "darius-garland",
+  "teamAbbr": "LAC",
+  "display": "Darius Garland"
+ },
+ "name_darius-garland": {
+  "text": "Garland!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "darius-garland",
+  "teamAbbr": "LAC",
+  "display": "Garland"
+ },
+ "pa_kris-dunn": {
+  "text": "At guard... number eight... Kris... DUNN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kris-dunn",
+  "teamAbbr": "LAC",
+  "display": "Kris Dunn"
+ },
+ "name_kris-dunn": {
+  "text": "Dunn!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kris-dunn",
+  "teamAbbr": "LAC",
+  "display": "Dunn"
+ },
+ "pa_brandon-ingram": {
+  "text": "At forward... number seven... Brandon... INGRAM!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "brandon-ingram",
+  "teamAbbr": "LAC",
+  "display": "Brandon Ingram"
+ },
+ "name_brandon-ingram": {
+  "text": "Ingram!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "brandon-ingram",
+  "teamAbbr": "LAC",
+  "display": "Ingram"
+ },
+ "pa_rui-hachimura": {
+  "text": "At forward... number twenty-eight... Rui... HAH-CHEE-MOO-RA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "rui-hachimura",
+  "teamAbbr": "LAC",
+  "display": "Rui Hachimura"
+ },
+ "name_rui-hachimura": {
+  "text": "Hah-chee-moo-ra!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "rui-hachimura",
+  "teamAbbr": "LAC",
+  "display": "Hachimura"
+ },
+ "pa_isaiah-jackson": {
+  "text": "At center... number twenty-three... Isaiah... JACKSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "isaiah-jackson",
+  "teamAbbr": "LAC",
+  "display": "Isaiah Jackson"
+ },
+ "name_isaiah-jackson": {
+  "text": "Jackson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "isaiah-jackson",
+  "teamAbbr": "LAC",
+  "display": "Jackson"
+ },
+ "pa_derrick-jones-jr": {
+  "text": "At forward... number five... Derrick... JONES JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "derrick-jones-jr",
+  "teamAbbr": "LAC",
+  "display": "Derrick Jones Jr."
+ },
+ "name_derrick-jones-jr": {
+  "text": "Jones!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "derrick-jones-jr",
+  "teamAbbr": "LAC",
+  "display": "Jones Jr."
+ },
+ "pa_brook-lopez": {
+  "text": "At center... number eleven... Brook... LOPEZ!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "brook-lopez",
+  "teamAbbr": "LAC",
+  "display": "Brook Lopez"
+ },
+ "name_brook-lopez": {
+  "text": "Lopez!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "brook-lopez",
+  "teamAbbr": "LAC",
+  "display": "Lopez"
+ },
+ "pa_keaton-wagler": {
+  "text": "At guard... number one... Keaton... WAGLER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "keaton-wagler",
+  "teamAbbr": "LAC",
+  "display": "Keaton Wagler"
+ },
+ "name_keaton-wagler": {
+  "text": "Wagler!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "keaton-wagler",
+  "teamAbbr": "LAC",
+  "display": "Wagler"
+ },
+ "pa_max-strus": {
+  "text": "At forward... number thirty-one... Max... STRUS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "max-strus",
+  "teamAbbr": "LAC",
+  "display": "Max Strus"
+ },
+ "name_max-strus": {
+  "text": "Strus!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "max-strus",
+  "teamAbbr": "LAC",
+  "display": "Strus"
+ },
+ "pa_kobe-sanders": {
+  "text": "At guard... number four... Kobe... SANDERS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kobe-sanders",
+  "teamAbbr": "LAC",
+  "display": "Kobe Sanders"
+ },
+ "name_kobe-sanders": {
+  "text": "Sanders!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kobe-sanders",
+  "teamAbbr": "LAC",
+  "display": "Sanders"
+ },
+ "pa_bradley-beal": {
+  "text": "At guard... number three... Bradley... BEAL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bradley-beal",
+  "teamAbbr": "LAC",
+  "display": "Bradley Beal"
+ },
+ "name_bradley-beal": {
+  "text": "Beal!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bradley-beal",
+  "teamAbbr": "LAC",
+  "display": "Beal"
+ },
+ "pa_gradey-dick": {
+  "text": "At guard... number nine... Gradey... DICK!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "gradey-dick",
+  "teamAbbr": "LAC",
+  "display": "Gradey Dick"
+ },
+ "name_gradey-dick": {
+  "text": "Dick!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "gradey-dick",
+  "teamAbbr": "LAC",
+  "display": "Dick"
+ },
+ "pa_baba-miller": {
+  "text": "At forward... number eighteen... Baba... MILLER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "baba-miller",
+  "teamAbbr": "LAC",
+  "display": "Baba Miller"
+ },
+ "name_baba-miller": {
+  "text": "Miller!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "baba-miller",
+  "teamAbbr": "LAC",
+  "display": "Miller"
+ },
+ "pa_team_phx": {
+  "text": "And now... the starting lineup... for the... Phoenix Suns!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "PHX",
+  "display": "Phoenix Suns"
+ },
+ "team_phx": {
+  "text": "The Phoenix Suns!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "PHX",
+  "display": "Phoenix Suns"
+ },
+ "pa_devin-booker": {
+  "text": "At guard... number fifteen... Devin... BOOKER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "devin-booker",
+  "teamAbbr": "PHX",
+  "display": "Devin Booker"
+ },
+ "name_devin-booker": {
+  "text": "Booker!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "devin-booker",
+  "teamAbbr": "PHX",
+  "display": "Booker"
+ },
+ "pa_jalen-green": {
+  "text": "At guard... number four... Jalen... GREEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jalen-green",
+  "teamAbbr": "PHX",
+  "display": "Jalen Green"
+ },
+ "name_jalen-green": {
+  "text": "Green!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jalen-green",
+  "teamAbbr": "PHX",
+  "display": "Green"
+ },
+ "pa_dillon-brooks": {
+  "text": "At forward... number three... Dillon... BROOKS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dillon-brooks",
+  "teamAbbr": "PHX",
+  "display": "Dillon Brooks"
+ },
+ "name_dillon-brooks": {
+  "text": "Brooks!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dillon-brooks",
+  "teamAbbr": "PHX",
+  "display": "Brooks"
+ },
+ "pa_miles-bridges": {
+  "text": "At forward... number twenty-two... Miles... BRIDGES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "miles-bridges",
+  "teamAbbr": "PHX",
+  "display": "Miles Bridges"
+ },
+ "name_miles-bridges": {
+  "text": "Bridges!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "miles-bridges",
+  "teamAbbr": "PHX",
+  "display": "Bridges"
+ },
+ "pa_khaman-maluach": {
+  "text": "At center... number ten... Khaman... MALUACH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "khaman-maluach",
+  "teamAbbr": "PHX",
+  "display": "Khaman Maluach"
+ },
+ "name_khaman-maluach": {
+  "text": "Maluach!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "khaman-maluach",
+  "teamAbbr": "PHX",
+  "display": "Maluach"
+ },
+ "pa_mark-williams": {
+  "text": "At center... number twenty-five... Mark... WILLIAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "mark-williams",
+  "teamAbbr": "PHX",
+  "display": "Mark Williams"
+ },
+ "name_mark-williams": {
+  "text": "Williams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "mark-williams",
+  "teamAbbr": "PHX",
+  "display": "Williams"
+ },
+ "pa_collin-gillespie": {
+  "text": "At guard... number twelve... Collin... GILLESPIE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "collin-gillespie",
+  "teamAbbr": "PHX",
+  "display": "Collin Gillespie"
+ },
+ "name_collin-gillespie": {
+  "text": "Gillespie!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "collin-gillespie",
+  "teamAbbr": "PHX",
+  "display": "Gillespie"
+ },
+ "pa_luke-kennard": {
+  "text": "At guard... number eight... Luke... KENNARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "luke-kennard",
+  "teamAbbr": "PHX",
+  "display": "Luke Kennard"
+ },
+ "name_luke-kennard": {
+  "text": "Kennard!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "luke-kennard",
+  "teamAbbr": "PHX",
+  "display": "Kennard"
+ },
+ "pa_jordan-goodwin": {
+  "text": "At guard... number twenty-three... Jordan... GOODWIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jordan-goodwin",
+  "teamAbbr": "PHX",
+  "display": "Jordan Goodwin"
+ },
+ "name_jordan-goodwin": {
+  "text": "Goodwin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jordan-goodwin",
+  "teamAbbr": "PHX",
+  "display": "Goodwin"
+ },
+ "pa_oso-ighodaro": {
+  "text": "At forward... number eleven... Oso... IGHODARO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "oso-ighodaro",
+  "teamAbbr": "PHX",
+  "display": "Oso Ighodaro"
+ },
+ "name_oso-ighodaro": {
+  "text": "Ighodaro!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "oso-ighodaro",
+  "teamAbbr": "PHX",
+  "display": "Ighodaro"
+ },
+ "pa_ryan-dunn": {
+  "text": "At forward... number zero... Ryan... DUNN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ryan-dunn",
+  "teamAbbr": "PHX",
+  "display": "Ryan Dunn"
+ },
+ "name_ryan-dunn": {
+  "text": "Dunn!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ryan-dunn",
+  "teamAbbr": "PHX",
+  "display": "Dunn"
+ },
+ "pa_duop-reath": {
+  "text": "At center... number twenty-six... Duop... REATH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "duop-reath",
+  "teamAbbr": "PHX",
+  "display": "Duop Reath"
+ },
+ "name_duop-reath": {
+  "text": "Reath!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "duop-reath",
+  "teamAbbr": "PHX",
+  "display": "Reath"
+ },
+ "pa_koa-peat": {
+  "text": "At forward... number eighteen... Koa... PEAT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "koa-peat",
+  "teamAbbr": "PHX",
+  "display": "Koa Peat"
+ },
+ "name_koa-peat": {
+  "text": "Peat!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "koa-peat",
+  "teamAbbr": "PHX",
+  "display": "Peat"
+ },
+ "pa_team_sac": {
+  "text": "And now... the starting lineup... for the... Sacramento Kings!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "SAC",
+  "display": "Sacramento Kings"
+ },
+ "team_sac": {
+  "text": "The Sacramento Kings!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "SAC",
+  "display": "Sacramento Kings"
+ },
+ "pa_darius-acuff-jr": {
+  "text": "At guard... number five... Darius... ACUFF JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "darius-acuff-jr",
+  "teamAbbr": "SAC",
+  "display": "Darius Acuff Jr."
+ },
+ "name_darius-acuff-jr": {
+  "text": "Acuff!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "darius-acuff-jr",
+  "teamAbbr": "SAC",
+  "display": "Acuff Jr."
+ },
+ "pa_zach-lavine": {
+  "text": "At guard... number eight... Zach... LAVINE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "zach-lavine",
+  "teamAbbr": "SAC",
+  "display": "Zach LaVine"
+ },
+ "name_zach-lavine": {
+  "text": "LaVine!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "zach-lavine",
+  "teamAbbr": "SAC",
+  "display": "LaVine"
+ },
+ "pa_de-andre-hunter": {
+  "text": "At forward... number fifteen... De'Andre... HUNTER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "de-andre-hunter",
+  "teamAbbr": "SAC",
+  "display": "De'Andre Hunter"
+ },
+ "name_de-andre-hunter": {
+  "text": "Hunter!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "de-andre-hunter",
+  "teamAbbr": "SAC",
+  "display": "Hunter"
+ },
+ "pa_keegan-murray": {
+  "text": "At forward... number thirteen... Keegan... MURRAY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "keegan-murray",
+  "teamAbbr": "SAC",
+  "display": "Keegan Murray"
+ },
+ "name_keegan-murray": {
+  "text": "Murray!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "keegan-murray",
+  "teamAbbr": "SAC",
+  "display": "Murray"
+ },
+ "pa_domantas-sabonis": {
+  "text": "At center... number eleven... Domantas... SABONIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "domantas-sabonis",
+  "teamAbbr": "SAC",
+  "display": "Domantas Sabonis"
+ },
+ "name_domantas-sabonis": {
+  "text": "Sabonis!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "domantas-sabonis",
+  "teamAbbr": "SAC",
+  "display": "Sabonis"
+ },
+ "pa_malik-monk": {
+  "text": "At guard... number zero... Malik... MONK!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "malik-monk",
+  "teamAbbr": "SAC",
+  "display": "Malik Monk"
+ },
+ "name_malik-monk": {
+  "text": "Monk!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "malik-monk",
+  "teamAbbr": "SAC",
+  "display": "Monk"
+ },
+ "pa_precious-achiuwa": {
+  "text": "At forward... number nine... Precious... ACHIUWA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "precious-achiuwa",
+  "teamAbbr": "SAC",
+  "display": "Precious Achiuwa"
+ },
+ "name_precious-achiuwa": {
+  "text": "Achiuwa!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "precious-achiuwa",
+  "teamAbbr": "SAC",
+  "display": "Achiuwa"
+ },
+ "pa_maxime-raynaud": {
+  "text": "At center... number forty-two... Maxime... RAYNAUD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "maxime-raynaud",
+  "teamAbbr": "SAC",
+  "display": "Maxime Raynaud"
+ },
+ "name_maxime-raynaud": {
+  "text": "Raynaud!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "maxime-raynaud",
+  "teamAbbr": "SAC",
+  "display": "Raynaud"
+ },
+ "pa_nique-clifford": {
+  "text": "At guard... number ten... Nique... CLIFFORD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "nique-clifford",
+  "teamAbbr": "SAC",
+  "display": "Nique Clifford"
+ },
+ "name_nique-clifford": {
+  "text": "Clifford!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "nique-clifford",
+  "teamAbbr": "SAC",
+  "display": "Clifford"
+ },
+ "pa_ben-simmons": {
+  "text": "At guard... number twenty-five... Ben... SIMMONS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ben-simmons",
+  "teamAbbr": "SAC",
+  "display": "Ben Simmons"
+ },
+ "name_ben-simmons": {
+  "text": "Simmons!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ben-simmons",
+  "teamAbbr": "SAC",
+  "display": "Simmons"
+ },
+ "pa_jonathan-mogbo": {
+  "text": "At forward... number twenty-two... Jonathan... MOGBO!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jonathan-mogbo",
+  "teamAbbr": "SAC",
+  "display": "Jonathan Mogbo"
+ },
+ "name_jonathan-mogbo": {
+  "text": "Mogbo!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jonathan-mogbo",
+  "teamAbbr": "SAC",
+  "display": "Mogbo"
+ },
+ "pa_emanuel-sharp": {
+  "text": "At guard... number thirty-four... Emanuel... SHARP!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "emanuel-sharp",
+  "teamAbbr": "SAC",
+  "display": "Emanuel Sharp"
+ },
+ "name_emanuel-sharp": {
+  "text": "Sharp!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "emanuel-sharp",
+  "teamAbbr": "SAC",
+  "display": "Sharp"
+ },
+ "pa_leaky-black": {
+  "text": "At forward... number nineteen... Leaky... BLACK!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "leaky-black",
+  "teamAbbr": "SAC",
+  "display": "Leaky Black"
+ },
+ "name_leaky-black": {
+  "text": "Black!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "leaky-black",
+  "teamAbbr": "SAC",
+  "display": "Black"
+ },
+ "pa_team_dal": {
+  "text": "And now... the starting lineup... for the... Dallas Mavericks!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "DAL",
+  "display": "Dallas Mavericks"
+ },
+ "team_dal": {
+  "text": "The Dallas Mavericks!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "DAL",
+  "display": "Dallas Mavericks"
+ },
+ "pa_kyrie-irving": {
+  "text": "At guard... number eleven... Kyrie... IRVING!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kyrie-irving",
+  "teamAbbr": "DAL",
+  "display": "Kyrie Irving"
+ },
+ "name_kyrie-irving": {
+  "text": "Irving!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kyrie-irving",
+  "teamAbbr": "DAL",
+  "display": "Irving"
+ },
+ "pa_max-christie": {
+  "text": "At guard... number zero... Max... CHRISTIE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "max-christie",
+  "teamAbbr": "DAL",
+  "display": "Max Christie"
+ },
+ "name_max-christie": {
+  "text": "Christie!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "max-christie",
+  "teamAbbr": "DAL",
+  "display": "Christie"
+ },
+ "pa_cooper-flagg": {
+  "text": "At forward... number thirty-two... Cooper... FLAGG!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cooper-flagg",
+  "teamAbbr": "DAL",
+  "display": "Cooper Flagg"
+ },
+ "name_cooper-flagg": {
+  "text": "Flagg!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cooper-flagg",
+  "teamAbbr": "DAL",
+  "display": "Flagg"
+ },
+ "pa_pj-washington": {
+  "text": "At forward... number twenty-five... PJ... WASHINGTON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "pj-washington",
+  "teamAbbr": "DAL",
+  "display": "PJ Washington"
+ },
+ "name_pj-washington": {
+  "text": "Washington!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "pj-washington",
+  "teamAbbr": "DAL",
+  "display": "Washington"
+ },
+ "pa_daniel-gafford": {
+  "text": "At center... number twenty-one... Daniel... GAFFORD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "daniel-gafford",
+  "teamAbbr": "DAL",
+  "display": "Daniel Gafford"
+ },
+ "name_daniel-gafford": {
+  "text": "Gafford!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "daniel-gafford",
+  "teamAbbr": "DAL",
+  "display": "Gafford"
+ },
+ "pa_naji-marshall": {
+  "text": "At forward... number three... Naji... MARSHALL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "naji-marshall",
+  "teamAbbr": "DAL",
+  "display": "Naji Marshall"
+ },
+ "name_naji-marshall": {
+  "text": "Marshall!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "naji-marshall",
+  "teamAbbr": "DAL",
+  "display": "Marshall"
+ },
+ "pa_zaccharie-risacher": {
+  "text": "At forward... number ten... Zaccharie... RISACHER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "zaccharie-risacher",
+  "teamAbbr": "DAL",
+  "display": "Zaccharie Risacher"
+ },
+ "name_zaccharie-risacher": {
+  "text": "Risacher!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "zaccharie-risacher",
+  "teamAbbr": "DAL",
+  "display": "Risacher"
+ },
+ "pa_santi-aldama": {
+  "text": "At forward... number seven... Santi... ALDAMA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "santi-aldama",
+  "teamAbbr": "DAL",
+  "display": "Santi Aldama"
+ },
+ "name_santi-aldama": {
+  "text": "Aldama!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "santi-aldama",
+  "teamAbbr": "DAL",
+  "display": "Aldama"
+ },
+ "pa_dereck-lively-ii": {
+  "text": "At center... number two... Dereck... LIVELY THE SECOND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dereck-lively-ii",
+  "teamAbbr": "DAL",
+  "display": "Dereck Lively II"
+ },
+ "name_dereck-lively-ii": {
+  "text": "Lively!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dereck-lively-ii",
+  "teamAbbr": "DAL",
+  "display": "Lively II"
+ },
+ "pa_caleb-martin": {
+  "text": "At guard... number sixteen... Caleb... MARTIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "caleb-martin",
+  "teamAbbr": "DAL",
+  "display": "Caleb Martin"
+ },
+ "name_caleb-martin": {
+  "text": "Martin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "caleb-martin",
+  "teamAbbr": "DAL",
+  "display": "Martin"
+ },
+ "pa_marcus-sasser": {
+  "text": "At guard... number eight... Marcus... SASSER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "marcus-sasser",
+  "teamAbbr": "DAL",
+  "display": "Marcus Sasser"
+ },
+ "name_marcus-sasser": {
+  "text": "Sasser!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "marcus-sasser",
+  "teamAbbr": "DAL",
+  "display": "Sasser"
+ },
+ "pa_morez-johnson-jr": {
+  "text": "At center... number fourteen... Morez... JOHNSON JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "morez-johnson-jr",
+  "teamAbbr": "DAL",
+  "display": "Morez Johnson Jr."
+ },
+ "name_morez-johnson-jr": {
+  "text": "Johnson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "morez-johnson-jr",
+  "teamAbbr": "DAL",
+  "display": "Johnson Jr."
+ },
+ "pa_sergio-de-larrea": {
+  "text": "At guard... number fifty-five... Sergio... DE LARREA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "sergio-de-larrea",
+  "teamAbbr": "DAL",
+  "display": "Sergio de Larrea"
+ },
+ "name_sergio-de-larrea": {
+  "text": "de Larrea!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "sergio-de-larrea",
+  "teamAbbr": "DAL",
+  "display": "de Larrea"
+ },
+ "pa_team_hou": {
+  "text": "And now... the starting lineup... for the... Houston Rockets!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "HOU",
+  "display": "Houston Rockets"
+ },
+ "team_hou": {
+  "text": "The Houston Rockets!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "HOU",
+  "display": "Houston Rockets"
+ },
+ "pa_fred-vanvleet": {
+  "text": "At guard... number five... Fred... VANVLEET!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "fred-vanvleet",
+  "teamAbbr": "HOU",
+  "display": "Fred VanVleet"
+ },
+ "name_fred-vanvleet": {
+  "text": "VanVleet!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "fred-vanvleet",
+  "teamAbbr": "HOU",
+  "display": "VanVleet"
+ },
+ "pa_amen-thompson": {
+  "text": "At guard... number one... Amen... THOMPSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "amen-thompson",
+  "teamAbbr": "HOU",
+  "display": "Amen Thompson"
+ },
+ "name_amen-thompson": {
+  "text": "Thompson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "amen-thompson",
+  "teamAbbr": "HOU",
+  "display": "Thompson"
+ },
+ "pa_kevin-durant": {
+  "text": "At forward... number seven... Kevin... DURANT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kevin-durant",
+  "teamAbbr": "HOU",
+  "display": "Kevin Durant"
+ },
+ "name_kevin-durant": {
+  "text": "Durant!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kevin-durant",
+  "teamAbbr": "HOU",
+  "display": "Durant"
+ },
+ "pa_jabari-smith-jr": {
+  "text": "At forward... number ten... Jabari... SMITH JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jabari-smith-jr",
+  "teamAbbr": "HOU",
+  "display": "Jabari Smith Jr."
+ },
+ "name_jabari-smith-jr": {
+  "text": "Smith!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jabari-smith-jr",
+  "teamAbbr": "HOU",
+  "display": "Smith Jr."
+ },
+ "pa_alperen-sengun": {
+  "text": "At center... number twenty-eight... Alperen... SHEN-GOON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "alperen-sengun",
+  "teamAbbr": "HOU",
+  "display": "Alperen Şengün"
+ },
+ "name_alperen-sengun": {
+  "text": "Shen-goon!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "alperen-sengun",
+  "teamAbbr": "HOU",
+  "display": "Şengün"
+ },
+ "pa_tari-eason": {
+  "text": "At forward... number seventeen... Tari... EASON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tari-eason",
+  "teamAbbr": "HOU",
+  "display": "Tari Eason"
+ },
+ "name_tari-eason": {
+  "text": "Eason!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tari-eason",
+  "teamAbbr": "HOU",
+  "display": "Eason"
+ },
+ "pa_reed-sheppard": {
+  "text": "At guard... number fifteen... Reed... SHEPPARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "reed-sheppard",
+  "teamAbbr": "HOU",
+  "display": "Reed Sheppard"
+ },
+ "name_reed-sheppard": {
+  "text": "Sheppard!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "reed-sheppard",
+  "teamAbbr": "HOU",
+  "display": "Sheppard"
+ },
+ "pa_marcus-smart": {
+  "text": "At guard... number thirty-six... Marcus... SMART!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "marcus-smart",
+  "teamAbbr": "HOU",
+  "display": "Marcus Smart"
+ },
+ "name_marcus-smart": {
+  "text": "Smart!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "marcus-smart",
+  "teamAbbr": "HOU",
+  "display": "Smart"
+ },
+ "pa_clint-capela": {
+  "text": "At center... number thirty... Clint... CAPELA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "clint-capela",
+  "teamAbbr": "HOU",
+  "display": "Clint Capela"
+ },
+ "name_clint-capela": {
+  "text": "Capela!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "clint-capela",
+  "teamAbbr": "HOU",
+  "display": "Capela"
+ },
+ "pa_bogdan-bogdanovic": {
+  "text": "At guard... number thirty-one... Bogdan... BOG-DAN-OH-VICH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bogdan-bogdanovic",
+  "teamAbbr": "HOU",
+  "display": "Bogdan Bogdanović"
+ },
+ "name_bogdan-bogdanovic": {
+  "text": "Bog-dan-oh-vich!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bogdan-bogdanovic",
+  "teamAbbr": "HOU",
+  "display": "Bogdanović"
+ },
+ "pa_steven-adams": {
+  "text": "At center... number twelve... Steven... ADAMS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "steven-adams",
+  "teamAbbr": "HOU",
+  "display": "Steven Adams"
+ },
+ "name_steven-adams": {
+  "text": "Adams!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "steven-adams",
+  "teamAbbr": "HOU",
+  "display": "Adams"
+ },
+ "pa_jae-sean-tate": {
+  "text": "At forward... number eight... Jae'Sean... TATE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jae-sean-tate",
+  "teamAbbr": "HOU",
+  "display": "Jae'Sean Tate"
+ },
+ "name_jae-sean-tate": {
+  "text": "Tate!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jae-sean-tate",
+  "teamAbbr": "HOU",
+  "display": "Tate"
+ },
+ "pa_isaiah-crawford": {
+  "text": "At forward... number twenty-seven... Isaiah... CRAWFORD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "isaiah-crawford",
+  "teamAbbr": "HOU",
+  "display": "Isaiah Crawford"
+ },
+ "name_isaiah-crawford": {
+  "text": "Crawford!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "isaiah-crawford",
+  "teamAbbr": "HOU",
+  "display": "Crawford"
+ },
+ "pa_team_mem": {
+  "text": "And now... the starting lineup... for the... Memphis Grizzlies!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "MEM",
+  "display": "Memphis Grizzlies"
+ },
+ "team_mem": {
+  "text": "The Memphis Grizzlies!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "MEM",
+  "display": "Memphis Grizzlies"
+ },
+ "pa_ty-jerome": {
+  "text": "At guard... number two... Ty... JEROME!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "ty-jerome",
+  "teamAbbr": "MEM",
+  "display": "Ty Jerome"
+ },
+ "name_ty-jerome": {
+  "text": "Jerome!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "ty-jerome",
+  "teamAbbr": "MEM",
+  "display": "Jerome"
+ },
+ "pa_jaylen-wells": {
+  "text": "At guard... number zero... Jaylen... WELLS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jaylen-wells",
+  "teamAbbr": "MEM",
+  "display": "Jaylen Wells"
+ },
+ "name_jaylen-wells": {
+  "text": "Wells!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jaylen-wells",
+  "teamAbbr": "MEM",
+  "display": "Wells"
+ },
+ "pa_cedric-coward": {
+  "text": "At forward... number twenty-three... Cedric... COWARD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cedric-coward",
+  "teamAbbr": "MEM",
+  "display": "Cedric Coward"
+ },
+ "name_cedric-coward": {
+  "text": "Coward!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cedric-coward",
+  "teamAbbr": "MEM",
+  "display": "Coward"
+ },
+ "pa_cameron-boozer": {
+  "text": "At forward... number twenty-seven... Cameron... BOOZER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cameron-boozer",
+  "teamAbbr": "MEM",
+  "display": "Cameron Boozer"
+ },
+ "name_cameron-boozer": {
+  "text": "Boozer!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cameron-boozer",
+  "teamAbbr": "MEM",
+  "display": "Boozer"
+ },
+ "pa_zach-edey": {
+  "text": "At center... number fourteen... Zach... EDEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "zach-edey",
+  "teamAbbr": "MEM",
+  "display": "Zach Edey"
+ },
+ "name_zach-edey": {
+  "text": "Edey!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "zach-edey",
+  "teamAbbr": "MEM",
+  "display": "Edey"
+ },
+ "pa_jerami-grant": {
+  "text": "At forward... number three... Jerami... GRANT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jerami-grant",
+  "teamAbbr": "MEM",
+  "display": "Jerami Grant"
+ },
+ "name_jerami-grant": {
+  "text": "Grant!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jerami-grant",
+  "teamAbbr": "MEM",
+  "display": "Grant"
+ },
+ "pa_cam-spencer": {
+  "text": "At guard... number twenty-four... Cam... SPENCER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "cam-spencer",
+  "teamAbbr": "MEM",
+  "display": "Cam Spencer"
+ },
+ "name_cam-spencer": {
+  "text": "Spencer!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "cam-spencer",
+  "teamAbbr": "MEM",
+  "display": "Spencer"
+ },
+ "pa_isaiah-stewart": {
+  "text": "At center... number twenty-eight... Isaiah... STEWART!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "isaiah-stewart",
+  "teamAbbr": "MEM",
+  "display": "Isaiah Stewart"
+ },
+ "name_isaiah-stewart": {
+  "text": "Stewart!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "isaiah-stewart",
+  "teamAbbr": "MEM",
+  "display": "Stewart"
+ },
+ "pa_gg-jackson-ii": {
+  "text": "At forward... number forty-five... GG... JACKSON THE SECOND!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "gg-jackson-ii",
+  "teamAbbr": "MEM",
+  "display": "GG Jackson II"
+ },
+ "name_gg-jackson-ii": {
+  "text": "Jackson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "gg-jackson-ii",
+  "teamAbbr": "MEM",
+  "display": "Jackson II"
+ },
+ "pa_quinten-post": {
+  "text": "At center... number forty-one... Quinten... POST!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "quinten-post",
+  "teamAbbr": "MEM",
+  "display": "Quinten Post"
+ },
+ "name_quinten-post": {
+  "text": "Post!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "quinten-post",
+  "teamAbbr": "MEM",
+  "display": "Post"
+ },
+ "pa_scotty-pippen-jr": {
+  "text": "At guard... number one... Scotty... PIPPEN JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "scotty-pippen-jr",
+  "teamAbbr": "MEM",
+  "display": "Scotty Pippen Jr."
+ },
+ "name_scotty-pippen-jr": {
+  "text": "Pippen!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "scotty-pippen-jr",
+  "teamAbbr": "MEM",
+  "display": "Pippen Jr."
+ },
+ "pa_kris-murray": {
+  "text": "At forward... number seventeen... Kris... MURRAY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "kris-murray",
+  "teamAbbr": "MEM",
+  "display": "Kris Murray"
+ },
+ "name_kris-murray": {
+  "text": "Murray!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "kris-murray",
+  "teamAbbr": "MEM",
+  "display": "Murray"
+ },
+ "pa_taylor-hendricks": {
+  "text": "At forward... number twenty-two... Taylor... HENDRICKS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "taylor-hendricks",
+  "teamAbbr": "MEM",
+  "display": "Taylor Hendricks"
+ },
+ "name_taylor-hendricks": {
+  "text": "Hendricks!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "taylor-hendricks",
+  "teamAbbr": "MEM",
+  "display": "Hendricks"
+ },
+ "pa_team_nop": {
+  "text": "And now... the starting lineup... for the... New Orleans Pelicans!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "NOP",
+  "display": "New Orleans Pelicans"
+ },
+ "team_nop": {
+  "text": "The New Orleans Pelicans!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "NOP",
+  "display": "New Orleans Pelicans"
+ },
+ "pa_dejounte-murray": {
+  "text": "At guard... number five... Dejounte... MURRAY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dejounte-murray",
+  "teamAbbr": "NOP",
+  "display": "Dejounte Murray"
+ },
+ "name_dejounte-murray": {
+  "text": "Murray!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dejounte-murray",
+  "teamAbbr": "NOP",
+  "display": "Murray"
+ },
+ "pa_jeremiah-fears": {
+  "text": "At guard... number zero... Jeremiah... FEARS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jeremiah-fears",
+  "teamAbbr": "NOP",
+  "display": "Jeremiah Fears"
+ },
+ "name_jeremiah-fears": {
+  "text": "Fears!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jeremiah-fears",
+  "teamAbbr": "NOP",
+  "display": "Fears"
+ },
+ "pa_trey-murphy-iii": {
+  "text": "At forward... number twenty-five... Trey... MURPHY THE THIRD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "trey-murphy-iii",
+  "teamAbbr": "NOP",
+  "display": "Trey Murphy III"
+ },
+ "name_trey-murphy-iii": {
+  "text": "Murphy!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "trey-murphy-iii",
+  "teamAbbr": "NOP",
+  "display": "Murphy III"
+ },
+ "pa_zion-williamson": {
+  "text": "At forward... number one... Zion... WILLIAMSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "zion-williamson",
+  "teamAbbr": "NOP",
+  "display": "Zion Williamson"
+ },
+ "name_zion-williamson": {
+  "text": "Williamson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "zion-williamson",
+  "teamAbbr": "NOP",
+  "display": "Williamson"
+ },
+ "pa_karlo-matkovic": {
+  "text": "At center... number seventeen... Karlo... MAT-KO-VICH!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "karlo-matkovic",
+  "teamAbbr": "NOP",
+  "display": "Karlo Matković"
+ },
+ "name_karlo-matkovic": {
+  "text": "Mat-ko-vich!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "karlo-matkovic",
+  "teamAbbr": "NOP",
+  "display": "Matković"
+ },
+ "pa_saddiq-bey": {
+  "text": "At forward... number forty-one... Saddiq... BEY!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "saddiq-bey",
+  "teamAbbr": "NOP",
+  "display": "Saddiq Bey"
+ },
+ "name_saddiq-bey": {
+  "text": "Bey!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "saddiq-bey",
+  "teamAbbr": "NOP",
+  "display": "Bey"
+ },
+ "pa_derik-queen": {
+  "text": "At center... number twenty-two... Derik... QUEEN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "derik-queen",
+  "teamAbbr": "NOP",
+  "display": "Derik Queen"
+ },
+ "name_derik-queen": {
+  "text": "Queen!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "derik-queen",
+  "teamAbbr": "NOP",
+  "display": "Queen"
+ },
+ "pa_herbert-jones": {
+  "text": "At forward... number two... Herbert... JONES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "herbert-jones",
+  "teamAbbr": "NOP",
+  "display": "Herbert Jones"
+ },
+ "name_herbert-jones": {
+  "text": "Jones!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "herbert-jones",
+  "teamAbbr": "NOP",
+  "display": "Jones"
+ },
+ "pa_bennedict-mathurin": {
+  "text": "At guard... number twenty-four... Bennedict... MATHURIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "bennedict-mathurin",
+  "teamAbbr": "NOP",
+  "display": "Bennedict Mathurin"
+ },
+ "name_bennedict-mathurin": {
+  "text": "Mathurin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "bennedict-mathurin",
+  "teamAbbr": "NOP",
+  "display": "Mathurin"
+ },
+ "pa_yves-missi": {
+  "text": "At center... number twenty-one... Yves... MISSI!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "yves-missi",
+  "teamAbbr": "NOP",
+  "display": "Yves Missi"
+ },
+ "name_yves-missi": {
+  "text": "Missi!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "yves-missi",
+  "teamAbbr": "NOP",
+  "display": "Missi"
+ },
+ "pa_jordan-poole": {
+  "text": "At guard... number three... Jordan... POOLE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jordan-poole",
+  "teamAbbr": "NOP",
+  "display": "Jordan Poole"
+ },
+ "name_jordan-poole": {
+  "text": "Poole!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jordan-poole",
+  "teamAbbr": "NOP",
+  "display": "Poole"
+ },
+ "pa_trendon-watford": {
+  "text": "At forward... number nine... Trendon... WATFORD!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "trendon-watford",
+  "teamAbbr": "NOP",
+  "display": "Trendon Watford"
+ },
+ "name_trendon-watford": {
+  "text": "Watford!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "trendon-watford",
+  "teamAbbr": "NOP",
+  "display": "Watford"
+ },
+ "pa_deandre-jordan": {
+  "text": "At center... number six... DeAndre... JORDAN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "deandre-jordan",
+  "teamAbbr": "NOP",
+  "display": "DeAndre Jordan"
+ },
+ "name_deandre-jordan": {
+  "text": "Jordan!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "deandre-jordan",
+  "teamAbbr": "NOP",
+  "display": "Jordan"
+ },
+ "pa_team_sas": {
+  "text": "And now... the starting lineup... for the... San Antonio Spurs!",
+  "speaker": "pa",
+  "category": "pa_team",
+  "teamAbbr": "SAS",
+  "display": "San Antonio Spurs"
+ },
+ "team_sas": {
+  "text": "The San Antonio Spurs!",
+  "speaker": "pbp",
+  "category": "team",
+  "teamAbbr": "SAS",
+  "display": "San Antonio Spurs"
+ },
+ "pa_de-aaron-fox": {
+  "text": "At guard... number four... De'Aaron... FOX!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "de-aaron-fox",
+  "teamAbbr": "SAS",
+  "display": "De'Aaron Fox"
+ },
+ "name_de-aaron-fox": {
+  "text": "Fox!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "de-aaron-fox",
+  "teamAbbr": "SAS",
+  "display": "Fox"
+ },
+ "pa_dylan-harper": {
+  "text": "At guard... number two... Dylan... HARPER!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "dylan-harper",
+  "teamAbbr": "SAS",
+  "display": "Dylan Harper"
+ },
+ "name_dylan-harper": {
+  "text": "Harper!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "dylan-harper",
+  "teamAbbr": "SAS",
+  "display": "Harper"
+ },
+ "pa_devin-vassell": {
+  "text": "At forward... number twenty-four... Devin... VASSELL!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "devin-vassell",
+  "teamAbbr": "SAS",
+  "display": "Devin Vassell"
+ },
+ "name_devin-vassell": {
+  "text": "Vassell!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "devin-vassell",
+  "teamAbbr": "SAS",
+  "display": "Vassell"
+ },
+ "pa_stephon-castle": {
+  "text": "At forward... number five... Stephon... CASTLE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "stephon-castle",
+  "teamAbbr": "SAS",
+  "display": "Stephon Castle"
+ },
+ "name_stephon-castle": {
+  "text": "Castle!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "stephon-castle",
+  "teamAbbr": "SAS",
+  "display": "Castle"
+ },
+ "pa_victor-wembanyama": {
+  "text": "At center... number one... Victor... WEM-BAN-YAH-MA!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "victor-wembanyama",
+  "teamAbbr": "SAS",
+  "display": "Victor Wembanyama"
+ },
+ "name_victor-wembanyama": {
+  "text": "Wem-ban-yah-ma!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "victor-wembanyama",
+  "teamAbbr": "SAS",
+  "display": "Wembanyama"
+ },
+ "pa_julian-champagnie": {
+  "text": "At forward... number thirty... Julian... CHAMPAGNIE!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "julian-champagnie",
+  "teamAbbr": "SAS",
+  "display": "Julian Champagnie"
+ },
+ "name_julian-champagnie": {
+  "text": "Champagnie!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "julian-champagnie",
+  "teamAbbr": "SAS",
+  "display": "Champagnie"
+ },
+ "pa_keldon-johnson": {
+  "text": "At forward... number three... Keldon... JOHNSON!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "keldon-johnson",
+  "teamAbbr": "SAS",
+  "display": "Keldon Johnson"
+ },
+ "name_keldon-johnson": {
+  "text": "Johnson!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "keldon-johnson",
+  "teamAbbr": "SAS",
+  "display": "Johnson"
+ },
+ "pa_luke-kornet": {
+  "text": "At center... number seven... Luke... KORNET!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "luke-kornet",
+  "teamAbbr": "SAS",
+  "display": "Luke Kornet"
+ },
+ "name_luke-kornet": {
+  "text": "Kornet!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "luke-kornet",
+  "teamAbbr": "SAS",
+  "display": "Kornet"
+ },
+ "pa_harrison-barnes": {
+  "text": "At forward... number forty... Harrison... BARNES!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "harrison-barnes",
+  "teamAbbr": "SAS",
+  "display": "Harrison Barnes"
+ },
+ "name_harrison-barnes": {
+  "text": "Barnes!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "harrison-barnes",
+  "teamAbbr": "SAS",
+  "display": "Barnes"
+ },
+ "pa_tobias-harris": {
+  "text": "At forward... number twelve... Tobias... HARRIS!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tobias-harris",
+  "teamAbbr": "SAS",
+  "display": "Tobias Harris"
+ },
+ "name_tobias-harris": {
+  "text": "Harris!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tobias-harris",
+  "teamAbbr": "SAS",
+  "display": "Harris"
+ },
+ "pa_carter-bryant": {
+  "text": "At forward... number eleven... Carter... BRYANT!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "carter-bryant",
+  "teamAbbr": "SAS",
+  "display": "Carter Bryant"
+ },
+ "name_carter-bryant": {
+  "text": "Bryant!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "carter-bryant",
+  "teamAbbr": "SAS",
+  "display": "Bryant"
+ },
+ "pa_jordan-mclaughlin": {
+  "text": "At guard... number zero... Jordan... MCLAUGHLIN!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "jordan-mclaughlin",
+  "teamAbbr": "SAS",
+  "display": "Jordan McLaughlin"
+ },
+ "name_jordan-mclaughlin": {
+  "text": "McLaughlin!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "jordan-mclaughlin",
+  "teamAbbr": "SAS",
+  "display": "McLaughlin"
+ },
+ "pa_tarris-reed-jr": {
+  "text": "At center... number ten... Tarris... REED JUNIOR!",
+  "speaker": "pa",
+  "category": "pa_player",
+  "playerId": "tarris-reed-jr",
+  "teamAbbr": "SAS",
+  "display": "Tarris Reed Jr."
+ },
+ "name_tarris-reed-jr": {
+  "text": "Reed!",
+  "speaker": "pbp",
+  "category": "name",
+  "playerId": "tarris-reed-jr",
+  "teamAbbr": "SAS",
+  "display": "Reed Jr."
+ }
+}
