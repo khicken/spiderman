@@ -54,6 +54,8 @@ yours. Lab pages are deleted by the integrator before the commit.
 
 - Original game named HOOPS. No existing game names, league or team logos, copied HUD layouts, art or music.
   Real player names, team city + nickname as plain text, team colors and public stats are fine.
-- No asset files. three.js geometry, canvas textures, Web Audio.
+- No asset files. three.js geometry, canvas textures, Web Audio. Two exceptions: recorded voice clips in `public/voice/`
+  (`audio-voice.ts`), and recorded sound effects and crowd audio in `public/sfx/`, loaded only through `audio-samples.ts`
+  and credited in `public/sfx/CREDITS.md`. Do not replace recorded sounds with synthesis.
 - No allocations in per-frame code. Dispose every GPU resource and listener.
 - Run `npx tsc --noEmit` in the `2k` folder before you finish. Do not commit. Do not `npm install`.

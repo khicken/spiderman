@@ -180,7 +180,13 @@ export function createAI(sim: Sim, settings: Settings): AI {
       const st = sim.state;
       // possession changes (also when the sim emits no event for it)
       if (st.possession !== lastPoss) {
-        if (st.possession !== -1) possessionChanged(st.possession, st.phase === "live");
+        if (st.possession !== -1) {
+          // a live change of possession is a transition chance, unless the ball is already set up in the frontcourt
+          // (the defense drill starts in a half-court set)
+          const h = sim.ball.holder;
+          const set = h >= 0 && sim.players[h].pos.x * sim.dir(st.possession) > 2;
+          possessionChanged(st.possession, st.phase === "live" && !set);
+        }
         lastPoss = st.possession;
       }
       if (st.phase !== lastPhase) {

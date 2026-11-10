@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import type { CameraMode, Device, Difficulty, Quality, Settings } from "./contracts";
+import type { CameraMode, Device, Difficulty, HintMode, Quality, Settings } from "./contracts";
 import { DIFFICULTY, QUALITY } from "./contracts";
+import { SFX_ATTRIBUTION } from "./audio-samples";
+import { ControlsMap } from "./ui-controls-map";
 import { Glyph, Hints, type Act, type PadFamily } from "./ui-glyphs";
-import { Picker, Range, SectionTitle, Segmented, Toggle, cx } from "./ui-kit";
+import { Picker, Range, SectionTitle, Toggle, cx } from "./ui-kit";
 import { useNavRoot } from "./ui-nav";
 
 const CAMS: { v: CameraMode; label: string; hint: string }[] = [
@@ -16,6 +18,11 @@ const CAMS: { v: CameraMode; label: string; hint: string }[] = [
 ];
 const QUALS = (Object.keys(QUALITY) as Quality[]).map((v) => ({ v, label: QUALITY[v].label, hint: v === "ultra" ? "Desktop GPUs" : v === "low" ? "Older laptops" : "" }));
 const DIFFS = (Object.keys(DIFFICULTY) as Difficulty[]).map((v) => ({ v, label: DIFFICULTY[v].label }));
+const HINTS: { v: HintMode; label: string; hint: string }[] = [
+  { v: "always", label: "Always", hint: "Coach prompts and the action bar every game" },
+  { v: "first", label: "First games", hint: "Coach prompts for your first three games" },
+  { v: "off", label: "Off", hint: "No prompts, no action bar" },
+];
 const QTRS = [1, 2, 3, 4, 5, 6, 8, 10, 12].map((v) => ({ v, label: `${v} min` }));
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
@@ -36,6 +43,7 @@ export function SettingsPanel({ value, onChange, inGame }: { value: Settings; on
       <Group title="Gameplay">
         <Picker label="Difficulty" value={value.difficulty} options={DIFFS} onChange={(v) => set("difficulty", v)} />
         <Picker label="Quarter length" sub={inGame ? "Applies from the next quarter" : undefined} value={value.quarterMinutes} options={QTRS} onChange={(v) => set("quarterMinutes", v)} />
+        <Picker label="Button hints" value={value.hints ?? "first"} options={HINTS} onChange={(v) => set("hints", v)} />
         <Toggle label="Shot meter" sub="Off: timing still counts, only the grade shows" on={value.shotMeter} onChange={(v) => set("shotMeter", v)} />
         <Toggle label="Fatigue" sub="Stamina drains and recovers on the bench" on={value.fatigue} onChange={(v) => set("fatigue", v)} />
         <Toggle label="All fouls" sub="Off: only shooting fouls are called" on={value.fouls} onChange={(v) => set("fouls", v)} />
@@ -54,6 +62,14 @@ export function SettingsPanel({ value, onChange, inGame }: { value: Settings; on
           <Range label="Music" value={value.music} onChange={(v) => set("music", v)} />
           <Range label="Crowd" value={value.crowd} onChange={(v) => set("crowd", v)} />
           <Range label="Effects" value={value.sfx} onChange={(v) => set("sfx", v)} />
+          <details className="mt-1 text-[11px] leading-snug text-white/50">
+            <summary className="cursor-pointer select-none text-white/60 hover:text-white">Sound credits</summary>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {SFX_ATTRIBUTION.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          </details>
         </Group>
       </div>
     </div>
@@ -77,10 +93,10 @@ const DEFENSE: Row[] = [
   { act: "move", label: "Move", note: "Slide with your man" },
   { act: "switch", label: "Switch player", note: "Take the defender nearest the ball" },
   { act: "steal", label: "Steal", note: "Reach. Mistimed reaches foul" },
-  { act: "block", label: "Block / rebound", note: "Jump at the release" },
+  { act: "block", label: "Block / contest", note: "Jump at the release; also rebounds" },
   { act: "charge", label: "Take charge", note: "Plant your feet in his path" },
   { act: "intense", label: "Intense D", note: "Lower stance, quicker feet" },
-  { act: "handsUp", label: "Hands up", note: "Contest without jumping" },
+  { act: "handsUp", label: "Hands up", note: "Arms up without jumping" },
 ];
 const GENERAL: Row[] = [
   { act: "pause", label: "Pause", note: "Box score, subs, timeouts" },
@@ -109,16 +125,10 @@ export function ControlsPanel({ device, family }: { device: Device; family: PadF
   );
   return (
     <div className="flex min-h-0 flex-col gap-4">
-      <Segmented
-        label="Device"
-        value={view}
-        onChange={setView}
-        options={[
-          { v: "pad", label: family === "ps" ? "Controller (PS)" : "Controller" },
-          { v: "keys", label: "Keyboard" },
-        ]}
-        className="w-[26rem]"
-      />
+      <ControlsMap device={device} family={family} view={view} onView={setView} />
+      <div className="eyebrow mt-2 flex items-center gap-2">
+        <span className="h-2 w-2 rotate-45 bg-hot" /> Full list
+      </div>
       <div className="grid grid-cols-2 gap-6">
         {col("Offense", OFFENSE)}
         <div className="flex flex-col gap-5">

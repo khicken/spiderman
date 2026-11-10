@@ -189,8 +189,8 @@ export function gainControl(ctx: Ctx, slot: number, how: GainHow): void {
   if (x.catchFrom >= 0) st.assistCandidate = x.catchFrom;
   st.lastTouch = slot;
   if (!busy(p) && how !== "give") setAction(ctx, slot, "catch");
-  if (ctx.userTeam === team) setUser(ctx, slot);
-  else if (ctx.userTeam !== -1 && ctx.userTeam !== team && was === ctx.userTeam) keepUserOnDefense(ctx);
+  if (ctx.userTeam === team && ctx.mode !== "practice") setUser(ctx, slot);
+  // on a turnover the human keeps his player: control() returns him to his defensive home man
 }
 
 function stealHype(ctx: Ctx, by: number): void {
@@ -217,26 +217,6 @@ export function takeBall(ctx: Ctx, slot: number): void {
   ctx.state.ballHandler = slot;
   ctx.state.lastTouch = slot;
   ctx.looseT = 0;
-}
-
-/** On a turnover the human keeps his player unless he is far from the play. */
-function keepUserOnDefense(ctx: Ctx): void {
-  const u = ctx.players[ctx.userSlot];
-  if (!u) return;
-  const b = ctx.ball.pos;
-  if (horizDist(u.pos.x, u.pos.z, b.x, b.z) < 16) return;
-  let best = -1;
-  let bd = 1e9;
-  const base = ctx.userTeam === 0 ? 0 : 5;
-  for (let i = base; i < base + 5; i++) {
-    const q = ctx.players[i];
-    const d = horizDist(q.pos.x, q.pos.z, b.x, b.z);
-    if (d < bd) {
-      bd = d;
-      best = i;
-    }
-  }
-  setUser(ctx, best);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -317,7 +297,7 @@ export function bestHandler(ctx: Ctx, team: TeamSide, exclude: number): number {
   for (let s = team * 5; s < team * 5 + 5; s++) {
     if (!ctx.px[s].active || s === exclude) continue;
     const r = ctx.players[s].data.ratings;
-    const v = r.handle * 1.2 + r.passing + (s % 5 === 0 ? 15 : 0);
+    const v = r.handle * 1.2 + r.passing + (s % 5 === 0 ? 45 : s % 5 === 1 ? 12 : 0); // the point guard brings it up
     if (v > bv) {
       bv = v;
       best = s;
@@ -414,7 +394,7 @@ export function updateInbound(ctx: Ctx, dt: number, startPass: (ctx: Ctx, from: 
     ctx.callForBall = -1;
     return;
   }
-  const auto = ctx.mode === "practice" ? 0.4 : ib.afterMake ? 1.3 : 2.6;
+  const auto = ctx.mode === "practice" ? 0.4 : ib.afterMake ? 0.75 : 1.5;
   if (ib.timer > auto) {
     const to = ctx.userTeam === ib.team ? ctx.userSlot : bestReceiver(ctx, ib.passer);
     if (to >= 0 && to !== ib.passer) startPass(ctx, ib.passer, to, "inbound");
@@ -465,7 +445,7 @@ export function violation(ctx: Ctx, team: TeamSide, kind: TurnoverKind, slot: nu
   ctx.reboundPending = false;
   ctx.passLoose = null;
   ctx.pokeBy = -1;
-  deadBall(ctx, "violation", 1.4, { k: "inbound", team: other(team), x: spotTmp.x, z: spotTmp.z, afterMake: false, shotClock: -1 });
+  deadBall(ctx, "violation", 1.1, { k: "inbound", team: other(team), x: spotTmp.x, z: spotTmp.z, afterMake: false, shotClock: -1 });
 }
 
 export function outOfBounds(ctx: Ctx, x: number, z: number): void {
@@ -495,7 +475,7 @@ export function outOfBounds(ctx: Ctx, x: number, z: number): void {
   ctx.passLoose = null;
   ctx.pokeBy = -1;
   inboundSpot(x, z, spotTmp);
-  deadBall(ctx, "outOfBounds", 1.3, { k: "inbound", team: gets, x: spotTmp.x, z: spotTmp.z, afterMake: false, shotClock });
+  deadBall(ctx, "outOfBounds", 1.0, { k: "inbound", team: gets, x: spotTmp.x, z: spotTmp.z, afterMake: false, shotClock });
 }
 
 /** Personal + team foul bookkeeping and the whistle. Returns the number of free throws awarded. */
@@ -543,13 +523,13 @@ export function foulStop(ctx: Ctx, by: number, on: number, kind: FoulKind, x: nu
     const team = sideOf(by);
     turnover(ctx, by, team, "offensiveFoul");
     toast(ctx, kind === "charge" ? "CHARGE" : "OFFENSIVE FOUL", lastName(ctx, by).toUpperCase(), toneOf(ctx, other(team)));
-    deadBall(ctx, "foul", 1.6, { k: "inbound", team: other(team), x: spotTmp.x, z: spotTmp.z, afterMake: false, shotClock: -1 });
+    deadBall(ctx, "foul", 1.25, { k: "inbound", team: other(team), x: spotTmp.x, z: spotTmp.z, afterMake: false, shotClock: -1 });
     return;
   }
   if (shots > 0) {
-    deadBall(ctx, "foul", 1.6, { k: "ft", shooter: on, total: shots as 1 | 2 | 3 });
+    deadBall(ctx, "foul", 1.25, { k: "ft", shooter: on, total: shots as 1 | 2 | 3 });
   } else {
-    deadBall(ctx, "foul", 1.4, {
+    deadBall(ctx, "foul", 1.1, {
       k: "inbound", team: sideOf(on), x: spotTmp.x, z: spotTmp.z, afterMake: false, shotClock: Math.max(st.shotClock, 14),
     });
   }
@@ -628,7 +608,7 @@ export function registerMake(ctx: Ctx): void {
   if (ctx.pendingFoul) {
     const pf = ctx.pendingFoul;
     ctx.pendingFoul = null;
-    deadBall(ctx, "foul", 1.8, { k: "ft", shooter: pf.on, total: 1 });
+    deadBall(ctx, "foul", 1.3, { k: "ft", shooter: pf.on, total: 1 });
     return;
   }
   if (ctx.periodEndPending) {
@@ -637,7 +617,7 @@ export function registerMake(ctx: Ctx): void {
     return;
   }
   const late = st.period >= 4 && st.clock <= LATE;
-  deadBall(ctx, "made", 1.05, {
+  deadBall(ctx, "made", 0.7, {
     k: "inbound", team: other(team), x: side * (COURT.halfL + 0.35), z: ctx.rng() < 0.5 ? 1.7 : -1.7, afterMake: true, shotClock: -1,
   }, !late);
 }
@@ -668,7 +648,7 @@ export function registerMiss(ctx: Ctx, airball: boolean, blocked: boolean): void
     const pf = ctx.pendingFoul;
     ctx.pendingFoul = null;
     ctx.reboundPending = false;
-    deadBall(ctx, "foul", 1.5, { k: "ft", shooter: pf.on, total: pf.shots === 0 ? 2 : pf.shots });
+    deadBall(ctx, "foul", 1.2, { k: "ft", shooter: pf.on, total: pf.shots === 0 ? 2 : pf.shots });
     return;
   }
   if (ctx.periodEndPending) {
@@ -756,7 +736,7 @@ function ftResult(ctx: Ctx, made: boolean): void {
   if (!ft) return;
   if (made) ft.made++;
   if (ft.index < ft.total) {
-    ctx.ftDelay = 1.35;
+    ctx.ftDelay = 0.7;
     return;
   }
   // last attempt
@@ -767,7 +747,7 @@ function ftResult(ctx: Ctx, made: boolean): void {
   }
   if (made) {
     const side = dirOf(ctx, ft.team);
-    deadBall(ctx, "made", 1.1, {
+    deadBall(ctx, "made", 0.8, {
       k: "inbound", team: other(ft.team), x: side * (COURT.halfL + 0.35), z: ctx.rng() < 0.5 ? 1.7 : -1.7, afterMake: true, shotClock: -1,
     });
     st.freeThrow = null;
@@ -801,7 +781,7 @@ export function updateFT(ctx: Ctx, dt: number, startShot: (ctx: Ctx, slot: numbe
   if (!sx.shot.on && ctx.ball.holder === ft.shooter) {
     ctx.ftWait += dt;
     const human = ft.shooter === ctx.userSlot;
-    if ((!human && ctx.ftWait > 1.0) || (human && ctx.ftWait > 15)) startShot(ctx, ft.shooter);
+    if ((!human && ctx.ftWait > 0.55) || (human && ctx.ftWait > 15)) startShot(ctx, ft.shooter);
   }
 }
 
@@ -980,7 +960,8 @@ export function endPeriod(ctx: Ctx): void {
   }
   st.phase = "periodBreak";
   st.deadReason = "periodEnd";
-  st.deadTimer = st.period === 2 ? 6 : st.period >= 4 ? 4 : 3.5;
+  // a broadcast break: the table, the crowd, a wide shot. Any button skips it (control()).
+  st.deadTimer = st.period === 2 ? 7 : 5.5;
   ctx.restart = { k: "nextPeriod" };
   if (st.period === 2) emit(ctx, { type: "halftime" });
 }
@@ -1178,7 +1159,7 @@ export function updateDead(ctx: Ctx, dt: number): void {
         if (horizDist(p.pos.x, p.pos.z, x.spot.x, x.spot.z) > 0.6) walking = true;
       }
       ctx.deadExtra += dt;
-      if (!walking || ctx.deadExtra > 1.6) {
+      if (!walking || ctx.deadExtra > 0.9) {
         snapToSpots(ctx);
         const r = ctx.restart;
         ctx.restart = null;

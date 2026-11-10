@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Action, DribbleMove, PlayerState, TeamSide } from "./contracts";
-import { ACTION_DUR, COURT, inRestricted } from "./contracts";
+import { ACTION_DUR, COURT, SIM_DT, inRestricted } from "./contracts";
 import type { Ctx } from "./sim-core";
 import {
   airY, busy, clamp, defaultMark, dirOf, emit, foulMult, horizDist, isJumpAction, isMoveAction, isShotAction, isUser,
@@ -57,11 +57,15 @@ export function processCommands(ctx: Ctx): void {
             const kind = cmd === "bouncePass" ? "bounce" : cmd === "lobPass" ? (oopReady(ctx, target) ? "alleyOop" : "lob") : inb ? "inbound" : "chest";
             startPass(ctx, s, target, kind);
           }
-        }
+        } else if (live && ball.mode === "pass" && ball.pass && ball.pass.to === s && isUser(ctx, s)) keep = true; // one-touch
         break;
       }
       case "dribbleMove":
-        if (live && ball.holder === s && it.move2) startMove(ctx, s, it.move2);
+        // buffered: a flick during the previous move (or a catch / pump fake) fires as soon as it can, so moves chain
+        if (live && ball.holder === s && it.move2 && !startMove(ctx, s, it.move2)) {
+          x.cmdAge += SIM_DT;
+          if (x.cmdAge < 0.32 && busy(p) && !x.shot.on && !x.passing) keep = true;
+        }
         break;
       case "pumpFake":
         if (live && ball.holder === s && !x.shot.on && !x.passing && !busy(p)) {
@@ -138,12 +142,14 @@ const MOVE_DUR: Record<DribbleMove, number> = {
   hesitation: ACTION_DUR.hesitation, between: ACTION_DUR.between,
 };
 
-export function startMove(ctx: Ctx, s: number, move: DribbleMove): void {
+export function startMove(ctx: Ctx, s: number, move: DribbleMove): boolean {
   const p = ctx.players[s];
   const x = ctx.px[s];
   const ball = ctx.ball;
-  if (x.shot.on || x.passing || p.pos.y > 0.01) return;
-  if (busy(p) && !(isMoveAction(p.action) && p.actionP > 0.55) && p.action !== "catch") return;
+  if (x.shot.on || x.passing || p.pos.y > 0.01) return false;
+  const chain = isMoveAction(p.action) && p.actionP > 0.45;
+  const fake = p.action === "pumpFake" && p.actionP > 0.4;
+  if (busy(p) && !chain && !fake && p.action !== "catch") return false;
   if (ball.mode === "held") {
     ball.mode = "dribble";
     ball.dribblePhase = 0;
@@ -193,7 +199,9 @@ export function startMove(ctx: Ctx, s: number, move: DribbleMove): void {
   x.prevMoveT = x.lastMoveT;
   x.lastMoveT = ctx.time;
   p.stamina = Math.max(0.05, p.stamina - 0.005);
+  x.plantT = 0;
   emit(ctx, { type: "dribbleMove", slot: s, move });
+  return true;
 }
 
 /** Dribble move key moment (P = 0.5): can the move break the defender's ankles? */
@@ -359,6 +367,7 @@ export function movePlayers(ctx: Ctx, dt: number): void {
     const a = p.action;
     const P = p.actionP;
     let airborne = false;
+    let free = false; // feet driven by the intent (not an action, spot or stun): gets the carve / plant model
     if (p.stunned > 0) {
       p.stunned = Math.max(0, p.stunned - dt);
       vD.set(0, 0, 0);
@@ -408,6 +417,7 @@ export function movePlayers(ctx: Ctx, dt: number): void {
         vD.copy(it.move).setY(0).multiplyScalar(speedTarget(ctx, p) * 0.4);
       } else vD.set(0, 0, 0);
     } else {
+      free = true;
       vD.copy(it.move).setY(0);
       const ml = vD.length();
       if (ml > 1) vD.multiplyScalar(1 / ml);
@@ -420,10 +430,17 @@ export function movePlayers(ctx: Ctx, dt: number): void {
       }
     }
 
+    // CPU handlers respect the half-court line once the frontcourt is established (momentum would carry them over)
+    const guardLine = ctx.frontEstablished && p.hasBall && !p.user && st.phase === "live" && st.possession === p.team;
+    const fdir = guardLine ? dirOf(ctx, p.team) : 0;
+    if (guardLine && p.pos.x * fdir < 1.5 && vD.x * fdir < 0) vD.x = 0;
     if (airborne) {
       p.vel.set(x.air.x, 0, x.air.z);
+    } else if (free && carves(ctx, p)) {
+      locomote(ctx, s, dt);
     } else {
-      const acc = (16 + (p.data.ratings.accel / 99) * 14) * (p.user ? 1.3 : 1);
+      x.plantT = 0;
+      const acc = p.user ? 28 + (p.data.ratings.accel / 99) * 14 : 16 + (p.data.ratings.accel / 99) * 14;
       dv.set(vD.x - p.vel.x, 0, vD.z - p.vel.z);
       const reverse = vD.x * p.vel.x + vD.z * p.vel.z < 0;
       const lim = acc * (reverse ? 1.5 : 1) * dt;
@@ -439,6 +456,7 @@ export function movePlayers(ctx: Ctx, dt: number): void {
       }
     }
     p.vel.y = 0;
+    if (guardLine && p.pos.x * fdir < 0.6 && p.vel.x * fdir < 0) p.vel.x *= Math.max(0, (p.pos.x * fdir - 0.2) / 0.4);
     p.pos.x += p.vel.x * dt;
     p.pos.z += p.vel.z * dt;
     // CPU players stay on the floor during play; only the human can step out of bounds
@@ -464,6 +482,93 @@ export function movePlayers(ctx: Ctx, dt: number): void {
     p.pos.y = isJumpAction(p.action) && p.actionDur > 0 ? airY(p.action, p.actionP, x.jumpH) : 0;
     face(ctx, s, dt);
     pose(ctx, s, dt);
+  }
+}
+
+/**
+ * Ball handlers and the human on offense run on a momentum model instead of a capped vector chase: quick starts,
+ * a hard stop when the stick lets go, speed-limited carving turns, and a plant-and-cut on a reversal at speed
+ * (brief hard decel to 45 %, then re-accel the new way). Defenders keep the vector model: lateral slides need
+ * instant reversals.
+ */
+function carves(ctx: Ctx, p: PlayerState): boolean {
+  const st = ctx.state;
+  if (p.hasBall) return true;
+  return p.user && (st.possession === p.team || st.phase !== "live");
+}
+
+function locomote(ctx: Ctx, s: number, dt: number): void {
+  const p = ctx.players[s];
+  const x = ctx.px[s];
+  const ar = p.data.ratings.accel / 99;
+  const user = p.user;
+  const accStart = user ? 26 + ar * 12 : 18 + ar * 12;
+  const decStop = user ? 34 : 26;
+  const decRun = user ? 26 : 18;
+  const sp = Math.hypot(p.vel.x, p.vel.z);
+  const tsp = Math.hypot(vD.x, vD.z);
+  if (x.plantT > 0) {
+    // planted: kill speed toward plantV along the new direction
+    x.plantT -= dt;
+    const k = tsp > 1e-3 ? x.plantV / tsp : 0;
+    dv.set(vD.x * k - p.vel.x, 0, vD.z * k - p.vel.z);
+    const lim = 75 * dt;
+    const dl = dv.length();
+    if (dl > lim) dv.multiplyScalar(lim / dl);
+    p.vel.x += dv.x;
+    p.vel.z += dv.z;
+    x.air.set(p.vel.x, 0, p.vel.z);
+    return;
+  }
+  if (tsp < 0.05) {
+    // stick released: hard stop
+    x.stopT += dt;
+    const ns = Math.max(0, sp - decStop * dt);
+    if (sp > 1e-4) p.vel.multiplyScalar(ns / sp);
+    else p.vel.set(0, 0, 0);
+    x.air.set(p.vel.x, 0, p.vel.z);
+    return;
+  }
+  x.stopT = 0;
+  if (sp < 1.2) {
+    // from (almost) standing: explode toward the stick
+    dv.set(vD.x - p.vel.x, 0, vD.z - p.vel.z);
+    const lim = accStart * dt;
+    const dl = dv.length();
+    if (dl > lim) dv.multiplyScalar(lim / dl);
+    p.vel.x += dv.x;
+    p.vel.z += dv.z;
+    x.air.set(p.vel.x, 0, p.vel.z);
+    return;
+  }
+  const cosT = (p.vel.x * vD.x + p.vel.z * vD.z) / (sp * tsp);
+  if (cosT < -0.17 && sp > 4) {
+    // reversal (> 100 deg) at speed: plant and cut
+    x.plantT = 0.12;
+    x.plantV = sp * 0.45;
+    if (x.squeakCd <= 0) {
+      x.squeakCd = 0.35;
+      emit(ctx, { type: "squeak", slot: s, at: v3(p.pos), strength: clamp(sp / 8, 0.3, 1) });
+    }
+    return;
+  }
+  const a0 = Math.atan2(p.vel.z, p.vel.x);
+  const a1 = Math.atan2(vD.z, vD.x);
+  const turnK = clamp((sp - 2) / 5.5, 0, 1);
+  const omega = (16 + (p.hasBall ? -8.5 : -7) * turnK) * (0.85 + 0.3 * ar);
+  const d = wrapAngle(a1 - a0);
+  const step = clamp(d, -omega * dt, omega * dt);
+  const a = a0 + step;
+  let ns = sp;
+  if (tsp > sp) ns = Math.min(tsp, sp + accStart * (1 - 0.35 * turnK) * dt);
+  else ns = Math.max(tsp, sp - decRun * dt);
+  // a sharp carve bleeds a little speed
+  ns *= 1 - Math.abs(step) * 0.18;
+  p.vel.set(Math.cos(a) * ns, 0, Math.sin(a) * ns);
+  x.air.set(p.vel.x, 0, p.vel.z);
+  if (sp > 5 && Math.abs(d) > 1.2 && x.squeakCd <= 0) {
+    x.squeakCd = 0.5;
+    emit(ctx, { type: "squeak", slot: s, at: v3(p.pos), strength: clamp(sp / 9, 0.2, 0.8) });
   }
 }
 
@@ -679,6 +784,7 @@ function pose(ctx: Ctx, s: number, dt: number): void {
     if (opp && horizDist(p.pos.x, p.pos.z, opp.pos.x, opp.pos.z) < 1.4) crouch += 0.15;
   }
   if (p.action === "contest" || p.action === "block") hands = 1;
+  if (x.plantT > 0) crouch = Math.max(crouch, 0.65); // sit into the plant
   const k = 1 - Math.exp(-8 * dt);
   p.crouch += (crouch - p.crouch) * k;
   p.handsUp += (hands - p.handsUp) * k;

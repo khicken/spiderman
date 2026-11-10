@@ -8,6 +8,8 @@ import { newInputFrame } from "./state";
 // Physical inputs (keys, pad buttons) keep their own edge queues, so a tap that starts and ends between two frames
 // still reports pressed + released, and `held` is measured from event timestamps (shot meter timing).
 // Several semantic buttons share one physical button (pad X = shoot + steal); sim picks by context.
+// Keyboard pro-stick (v2 feel): hold Space and tap a WASD direction for a dribble move, so the left hand runs moves
+// while the right hand stays on J/K/L/I to chain a move into a shot or pass. Arrows still work. Space = hands up on D.
 
 export type NavDir = "up" | "down" | "left" | "right" | "ok" | "back" | "tabLeft" | "tabRight" | "start";
 /** The nav callback also receives the source device as a second argument. */
@@ -127,6 +129,7 @@ export function createInput(target: HTMLElement): Input {
   const moveKeys = new Uint8Array(4);
   const arrowKeys = new Uint8Array(4);
   let shift = false;
+  let space = false;
   let flickQueued = false;
   let flickQX = 0;
   let flickQY = 0;
@@ -214,6 +217,19 @@ export function createInput(target: HTMLElement): Input {
     const m = MOVE_KEYS[code];
     if (m !== undefined) {
       moveKeys[m] = 1;
+      if (space) spaceFlick(m);
+      return;
+    }
+    if (code === "Space") {
+      space = true;
+      // Space pressed while a direction is already held: move in that direction right away
+      const hx = moveKeys[3] - moveKeys[2];
+      const hy = moveKeys[0] - moveKeys[1];
+      if (hx !== 0 || hy !== 0) {
+        flickQueued = true;
+        flickQX = hx;
+        flickQY = hy;
+      }
       return;
     }
     if (ar !== undefined) {
@@ -235,6 +251,18 @@ export function createInput(target: HTMLElement): Input {
     const ar = ARROWS[code];
     if (ar !== undefined) arrowKeys[ar] = 0;
     if (SHIFT.has(code)) shift = false;
+    if (code === "Space") space = false;
+  };
+  /** Space + WASD tap: flick toward the tapped key, plus a held key on the other axis (S held + A = back-left). */
+  const spaceFlick = (m: 0 | 1 | 2 | 3) => {
+    flickQueued = true;
+    if (m === 2 || m === 3) {
+      flickQX = m === 3 ? 1 : -1;
+      flickQY = moveKeys[0] - moveKeys[1];
+    } else {
+      flickQX = moveKeys[3] - moveKeys[2];
+      flickQY = m === 0 ? 1 : -1;
+    }
   };
   const releaseAll = () => {
     const at = performance.now();
@@ -242,6 +270,7 @@ export function createInput(target: HTMLElement): Input {
     moveKeys.fill(0);
     arrowKeys.fill(0);
     shift = false;
+    space = false;
   };
   const onBlur = () => releaseAll();
   const onVis = () => {
@@ -512,7 +541,7 @@ export function createInput(target: HTMLElement): Input {
       }
     }
     if (!f.flick) f.flickDir.x = f.flickDir.y = f.flickDir.mag = 0;
-    f.handsUp = rm > 0.5 || ax !== 0 || ay !== 0;
+    f.handsUp = rm > 0.5 || ax !== 0 || ay !== 0 || space;
 
     const rt = padVal[7];
     f.sprint = Math.max(shift ? 1 : 0, rt > 0.06 ? clamp((rt - 0.06) / 0.8, 0, 1) : 0);

@@ -136,6 +136,8 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
     const fms = dt * 1000;
     if (fms < 4 || fms > 250) return;
     vsync = Math.min(vsync * 1.0005, fms < vsync ? vsync * 0.9 + fms * 0.1 : vsync); // slowly tracks the fastest interval
+    // a slow machine must not talk itself into a 30 Hz "refresh": no display we target is slower than 60 Hz or faster than 144 Hz
+    vsync = Math.min(16.7, Math.max(6.9, vsync));
     winT += dt;
     winN++;
     winSum += fms;

@@ -383,13 +383,40 @@ export function defend(ctx: Ctx, t: TeamSide, dt: number): void {
     }
   }
 
+  // help rotation: when a helper leaves his man, the weak-side defender farthest from the ball sinks to cover him
+  let rotator = -1;
+  let rotMan = -1;
+  if (b.helper >= 0 && holder >= 0 && mem[b.helper].helpT <= 0) {
+    rotMan = b.marks[b.helper % 5];
+    let far = -1;
+    for (let k = 0; k < 5; k++) {
+      const s = t * 5 + k;
+      if (s === b.helper || s === sim.userSlot || b.marks[k] === holder) continue;
+      const man = sim.players[b.marks[k]];
+      const dd = dist2(man.pos.x, man.pos.z, bp.x, bp.z);
+      if (dd > far) {
+        far = dd;
+        rotator = s;
+      }
+    }
+    if (far < 6) rotator = -1;
+  }
+
   for (let k = 0; k < 5; k++) {
     const s = t * 5 + k;
-    if (s === sim.userSlot) continue;
     const p = sim.players[s];
     const it = sim.intents[s];
     const m = mem[s];
     const manSlot = b.marks[k];
+    // the human's defender: AI only drives his feet while his stick is idle (assist 1) or he holds lock-on (assist 2)
+    const assist = s === sim.userSlot ? (it.assist ?? 0) : 0;
+    if (s === sim.userSlot) {
+      it.mark = manSlot;
+      if (assist === 0) continue;
+    }
+    const keepCmd = it.cmd;
+    const keepHands = it.handsUp;
+    const keepIntense = it.intense;
     const man = sim.players[manSlot];
     const M = b.perceived[manSlot];
     const r = p.data.ratings;
@@ -483,9 +510,10 @@ export function defend(ctx: Ctx, t: TeamSide, dt: number): void {
     if (inTransition && myU > ballU - 0.5) {
       urg = 1;
       if (myU > ballU + 4) {
-        // way behind the play: sprint to the paint first
-        const tz = clamp(p.pos.z, -2, 2);
-        A.set(d * (COURT.rimX - 2.5), 0, tz);
+        // way behind the play: sprint back to the paint first, but each to his own lane (toward his man's side,
+        // staggered in depth) so four defenders never pile onto the same spot under the rim
+        const tz = clamp(M.z * 0.45 + (k - 2) * 1.15, -3.4, 3.4);
+        A.set(d * (COURT.rimX - 2.2 - (k % 3) * 1.3), 0, tz);
         m.target.copy(A);
       }
     }
@@ -601,10 +629,34 @@ export function defend(ctx: Ctx, t: TeamSide, dt: number): void {
       }
     }
 
+    if (s === rotator && rotMan >= 0) {
+      const rm = sim.players[rotMan];
+      A.subVectors(RIM, rm.pos).setY(0);
+      const l = A.length();
+      B.copy(rm.pos).addScaledVector(A, l > 0.1 ? Math.min(1.6, l * 0.4) / l : 0);
+      m.target.lerp(B, 0.6);
+      urg = Math.max(urg, 0.85);
+    }
+
     keepIn(m.target, 0.2);
     m.urgency = urg;
     steer(p, it, m, null);
     if (s !== fouler && it.sprint === 0 && urg >= 1 && p.stamina > 0.25) it.sprint = 1;
+    if (assist > 0) {
+      // never act for the human: buttons stay his
+      it.cmd = keepCmd;
+      it.handsUp = keepHands;
+      it.intense = keepIntense;
+      it.foul = false;
+      it.target = -1;
+      if (assist === 2) {
+        // lock-on: shadow the man at defensive speed, the stick still steers half of it
+        it.move.multiplyScalar(0.5).addScaledVector(it.aim, 0.5);
+        const ml = it.move.length();
+        if (ml > 1) it.move.multiplyScalar(1 / ml);
+        it.sprint = Math.max(it.sprint, 0.6);
+      } else if (urg < 1) it.sprint = Math.min(it.sprint, 0.5);
+    }
   }
 }
 
@@ -621,9 +673,14 @@ export function rebound(ctx: Ctx, landing: THREE.Vector3, shooterTeam: TeamSide 
     let crashers = 0;
     for (let k = 0; k < 5; k++) {
       const s = t * 5 + k;
-      if (s === sim.userSlot) continue;
-      const p = sim.players[s];
       const it = sim.intents[s];
+      // an idle human defender boxes out / hunts the ball like the AI would (his buttons stay his)
+      if (s === sim.userSlot && (offense || !it.assist)) continue;
+      const user = s === sim.userSlot;
+      const keepCmd = it.cmd;
+      const keepHeld = it.shootHeld;
+      const keepHands = it.handsUp;
+      const p = sim.players[s];
       const m = mem[s];
       const rt = p.data.ratings;
       it.handsUp = false;
@@ -692,6 +749,16 @@ export function rebound(ctx: Ctx, landing: THREE.Vector3, shooterTeam: TeamSide 
       }
       keepIn(m.target, 0.25);
       steer(p, it, m, null);
+      if (user) {
+        it.cmd = keepCmd;
+        it.shootHeld = keepHeld;
+        it.handsUp = keepHands;
+        if (it.assist === 2) {
+          it.move.multiplyScalar(0.5).addScaledVector(it.aim, 0.5);
+          const ml = it.move.length();
+          if (ml > 1) it.move.multiplyScalar(1 / ml);
+        }
+      }
     }
   }
   void dt;

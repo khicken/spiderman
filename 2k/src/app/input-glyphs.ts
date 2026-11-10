@@ -68,7 +68,7 @@ const SHOULDER: Record<PadStyle, string[]> = {
 
 const KEY: Record<GlyphAction, string> = {
   move: "WASD", sprint: "Shift", shoot: "J", pass: "K", bounce: "L", lob: "I", screen: "E", icon: "R", post: "Q",
-  dribble: "←↑→↓", steal: "L", block: "J", switch: "K", charge: "F", intense: "Q", handsUp: "↑",
+  dribble: "←↑→↓", steal: "L", block: "J", switch: "K", charge: "F", intense: "Q", handsUp: "SPACE",
   pause: "Esc", camera: "C", ok: "Enter", back: "Esc", tabLeft: "Q", tabRight: "E", nav: "↑↓",
 };
 

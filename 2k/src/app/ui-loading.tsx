@@ -53,7 +53,7 @@ const TIPS: Tip[] = [
 ];
 
 export function Loading({
-  home, away, user, progress, ready, onContinue, device, family, difficulty, quarterMinutes,
+  home, away, user, progress, ready, onContinue, onBack, device, family, difficulty, quarterMinutes,
 }: {
   home: TeamData;
   away: TeamData;
@@ -61,6 +61,7 @@ export function Loading({
   progress: number;
   ready: boolean;
   onContinue: () => void;
+  onBack?: () => void;
   device: Device;
   family: PadFamily;
   difficulty: Difficulty;
@@ -73,7 +74,7 @@ export function Loading({
     return () => clearTimeout(t);
   }, []);
   const go = ready && shown;
-  useNavRoot(ref, { any: go ? onContinue : () => {}, autofocus: false });
+  useNavRoot(ref, { any: go ? onContinue : () => {}, back: onBack, autofocus: false });
   useEffect(() => {
     if (!go) return;
     const t = window.setTimeout(onContinue, 6000);
@@ -96,6 +97,11 @@ export function Loading({
           <span className="mt-1 text-[0.8rem] font-semibold uppercase tracking-[0.18em] text-white/50">
             {DIFFICULTY[difficulty].label} · {quarterMinutes} min quarters
           </span>
+          {user !== -1 && (
+            <span className="pop-in mt-3 flex items-center gap-2 rounded-[3px] bg-gold px-4 py-1.5 text-night shadow-[0_0_2rem_rgb(255_209_102/0.4)]" style={{ animationDelay: "500ms" }}>
+              <span className="ttl text-[1.5rem] italic">You play as the {(user === 0 ? home : away).city} {(user === 0 ? home : away).name}</span>
+            </span>
+          )}
         </div>
 
         <div className="flex flex-1 items-center justify-center gap-[6vw]">
@@ -148,7 +154,7 @@ function Side({ team, label, you, dir }: { team: TeamData; label: string; you: b
           {label}
         </span>
         <span className="num text-[1.3rem] text-white/90">{team.overall} OVR</span>
-        {you && <span className="rounded-[2px] bg-hot px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-night">You</span>}
+        {you && <span className="ttl rounded-[2px] bg-gold px-3 py-0.5 text-[1.3rem] italic text-night">You</span>}
       </div>
     </div>
   );

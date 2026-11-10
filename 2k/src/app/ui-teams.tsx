@@ -66,9 +66,9 @@ export function TeamSelect({ value, onChange, onStart, onBack, onFeature, device
         </header>
 
         <div className="flex min-h-0 flex-1 items-stretch gap-5">
-          <TeamColumn side={1} team={value.away} user={value.user === 1} onCycle={(d) => cycle(1, d)} onFeature={onFeature} />
+          <TeamColumn side={1} team={value.away} user={value.user === 1} watch={value.user === -1} onCycle={(d) => cycle(1, d)} onFeature={onFeature} autofocus={value.user === 1} />
           <Center value={value} set={set} onStart={onStart} random={random} device={device} family={family} />
-          <TeamColumn side={0} team={value.home} user={value.user === 0} onCycle={(d) => cycle(0, d)} onFeature={onFeature} autofocus />
+          <TeamColumn side={0} team={value.home} user={value.user === 0} watch={value.user === -1} onCycle={(d) => cycle(0, d)} onFeature={onFeature} autofocus={value.user !== 1} />
         </div>
 
         <footer className="flex items-center justify-between">
@@ -98,7 +98,7 @@ function Strip({ team, onPick }: { team: TeamData; onPick?: (t: TeamData) => voi
   );
 }
 
-function TeamColumn({ side, team, user, onCycle, onFeature, autofocus }: { side: TeamSide; team: TeamData; user: boolean; onCycle: (d: -1 | 1) => void; onFeature: (p: PlayerData, t: TeamData) => void; autofocus?: boolean }) {
+function TeamColumn({ side, team, user, watch, onCycle, onFeature, autofocus }: { side: TeamSide; team: TeamData; user: boolean; watch?: boolean; onCycle: (d: -1 | 1) => void; onFeature: (p: PlayerData, t: TeamData) => void; autofocus?: boolean }) {
   const car = useRef<HTMLDivElement>(null);
   useLR(car, onCycle);
   const five = useMemo(() => starterIndices(team).map((i) => team.players[i]), [team]);
@@ -117,9 +117,14 @@ function TeamColumn({ side, team, user, onCycle, onFeature, autofocus }: { side:
           <span className="h-2 w-2 rotate-45" style={{ background: col }} />
           {side === 0 ? "Home" : "Away"}
         </span>
-        {user && (
-          <span className="pop-in flex items-center gap-1.5 rounded-[2px] bg-hot px-2 py-0.5 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-night">
-            <PadIcon /> You
+        {user ? (
+          <span key="you" className="pop-in flex items-center gap-2 rounded-[3px] bg-gold px-3 py-1 text-night shadow-[0_0_1.4rem_rgb(255_209_102/0.45)]">
+            <span className="text-[1.5rem]"><PadIcon /></span>
+            <span className="ttl text-[1.6rem] italic">You</span>
+          </span>
+        ) : (
+          <span key="cpu" className="flex items-center gap-2 rounded-[3px] border border-white/20 bg-night/60 px-3 py-1 text-white/70">
+            <span className="ttl text-[1.35rem] italic">{watch ? "CPU" : "CPU opponent"}</span>
           </span>
         )}
       </div>
@@ -313,7 +318,10 @@ function Center({ value, set, onStart, random, device, family }: { value: Matchu
       </button>
       <button type="button" data-tipoff="1" onClick={onStart} className="nav shine mt-2 flex h-[4.6rem] items-center justify-center gap-3 rounded-[3px] bg-hot text-night hover:bg-hot-hi">
         <span className="ttl text-[2.4rem] italic">Tip off</span>
-        <span className="text-[1.1rem]">{device === "pad" ? <PadGlyph b="START" family={family} /> : <Glyph act="ok" device={device} family={family} />}</span>
+        <span className="flex items-center gap-1 text-[1.1rem]">
+          <Glyph act="ok" device={device} family={family} />
+          {device === "pad" && <PadGlyph b="START" family={family} />}
+        </span>
       </button>
     </div>
   );

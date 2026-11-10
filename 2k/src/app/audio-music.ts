@@ -182,6 +182,8 @@ export function createMusic(c: AudioContext, studio: AudioNode, pa: AudioNode, c
   organBus.connect(leslie);
   organBus.connect(chorusD).connect(gain(c, leslie, 0.5));
 
+  // the filter's open position, never above Nyquist (a low-rate output device would clamp and warn)
+  const TOP = Math.min(18000, c.sampleRate * 0.45);
   let cur: Inst | null = null;
   let want: MusicTrack = "off";
   let closed = false;
@@ -194,7 +196,7 @@ export function createMusic(c: AudioContext, studio: AudioNode, pa: AudioNode, c
     out.gain.linearRampToValueAtTime(1, t + (track === "final" ? 0.4 : 1.2));
     const tone = c.createBiquadFilter();
     tone.type = "lowpass";
-    tone.frequency.value = 18000;
+    tone.frequency.value = TOP;
     tone.Q.value = 0.8;
     tone.connect(out);
     if (!viaPa) tone.connect(room);
@@ -411,13 +413,13 @@ export function createMusic(c: AudioContext, studio: AudioNode, pa: AudioNode, c
     if (s === 0) {
       if (sec === "intro") {
         i.tone.frequency.setValueAtTime(bar === 0 ? 500 : i.tone.frequency.value, t);
-        i.tone.frequency.exponentialRampToValueAtTime(bar === 3 ? 18000 : 700 + bar * 900, t + sd * 16);
+        i.tone.frequency.exponentialRampToValueAtTime(bar === 3 ? TOP : 700 + bar * 900, t + sd * 16);
       } else if (sec === "break" && bar === 20) {
-        i.tone.frequency.setValueAtTime(18000, t);
+        i.tone.frequency.setValueAtTime(TOP, t);
         i.tone.frequency.exponentialRampToValueAtTime(1400, t + sd * 8);
       } else if (bar === 23) {
         i.tone.frequency.setValueAtTime(1400, t);
-        i.tone.frequency.exponentialRampToValueAtTime(18000, t + sd * 16);
+        i.tone.frequency.exponentialRampToValueAtTime(TOP, t + sd * 16);
       }
       if (bar === 12 || bar === 24 || bar === 4) drum(i, "crash", t, 0.5);
       if (bar === 23) drum(i, "riser", t + sd * 8, 0.6, 1.25);

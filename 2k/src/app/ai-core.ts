@@ -171,6 +171,7 @@ export interface TeamBrain {
   motionT: number;
   transition: number; // seconds left of transition offense
   possT: number; // seconds since this team got the ball
+  passes: number; // completed passes this possession (sets end in an attack after ~3)
   lastPlay: PlayKind;
   afterTimeout: boolean;
   lobCd: number; // seconds until the CPU looks for another lob (alley-oops are a rare treat)
@@ -199,7 +200,7 @@ export function newTeamBrain(side: TeamSide): TeamBrain {
     side, cpu: true, iq: 0.7, reaction: 0.2,
     play: "none", playT: 0, phase: 0, playSide: 1, star: side * 5, handler: side * 5, screener: -1, screenFor: -1,
     screenSpot: new THREE.Vector3(), screenSet: false, screenT: 0, screenUsed: false, offScreener: -1, offTarget: -1,
-    postSlot: -1, motionT: 0, transition: 0, possT: 0, lastPlay: "none", afterTimeout: false, lobCd: 60 + side * 40,
+    postSlot: -1, motionT: 0, transition: 0, possT: 0, passes: 0, lastPlay: "none", afterTimeout: false, lobCd: 60 + side * 40,
     marks: [0, 1, 2, 3, 4].map((k) => (1 - side) * 5 + k), coverage: "switch",
     perceived: Array.from({ length: 10 }, () => new THREE.Vector3()), perceivedBall: new THREE.Vector3(),
     helper: -1, doubler: -1, matchT: 0, press: false, foulMode: false, lastHolder: -1,

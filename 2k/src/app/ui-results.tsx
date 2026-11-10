@@ -82,7 +82,32 @@ export function FinalScreen({ r, onRematch, onNew, onMenu, device, family, activ
               <span className="mt-1 text-[0.75rem] font-semibold uppercase tracking-[0.16em] text-white/70">{mvpTeam.abbr} · {mvp.pos} · #{mvp.jersey00 ? "00" : mvp.jersey}</span>
               <span className="mt-1 text-[0.8rem] font-semibold text-ice">{mvp.archetype}</span>
               <Emblem team={mvpTeam} size="9rem" className="pointer-events-none absolute -bottom-4 -right-4 opacity-[0.13]" />
-              <div className="mt-auto grid grid-cols-3 gap-2">
+              {/* shooting splits as bars, plus the hustle line: the card reads like a broadcast player-of-the-game slate */}
+              <div className="relative mt-5 flex flex-1 flex-col justify-center gap-2.5">
+                {([["Field goals", ml.fgm, ml.fga], ["Threes", ml.tpm, ml.tpa], ["Free throws", ml.ftm, ml.fta]] as const).map(([k, m, a]) => {
+                  const pct = a > 0 ? m / a : 0;
+                  return (
+                    <div key={k} className="flex flex-col gap-1">
+                      <div className="flex items-baseline justify-between text-[0.72rem] font-bold uppercase tracking-[0.14em] text-white/75">
+                        <span>{k}</span>
+                        <span className="num text-[1rem] text-white">{a > 0 ? `${Math.round(pct * 100)}%` : "--"}</span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-night/50">
+                        <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: vivid(mvpTeam) }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="mt-2 grid grid-cols-4 gap-1.5 text-center">
+                  {([["STL", ml.stl], ["BLK", ml.blk], ["+/-", ml.plusMinus > 0 ? `+${ml.plusMinus}` : String(ml.plusMinus)], ["MIN", Math.round(ml.sec / 60)]] as const).map(([k, v]) => (
+                    <span key={k} className="flex flex-col rounded-[3px] bg-night/35 py-1">
+                      <b className="num text-[1.05rem] text-white">{v}</b>
+                      <span className="text-[0.6rem] font-bold tracking-[0.16em] text-mute">{k}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
                 {([["PTS", ml.pts], ["REB", ml.oreb + ml.dreb], ["AST", ml.ast]] as const).map(([k, v]) => (
                   <div key={k} className="flex flex-col items-center rounded-[3px] bg-night/50 py-2">
                     <span className="num text-[2.4rem] leading-none text-white">{v}</span>
@@ -172,10 +197,12 @@ export function FinalScreen({ r, onRematch, onNew, onMenu, device, family, activ
 export function PeriodBreak({ r, period }: { r: FinalReport; period: number }) {
   const label = period === 2 ? "Halftime" : period === 4 ? "End of regulation" : period > 4 ? `End of ${period === 5 ? "OT" : `${period - 4}OT`}` : `End of the ${["", "1st", "2nd", "3rd"][period]}`;
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[9%] flex justify-center">
-      <div className="pop-in tile flex w-[40rem] flex-col gap-4 rounded-[4px] p-5 shadow-[0_1.5rem_4rem_rgb(0_0_0/0.6)]">
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      {/* a broadcast break, not a table over live play: the court dims behind the card */}
+      <div className="fade absolute inset-x-0 top-0 bottom-[6.2rem] bg-[rgb(5_6_10/0.62)] backdrop-blur-[3px]" />
+      <div className="pop-in tile relative flex w-[min(58rem,92vw)] flex-col gap-5 rounded-[4px] p-7 shadow-[0_1.5rem_4rem_rgb(0_0_0/0.6)]">
         <div className="flex items-center justify-between">
-          <span className="ttl text-[2.4rem] italic">{label}</span>
+          <span className="ttl text-[3.2rem] italic leading-none">{label}</span>
           <span className="eyebrow text-hot">{period === 2 ? "Teams to the locker room" : "Break"}</span>
         </div>
         <LineScore r={r} />
@@ -193,6 +220,7 @@ export function PeriodBreak({ r, period }: { r: FinalReport; period: number }) {
             );
           })}
         </div>
+        <span className="text-right text-[0.72rem] font-bold uppercase tracking-[0.2em] text-white/55">Any button to continue</span>
       </div>
     </div>
   );

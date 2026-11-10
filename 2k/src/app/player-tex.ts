@@ -341,12 +341,13 @@ function paintJersey(ctx: Ctx, S: number, L: Look) {
     for (let i = 0; i < n; i += 2) ctx.fillRect(U(i / n), y, w / n, h);
   } else {
     // side panels
-    ctx.fillStyle = mix(L.base, L.trim, 0.85);
-    for (const c of [0, 0.5, 1]) ctx.fillRect(U(c - 0.022), y, w * 0.044, h);
+    // wide side panels in the trim color: from the broadcast camera the sides are what identifies a team
+    ctx.fillStyle = mix(L.base, L.trim, 0.9);
+    for (const c of [0, 0.5, 1]) ctx.fillRect(U(c - 0.035), y, w * 0.07, h);
     ctx.fillStyle = mix(L.base, "#000000", 0.08);
     for (const c of [0, 0.5, 1]) {
-      ctx.fillRect(U(c - 0.03), y, w * 0.006, h);
-      ctx.fillRect(U(c + 0.024), y, w * 0.006, h);
+      ctx.fillRect(U(c - 0.043), y, w * 0.006, h);
+      ctx.fillRect(U(c + 0.037), y, w * 0.006, h);
     }
   }
   // armholes (skin) with trim
@@ -385,7 +386,7 @@ function paintJersey(ctx: Ctx, S: number, L: Look) {
     // front: arched team name + number; back: name bar + big number
     const fh = h * 0.13;
     arcText(ctx, L.teamName, U(0.75), V(0.66), w * 0.42, fh, L.ink, L.ink2, w * 0.17);
-    lettering(ctx, L.number, U(0.75), V(0.38), h * 0.27, L.ink, L.ink2, null, 0.86);
+    lettering(ctx, L.number, U(0.75), V(0.36), h * 0.33, L.ink, L.ink2, L.trim, 0.92);
     const nameH = h * 0.085;
     ctx.save();
     ctx.font = `800 ${Math.round(nameH)}px ${fontFamily()}`;
@@ -393,7 +394,7 @@ function paintJersey(ctx: Ctx, S: number, L: Look) {
     ctx.restore();
     const sq = Math.min(1, (w * 0.16) / Math.max(1, nw));
     lettering(ctx, L.last, U(0.25), V(0.8), nameH, L.ink, L.ink2, null, sq, 800, nameH * 0.08);
-    lettering(ctx, L.number, U(0.25), V(0.45), h * 0.43, L.ink, L.ink2, null, 0.84);
+    lettering(ctx, L.number, U(0.25), V(0.43), h * 0.5, L.ink, L.ink2, L.trim, 0.9);
     // brand tag on the chest and above the back number
     ctx.globalAlpha = 0.85;
     lettering(ctx, "HOOPS", U(0.795), V(0.86), h * 0.04, L.trim, L.base, null, 1, 800);

@@ -61,7 +61,8 @@ export function nav(dir: NavDir, src: "pad" | "key" = "key") {
   const root = roots[roots.length - 1];
   const host = root?.el();
   if (!root || !host) return;
-  if (root.any) return root.any();
+  // "press any button" screens still let back go back (a loading screen must not start the game on Esc / B)
+  if (root.any) return dir === "back" && root.back ? root.back() : root.any();
   const fresh = (now - root.since) / 1000 < GRACE;
   if (dir === "back") {
     if (fresh || !root.back) return;
@@ -153,6 +154,7 @@ function onKey(e: KeyboardEvent) {
   if (root.any) {
     if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
     e.preventDefault();
+    if ((e.key === "Escape" || e.key === "Backspace") && root.back) return root.back();
     return root.any();
   }
   const t = e.target as HTMLElement | null;

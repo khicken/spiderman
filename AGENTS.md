@@ -14,6 +14,8 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 
 - Use no asset files. Build everything with three.js geometry, canvas textures, and Web Audio.
 - Exception: recorded voice clips. Do not use the browser speechSynthesis voice. Generate voice lines one time with a local TTS model (Chatterbox) and ship them in `public/voice/` with a manifest. See `2k/scripts/voice/`.
+- Exception: real recorded sound effects, when synthesis sounds fake (crowds, ball, rim, whistles). Use only CC0 or CC BY clips, list each one in `public/sfx/CREDITS.md`, and show CC BY credits in the game. See `2k/public/sfx/`.
+- Exception: recorded sound effects and crowd audio. Synthesized crowds, ball bounces and whistles sound fake. Ship real recordings (CC0 or CC BY) in `public/sfx/`, load them through one sample module (`2k/src/app/audio-samples.ts`), credit every clip in `public/sfx/CREDITS.md`, and show the CC BY credits in the game's settings. Keep synthesis only for UI cues.
 - Each module is a `createX()` factory that returns a plain object with `update` and `dispose`.
 - `game.ts` owns the one `requestAnimationFrame` loop. Modules return `GameEvent[]`, and `game.ts` routes them to audio, camera, and UI.
 - React renders only the menu and the HUD. Push HUD state at 8 to 10 Hz.
@@ -52,3 +54,27 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 3. Launch Chromium with `--use-angle=metal --enable-gpu --ignore-gpu-blocklist`, or WebGL falls back to slow software rendering.
 4. Read the HUD text from the page, and save screenshots of each step.
 5. Look at the screenshots. A passing script does not prove that the scene looks right.
+6. Parallel agents: Next 16 locks `.next/dev`, so two dev servers on one folder fail. Start each one with its own build
+   folder: `NEXT_DIST_DIR=.next-<port> npx next dev --turbopack -p <port>` (2k reads it in `next.config.ts`). Next adds
+   that folder to `tsconfig.json` `include`; remove those lines before you commit.
+
+## Recorded audio
+
+- Never layer synthesized music, organ stings or drum loops over a recorded crowd: next to real recordings they sound
+  fake at once. Keep synthesis to short UI cues, and count `OscillatorNode.start` per game phase in test scripts, since
+  a play-count check of buffer sources cannot see oscillators.
+- Build a crowd from as few venues as possible: beds from one long arena recording, reactions from one crowd session,
+  all in stereo, and send the reactions through the same reverb as the court.
+- Play each crowd bed as one seamless loop (crossfade the seam offline) and only ride its gain. Re-slicing short clips
+  into overlapping crossfaded segments sounds phasey.
+- Ship several takes per reaction and avoid the last ones picked. A take that is already playing gets louder; it does not
+  start a second copy.
+- Take every variant of one sound (all dribbles, for example) from one source, so the room and mic never change between
+  hits. Make soft and hard versions with gain and a low-pass.
+- Take crowd recordings from the same sport. A hockey or soccer arena carries an organ, goal horns, PA music and chants
+  that sound wrong under a basketball game. Scan candidates for sustained narrowband lines (80-2000 Hz, 0.8 s or longer):
+  a music or organ bed shows 10+ per minute, a plain crowd 2-5.
+- A crowd that reacts to every play sounds canned. Save the loud takes for home baskets, blocks, steals and dunks; give
+  misses and routine stops a swell of the bed; and cap each reaction kind (one per 8 s) and all small ones (one per 4 s).
+- Next 16 rewrites `tsconfig.json` for every `NEXT_DIST_DIR`, even when a `.next-*` wildcard is already listed. Restore
+  the file (`git checkout -- 2k/tsconfig.json`) after a parallel dev server.

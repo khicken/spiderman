@@ -1,5 +1,7 @@
 import * as THREE from "three";
-import type { CameraCue, CameraMode, CameraRig, Dir, GameEvent, PlayerState, ScreenPoint, SimView, TeamSide, V3 } from "./contracts";
+import type {
+  BroadcastCue, CameraCue, CameraMode, CameraRig, Dir, GameEvent, PlayerState, ScreenPoint, SimView, StatLine, TeamSide, V3,
+} from "./contracts";
 import { COURT } from "./contracts";
 import { createReplay } from "./camera-replay";
 import {
@@ -24,16 +26,23 @@ interface SideRig {
   back: number; // distance behind the near sideline
   h: number;
   truck: number; // how much of the focus x the camera dolly follows (rest is pan)
-  minW: number; // half-width of court framed, meters
-  maxW: number;
-  aimY: number;
-  nearPad: number; // court depth kept below the focus (m): keeps the ball clear of the bottom HUD band
+  halfIn: number; // half-width of court framed in a half-court set, meters (about midcourt to baseline)
+  halfOut: number; // half-width framed in transition
+  pitch: number; // downward tilt, degrees
+  maxYaw: number; // pan limit off perpendicular to the sideline, degrees
 }
-const BROADCAST: SideRig = { back: 12.8, h: 7.3, truck: 0.62, minW: 6.6, maxW: 11.8, aimY: 0.95, nearPad: 7.2 };
-const HIGH: SideRig = { back: 16, h: 13.5, truck: 0.5, minW: 8.4, maxW: 15, aimY: 0.3, nearPad: 8.2 };
-const SKY: SideRig = { back: 6, h: 16, truck: 0.9, minW: 8.6, maxW: 15, aimY: 0, nearPad: 9.8 };
+// Zoom follows the state of play (half court vs transition), never the spread of the ten: a broadcast holds its lens.
+const BROADCAST: SideRig = { back: 11.5, h: 9.0, truck: 0.9, halfIn: 9.5, halfOut: 11.2, pitch: 25, maxYaw: 12 };
+const HIGH: SideRig = { back: 14.5, h: 14.5, truck: 0.8, halfIn: 10.8, halfOut: 12.6, pitch: 33, maxYaw: 12 };
+const SKY: SideRig = { back: 2.2, h: 19, truck: 0.92, halfIn: 11.2, halfOut: 13, pitch: 62, maxYaw: 8 };
 
-const INTRO_T = 5.4;
+// pregame intro: flyover with the matchup card, then each starting five
+const FLY_T = 3.6;
+const LINEUP_T = 4.0;
+// replay wipe: seconds to cover the frame, then to reveal it
+const WIPE_IN = 0.3;
+const WIPE_OUT = 0.34;
+
 const DEG = 180 / Math.PI;
 
 export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
@@ -69,7 +78,9 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
   // gameplay springs
   const fx = spring();
   const fz = spring(0.7);
-  const zoomW = spring(9);
+  const wide = spring(0.5); // 0 half-court framing .. 1 transition framing
+  let wideWant = 0.5;
+  let gameFov = 30;
   const ballVx = spring();
   const yaw = spring(Math.PI / 2);
   const follow3 = spring3();
@@ -104,6 +115,23 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
   );
   let introOn = false;
   let introT = 0;
+  let introPart = -1; // 0 flyover, 1 away five, 2 home five
+  let lineupK = -1; // starter on camera during a lineup part
+  let poseSub = 0; // sub-shot index inside a multi-part shot (timeout: crane, then huddle)
+
+  // presentation cues for the HUD (BroadcastCue), drained by takeCues()
+  const cueQ: BroadcastCue[] = [];
+  const cueOut: BroadcastCue[] = [];
+  let lastPossession: TeamSide | -1 = -1;
+  let lastFtCue = -1e9;
+  const milestone = [new Uint8Array(32), new Uint8Array(32)]; // per team, per roster index: last points milestone shown (/5)
+
+  // replay wipe: -1 idle, 0..1 covering, 1..2 revealing; the pending action fires at full cover
+  let wipe = -1;
+  let wipeAct: 0 | 1 | 2 = 0; // 1 start the replay, 2 end it
+  let wipeRate = 1;
+  let wipeFrom = 0;
+  let wipeTo = 0;
 
   // forced cue (cue() with a duration)
   let forced: Shot | null = null;
@@ -139,18 +167,20 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
   let pendSide: Dir = 1;
   let pendSlot = -1;
   let lastReplayAt = -1e9;
+  let lastReplayPeriod = -1;
   let replayEventT = 0;
   let replayKind: "dunk" | "ankle" | "block" | "buzzer" = "dunk";
   const replayAt = new THREE.Vector3();
   let replaySide: Dir = 1;
   let replaySlot = -1;
   let replayA0 = 0;
+  let replayZs: 1 | -1 = 1; // dunk replay: which side of the lane the camera stands on
+  let replayPicked = false;
   const replaySpeed = spring(1);
 
   // scratch
   const v = new THREE.Vector3();
   const w = new THREE.Vector3();
-  const dev = new Float32Array(10);
 
   const basketX = (d: Dir) => d * COURT.rimX;
   const aspect = () => (camera.aspect > 0.1 ? camera.aspect : 16 / 9);
@@ -168,6 +198,7 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     forced = null;
     pendT = -1;
     lastReplayAt = -1e9;
+    lastReplayPeriod = -1;
     replay.reset();
     hitT = 0;
     slowTarget = 1;
@@ -176,6 +207,12 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     snapGame = true;
     cutNext = true;
     winner = -1;
+    wipe = -1;
+    wipeAct = 0;
+    lastPossession = -1;
+    lastFtCue = -1e9;
+    milestone[0].fill(0);
+    milestone[1].fill(0);
   }
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -187,26 +224,25 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     return lastDir;
   }
 
-  /** Smoothed focus x/z and framing half-width from the ball, its motion and the spread of players. */
+  /** Smoothed focus x/z from the ball and its motion, and the half-court / transition framing factor. */
   function gameFocus(view: SimView, dt: number) {
     const s = view.state;
     const b = view.ball;
     const d = attackDir(view);
     let tx = b.pos.x;
     let tz = b.pos.z;
-    let om = 2.8;
+    const trans = Math.abs(ballVx.x) > 3.5;
+    const front = b.pos.x * d > -2; // past the 28 ft mark of the attack half
     if (b.mode === "shot" && b.shot) {
       tx = mix(b.pos.x, basketX(b.shot.target), 0.5);
-      om = 3.4;
     } else if (b.mode === "pass" && b.pass) {
       tx = mix(b.pos.x, b.pass.end.x, 0.55);
       tz = mix(b.pos.z, b.pass.end.z, 0.5);
-      om = 3.4;
     } else {
-      tx += clamp(ballVx.x * 0.42, -3.6, 3.6);
-      const halfcourt = b.pos.x * d > 0.5 && Math.abs(ballVx.x) < 3.5;
-      if (halfcourt) tx = mix(tx, d * (COURT.rimX - 4.2), 0.32);
+      tx += clamp(ballVx.x * 0.3, -3, 3);
     }
+    // half court: lean toward the attacked rim so the basket sits about three quarters across the frame
+    if (front && !trans) tx = mix(tx, d * (COURT.rimX - 5.5), 0.45);
     if (s.phase === "inbound" && s.inbound) {
       tx = mix(tx, s.inbound.spot.x, 0.4);
       tz = mix(tz, s.inbound.spot.z, 0.4);
@@ -217,7 +253,7 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
       for (let i = 0; i < view.players.length && i < 10; i++) cx += view.players[i].pos.x;
       tx = mix(tx, cx / Math.max(1, Math.min(10, view.players.length)), 0.4);
     }
-    const lim = COURT.halfL - 4.4;
+    const lim = COURT.halfL - 5;
     tx = clamp(tx, -lim, lim);
     // depth focus: between the ball and the centroid of the ten, biased to the ball
     let cz = 0;
@@ -229,46 +265,41 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     if (cn) cz /= cn;
     tz = clamp(mix(tz, cz, 0.35), -COURT.halfW + 1.2, COURT.halfW - 0.8);
 
-    // framing: cover the 8 players nearest the focus plus the ball
-    let n = 0;
-    for (let i = 0; i < view.players.length && i < 10; i++) dev[n++] = Math.abs(view.players[i].pos.x - tx);
-    dev.sort();
-    let need = Math.max(n >= 8 ? dev[7] : n ? dev[n - 1] : 6, Math.abs(b.pos.x - tx) + 0.8) + 2.0;
-    if (s.clutch) need *= 0.95;
-    const u = view.userSlot >= 0 ? view.players[view.userSlot] : null;
-    if (u && u.meter.active) need *= 0.92;
+    // framing from the state of play, held while a shot is in the air
+    if (b.mode !== "shot") {
+      const ph = s.phase;
+      if (ph === "live") wideWant = trans ? 1 : front ? 0 : 0.45;
+      else if (ph === "freeThrow") wideWant = 0.1;
+      else wideWant = 0.35;
+    }
 
     if (snapGame) {
       snap(fx, tx);
       snap(fz, tz);
-      snap(zoomW, need);
+      snap(wide, wideWant);
     } else {
-      springTo(fx, tx, om, dt);
+      springTo(fx, tx, 3.4, dt);
       springTo(fz, tz, 2, dt);
-      springTo(zoomW, need, need > zoomW.x ? 2.2 : 1.3, dt);
+      springTo(wide, wideWant, 1.0, dt);
     }
   }
 
   function sidePose(r: SideRig) {
-    // the dolly creeps toward the sideline when the play is on the far side
+    // sideline rail: the dolly trucks with most of the play and creeps in a little when the play is on the far side
     const fzz = fz.x;
-    const pull = clamp(fzz, 0, 6) * 0.4;
-    wantPos.set(fx.x * r.truck, r.h, -(COURT.halfW + r.back - pull));
-    // vertical: frame a band of court depth around the play (ball-biased), not the whole floor, so the action sits
-    // in the middle third instead of riding the top edge with empty floor and front-row heads below it
-    const zNear = Math.max(-COURT.halfW - 0.8, fzz - r.nearPad);
-    const zFar = Math.min(COURT.halfW + 0.4, fzz + 5.6);
-    const dNear = Math.max(0.5, zNear - wantPos.z);
-    const dFar = zFar - wantPos.z;
-    const aNear = Math.atan2(r.h, dNear);
-    const aFar = Math.atan2(r.h - 2.3, dFar);
-    const pitch = (aNear + aFar) / 2;
-    const depth = -wantPos.z + 0.4;
-    const dx = fx.x - wantPos.x;
-    wantAim.set(fx.x, r.h - Math.tan(pitch) * Math.hypot(depth, dx), wantPos.z + depth);
-    const dist = wantPos.distanceTo(wantAim);
-    const vSpan = (aNear - aFar) * 1.1 * DEG;
-    wantFov = clamp(Math.max(vSpan, fovFor(clamp(zoomW.x, r.minW, r.maxW), dist, 14, 50)), 16, 50);
+    wantPos.set(fx.x * r.truck, r.h, -(COURT.halfW + r.back - clamp(fzz, 0, 6) * 0.25));
+    // frame centre on the play's depth (not the near floor), within a pitch band that keeps the crowd strip thin
+    const aimY = 1.0;
+    const centreZ = fzz * 0.5 + 0.6;
+    const pitch = clamp(Math.atan2(r.h - aimY, centreZ - wantPos.z), (r.pitch - 3.5) / DEG, (r.pitch + 2) / DEG);
+    const reach = (r.h - aimY) / Math.tan(pitch); // floor distance of the frame centre
+    let yaw = Math.atan2(fx.x - wantPos.x, fzz * 0.5 - wantPos.z);
+    const ym = r.maxYaw / DEG;
+    yaw = clamp(yaw, -ym, ym);
+    wantAim.set(wantPos.x + Math.sin(yaw) * reach, aimY, wantPos.z + Math.cos(yaw) * reach);
+    const halfW = mix(r.halfIn, r.halfOut, clamp(wide.x, 0, 1));
+    const dist = Math.hypot(fx.x - wantPos.x, r.h - aimY, fzz * 0.5 - wantPos.z);
+    wantFov = fovFor(halfW, dist, 14, 50);
     ctrlF.set(0, 0, 1);
   }
 
@@ -277,13 +308,14 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     const b = view.ball;
     if (mode === "broadcast" || mode === "broadcastHigh" || mode === "skycam") {
       sidePose(mode === "broadcast" ? BROADCAST : mode === "skycam" ? SKY : HIGH);
-      wantAim.y += clamp(b.pos.y - 3, 0, 4) * 0.1;
-      // a jumper in flight: tilt up and open the lens so the ball's arc stays inside the frame
-      if (b.mode === "shot") {
-        const up = clamp(b.pos.y - 2.2, 0, 5);
-        wantAim.y += up * 0.28;
-        wantFov = Math.min(54, wantFov + up * 1.4);
-      }
+      // a jumper in flight: a small tilt only, the frame holds still while the user shoots
+      let up = clamp(b.pos.y - 3, 0, 4) * 0.08;
+      if (b.mode === "shot") up += clamp(b.pos.y - 2.2, 0, 5) * 0.12;
+      wantAim.y += Math.min(0.6, up);
+      // the lens never breathes faster than 4 deg/s in live play
+      if (snapGame) gameFov = wantFov;
+      else gameFov += clamp(wantFov - gameFov, -4 * dt, 4 * dt);
+      wantFov = gameFov;
     } else if (mode === "baseline") {
       const d = attackDir(view);
       const target = d > 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -322,15 +354,15 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
       const fp = spring3To(follow3, w, 7, snapGame ? 0 : dt, w);
       const sx = Math.sin(yaw.x);
       const sz = Math.cos(yaw.x);
-      wantPos.set(fp.x - sx * 6.3, 3.3, fp.z - sz * 6.3);
+      wantPos.set(fp.x - sx * 6.9, 3.7, fp.z - sz * 6.9);
       // never behind the end line (the stanchion fills the lens there) and never under a backboard
       const lim = COURT.halfL - 0.5;
       if (Math.abs(wantPos.x) > lim) wantPos.x = Math.sign(wantPos.x) * lim;
       wantPos.z = clamp(wantPos.z, -COURT.halfW - 1.5, COURT.halfW + 1.5);
       const underBoard = Math.abs(wantPos.x) > COURT.rimX - 1.8 && Math.abs(wantPos.z) < 2.6;
       if (underBoard) wantPos.y = 5.2;
-      wantAim.set(fp.x + sx * 4.5, 1.25, fp.z + sz * 4.5);
-      wantFov = 52;
+      wantAim.set(fp.x + sx * 4.5, 1.3, fp.z + sz * 4.5);
+      wantFov = 50;
       ctrlF.set(sx, 0, sz);
     }
     subject = wantPos.distanceTo(b.pos);
@@ -384,8 +416,21 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
   }
 
   function timeoutPose(view: SimView) {
+    if (shotT < 2.8) {
+      const u = smoother(shotT / 2.8);
+      wantPos.set(mix(-7, 5, u), mix(5.5, 8.5, u), -COURT.halfW - 7.5);
+      wantAim.set(mix(-3, 2, u), mix(1.2, 1.9, u), 2.5);
+      wantFov = 48;
+      subject = 18;
+      ctrlF.set(0, 0, 1);
+      return;
+    }
+    if (poseSub === 0) {
+      poseSub = 1;
+      cutNext = true;
+    }
     centroid(view, timeoutTeam, v);
-    const a = -0.5 + shotT * 0.09;
+    const a = -0.5 + (shotT - 2.8) * 0.09;
     const r = 8;
     wantPos.set(v.x + Math.sin(a) * r, 2.3 + Math.sin(shotT * 0.2) * 0.3, v.z - Math.cos(a) * r);
     inBowl();
@@ -415,15 +460,75 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     subject = r;
   }
 
-  function introPose(dt: number, view: SimView | null) {
-    const fast = view && view.state.phase === "live" ? 2.4 : 1;
-    introT += dt * fast;
-    const u = smoother(clamp(introT / INTRO_T, 0, 1));
-    introPath.getPoint(u, wantPos);
-    introAim.getPoint(u, wantAim);
-    wantFov = mix(50, fovFor(5.2, 13.2, 28, 44), u);
-    subject = wantPos.distanceTo(wantAim);
-    if (introT >= INTRO_T) introOn = false;
+  function introPose(dt: number, view: SimView) {
+    introT += dt;
+    // without the pregame hold (sim already tossing the ball) only a short flyover fits before the jump
+    const held = view.state.phase === "pregame";
+    if (!held && introT > 1.1) {
+      endIntro();
+      tipoffPose();
+      return;
+    }
+    // short games get a short intro: about 6 s when quarters are 3 minutes or less
+    const k = view.state.periodLength <= 180 ? 0.55 : 1;
+    const FLY = FLY_T * k;
+    const LINE = LINEUP_T * k;
+    const part = introT < FLY ? 0 : introT < FLY + LINE ? 1 : 2;
+    if (part !== introPart) {
+      if (introPart >= 0) cutNext = true;
+      introPart = part;
+      lineupK = -1;
+      if (part === 0) push({ kind: "matchup", seconds: FLY - 0.3 });
+      else push({ kind: "lineup", team: part === 1 ? 1 : 0, seconds: LINE - 0.15 });
+    }
+    if (part === 0) {
+      const u = smoother(clamp(introT / FLY, 0, 1));
+      introPath.getPoint(u, wantPos);
+      introAim.getPoint(u, wantAim);
+      wantFov = mix(50, fovFor(5.2, 13.2, 28, 44), u);
+      subject = wantPos.distanceTo(wantAim);
+    } else {
+      // each starter in turn from over his shoulder (name and number on the back), a cut between players
+      const team: TeamSide = part === 1 ? 1 : 0;
+      const local = introT - (part === 1 ? FLY : FLY + LINE);
+      const seg = LINE / 5;
+      const k = clamp(Math.floor(local / seg), 0, 4);
+      if (k !== lineupK) {
+        if (lineupK >= 0) cutNext = true;
+        lineupK = k;
+      }
+      const f = clamp(local / seg - k, 0, 1);
+      const p = view.players[team * 5 + k];
+      const fx0 = Math.sin(p.facing);
+      const fz0 = Math.cos(p.facing);
+      const side = k % 2 === 0 ? 1 : -1;
+      const slide = side * mix(0.55, 1.05, f);
+      wantPos.set(p.pos.x - fx0 * 3.1 - fz0 * slide, 1.75 - f * 0.12, p.pos.z - fz0 * 3.1 + fx0 * slide);
+      inBowl();
+      wantAim.set(p.pos.x + fx0 * 0.6, 1.5 + p.height * 0.05, p.pos.z + fz0 * 0.6);
+      wantFov = 30;
+      subject = wantPos.distanceTo(wantAim);
+    }
+    ctrlF.set(0, 0, 1);
+    if (introT >= FLY + LINE * 2) endIntro();
+  }
+
+  function endIntro() {
+    if (!introOn) return;
+    introOn = false;
+    introPart = -1;
+    cutNext = true;
+  }
+
+  // the same card twice inside 1.5 s (two events for one moment) would restart its animation: drop the repeat
+  const cueSeen = new Map<string, number>();
+  function push(c: BroadcastCue) {
+    const r = c as { kind: string; title?: string; team?: number; on?: boolean };
+    const key = `${r.kind}|${r.title ?? ""}|${r.team ?? ""}|${r.on ?? ""}`;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (now - (cueSeen.get(key) ?? -1e9) < 1500) return;
+    cueSeen.set(key, now);
+    if (cueQ.length < 16) cueQ.push(c);
   }
 
   function slamPose(view: SimView, dt: number) {
@@ -453,10 +558,61 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     subject = wantPos.distanceTo(view.ball.pos);
   }
 
+  /** Players standing between a camera at (cx, cz) and the target (tx, tz), the subject excluded. */
+  function occluders(rv: SimView, cx: number, cz: number, tx: number, tz: number, skip: number): number {
+    const dx = tx - cx, dz = tz - cz;
+    const L2 = dx * dx + dz * dz || 1;
+    let n = 0;
+    for (let i = 0; i < rv.players.length; i++) {
+      if (i === skip) continue;
+      const p = rv.players[i].pos;
+      const k = clamp(((p.x - cx) * dx + (p.z - cz) * dz) / L2, 0, 1);
+      if (k < 0.15 || k > 0.97) continue;
+      const ex = cx + dx * k - p.x, ez = cz + dz * k - p.z;
+      if (ex * ex + ez * ez < 0.75 * 0.75) n++;
+    }
+    return n;
+  }
+
+  /** Once per replay: the orbit side and start angle with the fewest bodies between the lens and the subject. */
+  function pickReplayAngle(rv: SimView) {
+    replayPicked = true;
+    const sub = replaySlot >= 0 ? rv.players[replaySlot].pos : rv.ball.pos;
+    let best = 1e9;
+    if (replayKind === "dunk") {
+      const rx = basketX(replaySide);
+      for (const zs of [1, -1] as const) {
+        for (const a0 of [-0.3, 0.1, 0.5]) {
+          const phi = a0 * 0.9 + 0.15;
+          const n = occluders(rv, rx - replaySide * Math.sin(phi) * 5.6, -zs * Math.cos(phi) * 5.6, sub.x, sub.z, replaySlot) + Math.random() * 0.3;
+          if (n < best) {
+            best = n;
+            replayA0 = a0;
+            replayZs = zs;
+          }
+        }
+      }
+      return;
+    }
+    for (let k = 0; k < 8; k++) {
+      const a0 = (k / 8) * Math.PI * 2;
+      const cx = replayAt.x + Math.sin(a0) * 5.6, cz = replayAt.z - Math.cos(a0) * 5.6;
+      // stay on the floor side of the stands
+      const off = Math.abs(cz) > COURT.halfW + 2.5 || Math.abs(cx) > COURT.halfL + 1.5 ? 2 : 0;
+      const n = occluders(rv, cx, cz, sub.x, sub.z, replaySlot) + off + Math.random() * 0.3;
+      if (n < best) {
+        best = n;
+        replayA0 = a0;
+      }
+    }
+  }
+
   function replayPose(view: SimView, dt: number) {
     const rv = replay.view ?? view;
+    if (!replayPicked && replay.view) pickReplayAngle(rv);
     const t = replay.t - replayEventT; // negative before the highlight moment
-    if (replaySlot >= 0 && replayKind !== "buzzer") w.copy(rv.players[replaySlot].pos).setY(1.3 + rv.players[replaySlot].pos.y);
+    // follow the shooter through his release, then the ball to the rim (never the crowd of players at the other end)
+    if (replaySlot >= 0 && (replayKind !== "buzzer" || t < -0.9)) w.copy(rv.players[replaySlot].pos).setY(1.3 + rv.players[replaySlot].pos.y);
     else w.copy(rv.ball.pos);
     const a = replayA0 + t * 0.32;
     if (replayKind === "dunk") {
@@ -464,7 +620,7 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
       const r = 5.6;
       // beside the rim on the near side (profile of the dunker), sweeping out toward the court
       const phi = a * 0.9 + 0.15;
-      wantPos.set(rx - replaySide * Math.sin(phi) * r, mix(1.3, 2.7, smooth((t + 2) / 3.2)), -Math.cos(phi) * r);
+      wantPos.set(rx - replaySide * Math.sin(phi) * r, mix(1.3, 2.7, smooth((t + 2) / 3.2)), -replayZs * Math.cos(phi) * r);
       v.set(mix(rx, w.x, 0.6), clamp(mix(COURT.rimHeight - 0.3, w.y, 0.5), 1.6, 4), w.z * 0.6);
       wantFov = 42;
     } else {
@@ -529,10 +685,9 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     shot = next;
     shotT = 0;
     // blends where a cut would lose the player; cuts everywhere else (that is how a broadcast switches cameras)
+    poseSub = 0;
     let blend = 0;
-    if (prev === "intro" && !cutNext) blend = 1.1;
-    else if (prev === "tipoff" && next === "game") blend = 0.9;
-    else if (prev === "freeThrow" && next === "game") blend = 0.55;
+    if (prev === "freeThrow" && next === "game") blend = 0.45;
     if (blend > 0) {
       fromPos.copy(pos);
       fromAim.copy(aim);
@@ -569,31 +724,67 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     }
     const ph = view.state.phase;
     if (age < 1.1 || ph === "live" || ph === "tipoff" || ph === "final") return;
-    if (pendScore < 4 && view.time - lastReplayAt < 40) {
+    // broadcast restraint: at most one auto replay per quarter, and only for a dunk; a buzzer-beater always gets one
+    const per = view.state.period;
+    if (pendKind !== "buzzer" && (pendKind !== "dunk" || per === lastReplayPeriod || view.time - lastReplayAt < 40)) {
       pendT = -1;
       return;
     }
     const pre = pendKind === "dunk" ? 2.2 : pendKind === "buzzer" ? 2.6 : 1.8;
-    if (replay.start(pendT - pre, pendT + 1.1)) {
+    const [a, b] = replay.span();
+    if (Math.min(pendT + 1.1, b) - Math.max(pendT - pre, a) >= 0.6 && wipe < 0) {
+      wipeFrom = pendT - pre;
+      wipeTo = pendT + 1.1;
       replayEventT = pendT;
       replayKind = pendKind;
       replayAt.copy(pendAt);
       replaySide = pendSide;
       replaySlot = pendSlot;
-      replayA0 = (Math.random() - 0.5) * 0.8;
-      lastReplayAt = view.time;
-      snap(replaySpeed, 1);
+      startWipe(1, 1);
     }
     pendT = -1;
+  }
+
+  function startWipe(act: 1 | 2, speed: number) {
+    wipe = 0;
+    wipeAct = act;
+    wipeRate = speed;
+    // the HUD hides as the wipe starts covering the frame, not after: no scorebug ghosting under the wipe
+    if (act === 1) push({ kind: "replay", on: true });
+  }
+
+  /** Advance the wipe in real time; the cut (replay start or end) happens under full cover. */
+  function stepWipe(dt: number) {
+    if (wipe < 0) return;
+    const before = wipe;
+    wipe += (dt * wipeRate) / (wipe < 1 ? WIPE_IN : WIPE_OUT);
+    if (before < 1 && wipe >= 1) {
+      wipe = 1;
+      if (wipeAct === 1) {
+        if (replay.start(wipeFrom, wipeTo)) {
+          replayA0 = (Math.random() - 0.5) * 0.8;
+          replayZs = 1;
+          replayPicked = false;
+          lastReplayAt = src ? src.time : 0;
+          lastReplayPeriod = src ? src.state.period : -1;
+          snap(replaySpeed, 1);
+        } else push({ kind: "replay", on: false });
+      } else if (wipeAct === 2) {
+        replay.stop();
+        snapGame = true;
+        push({ kind: "replay", on: false });
+      }
+      wipeAct = 0;
+      cutNext = true;
+    }
+    if (wipe >= 2) wipe = -1;
   }
 
   function stepReplay(dt: number) {
     const near = Math.abs(replay.t - replayEventT) < 0.6;
     springTo(replaySpeed, near ? 0.32 : 1, 6, dt);
-    if (!replay.advance(dt * replaySpeed.x)) {
-      replay.stop();
-      snapGame = true;
-    }
+    // the last frame holds under the outgoing wipe
+    if (!replay.advance(dt * replaySpeed.x) && wipe < 0) startWipe(2, 1);
   }
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -619,6 +810,8 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     }
     if (pos.y < 0.5) pos.y = 0.5;
     focusDist = subject;
+    camera.userData.wipe = wipe < 0 ? 0 : wipe;
+    camera.userData.replay = replay.active ? 1 : 0;
 
     // shake (trauma squared) and zoom punch
     trauma = Math.max(0, trauma - dt * 1.5);
@@ -694,7 +887,8 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
 
       if (replay.active) stepReplay(dt);
       else if (replaysOn && simDt > 0) replay.record(view);
-      if (!replay.active) tryReplay(view);
+      if (!replay.active && wipe < 0) tryReplay(view);
+      stepWipe(dt);
       updateTime(dt);
 
       if (forced) {
@@ -718,7 +912,8 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
       const cueDt = shot === "slam" || shot === "game" || shot === "freeThrow" ? simDt : dt;
       switch (shot) {
         case "intro":
-          introPose(dt, view);
+          // runs on the match clock: frozen while the game sits paused behind the pregame screen
+          introPose(simDt > 0 ? dt : 0, view);
           break;
         case "tipoff":
           tipoffPose();
@@ -754,6 +949,7 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
       snapGame = false;
       shotT += cueDt;
       write(dt);
+      attackCue(view);
     },
 
     menu(dt, t) {
@@ -765,6 +961,8 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
         forced = null;
         slamOn = buzzOn = false;
         replay.stop();
+        wipe = -1;
+        wipeAct = 0;
         snap(ts, 1);
         slowTarget = 1;
         hitT = 0;
@@ -810,6 +1008,7 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
       if (kind === "intro") {
         introOn = true;
         introT = 0;
+        introPart = -1;
         cutNext = true;
         return;
       }
@@ -878,18 +1077,64 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
     },
     skip() {
       if (replay.active) {
-        replay.stop();
-        snapGame = true;
-        cutNext = true;
-      } else if (introOn) {
-        introOn = false;
-        cutNext = false;
+        if (wipe < 0) startWipe(2, 1.6);
+      } else if (introOn && introT > 0.6) {
+        endIntro();
+        push({ kind: "clear" });
       }
     },
     get bug() {
       return replay.active ? "REPLAY" : null;
     },
+    get introActive() {
+      return introOn;
+    },
+    takeCues() {
+      cueOut.length = 0;
+      for (const c of cueQ) cueOut.push(c);
+      cueQ.length = 0;
+      return cueOut;
+    },
   };
+
+  /** The user's team just won the ball: tell the HUD which way is up the floor on screen. */
+  function attackCue(view: SimView) {
+    const p = view.state.possession;
+    if (p === lastPossession) return;
+    lastPossession = p;
+    const ut = view.userTeam;
+    if (ut === -1 || p !== ut || introOn || shot !== "game") return;
+    const d = view.dir(ut);
+    v.set(basketX(d), 1, 0).project(camera);
+    w.set(-basketX(d), 1, 0).project(camera);
+    push({ kind: "attack", team: ut, screen: v.x >= w.x ? 1 : -1, seconds: 1.4 });
+  }
+
+  const nameOf = (view: SimView, slot: number) => {
+    const d = view.players[slot].data;
+    return `${d.first ? d.first[0] + ". " : ""}${d.last}`.toUpperCase();
+  };
+  const boxOf = (view: SimView, slot: number): StatLine | null => {
+    const p = view.players[slot];
+    return view.teams[p.team].box[p.rosterIndex] ?? null;
+  };
+  function statLine(l: StatLine, withFt: boolean) {
+    let t = `${l.pts} PTS · ${l.fgm}-${l.fga} FG`;
+    if (l.tpa >= 2) t += ` · ${l.tpm}-${l.tpa} 3PT`;
+    if (withFt && l.fta > 0) t += ` · ${l.ftm}-${l.fta} FT`;
+    const reb = l.oreb + l.dreb;
+    if (reb >= 4) t += ` · ${reb} REB`;
+    if (l.ast >= 4) t += ` · ${l.ast} AST`;
+    return t;
+  }
+  const pct = (m: number, a: number) => (a > 0 ? `${Math.round((100 * m) / a)}%` : "-");
+  function periodTitle(period: number) {
+    if (period === 2) return "HALFTIME";
+    if (period === 1) return "END OF 1ST";
+    if (period === 3) return "END OF 3RD";
+    if (period === 4) return "END OF REGULATION";
+    return `END OF ${period === 5 ? "" : period - 4}OT`;
+  }
 
   function handleOne(e: GameEvent, view: SimView) {
     switch (e.type) {
@@ -945,19 +1190,74 @@ export function createCamera(camera: THREE.PerspectiveCamera): CameraRig {
           slowTarget = 0.4;
         }
         break;
-      case "make":
+      case "make": {
+        const p = view.players[e.slot];
+        const l = boxOf(view, e.slot);
+        const m = milestone[p.team];
+        if (l && p.rosterIndex < m.length && e.kind !== "freeThrow") {
+          const step = Math.floor(l.pts / 5);
+          if (l.pts >= 10 && step > m[p.rosterIndex]) {
+            m[p.rosterIndex] = step;
+            push({ kind: "lowerThird", team: p.team, slot: e.slot, title: nameOf(view, e.slot), line: statLine(l, true), seconds: 3 });
+          }
+        }
         if (buzzOn && buzzHold < 0 && e.slot === buzzShooter) {
           buzzHold = 0;
           highlight(view, "buzzer", 6, e.at, e.side, e.slot);
           rig.shake(0.25);
         } else if (view.state.clutch && e.points === 3) rig.shake(0.15);
         break;
+      }
       case "miss":
         if (buzzOn && buzzHold < 0 && e.slot === buzzShooter) buzzHold = 0.3;
         break;
-      case "timeout":
+      case "timeout": {
         timeoutTeam = e.team;
+        // the calling team's leading scorer
+        let best = -1;
+        let bp = -1;
+        for (let s = e.team * 5; s < e.team * 5 + 5; s++) {
+          const l = boxOf(view, s);
+          if (l && l.pts > bp) {
+            bp = l.pts;
+            best = s;
+          }
+        }
+        const l = best >= 0 ? boxOf(view, best) : null;
+        if (l && l.fga > 0) {
+          const t = view.teams[e.team].data;
+          push({ kind: "lowerThird", team: e.team, slot: best, title: nameOf(view, best), line: `LEADS ${t.abbr.toUpperCase()} · ${statLine(l, true)}`, seconds: 4.5 });
+        }
         break;
+      }
+      case "freeThrowStart": {
+        if (e.index !== 1 || view.time - lastFtCue < 3) break;
+        lastFtCue = view.time;
+        const l = boxOf(view, e.slot);
+        const p = view.players[e.slot];
+        if (!l) break;
+        const line = l.fga + l.fta > 0
+          ? `TONIGHT · ${statLine(l, true)}`
+          : `SEASON · ${p.data.season.ppg.toFixed(1)} PPG · ${Math.round(p.data.season.ftPct > 1 ? p.data.season.ftPct : p.data.season.ftPct * 100)}% FT`;
+        push({ kind: "lowerThird", team: p.team, slot: e.slot, title: nameOf(view, e.slot), line, seconds: 3.2 });
+        break;
+      }
+      case "periodEnd": {
+        if (view.state.phase === "final") break;
+        const h = view.teams[0].totals;
+        const a = view.teams[1].totals;
+        push({
+          kind: "compare", title: periodTitle(e.period), seconds: 5,
+          rows: [
+            { label: "FG", home: `${h.fgm}-${h.fga}  ${pct(h.fgm, h.fga)}`, away: `${a.fgm}-${a.fga}  ${pct(a.fgm, a.fga)}` },
+            { label: "3PT", home: `${h.tpm}-${h.tpa}`, away: `${a.tpm}-${a.tpa}` },
+            { label: "REB", home: `${h.oreb + h.dreb}`, away: `${a.oreb + a.dreb}` },
+            { label: "AST", home: `${h.ast}`, away: `${a.ast}` },
+            { label: "TOV", home: `${h.tov}`, away: `${a.tov}` },
+          ],
+        });
+        break;
+      }
       case "gameEnd":
         winner = e.winner;
         break;

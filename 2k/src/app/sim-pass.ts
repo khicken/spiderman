@@ -149,7 +149,8 @@ export function releasePass(ctx: Ctx, from: number): void {
     ctx.inboundPassed = true;
     x.spotOn = false;
   }
-  if (isUser(ctx, from)) setUser(ctx, to);
+  // practice and the tutorial keep the user on one player: the receiver kicks it back (practiceUpdate)
+  if (isUser(ctx, from) && ctx.mode !== "practice") setUser(ctx, to);
 }
 
 export function passFlight(ctx: Ctx, dt: number): void {

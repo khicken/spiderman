@@ -42,6 +42,8 @@ export interface Voice {
   setVolume(v: number): void;
   /** Fade out and clear everything queued. */
   stop(): void;
+  /** Put the PA in the recorded arena room (the same impulse response as the court and crowd). */
+  setRoom(ir: AudioBuffer): void;
   readonly ready: boolean;
   dispose(): void;
 }
@@ -69,27 +71,6 @@ const DEFAULT_COOLDOWN = 4;
 const MAX_WAIT: Record<number, number> = { 0: 0.8, 1: 1.4, 2: 2.5, 3: 4, 4: 8, 5: 20 };
 const MAX_QUEUE = 4;
 const LINE_GAP = 0.2;
-
-function makeImpulse(ctx: BaseAudioContext, seconds: number, decay: number): AudioBuffer {
-  const sr = ctx.sampleRate;
-  const len = Math.max(1, Math.floor(sr * seconds));
-  const buf = ctx.createBuffer(2, len, sr);
-  const pre = Math.floor(sr * 0.025);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = buf.getChannelData(ch);
-    let lp = 0;
-    for (let i = pre; i < len; i++) {
-      const t = (i - pre) / sr;
-      lp += 0.35 * (Math.random() * 2 - 1 - lp);
-      d[i] = lp * Math.pow(1 - (i - pre) / (len - pre), decay) * Math.exp(-t * 1.2);
-    }
-    for (const [ms, g] of [[38, 0.5], [71, 0.35], [113, 0.28], [160, 0.2]] as const) {
-      const k = pre + Math.floor((ms / 1000) * sr * (ch ? 1.07 : 1));
-      if (k < len) d[k] += g * (ch ? -1 : 1);
-    }
-  }
-  return buf;
-}
 
 export function createVoice(ctx: AudioContext, destination: AudioNode, basePath = "/2k"): Voice {
   const root = `${basePath.replace(/\/$/, "")}/voice/`;
@@ -144,11 +125,16 @@ export function createVoice(ctx: AudioContext, destination: AudioNode, basePath 
   const paDry = track(ctx.createGain());
   paDry.gain.value = 0.72;
   paLp.connect(paDry).connect(out);
+  // the PA's room is the recorded arena impulse (setRoom), after a 75 ms pre-delay (the speakers hang over center
+  // court); until it decodes the PA is dry plus the slap echo
   const verb = track(ctx.createConvolver());
-  safe(() => (verb.buffer = makeImpulse(ctx, 3.2, 2.2)), undefined);
+  const preDelay = track(ctx.createDelay(0.5));
+  preDelay.delayTime.value = 0.075;
+  const verbHp = track(ctx.createBiquadFilter());
+  verbHp.type = "highpass"; verbHp.frequency.value = 220; verbHp.Q.value = 0.6;
   const verbWet = track(ctx.createGain());
-  verbWet.gain.value = 0.42;
-  paLp.connect(verb).connect(verbWet).connect(out);
+  verbWet.gain.value = 0.5;
+  paLp.connect(preDelay).connect(verb).connect(verbHp).connect(verbWet).connect(out);
   const slap = track(ctx.createDelay(1));
   slap.delayTime.value = 0.19;
   const slapFb = track(ctx.createGain());
@@ -362,6 +348,11 @@ export function createVoice(ctx: AudioContext, destination: AudioNode, basePath 
     },
     setVolume(v: number) {
       safe(() => out.gain.setTargetAtTime(Math.max(0, Math.min(1.5, v)), ctx.currentTime, 0.05), undefined);
+    },
+    setRoom(ir) {
+      safe(() => {
+        if (!verb.buffer) verb.buffer = ir;
+      }, undefined);
     },
     stop() {
       queue.length = 0;
