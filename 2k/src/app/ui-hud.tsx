@@ -2,16 +2,24 @@
 
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type {
-  GameEvent, HudHandle, HudPlayer, HudSnapshot, HudTeam, MeterGrade, MeterView, ScreenTag, ShotKind, TeamData, TeamSide,
-  TurnoverKind,
+  BroadcastCue, GameEvent, HudHandle, HudPlayer, HudSnapshot, HudTeam, MeterGrade, MeterView, ScreenTag, ShotKind, ShotQuality, TeamData,
+  TeamSide,
 } from "./contracts";
-import { Face, Glyph, type Act, type PadFamily } from "./ui-glyphs";
+import { BroadcastLayer, NO_CUES, applyCue, expireCues, type CueState } from "./ui-broadcast";
+import { Face, type PadFamily } from "./ui-glyphs";
 import { alpha, cx, fmtClock, fmtShot, inkOn, mix, vivid } from "./ui-kit";
+import { ActionBar, AttackFlash, CoachChip, ControlsCard, EdgeArrow, IntroCard, PossessionChip, attackSide } from "./ui-coach";
+import { acquireProbe, defenseOf, type DefBtn } from "./tutorial-input";
+import { FOUL_TITLE, FOUL_WHY, TOV_TITLE, TOV_WHY, newPromptMemo, pickPrompt, type Prompt } from "./tutorial-prompts";
+import { readOnboarding, writeOnboarding } from "./tutorial-store";
 
 // In-game HUD. React renders at HUD_HZ from the snapshot; the meter and floating tags are written per frame via refs.
+// v2 onboarding: whistle cards say why play stopped, the user marker is a YOU tag, the meter teaches timing, and a
+// coach layer (action bar, prompts, possession chip, attack arrows) runs while hints are on.
 
-type Banner = { id: number; text: string; sub?: string; color: string; big?: boolean };
+type Banner = { id: number; text: string; sub?: string; color: string; big?: boolean; tag?: string; why?: string; fix?: string; ms?: number };
 type Feed = { id: number; text: string; color: string; pts?: number };
+type Chip = { id: number; text: string; tone: "good" | "bad" | "info" };
 
 const QUIET = new Set<GameEvent["type"]>([
   "dribble", "squeak", "bump", "catch", "pass", "bounce", "rim", "backboard", "net", "swish", "rumble", "shake", "crowd",
@@ -25,11 +33,7 @@ const KIND: Record<ShotKind, string> = {
   alleyOopLayup: "alley-oop layup", putback: "putback", freeThrow: "free throw", tip: "tip-in",
 };
 
-const TOV: Record<TurnoverKind, string> = {
-  steal: "Stolen", badPass: "Bad pass", outOfBounds: "Out of bounds", travel: "Traveling", shotClock: "Shot clock violation",
-  backcourt: "Backcourt violation", eightSeconds: "8-second violation", threeSeconds: "3 seconds in the key",
-  offensiveFoul: "Offensive foul", fiveSeconds: "5-second violation",
-};
+const STOPPAGE = new Set(["outOfBounds", "travel", "shotClock", "backcourt", "eightSeconds", "threeSeconds", "fiveSeconds"]);
 
 const SLAMS = ["SLAM", "HAMMERED HOME", "THROWN DOWN", "RIM ROCKER"];
 
@@ -41,7 +45,10 @@ const GRADE: Record<Exclude<MeterGrade, "none">, [string, string, string]> = {
   late: ["LATE", "BAD RELEASE", "var(--color-bad)"],
 };
 
+const QUALITY_LABEL: Record<ShotQuality, string> = { wideOpen: "WIDE OPEN", open: "OPEN", contested: "CONTESTED", smothered: "SMOTHERED" };
+
 const ARC_D = "M25 103.3 A50 50 0 0 0 25 16.7"; // 120 degree arc, bottom to top, bulging right
+const GHOST_SHOTS = 10; // the RELEASE cue shows for the player's first shots
 
 export type HudProps = {
   h: HudSnapshot | null;
@@ -49,13 +56,19 @@ export type HudProps = {
   away: TeamData;
   family: PadFamily;
   shotMeter?: boolean;
-  /** Seconds to keep the control hint card up after the HUD mounts (0 hides it). */
-  hintFor?: number;
+  /** v2 onboarding: coach layer on (action bar, prompts, explanations). */
+  coach?: boolean;
+  /** v2 onboarding: hide prompts (the tutorial card is teaching) but keep the action bar. */
+  quiet?: boolean;
+  /** v2 onboarding: practice court, no clocks or scorebug. */
+  practice?: boolean;
   onEvent?: (e: GameEvent) => void;
+  /** v2 onboarding: every event, including the quiet ones (tutorial checks). */
+  onRaw?: (e: GameEvent) => void;
   ref?: Ref<HudHandle>;
 };
 
-export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onEvent, ref }: HudProps) {
+export function Hud({ h, home, away, family, shotMeter = true, coach = false, quiet = false, practice = false, onEvent, onRaw, ref }: HudProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const size = useRef({ w: 1, h: 1 });
   const hRef = useRef(h);
@@ -64,6 +77,10 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
   teamsRef.current = [home, away];
   const evRef = useRef(onEvent);
   evRef.current = onEvent;
+  const rawRef = useRef(onRaw);
+  rawRef.current = onRaw;
+  const coachRef = useRef(coach);
+  coachRef.current = coach;
 
   // meter refs
   const mEl = useRef<HTMLDivElement>(null);
@@ -74,7 +91,11 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
   const mGrade = useRef<HTMLDivElement>(null);
   const mTxt = useRef<HTMLSpanElement>(null);
   const mSub = useRef<HTMLSpanElement>(null);
-  const mLast = useRef({ on: false, x: -1, y: -1, fill: -1, target: -1, win: -1, grade: "", fade: -1 });
+  const mMs = useRef<HTMLSpanElement>(null);
+  const mTip = useRef<HTMLSpanElement>(null);
+  const mGhost = useRef<HTMLSpanElement>(null);
+  const mLast = useRef({ on: false, x: -1, y: -1, fill: -1, target: -1, win: -1, grade: "", fade: -1, ghost: false });
+  const mRate = useRef({ fill: -1, t: 0, rate: 0 });
   const meterOn = useRef(shotMeter);
   meterOn.current = shotMeter;
 
@@ -89,8 +110,36 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
   const [banners, setBanners] = useState<Banner[]>([]);
   const [feed, setFeed] = useState<Feed[]>([]);
   const [flash, setFlash] = useState<{ side: TeamSide; id: number } | null>(null);
+  const [userTagOn, setUserTagOn] = useState(false);
+  const [switchId, setSwitchId] = useState(0);
+  const [poss, setPoss] = useState<{ id: number; offense: boolean; side: TeamSide } | null>(null);
+  const [attack, setAttack] = useState<{ id: number; text: string; dir: -1 | 0 | 1 } | null>(null);
+  const [prompt, setPrompt] = useState<Prompt | null>(null);
+  const [chip, setChip] = useState<Chip | null>(null);
+  const [tabHeld, setTabHeld] = useState(false);
+  const [cues, setCues] = useState<CueState>(NO_CUES);
+  const [introAt, setIntroAt] = useState(0);
+  // instant replay: the HUD is hidden outright (not faded) from the moment the wipe covers the frame
+  const [replayHide, setReplayHide] = useState(false);
+  const cueDir = useRef<-1 | 0 | 1>(0);
+  // screen side of the attacked basket, only read while the gameplay camera is up (cinematic angles flip it)
+  const [dir, setDir] = useState<-1 | 0 | 1>(0);
+  const dirRef = useRef<-1 | 0 | 1>(0);
+  dirRef.current = dir;
+  useEffect(() => {
+    if (!h || h.cinematic || h.replay) return;
+    const d = attackSide(h, cueDir.current);
+    if (d !== 0 && d !== dir) setDir(d);
+  }, [h, dir]);
+  const lastAttackCue = useRef(0);
   const seq = useRef(0);
   const timers = useRef(new Set<number>());
+  const memo = useRef(newPromptMemo());
+  const pState = useRef({ since: 0, seen: 0, hidAt: -1e9, counts: new Map<string, number>() });
+  const halfSeen = useRef(new Set<number>());
+  const oobPending = useRef(0);
+  const whiff = useRef<{ kind: DefBtn; t: number } | null>(null);
+  const lastFront = useRef<boolean | null>(null);
 
   useEffect(() => {
     const el = wrap.current;
@@ -116,7 +165,8 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
     if (!banners.length) return;
     // during live play a banner only flashes (it sits over the action); dead balls get the full show
     const live = hRef.current?.phase === "live";
-    const t = window.setTimeout(() => setBanners((b) => b.slice(1)), live ? 1100 : banners[0].big ? 2300 : 1900);
+    const b = banners[0];
+    const t = window.setTimeout(() => setBanners((q) => q.slice(1)), b.ms ?? (live ? 1100 : b.big ? 2300 : 1900));
     return () => clearTimeout(t);
   }, [banners]);
 
@@ -127,6 +177,105 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
     }, ms);
     timers.current.add(t);
   };
+
+  const showChip = (text: string, tone: Chip["tone"], ms = 1300) => {
+    const id = ++seq.current;
+    setChip({ id, text, tone });
+    later(() => setChip((c) => (c?.id === id ? null : c)), ms);
+  };
+
+  // input probe: hold Tab for the full controls card; whiffed steals / blocks get a "too far" tag while coaching
+  useEffect(() => {
+    const probe = acquireProbe();
+    const off = probe.on((b, dev) => {
+      if (b === "tab") return;
+      const snap = hRef.current;
+      if (!snap || !coachRef.current || snap.userTeam === -1 || snap.possession === snap.userTeam || snap.phase !== "live") return;
+      const d = defenseOf(b, dev);
+      if (d !== "steal" && d !== "block") return;
+      const w = { kind: d, t: performance.now() };
+      whiff.current = w;
+      later(() => {
+        if (whiff.current !== w) return;
+        whiff.current = null;
+        const c = hRef.current?.coach;
+        if (d === "steal") showChip(c && c.ballDist > 1.8 ? "Too far to reach" : "Missed the reach", "bad");
+        else showChip(c && c.markDist > 3 ? "Too far to block" : "No block", "bad");
+      }, 650);
+    });
+    const iv = window.setInterval(() => setTabHeld(probe.tabHeld), 120);
+    return () => {
+      off();
+      clearInterval(iv);
+      probe.release();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // the "you play as" card: once, when the tip-off starts (after any matchup / lineup cards)
+  useEffect(() => {
+    if (!introAt && h?.phase === "tipoff" && !cues.matchup && !cues.lineup) setIntroAt(performance.now());
+  }, [h, introAt, cues.matchup, cues.lineup]);
+  const [introOn, setIntroOn] = useState(false);
+  useEffect(() => {
+    if (!introAt) return;
+    setIntroOn(true);
+    const t = window.setTimeout(() => setIntroOn(false), 6500);
+    return () => clearTimeout(t);
+  }, [introAt]);
+
+  useEffect(() => {
+    if (!cues.matchup && !cues.lineup && !cues.lower && !cues.compare) return;
+    const iv = window.setInterval(() => setCues((c) => expireCues(c, performance.now())), 250);
+    return () => clearInterval(iv);
+  }, [cues]);
+
+  // coach prompt: one at a time, held at least 2.2 s, 3 s between different prompts, at most 5 of each per game
+  useEffect(() => {
+    if (!h || !coach || quiet) {
+      if (prompt) setPrompt(null);
+      return;
+    }
+    const now = performance.now();
+    const ps = pState.current;
+    const cand = pickPrompt(h, h.coach, memo.current, now);
+    if (prompt && cand?.id === prompt.id) {
+      ps.seen = now;
+      return;
+    }
+    if (prompt && now - ps.since < 2200 && !cand?.urgent) return;
+    if (!cand) {
+      if (prompt && now - ps.seen > 500) {
+        setPrompt(null);
+        ps.hidAt = now;
+      }
+      return;
+    }
+    if (!prompt && now - ps.hidAt < 3000 && !cand.urgent) return;
+    const n = ps.counts.get(cand.id) ?? 0;
+    if (n >= 5) return;
+    ps.counts.set(cand.id, n + 1);
+    ps.since = ps.seen = now;
+    setPrompt(cand);
+  }, [h, coach, quiet, prompt]);
+
+  // frontcourt reminder: the first few times the user brings the ball across half court
+  useEffect(() => {
+    const c = h?.coach;
+    if (!h || !c || !coach || practice || !c.hasBall || h.phase !== "live") {
+      if (h?.possession !== h?.userTeam) lastFront.current = null;
+      return;
+    }
+    if (lastFront.current === false && c.frontcourt) {
+      const ob = readOnboarding();
+      if (ob.frontcourtTips < 3) {
+        writeOnboarding({ frontcourtTips: ob.frontcourtTips + 1 });
+        showChip("Frontcourt: don't go back over the half-court line", "info", 2600);
+      }
+    }
+    lastFront.current = c.frontcourt;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [h, coach, practice]);
 
   const sideColor = (side: TeamSide) => vivid(teamsRef.current[side]);
   const slotName = (slot: number) => {
@@ -139,6 +288,8 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
     const p = teamsRef.current[side].players.find((q) => q.id === id);
     return p ? `${p.first.charAt(0)}. ${p.last}` : id;
   };
+  const userTeam = () => hRef.current?.userTeam ?? -1;
+  const userSlot = () => hRef.current?.user?.slot ?? -1;
 
   const norm = (t: string) => t.replace(/[^A-Z0-9]/gi, "").toUpperCase();
   const pushBanner = (b: Omit<Banner, "id">) =>
@@ -154,10 +305,72 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
     later(() => setFeed((q) => q.filter((x) => x.id !== id)), ms);
   };
 
+  function onQuiet(e: GameEvent) {
+    switch (e.type) {
+      case "userSwitch": {
+        // on offense control follows the ball on every pass: the card updates quietly. On defense (or a new
+        // possession) the change is news: flash NOW CONTROLLING and pulse the YOU arrow.
+        const snap = hRef.current;
+        const ut = userTeam();
+        if (snap && ut !== -1 && snap.possession === ut && snap.phase === "live") break;
+        setSwitchId(++seq.current);
+        tagEls.current[0]?.animate(
+          [{ transform: tagEls.current[0].style.transform + " scale(1.5)" }, { transform: tagEls.current[0].style.transform + " scale(1)" }],
+          { duration: 380, easing: "cubic-bezier(0.16,1,0.3,1)" },
+        );
+        break;
+      }
+      case "possession": {
+        const ut = userTeam();
+        if (ut === -1 || practice) break;
+        const offense = e.team === ut;
+        setPoss({ id: ++seq.current, offense, side: e.team });
+        const id = seq.current;
+        later(() => setPoss((p) => (p?.id === id ? null : p)), 2000);
+        const snap = hRef.current;
+        if (offense && snap && coachRef.current && performance.now() - lastAttackCue.current > 600) {
+          const d = snap.cinematic ? dirRef.current : attackSide(snap, cueDir.current) || dirRef.current;
+          const half = snap.period <= 2 ? 1 : snap.period <= 4 ? 2 : snap.period;
+          const first = !halfSeen.current.has(half);
+          halfSeen.current.add(half);
+          if (d !== 0) {
+            const aid = ++seq.current;
+            setAttack({ id: aid, text: first ? `You attack the ${d < 0 ? "left" : "right"} basket` : "Attack", dir: d });
+            later(() => setAttack((a) => (a?.id === aid ? null : a)), first ? 2400 : 1500);
+            lastAttackCue.current = performance.now();
+          }
+        }
+        break;
+      }
+      case "whistle":
+        if (e.reason === "outOfBounds") oobPending.current = performance.now();
+        break;
+      case "inbound":
+        if (oobPending.current && performance.now() - oobPending.current < 2500) {
+          oobPending.current = 0;
+          const t = teamsRef.current[e.team];
+          pushBanner({ text: "OUT OF BOUNDS", sub: `${t.abbr} ball`, color: sideColor(e.team), tag: "Whistle", why: "Last touched by the other team.", ms: 2200 });
+        }
+        break;
+      case "shot":
+        if (coachRef.current && e.team !== userTeam() && e.slot === hRef.current?.coach?.markSlot && e.contest > 0.55) showChip("Good contest", "good");
+        break;
+      case "deflection":
+        if (e.by === userSlot()) whiff.current = null;
+        break;
+    }
+  }
+
   function onGameEvent(e: GameEvent) {
-    if (QUIET.has(e.type)) return;
+    rawRef.current?.(e);
+    if (QUIET.has(e.type)) {
+      onQuiet(e);
+      return;
+    }
     evRef.current?.(e);
     const side = (s: number): TeamSide => (s < 5 ? 0 : 1);
+    const ut = userTeam();
+    const teach = coachRef.current;
     switch (e.type) {
       case "make": {
         const c = sideColor(e.team);
@@ -176,10 +389,12 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
         if (e.airball) pushFeed({ text: `${slotName(e.slot)} airball`, color: "var(--color-mute)" });
         break;
       case "block":
+        if (e.by === userSlot()) whiff.current = null;
         pushBanner({ text: e.goaltend ? "GOALTENDING" : "REJECTED", sub: slotName(e.by), color: sideColor(side(e.by)) });
         pushFeed({ text: `${slotName(e.by)} ${e.goaltend ? "goaltend" : "block"} on ${slotName(e.on)}`, color: sideColor(side(e.by)) });
         break;
       case "steal":
+        if (e.by === userSlot()) whiff.current = null;
         pushBanner({ text: "PICKED CLEAN", sub: slotName(e.by), color: sideColor(side(e.by)) });
         pushFeed({ text: `${slotName(e.by)} steal`, color: sideColor(side(e.by)) });
         break;
@@ -187,16 +402,42 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
         pushBanner({ text: "ANKLES!", sub: `${slotName(e.by)} drops ${slotName(e.victim)}`, color: "var(--color-hot)", big: true });
         break;
       case "foul": {
+        if (e.by === userSlot()) whiff.current = null;
+        const fs = side(e.by);
+        const mine = fs === ut;
         const k = e.kind === "shooting" ? "shooting foul" : e.kind === "charge" ? "charge" : e.kind === "offensive" ? "offensive foul" : "foul";
         pushFeed({ text: `${k} · ${slotName(e.by)} (${e.personal} PF)`, color: "var(--color-warn)" });
+        const why = FOUL_WHY[e.kind];
+        const shots = e.shots > 0 ? ` · ${e.shots} free throw${e.shots > 1 ? "s" : ""}` : e.bonus ? " · bonus" : "";
+        pushBanner({
+          text: FOUL_TITLE[e.kind],
+          sub: `${slotName(e.by)} · ${teamsRef.current[fs].abbr} · ${e.personal} PF${shots}`,
+          color: sideColor(fs),
+          tag: ut === -1 ? "Whistle" : mine ? "Foul on you" : `Foul on ${teamsRef.current[fs].abbr}`,
+          why: why[0],
+          fix: mine && teach ? why[1] : undefined,
+          ms: mine && teach ? 3400 : 2400,
+        });
         if (e.fouledOut) pushBanner({ text: "FOULED OUT", sub: slotName(e.by), color: "var(--color-bad)" });
         break;
       }
       case "turnover":
+        if (e.kind === "outOfBounds") oobPending.current = 0;
         if (e.kind === "steal") break;
-        pushFeed({ text: `${TOV[e.kind]} · ${slotName(e.slot)}`, color: "var(--color-mute)" });
-        if (e.kind === "shotClock" || e.kind === "eightSeconds" || e.kind === "backcourt" || e.kind === "travel")
-          pushBanner({ text: TOV[e.kind].toUpperCase(), color: "var(--color-warn)" });
+        pushFeed({ text: `${TOV_TITLE[e.kind].toLowerCase()} · ${slotName(e.slot)}`, color: "var(--color-mute)" });
+        if (STOPPAGE.has(e.kind)) {
+          const mine = e.team === ut;
+          const why = TOV_WHY[e.kind];
+          pushBanner({
+            text: TOV_TITLE[e.kind],
+            sub: e.slot >= 0 ? `${slotName(e.slot)} · ${teamsRef.current[e.team].abbr}` : teamsRef.current[e.team].abbr,
+            color: "var(--color-warn)",
+            tag: ut === -1 ? "Turnover" : mine ? "Your turnover" : `${teamsRef.current[e.team].abbr} turnover`,
+            why: why[0],
+            fix: mine && teach ? why[1] : undefined,
+            ms: mine && teach ? 3400 : 2400,
+          });
+        } else if (e.kind === "badPass" && e.team === ut && teach) showChip("Bad pass: aim at an open teammate", "bad", 1800);
         break;
       case "rebound":
         if (e.offensive) pushFeed({ text: `${slotName(e.slot)} offensive board`, color: sideColor(e.team) });
@@ -219,6 +460,7 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
         break;
       case "periodStart":
         if (e.period > 1) pushFeed({ text: `Start of the ${e.period > 4 ? "overtime" : ["", "1st", "2nd", "3rd", "4th"][e.period] + " quarter"}`, color: "var(--color-ink)" });
+        if (e.period === 3 && teach && ut !== -1) pushBanner({ text: "TEAMS SWITCH BASKETS", sub: "Second half", color: "var(--color-gold)", why: "Watch the arrow: you now attack the other end.", ms: 3000 });
         break;
       case "periodEnd":
         pushFeed({ text: `End of period ${e.period}: ${e.score[1]}-${e.score[0]}`, color: "var(--color-ink)" });
@@ -252,6 +494,14 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
         el.style.opacity = "0";
         L.on = false;
         L.grade = "";
+        mRate.current.fill = -1;
+        // clear the last release read-out, so a stale "EARLY" never lingers behind a modal or into defense
+        for (const r of [mTxt, mSub, mMs]) if (r.current) r.current.textContent = "";
+        if (mTip.current) {
+          mTip.current.textContent = "";
+          mTip.current.style.display = "none";
+        }
+        if (mGrade.current) mGrade.current.style.opacity = "0";
       }
       return;
     }
@@ -268,6 +518,17 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
       L.fade = fade;
       el.style.opacity = String(fade);
     }
+    // fill speed (fill units per ms) while the meter runs, for the "42 ms late" readout
+    const now = performance.now();
+    const R = mRate.current;
+    if (m.grade === "none") {
+      if (R.fill >= 0 && m.fill > R.fill && now > R.t) {
+        const r = (m.fill - R.fill) / (now - R.t);
+        R.rate = R.rate > 0 ? R.rate * 0.7 + r * 0.3 : r;
+      }
+      R.fill = m.fill;
+      R.t = now;
+    }
     const fill = Math.round(m.fill * 400) / 4;
     if (fill !== L.fill) {
       L.fill = fill;
@@ -283,13 +544,30 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
       const a = ((-60 + m.target * 120) * Math.PI) / 180;
       const t = mTick.current;
       if (t) {
-        t.setAttribute("x1", String(41 * Math.cos(a)));
-        t.setAttribute("y1", String(60 - 41 * Math.sin(a)));
-        t.setAttribute("x2", String(59 * Math.cos(a)));
-        t.setAttribute("y2", String(60 - 59 * Math.sin(a)));
+        t.setAttribute("x1", String(38 * Math.cos(a)));
+        t.setAttribute("y1", String(60 - 38 * Math.sin(a)));
+        t.setAttribute("x2", String(62 * Math.cos(a)));
+        t.setAttribute("y2", String(60 - 62 * Math.sin(a)));
+      }
+      const gh = mGhost.current;
+      if (gh) {
+        gh.style.left = `${((70 * Math.cos(a)) / 60) * 100}%`;
+        gh.style.top = `${((60 - 70 * Math.sin(a)) / 120) * 100}%`;
       }
     }
+    // RELEASE cue for the first shots: lights up as the bar reaches the notch
+    const gh = mGhost.current;
+    if (gh) {
+      const want = m.grade === "none" && coachRef.current && readOnboarding().shots < GHOST_SHOTS && meterOn.current;
+      const near = want && m.fill >= m.target - m.window * 0.5 - 0.08 && m.fill <= m.target + m.window;
+      if (near !== L.ghost) {
+        L.ghost = near;
+        gh.style.opacity = near ? "1" : want ? "0.35" : "0";
+      } else if (!want && gh.style.opacity !== "0") gh.style.opacity = "0";
+      else if (want && !near && gh.style.opacity === "0") gh.style.opacity = "0.35";
+    }
     if (m.grade !== L.grade) {
+      const was = L.grade;
       L.grade = m.grade;
       el.dataset.g = m.grade;
       const arc = mArc.current;
@@ -298,20 +576,37 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
       if (g) {
         if (m.grade === "none") g.style.opacity = "0";
         else {
-          const [txt, sub, col] = GRADE[m.grade];
+          // v2 feel: a green against a hand in the face is roughly a coin flip, so it does not read as EXCELLENT
+          const smothered = m.grade === "perfect" && m.quality === "smothered";
+          const [txt0, sub, col0] = GRADE[m.grade];
+          const txt = smothered ? "CONTESTED" : txt0;
+          const col = smothered ? "var(--color-gold)" : col0;
+          const q = m.quality ? QUALITY_LABEL[m.quality] : "";
           if (mTxt.current) {
             mTxt.current.textContent = txt;
             mTxt.current.style.color = col;
           }
-          if (mSub.current) mSub.current.textContent = sub;
+          if (mSub.current) mSub.current.textContent = q ? `${sub} · ${q}` : sub;
+          let ms = 0;
+          if (R.rate > 0) ms = Math.round((m.fill - m.target) / R.rate);
+          if (mMs.current) {
+            mMs.current.textContent = m.grade === "perfect" ? "Right on the notch" : ms === 0 ? "" : `${Math.abs(ms)} ms ${ms < 0 ? "early" : "late"}`;
+            mMs.current.style.color = m.grade === "perfect" ? "var(--color-good)" : col;
+          }
+          if (mTip.current) {
+            const tip = !coachRef.current || m.grade === "perfect" ? "" : m.grade === "early" || m.grade === "slightlyEarly" ? "Hold a little longer: let go on the gold notch" : "Let go sooner: right as the bar hits the gold notch";
+            mTip.current.textContent = tip;
+            mTip.current.style.display = tip ? "" : "none";
+          }
           g.style.opacity = "1";
           g.animate(
             [
-              { transform: "translateY(-50%) scale(1.6)", opacity: 0, filter: "blur(4px)" },
-              { transform: "translateY(-50%) scale(1)", opacity: 1, filter: "blur(0)" },
+              { transform: "translateX(-50%) scale(1.5)", opacity: 0, filter: "blur(4px)" },
+              { transform: "translateX(-50%) scale(1)", opacity: 1, filter: "blur(0)" },
             ],
             { duration: 220, easing: "cubic-bezier(0.16,1,0.3,1)" },
           );
+          if (was === "none" || was === "") writeOnboarding({ shots: readOnboarding().shots + 1 });
         }
       }
     }
@@ -329,16 +624,18 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
         if (L.on) {
           el.style.display = "none";
           L.on = false;
+          if (i === 0) setUserTagOn(false);
         }
         continue;
       }
       if (!L.on) {
         el.style.display = "";
         L.on = true;
+        if (i === 0) setUserTagOn(true);
       }
       // keep tags out of the HUD bands: play-call label / ticker on top, scorebug and player card below
       const x = Math.round(Math.min(Math.max(t.x * W, 90), W - 90));
-      const y = Math.round(Math.min(Math.max(t.y * H, H * 0.13 + 40), H - 150));
+      const y = Math.round(Math.min(Math.max(t.y * H, H * 0.13 + 70), H - 150));
       if (x !== L.x || y !== L.y) {
         L.x = x;
         L.y = y;
@@ -365,18 +662,55 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
     }
   }
 
-  useImperativeHandle(ref, () => ({ meter: writeMeter, tags: writeTags, event: onGameEvent }), []);
+  function onBroadcast(c: BroadcastCue) {
+    if (c.kind === "attack") {
+      if (c.team !== userTeam()) return;
+      cueDir.current = c.screen;
+      if (!coachRef.current || performance.now() - lastAttackCue.current < 600) return;
+      lastAttackCue.current = performance.now();
+      const snap = hRef.current;
+      const d = snap?.coach && !snap.cinematic ? attackSide(snap) || c.screen : c.screen;
+      const half = !snap ? 1 : snap.period <= 2 ? 1 : snap.period <= 4 ? 2 : snap.period;
+      const first = !halfSeen.current.has(half);
+      halfSeen.current.add(half);
+      const aid = ++seq.current;
+      setAttack({ id: aid, text: first ? `You attack the ${d < 0 ? "left" : "right"} basket` : "Attack", dir: d });
+      later(() => setAttack((a) => (a?.id === aid ? null : a)), first ? 2400 : 1500);
+      return;
+    }
+    if (c.kind === "replay") {
+      setReplayHide(c.on);
+      return;
+    }
+    const id = ++seq.current;
+    setCues((s) => applyCue(s, c, id, performance.now()));
+  }
+
+  useImperativeHandle(ref, () => ({ meter: writeMeter, tags: writeTags, event: onGameEvent, broadcast: onBroadcast }), []);
 
   const cine = !!h?.cinematic;
+  const ut = h?.userTeam ?? -1;
+  const userTeamData = ut === 0 ? home : ut === 1 ? away : null;
+  const offScreen = !!h && !!h.user && !!h.coach && !h.coach.onScreen && h.phase === "live" && !cine;
+  const showPrompt = coach && !quiet && prompt && !cine;
   return (
     <div ref={wrap} className="pointer-events-none absolute inset-0 overflow-hidden">
-      {/* floating tags */}
+      {/* floating tags: slot 0 is the user (YOU marker + coach chip), 1..4 icon-pass glyphs */}
       {Array.from({ length: 5 }, (_, i) => (
-        <div key={i} ref={(el) => void (tagEls.current[i] = el)} className="tag" style={{ display: "none" }}>
-          <div className="tag-name absolute bottom-[0.6rem] left-0 flex -translate-x-1/2 items-center overflow-hidden rounded-[2px] bg-night/80 shadow-lg backdrop-blur">
-            <span ref={(el) => void (tagBar.current[i] = el)} className="h-full w-1 self-stretch" />
-            <span ref={(el) => void (tagName.current[i] = el)} className="ttl px-2 py-[0.2rem] text-[0.95rem] tracking-[0.06em] text-white" />
-            <span className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-night/80" />
+        <div key={i} ref={(el) => void (tagEls.current[i] = el)} className="tag" data-you={i === 0 ? "1" : undefined} style={{ display: "none" }}>
+          {i === 0 && (
+            <div className="absolute bottom-[4.1rem] left-0 flex -translate-x-1/2 flex-col items-center gap-1.5">
+              {showPrompt && userTagOn && <CoachChip key={prompt.id} parts={prompt.parts} urgent={prompt.urgent} device={h?.device ?? "keys"} family={family} floating />}
+              {chip && <span key={chip.id} className={cx("pop-in whitespace-nowrap rounded-[2px] px-2 py-0.5 text-[0.78rem] font-black uppercase tracking-[0.12em]", chip.tone === "good" ? "bg-good text-night" : chip.tone === "bad" ? "bg-bad text-white" : "bg-gold text-night")}>{chip.text}</span>}
+            </div>
+          )}
+          <div className="tag-name absolute bottom-0 left-0 flex -translate-x-1/2 flex-col items-center">
+            {i === 0 && <span className="you-label ttl mb-0.5 text-[0.95rem] italic tracking-[0.12em] text-gold">YOU</span>}
+            <div className="flex items-center overflow-hidden rounded-[2px] bg-night/85 shadow-lg backdrop-blur">
+              <span ref={(el) => void (tagBar.current[i] = el)} className="h-full w-1 self-stretch" />
+              <span ref={(el) => void (tagName.current[i] = el)} className="ttl px-2 py-[0.2rem] text-[0.95rem] tracking-[0.06em] text-white" />
+            </div>
+            {i === 0 ? <span className="you-arrow mt-0.5" /> : <span className="h-0 w-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-night/80" />}
           </div>
           <span
             ref={(el) => void (tagIcon.current[i] = el)}
@@ -394,16 +728,20 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
 
       {/* shot meter */}
       <div ref={mEl} className="meter" style={{ opacity: 0 }}>
-        <svg ref={mArc} viewBox="0 0 60 120" className="h-full w-full overflow-visible">
-          <path d={ARC_D} pathLength={100} fill="none" stroke="rgb(0 0 0 / 0.55)" strokeWidth="11" strokeLinecap="round" />
-          <path d={ARC_D} pathLength={100} fill="none" stroke="rgb(255 255 255 / 0.16)" strokeWidth="7" strokeLinecap="round" />
-          <path ref={mWin} d={ARC_D} pathLength={100} fill="none" stroke="rgb(255 209 102 / 0.55)" strokeWidth="7" strokeDasharray="0 200" />
-          <path ref={mFill} className="meter-fill" d={ARC_D} pathLength={100} fill="none" stroke="#ffffff" strokeWidth="5" strokeLinecap="round" strokeDasharray="0 200" />
-          <line ref={mTick} x1="0" y1="0" x2="0" y2="0" stroke="#ffd166" strokeWidth="2.4" strokeLinecap="round" />
+        <span className="meter-plate" />
+        <svg ref={mArc} viewBox="0 0 60 120" className="relative h-full w-full overflow-visible">
+          <path d={ARC_D} pathLength={100} fill="none" stroke="rgb(0 0 0 / 0.7)" strokeWidth="14" strokeLinecap="round" />
+          <path d={ARC_D} pathLength={100} fill="none" stroke="rgb(255 255 255 / 0.18)" strokeWidth="8" strokeLinecap="round" />
+          <path ref={mWin} d={ARC_D} pathLength={100} fill="none" stroke="rgb(255 209 102 / 0.7)" strokeWidth="8" strokeDasharray="0 200" />
+          <path ref={mFill} className="meter-fill" d={ARC_D} pathLength={100} fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeDasharray="0 200" />
+          <line ref={mTick} x1="0" y1="0" x2="0" y2="0" stroke="#ffd166" strokeWidth="3.2" strokeLinecap="round" />
         </svg>
-        <div ref={mGrade} className="meter-grade flex flex-col leading-none" style={{ opacity: 0 }}>
-          <span ref={mTxt} className="ttl text-[1.7rem] italic drop-shadow-[0_2px_6px_rgb(0_0_0/0.8)]" />
-          <span ref={mSub} className="mt-0.5 text-[0.62rem] font-bold tracking-[0.2em] text-white/85 drop-shadow-[0_1px_3px_rgb(0_0_0/0.9)]" />
+        <span ref={mGhost} className="meter-ghost" aria-hidden style={{ opacity: 0 }}>RELEASE</span>
+        <div ref={mGrade} className="meter-grade flex flex-col items-center leading-none" style={{ opacity: 0 }}>
+          <span ref={mTxt} className="ttl text-[2.3rem] italic drop-shadow-[0_2px_6px_rgb(0_0_0/0.8)]" />
+          <span ref={mSub} className="mt-0.5 text-[0.66rem] font-bold tracking-[0.2em] text-white/90 drop-shadow-[0_1px_3px_rgb(0_0_0/0.9)]" />
+          <span ref={mMs} className="num mt-1 text-[1.05rem] drop-shadow-[0_1px_3px_rgb(0_0_0/0.9)]" />
+          <span ref={mTip} className="mt-1 rounded-[2px] bg-night/85 px-2 py-1 text-[0.72rem] font-semibold text-white" style={{ display: "none" }} />
         </div>
       </div>
 
@@ -417,6 +755,12 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
         {banners[0] && <BannerView key={banners[0].id} b={banners[0]} />}
       </div>
 
+      {h?.phase === "pregame" && !practice && (
+        <div className="absolute right-[3.2%] top-[9%] flex items-center gap-2 rounded-[3px] bg-night/80 px-3 py-1.5 shadow-lg backdrop-blur">
+          <span className="ttl text-[1.1rem] italic tracking-[0.16em] text-white">PREGAME</span>
+          <span className="ml-2 text-[0.7rem] font-bold tracking-[0.18em] text-white/75">ANY BUTTON TO SKIP</span>
+        </div>
+      )}
       {h?.replay && (
         <div className="absolute right-[3.2%] top-[9%] flex items-center gap-2 rounded-[3px] bg-night/80 px-3 py-1.5 shadow-lg backdrop-blur">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#ff3b47]" />
@@ -425,29 +769,47 @@ export function Hud({ h, home, away, family, shotMeter = true, hintFor = 40, onE
         </div>
       )}
       {h && (
-        <div className={cx("absolute inset-0 transition-opacity duration-300", cine ? "opacity-0" : "opacity-100")}>
+        <div className={cx("absolute inset-0 transition-opacity duration-300", replayHide ? "invisible opacity-0 duration-0" : cine ? "opacity-0" : "opacity-100")}>
           <Feed items={feed} />
-          <Scorebug h={h} flash={flash} />
-          <StatusChip h={h} />
-          {h.user && <PlayerCard p={h.user} team={h.user.team === 0 ? home : away} />}
-          <PlayCall h={h} />
-          {hintFor > 0 && h.userTeam !== -1 && <ControlHint h={h} family={family} seconds={hintFor} />}
+          {practice ? <PracticeBug team={userTeamData ?? home} /> : <Scorebug h={h} flash={flash} dir={dir} />}
+          {!practice && <StatusChip h={h} />}
+          {h.user && <PlayerCard p={h.user} team={h.user.team === 0 ? home : away} switchId={switchId} />}
+          {!practice && !quiet && <PlayCall h={h} />}
+          {coach && h.userTeam !== -1 && <ActionBar h={h} family={family} tabHint />}
+          {tabHeld && h.userTeam !== -1 && <ControlsCard h={h} family={family} />}
+          {poss && userTeamData && (h.phase === "live" || h.phase === "inbound") && <PossessionChip key={poss.id} offense={poss.offense} team={teamsRef.current[poss.side]} dir={dir} />}
+          {showPrompt && !userTagOn && !h.freeThrow && <CoachChip key={prompt.id} parts={prompt.parts} urgent={prompt.urgent} device={h.device} family={family} />}
+          {attack && attack.dir !== 0 && (h.phase === "live" || h.phase === "inbound") && <AttackFlash key={attack.id} dir={attack.dir} text={attack.text} />}
+          {offScreen && h.user && h.coach && <EdgeArrow x={h.coach.screenX} y={h.coach.screenY} jersey={h.user.jersey} color={vivid(h.user.team === 0 ? home : away)} />}
         </div>
+      )}
+      {/* broadcast cards stay up through cinematic shots: the pregame intro is all cinematic */}
+      {h && <BroadcastLayer cues={cues} h={h} home={home} away={away} />}
+      {h && introOn && !practice && !quiet && userTeamData && !cues.matchup && !cues.lineup && (h.phase === "tipoff" || h.phase === "live") && (
+        <IntroCard team={userTeamData} dir={dir} device={h.device} family={family} />
       )}
     </div>
   );
 }
 
 function BannerView({ b }: { b: Banner }) {
+  const ms = b.ms ?? (b.big ? 2300 : undefined);
   return (
-    <div className={cx("banner relative flex w-max shrink-0 items-stretch whitespace-nowrap shadow-[0_1rem_3rem_rgb(0_0_0/0.5)]", b.big ? "duration-[2300ms]" : "")} style={{ animationDuration: b.big ? "2300ms" : undefined }}>
+    <div className="banner relative flex w-max shrink-0 items-stretch whitespace-nowrap shadow-[0_1rem_3rem_rgb(0_0_0/0.5)]" style={{ animationDuration: ms ? `${ms}ms` : undefined }}>
       <span className="w-2.5" style={{ background: b.color }} />
       <div className="relative flex shrink-0 flex-col items-center justify-center overflow-hidden bg-night/88 px-10 py-2.5 backdrop-blur-md" style={{ boxShadow: `inset 0 -3px 0 ${b.color}` }}>
         <span className="absolute inset-0 opacity-30" style={{ background: `linear-gradient(90deg, ${b.color.startsWith("var") ? "transparent" : alpha(b.color, 0.55)}, transparent 70%)` }} />
+        {b.tag && <span className="unskew relative mb-1 rounded-[2px] bg-white/12 px-2 py-0.5 text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/85">{b.tag}</span>}
         <span className={cx("unskew ttl relative italic text-white", b.big ? "text-[3.6rem]" : "text-[2.6rem]")} style={{ textShadow: `0 0 1.6rem ${b.color}` }}>
           {b.text}
         </span>
         {b.sub && <span className="unskew relative mt-1 text-[0.8rem] font-bold uppercase tracking-[0.22em] text-white/80">{b.sub}</span>}
+        {b.why && <span className="unskew relative mt-1.5 text-[1rem] font-semibold text-white">{b.why}</span>}
+        {b.fix && (
+          <span className="unskew relative mt-1 flex items-center gap-2 text-[0.95rem] font-semibold text-gold">
+            <span className="h-1.5 w-1.5 rotate-45 bg-gold" /> {b.fix}
+          </span>
+        )}
       </div>
       <span className="w-1" style={{ background: b.color, opacity: 0.6 }} />
     </div>
@@ -478,6 +840,15 @@ function Pips({ n, max, color, className }: { n: number; max: number; color: str
   );
 }
 
+function BallIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-label="Ball">
+      <circle cx="12" cy="12" r="10" fill="#ff7a2e" stroke="#2a0d00" strokeWidth="1.6" />
+      <path d="M2 12h20M12 2v20M5.5 4.8c3 3.2 3 11.2 0 14.4M18.5 4.8c-3 3.2-3 11.2 0 14.4" fill="none" stroke="#2a0d00" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 function TeamPlate({ t, side, h, flip, flash }: { t: HudTeam; side: TeamSide; h: HudSnapshot; flip?: boolean; flash: { side: TeamSide; id: number } | null }) {
   const col = vivid(t);
   const ball = h.possession === side;
@@ -494,23 +865,41 @@ function TeamPlate({ t, side, h, flip, flash }: { t: HudTeam; side: TeamSide; h:
         <span key={t.score} className="unskew num score-pop text-[2.35rem] leading-none text-white">
           {t.score}
         </span>
+        {ball && <BallIcon className={cx("pop-in absolute top-1 h-[1.05rem] w-[1.05rem] drop-shadow", flip ? "left-1" : "right-1")} />}
         <span className={cx("absolute bottom-0 h-[3px] w-full transition-opacity duration-200", ball ? "opacity-100" : "opacity-0")} style={{ background: col, boxShadow: `0 0 0.6rem ${col}` }} />
       </div>
     </div>
   );
 }
 
-function TeamMeta({ t, flip }: { t: HudTeam; flip?: boolean }) {
+function TeamMeta({ t, flip, you, dir, defending }: { t: HudTeam; flip?: boolean; you?: boolean; dir?: -1 | 0 | 1; defending?: boolean }) {
+  // on defense the arrow points at the basket the user protects (the other way from his attack)
+  const d = defending ? (-(dir ?? 0) as -1 | 0 | 1) : dir;
   return (
     <div className={cx("unskew flex h-[1.15rem] items-center gap-2 px-1 text-[0.6rem] font-bold tracking-[0.16em] text-white/70", flip && "flex-row-reverse")}>
       <Pips n={t.timeouts} max={7} color="#ffffff" />
-      <span className="num text-[0.75rem] tracking-normal text-white/80">F{t.fouls}</span>
+      <span className="text-[0.6rem] tracking-[0.12em] text-white/60">
+        FOULS <span className="num text-[0.75rem] tracking-normal text-white/85">{t.fouls}</span>
+      </span>
       {t.bonus && <span className="pop-in rounded-[2px] bg-warn px-1 py-px text-night">BONUS</span>}
+      {you && (
+        <span className={cx("flex items-center gap-1 rounded-[2px] px-1.5 py-px font-black", defending ? "bg-[#ff4d5e] text-white" : "bg-gold text-night")}>
+          {d === -1 && "◀ "}
+          {defending ? "YOU · DEFEND" : "YOU · ATTACK"}
+          {d === 1 && " ▶"}
+        </span>
+      )}
     </div>
   );
 }
 
-function Scorebug({ h, flash }: { h: HudSnapshot; flash: { side: TeamSide; id: number } | null }) {
+/** "1ST" set in the condensed display face reads as "TST": show quarters as Q1..Q4, overtime as is. */
+function shortPeriod(label: string): string {
+  const m = /^([1-4])(ST|ND|RD|TH)$/.exec(label);
+  return m ? `Q${m[1]}` : label;
+}
+
+function Scorebug({ h, flash, dir }: { h: HudSnapshot; flash: { side: TeamSide; id: number } | null; dir: -1 | 0 | 1 }) {
   const sc = h.shotClockOn && h.phase !== "freeThrow";
   const low = h.shotClock <= 5;
   const lastMin = h.clock < 60;
@@ -524,7 +913,7 @@ function Scorebug({ h, flash }: { h: HudSnapshot; flash: { side: TeamSide; id: n
         </div>
         <TeamPlate t={h.teams[1]} side={1} h={h} flash={flash} />
         <div className="flex w-[7.2rem] flex-col items-center justify-center bg-gradient-to-b from-[#1a2030] to-[#0d1119]">
-          <span className="unskew ttl text-[0.8rem] tracking-[0.2em] text-mute">{h.phase === "periodBreak" ? "END " + h.periodLabel : h.periodLabel}</span>
+          <span className="unskew num text-[0.8rem] tracking-[0.16em] text-mute">{h.phase === "periodBreak" ? "END " + shortPeriod(h.periodLabel) : shortPeriod(h.periodLabel)}</span>
           <span className={cx("unskew num text-[1.85rem] leading-none", lastMin ? "text-hot-hi" : "text-white")}>{fmtClock(h.clock)}</span>
         </div>
         <TeamPlate t={h.teams[0]} side={0} h={h} flip flash={flash} />
@@ -534,9 +923,20 @@ function Scorebug({ h, flash }: { h: HudSnapshot; flash: { side: TeamSide; id: n
         </div>
       </div>
       <div className="skew mt-1 flex justify-between pl-[3.6rem] pr-[3.4rem]">
-        <TeamMeta t={h.teams[1]} />
-        <TeamMeta t={h.teams[0]} flip />
+        <TeamMeta t={h.teams[1]} you={h.userTeam === 1} dir={dir} defending={h.possession !== -1 && h.possession !== h.userTeam} />
+        <TeamMeta t={h.teams[0]} flip you={h.userTeam === 0} dir={dir} defending={h.possession !== -1 && h.possession !== h.userTeam} />
       </div>
+    </div>
+  );
+}
+
+function PracticeBug({ team }: { team: TeamData }) {
+  return (
+    <div className="absolute bottom-[1.6rem] left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-[3px] border border-white/10 bg-night/85 px-4 py-2 shadow-[0_0.8rem_2.5rem_rgb(0_0_0/0.55)]">
+      <span className="ttl text-[0.95rem] italic text-hot">HOOPS</span>
+      <span className="h-5 w-px bg-white/15" />
+      <span className="ttl text-[1.35rem] tracking-[0.08em]">Practice court</span>
+      <span className="text-[0.7rem] font-bold uppercase tracking-[0.16em] text-mute">{team.name} · no clock</span>
     </div>
   );
 }
@@ -560,18 +960,26 @@ function StatusChip({ h }: { h: HudSnapshot }) {
   );
 }
 
-function PlayerCard({ p, team }: { p: HudPlayer; team: TeamData }) {
+function PlayerCard({ p, team, switchId }: { p: HudPlayer; team: TeamData; switchId: number }) {
   const col = vivid(team);
   const st = Math.max(0, Math.min(1, p.stamina));
   const stCol = st > 0.6 ? "var(--color-good)" : st > 0.3 ? "var(--color-warn)" : "var(--color-bad)";
   const fire = p.onFire > 0.5 ? "hot" : p.onFire < -0.5 ? "cold" : null;
+  const [fresh, setFresh] = useState(false);
+  useEffect(() => {
+    if (!switchId) return;
+    setFresh(true);
+    const t = window.setTimeout(() => setFresh(false), 900);
+    return () => clearTimeout(t);
+  }, [switchId]);
   return (
-    <div className="absolute bottom-[1.6rem] left-[1.5rem] flex items-stretch overflow-hidden rounded-[3px] border border-white/10 bg-night/85 shadow-[0_0.8rem_2rem_rgb(0_0_0/0.5)] backdrop-blur-md">
+    <div key={switchId} className={cx("absolute bottom-[1.6rem] left-[1.5rem] flex items-stretch overflow-hidden rounded-[3px] border bg-night/85 shadow-[0_0.8rem_2rem_rgb(0_0_0/0.5)] backdrop-blur-md", fresh ? "pop-in border-gold" : "border-white/10")}>
       <div className="relative flex w-[3.8rem] flex-col items-center justify-center" style={{ background: `linear-gradient(160deg, ${mix(team.primary, "#fff", 0.1)}, ${mix(team.primary, "#000", 0.35)})` }}>
         <span className="num text-[2.2rem] leading-none" style={{ color: inkOn(team.primary) }}>{p.jersey}</span>
         <span className="text-[0.6rem] font-bold tracking-[0.18em]" style={{ color: alpha(inkOn(team.primary) === "#ffffff" ? "#ffffff" : "#000000", 0.7) }}>{p.pos}</span>
       </div>
       <div className="flex min-w-[14rem] flex-col justify-center gap-1 px-3 py-2">
+        <span className={cx("text-[0.58rem] font-black uppercase tracking-[0.22em]", fresh ? "text-gold" : "text-gold/80")}>{fresh ? "Now controlling" : "You"}</span>
         <div className="flex items-center gap-2">
           <span className="ttl truncate text-[1.35rem] tracking-[0.02em]">{p.name}</span>
           {fire && (
@@ -603,39 +1011,17 @@ function PlayerCard({ p, team }: { p: HudPlayer; team: TeamData }) {
   );
 }
 
+/** Only the user's own play call (the opponent's set read like an instruction to new players). */
 function PlayCall({ h }: { h: HudSnapshot }) {
   if (!h.play || h.possession === -1 || h.phase !== "live") return null;
+  const mine = h.userTeam !== -1 && h.possession === h.userTeam;
+  if (h.userTeam !== -1 && !mine) return null;
   const t = h.teams[h.possession];
   return (
     <div key={h.play} className="fade absolute left-[1.5rem] top-[1.4rem] flex items-center gap-2 rounded-[2px] bg-night/70 py-1 pl-1 pr-3 backdrop-blur">
       <span className="h-5 w-1" style={{ background: vivid(t) }} />
-      <span className="eyebrow text-[0.6rem]">{t.abbr} set</span>
+      <span className="eyebrow text-[0.6rem]">{mine ? "Your play" : `${t.abbr} set`}</span>
       <span className="ttl text-[1.05rem] tracking-[0.06em]">{h.play}</span>
-    </div>
-  );
-}
-
-const OFF_HINT: [Act, string][] = [["shoot", "Shoot"], ["pass", "Pass"], ["dribble", "Moves"], ["sprint", "Sprint"], ["icon", "Icon pass"], ["screen", "Screen"]];
-const DEF_HINT: [Act, string][] = [["steal", "Steal"], ["block", "Block"], ["switch", "Switch"], ["intense", "Intense D"], ["handsUp", "Hands up"], ["sprint", "Sprint"]];
-
-function ControlHint({ h, family, seconds }: { h: HudSnapshot; family: PadFamily; seconds: number }) {
-  const [on, setOn] = useState(true);
-  useEffect(() => {
-    const t = window.setTimeout(() => setOn(false), seconds * 1000);
-    return () => clearTimeout(t);
-  }, [seconds]);
-  const off = h.possession === h.userTeam;
-  return (
-    <div className={cx("absolute bottom-[1.6rem] right-[1.5rem] flex flex-col gap-1.5 rounded-[3px] bg-night/70 px-3 py-2.5 backdrop-blur transition-opacity duration-700", on ? "opacity-100" : "opacity-0")}>
-      <span className="eyebrow text-[0.58rem] text-hot">{off ? "Offense" : "Defense"}</span>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-ink/85">
-        {(off ? OFF_HINT : DEF_HINT).map(([a, l]) => (
-          <span key={a + l} className="flex items-center gap-2 text-[0.9rem]">
-            <Glyph act={a} device={h.device} family={family} />
-            <span className="text-[0.68rem]">{l}</span>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

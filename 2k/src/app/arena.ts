@@ -48,12 +48,14 @@ export function createArena(render: Render, home: TeamData, away: TeamData, qual
     if (reflection.enabled) reflection.render(r, s, c, court.mesh);
   });
 
+  // practice court: a near-empty building (a few people in the stands, still boards), matching the quiet gym audio
+  let practice = false;
   function applyQuality() {
     const p = QUALITY[q];
     reflection.enabled = p.floorReflection === "planar";
     reflection.scale = Math.max(0.25, p.floorReflectionScale);
     court.setQuality(q, reflection);
-    bowl.setDensity(p.crowd, p.crowdAnim);
+    bowl.setDensity(practice ? p.crowd * 0.05 : p.crowd, p.crowdAnim && !practice);
     bowl.setHaze(p.bloom && p.shadow >= 2048);
   }
   applyQuality();
@@ -99,10 +101,15 @@ export function createArena(render: Render, home: TeamData, away: TeamData, qual
       manualHype = Math.max(0, manualHype - dt * 0.02);
       fanBoost = Math.max(0, fanBoost - dt * 0.15);
       const st = view?.state;
-      const hype = Math.min(1, Math.max(st ? st.hype : 0.28, manualHype) + fanBoost);
+      const pr = view?.mode === "practice";
+      if (pr !== practice) {
+        practice = pr;
+        applyQuality();
+      }
+      const hype = practice ? 0 : Math.min(1, Math.max(st ? st.hype : 0.28, manualHype) + fanBoost);
       bowl.hype = hype;
       chantBoost = Math.max(0, chantBoost - dt);
-      bowl.chant = st && st.phase === "live" && st.possession === 1 && (hype > 0.3 || chantBoost > 0) ? Math.min(1, 0.4 + hype) : 0;
+      bowl.chant = !practice && st && st.phase === "live" && st.possession === 1 && (hype > 0.3 || chantBoost > 0) ? Math.min(1, 0.4 + hype) : 0;
       bowl.update(dt, time, view ? view.ball.pos : null);
       hoops.update(dt, view, time);
       if (override) boards.setScoreboard(override);
@@ -127,9 +134,11 @@ export function createArena(render: Render, home: TeamData, away: TeamData, qual
         boards.setScoreboard(auto);
       } else boards.setScoreboard(null);
       boards.update(dt, time, hype);
+      if (practice) boards.ribbonMat?.color.setScalar(0.55); // boards on standby, no pulse
     },
     handle(events: readonly GameEvent[]) {
       hoops.handle(events);
+      if (practice) return; // no ribbon takeovers or fan bursts in an empty gym
       for (const e of events) {
         switch (e.type) {
           case "make": {

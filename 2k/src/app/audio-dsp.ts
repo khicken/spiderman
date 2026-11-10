@@ -33,7 +33,7 @@ export function gain(c: C, out: AudioNode | AudioParam | null, v = 1) {
 export function filter(c: C, out: AudioNode, type: BiquadFilterType, f: number, q = 0.707, db = 0) {
   const b = c.createBiquadFilter();
   b.type = type;
-  b.frequency.value = f;
+  b.frequency.value = Math.min(f, c.sampleRate / 2 - 100);
   b.Q.value = q;
   b.gain.value = db;
   b.connect(out);
@@ -189,7 +189,9 @@ export function masterChain(c: C, out: AudioNode) {
   glue.attack.value = 0.01;
   glue.release.value = 0.25;
   glue.connect(lim);
-  return { input: glue as AudioNode, vol };
+  // `bus` enters after the glue compressor (straight into the limiter): the crowd uses it with its own gentle
+  // compressor, so hard dribbles and whistles never pump the arena
+  return { input: glue as AudioNode, bus: lim as AudioNode, vol };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

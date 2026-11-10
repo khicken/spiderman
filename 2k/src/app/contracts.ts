@@ -161,7 +161,11 @@ export interface Settings {
   autoSubs: boolean; // CPU coach also manages the user team's rotation
   playerNames: boolean; // name tag over the user player
   replays?: boolean; // instant replays after big plays (default on)
+  hints?: HintMode; // v2 onboarding: on-screen button hints and coach prompts (default "first")
 }
+
+/** v2 onboarding: "always" shows coach prompts every game, "first" only in the first games, "off" hides prompts and the action bar. */
+export type HintMode = "always" | "first" | "off";
 
 export const DEFAULT_SETTINGS: Settings = {
   quarterMinutes: 6,
@@ -243,7 +247,7 @@ export interface DifficultyPreset {
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyPreset> = {
-  rookie: { label: "Rookie", userShot: 0.08, cpuShot: -0.08, perfectWindow: 0.16, goodWindow: 0.12, cpuReaction: 0.45, cpuIQ: 0.35, cpuSteal: 0.5, userSteal: 1.5, foulRate: 0.6, ankleBreak: 1.6 },
+  rookie: { label: "Rookie", userShot: 0.04, cpuShot: -0.04, perfectWindow: 0.085, goodWindow: 0.1, cpuReaction: 0.36, cpuIQ: 0.48, cpuSteal: 0.6, userSteal: 1.4, foulRate: 0.6, ankleBreak: 1.5 },
   pro: { label: "Pro", userShot: 0.03, cpuShot: -0.03, perfectWindow: 0.062, goodWindow: 0.1, cpuReaction: 0.3, cpuIQ: 0.55, cpuSteal: 0.8, userSteal: 1.15, foulRate: 0.85, ankleBreak: 1.2 },
   allStar: { label: "All-Star", userShot: 0, cpuShot: 0, perfectWindow: 0.05, goodWindow: 0.08, cpuReaction: 0.2, cpuIQ: 0.72, cpuSteal: 1, userSteal: 1, foulRate: 1, ankleBreak: 1 },
   superstar: { label: "Superstar", userShot: -0.02, cpuShot: 0.02, perfectWindow: 0.04, goodWindow: 0.06, cpuReaction: 0.13, cpuIQ: 0.86, cpuSteal: 1.15, userSteal: 0.9, foulRate: 1.15, ankleBreak: 0.8 },
@@ -337,6 +341,8 @@ export type ShotKind =
 export type DunkStyle = "oneHand" | "twoHand" | "tomahawk" | "windmill" | "reverse" | "cuff" | "putback";
 export type PassKind = "chest" | "bounce" | "lob" | "alleyOop" | "overhead" | "inbound" | "outlet";
 export type MeterGrade = "early" | "slightlyEarly" | "perfect" | "slightlyLate" | "late" | "none";
+/** v2 feel: shot quality at the release (contest): < 0.15 wideOpen, < 0.4 open, < 0.7 contested, else smothered. */
+export type ShotQuality = "wideOpen" | "open" | "contested" | "smothered"; // v2 feel
 export type DribbleMove = "crossover" | "behindBack" | "spin" | "stepBack" | "hesitation" | "between";
 
 export interface ShotInfo {
@@ -437,6 +443,13 @@ export interface PlayerIntent {
   mark: number; // defense: slot this player is guarding (AI fills it; HUD/fx may show it), -1 none
   cut: boolean; // offense off ball: "I am cutting", lets sim give priority / AI pass reads
   foul?: boolean; // added by ai: defense wants an intentional (take) foul on the ball handler late in games; sim may call a common foul on contact or on the next steal cmd
+  /**
+   * v2 feel: defensive assist for the USER slot, written by sim.control() every frame. 0 = the stick drives him.
+   * 1 = stick idle on defense: ai.update() may write move/sprint/faceTarget for him like a CPU defender of `mark`.
+   * 2 = intense D (lock-on) held: ai blends 50/50 between its shadow position and the stick (intent.aim).
+   * ai never writes cmd/shootHeld/handsUp/intense for the user slot. Control returns the moment the stick moves.
+   */
+  assist?: 0 | 1 | 2; // v2 feel
 }
 
 export interface MeterState {
@@ -446,6 +459,7 @@ export interface MeterState {
   window: number; // perfect window width (from DIFFICULTY + ratings + contest)
   grade: MeterGrade; // result after release; "none" while active or for AI shots
   shownT: number; // seconds since the meter result was decided (HUD fades it out)
+  quality?: ShotQuality; // v2 feel: contest read at the release, for the line under the grade (set with grade)
 }
 
 export interface PlayerState {
@@ -677,6 +691,12 @@ export interface MatchSetup {
   userTeam: TeamSide | -1; // -1 = watch CPU vs CPU
   mode: MatchMode;
   settings: Settings;
+  /**
+   * v2 onboarding: tutorial drill. "defense1v1": like practice (no clocks, no fouls out), but one CPU attacker from the
+   * other team (slot 5) brings the ball up against the user's defender; after a stop or a score he restarts at half
+   * court. Optional: game.ts/sim may ignore it, the tutorial then runs its defense steps in a Rookie scrimmage.
+   */
+  drill?: "defense1v1";
 }
 
 export interface Sim extends SimView {
@@ -805,7 +825,30 @@ export interface CameraRig {
   skip?(): void;
   /** added by input-camera: label of the current shot for the HUD ("REPLAY"), null in normal play. */
   readonly bug?: string | null;
+  /**
+   * v2 camera: the pregame intro (arena flyover, matchup card, both starting fives) is running. game.ts should hold
+   * sim.begin() until this turns false, and call skip() on frame.any while it is true (the rig ignores the first 0.6 s).
+   */
+  readonly introActive?: boolean; // v2 camera
+  /**
+   * v2 camera: presentation beats raised by handle()/update() since the last call. game.ts calls it once per frame
+   * after rig.update() and forwards each cue to HudHandle.broadcast. Returns a reused array (valid until the next call).
+   */
+  takeCues?(): readonly BroadcastCue[]; // v2 camera
 }
+
+/**
+ * v2 camera: broadcast presentation beats the camera director schedules (the HUD draws them). The UI reads names,
+ * colors and numbers for "matchup" and "lineup" from its HudSnapshot (teams, onCourt). Text fields are final copy.
+ */
+export type BroadcastCue = // v2 camera
+  | { kind: "matchup"; seconds: number } // pregame title card: away at home, records/arena optional
+  | { kind: "lineup"; team: TeamSide; seconds: number } // starting five card while the camera tracks that team
+  | { kind: "lowerThird"; team: TeamSide; slot: number; title: string; line: string; seconds: number } // "N. JOKIC" / "12 PTS · 5-7 FG · 2-2 FT"
+  | { kind: "compare"; title: string; rows: { label: string; home: string; away: string }[]; seconds: number } // period-end team stats
+  | { kind: "attack"; team: TeamSide; screen: -1 | 1; seconds: number } // user team gained the ball: attack toward screen left (-1) / right (1)
+  | { kind: "replay"; on: boolean } // instant replay started / ended (wipe already drawn in-canvas)
+  | { kind: "clear" }; // intro skipped: hide matchup / lineup cards now
 /** camera.ts: export function createCamera(camera: THREE.PerspectiveCamera): CameraRig */
 export type CreateCamera = (camera: THREE.PerspectiveCamera) => CameraRig;
 
@@ -904,6 +947,7 @@ export interface Indicators {
   icons: boolean; // icon-pass mode: show glyph rings under the 4 teammates
   shotTarget: Dir | 0; // highlight rim glow while the user gathers a shot, 0 none
   mark: number; // slot the user is guarding (thin floor ring), -1 none
+  spot?: V3 | null; // v2 onboarding: tutorial floor target (big glowing ring + beacon), null hides
 }
 export interface Fx {
   handle(events: readonly GameEvent[], view: SimView): void; // maps events to bursts (make -> swish sparkle, dunk -> shockwave + flashes...)
@@ -998,6 +1042,39 @@ export interface HudSnapshot {
   replay?: boolean; // an instant replay is playing (HUD shows the REPLAY bug)
   clutch: boolean;
   fps: number;
+  coach?: CoachView; // v2 onboarding: game.ts fills it with fillCoachView() from tutorial-coach.ts
+  practice?: boolean; // v2 onboarding: the match is in practice mode (HUD hides the clocks)
+}
+
+/**
+ * v2 onboarding: context for coach prompts, the action bar, the attack arrow and the tutorial checks. Pushed with the
+ * HudSnapshot (10 Hz). Built by fillCoachView(view, rig, players, out) in tutorial-coach.ts.
+ */
+export interface CoachView {
+  attackDir: [Dir, Dir]; // which basket each team attacks now
+  attackScreenX: number; // screen-space x direction from the user toward the basket his team attacks (-1 left .. 1 right)
+  ballMode: BallMode;
+  hasBall: boolean; // user holds or dribbles the ball
+  userX: number; // user's feet (world)
+  userZ: number;
+  speed: number; // user's ground speed (m/s)
+  sprinting: boolean;
+  distBasket: number; // user to the basket his team attacks (m)
+  frontcourt: boolean; // user is in his team's frontcourt
+  openness: number; // user's openness 0..1
+  shotChance: number; // estimated make chance from where the user stands
+  gathering: boolean; // user's shot meter is active
+  markSlot: number; // slot the user guards, -1 none
+  markDist: number; // user to his man (m), -1 none
+  markShooting: boolean; // his man is gathering / rising for a shot
+  ballDist: number; // user to the ball (m)
+  ballX: number; // ball (world), for drills
+  ballZ: number;
+  bestMate: number; // most open teammate (openness > 0.6) when the user has the ball, -1 none
+  screenX: number; // user's feet projected to the canvas (0..1, may be outside when off screen)
+  screenY: number;
+  onScreen: boolean;
+  spotDist: number; // v2 tutorial: user to the active tutorial floor spot (m), -1 none
 }
 
 /** Shot meter view, written per frame to DOM by the HUD through a ref. */
@@ -1010,6 +1087,7 @@ export interface MeterView {
   window: number;
   grade: MeterGrade;
   fade: number; // 1 visible .. 0 hidden
+  quality?: ShotQuality; // v2 feel: contest read at the release (with the grade), for the line under it
 }
 export interface ScreenTag {
   on: boolean;
@@ -1024,6 +1102,7 @@ export interface HudHandle {
   meter(m: MeterView): void; // per frame
   tags(list: readonly ScreenTag[]): void; // per frame, fixed-size list (up to 5), reuse DOM nodes
   event(e: GameEvent): void; // banners, scorebug flashes, play-by-play ticker
+  broadcast?(c: BroadcastCue): void; // v2 camera: lower thirds, lineup / matchup / stat comparison cards, attack arrow
 }
 
 export interface FinalReport {
@@ -1062,5 +1141,10 @@ export interface Game {
   readonly input: Input; // UI subscribes to input.onNav for gamepad menu navigation
   readonly audio: Audio | null; // null until the first user gesture (UI calls game.unlockAudio())
   unlockAudio(): void;
+  /** v2 onboarding: tutorial floor target. game.ts copies it to Indicators.spot and measures CoachView.spotDist. */
+  setCoachSpot?(at: V3 | null): void;
+  /** v2 onboarding: practice / tutorial reset, gives the ball back to the user (sim.debugGive(userSlot, at)).
+   *  `at` (and setCoachSpot's point) is attack-relative: +x points at the basket the user attacks. */
+  practiceGive?(at?: V3): void;
   dispose(): void;
 }

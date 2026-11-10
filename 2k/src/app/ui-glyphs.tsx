@@ -30,7 +30,7 @@ const PAD: Record<Act, PadBtn> = {
 const KEYS: Record<Act, string[]> = {
   move: ["W", "A", "S", "D"], sprint: ["Shift"], shoot: ["J"], pass: ["K"], bounce: ["L"], lob: ["I"], screen: ["E"],
   icon: ["R"], post: ["Q"], dribble: ["←", "↑", "→", "↓"], steal: ["L"], block: ["J"], switch: ["K"], charge: ["F"],
-  intense: ["Q"], handsUp: ["↑"], pause: ["Esc"], camera: ["C"], ok: ["Enter"], back: ["Esc"], tabL: ["Q"], tabR: ["E"],
+  intense: ["Q"], handsUp: ["Space"], pause: ["Esc"], camera: ["C"], ok: ["Enter"], back: ["Esc"], tabL: ["Q"], tabR: ["E"],
   navigate: ["↑", "↓"], cycle: ["←", "→"], navigate4: ["←", "↑", "↓", "→"],
 };
 
@@ -151,9 +151,12 @@ export function KeyCap({ children }: { children: ReactNode }) {
   return (
     <span className="num inline-grid h-[1.6em] min-w-[1.6em] flex-none place-items-center rounded-[0.25em] border border-white/30 border-b-[3px] bg-white/[0.07] px-[0.35em] text-[0.82em] leading-none text-white">
       {arrow ? (
-        <svg viewBox="0 0 24 24" style={{ width: "1.15em", height: "1.15em" }} aria-label={children as string}>
-          <path d={arrow} fill="currentColor" />
-        </svg>
+        <>
+          <svg viewBox="0 0 24 24" style={{ width: "1.15em", height: "1.15em" }} aria-hidden>
+            <path d={arrow} fill="currentColor" />
+          </svg>
+          <span className="sr-only">{children}</span>
+        </>
       ) : (
         children
       )}

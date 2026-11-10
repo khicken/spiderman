@@ -65,6 +65,9 @@ function Ball() {
 
 type MenuProps = {
   onPlay: () => void;
+  onLearn: () => void;
+  onPractice: () => void;
+  newbie: boolean;
   onQuick: () => void;
   onSettings: () => void;
   onControls: () => void;
@@ -76,7 +79,7 @@ type MenuProps = {
   active: boolean;
 };
 
-export function MainMenu({ onPlay, onQuick, onSettings, onControls, onBack, home, away, device, family, active }: MenuProps) {
+export function MainMenu({ onPlay, onLearn, onPractice, newbie, onQuick, onSettings, onControls, onBack, home, away, device, family, active }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   useNavRoot(ref, { back: onBack, active });
   const top = useMemo(() => topPlayers(6), []);
@@ -90,8 +93,8 @@ export function MainMenu({ onPlay, onQuick, onSettings, onControls, onBack, home
         </header>
 
         <div className="flex flex-1 items-center gap-10">
-          <nav className="flex w-[34rem] flex-col gap-3">
-            <button data-autofocus className="nav tile shine slide-l group relative flex h-[13rem] flex-col justify-end overflow-hidden rounded-[4px] p-6 text-left" onClick={onPlay}>
+          <nav className="flex w-[38rem] flex-col gap-3">
+            <button data-autofocus={newbie ? undefined : "1"} className="nav tile shine slide-l group relative flex h-[13rem] flex-col justify-end overflow-hidden rounded-[4px] p-6 text-left" onClick={onPlay}>
               <span className="absolute inset-0 opacity-60" style={{ background: `linear-gradient(120deg, ${vivid(away)}55, transparent 45%, transparent 55%, ${vivid(home)}55)` }} />
               <span className="absolute right-5 top-5 flex items-center gap-3">
                 <Emblem team={away} size="4.2rem" />
@@ -101,10 +104,24 @@ export function MainMenu({ onPlay, onQuick, onSettings, onControls, onBack, home
               <span className="eyebrow relative text-hot">Pick your matchup</span>
               <span className="ttl relative mt-1 text-[4.6rem] italic text-white">Play now</span>
             </button>
-            <div className="grid grid-cols-3 gap-3">
-              <MenuTile label="Quick play" sub="Random teams, instant tip" onClick={onQuick} delay={60} icon={<DiceIcon />} />
-              <MenuTile label="Settings" sub="Game, video, audio" onClick={onSettings} delay={120} icon={<CogIcon />} />
-              <MenuTile label="Controls" sub={device === "pad" ? "Controller" : "Keyboard"} onClick={onControls} delay={180} icon={<PadIcon />} />
+            <button
+              data-autofocus={newbie ? "1" : undefined}
+              onClick={onLearn}
+              className={cx("nav slide-l relative flex h-[5.6rem] items-center gap-4 rounded-[4px] px-5 text-left", newbie ? "glow-primary border border-gold/60 bg-gold/12" : "tile")}
+              style={{ animationDelay: "40ms" }}
+            >
+              <span className={cx("text-[2.2rem]", newbie ? "text-gold" : "text-hot")}><CapIcon /></span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="ttl text-[2rem] text-white">Learn to play</span>
+                <span className="truncate text-[0.78rem] font-semibold text-mute">Interactive tutorial · move, shoot, pass, defend · 2 min</span>
+              </span>
+              {newbie && <span className="rounded-[2px] bg-gold px-2 py-0.5 text-[0.62rem] font-black uppercase tracking-[0.16em] text-night">Start here</span>}
+            </button>
+            <div className="grid grid-cols-4 gap-3">
+              <MenuTile label="Practice" sub="Shootaround" onClick={onPractice} delay={60} icon={<HoopIcon />} />
+              <MenuTile label="Quick play" sub="Random teams" onClick={onQuick} delay={100} icon={<DiceIcon />} />
+              <MenuTile label="Settings" sub="Game, video, audio" onClick={onSettings} delay={140} icon={<CogIcon />} />
+              <MenuTile label="Controls" sub={device === "pad" ? "Controller map" : "Keyboard map"} onClick={onControls} delay={180} icon={<PadIcon />} />
             </div>
           </nav>
 
@@ -141,13 +158,31 @@ export function MainMenu({ onPlay, onQuick, onSettings, onControls, onBack, home
 
 function MenuTile({ label, sub, onClick, delay, icon }: { label: string; sub: string; onClick: () => void; delay: number; icon: React.ReactNode }) {
   return (
-    <button className={cx("nav tile slide-l flex h-[8.5rem] flex-col justify-between rounded-[4px] p-4 text-left")} style={{ animationDelay: `${delay}ms` }} onClick={onClick}>
+    <button className={cx("nav tile slide-l flex h-[7.2rem] flex-col justify-between rounded-[4px] p-4 text-left")} style={{ animationDelay: `${delay}ms` }} onClick={onClick}>
       <span className="text-[1.8rem] text-hot">{icon}</span>
       <span>
-        <span className="ttl block whitespace-nowrap text-[1.55rem] text-white">{label}</span>
+        <span className="ttl block whitespace-nowrap text-[1.4rem] text-white">{label}</span>
         <span className="block truncate text-[0.72rem] font-semibold text-mute">{sub}</span>
       </span>
     </button>
+  );
+}
+
+function CapIcon() {
+  return (
+    <svg viewBox="0 0 24 24" {...ico}>
+      <path d="M2.5 9.5L12 5l9.5 4.5L12 14z" />
+      <path d="M6.5 11.5v4.2c1.4 1.4 3.4 2.1 5.5 2.1s4.1-.7 5.5-2.1v-4.2M21.5 9.5v5" />
+    </svg>
+  );
+}
+function HoopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" {...ico}>
+      <rect x="5" y="3" width="14" height="8" rx="1" />
+      <path d="M8.5 11h7l-1.2 8h-4.6z" />
+      <path d="M9.5 14h5M10 17h4" />
+    </svg>
   );
 }
 

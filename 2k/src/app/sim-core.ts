@@ -41,6 +41,8 @@ export interface ShotPlan {
   style: DunkStyle | null;
   window: number; // perfect window as a fraction of the meter
   contest0: number; // contest when the gather started
+  t0: number; // sim time that matches actionT = 0 (a user gather is back-dated to the real button press)
+  userRelT: number; // user release: sim time of the real button release (from InputFrame.shoot.held), -1 none
 }
 
 /** Per-slot sim internals not exposed in PlayerState. */
@@ -81,6 +83,10 @@ export interface PlayerX {
   spinBase: number;
   prevMoveT: number;
   screenT: number;
+  plantT: number; // plant-and-cut: seconds left of the hard plant (decel before the re-accel)
+  plantV: number; // speed to cut down to during the plant
+  cmdAge: number; // seconds the current buffered command has waited
+  stopT: number; // seconds since the stick went idle (stop plant pose)
 }
 
 export interface Ctx {
@@ -141,6 +147,14 @@ export interface Ctx {
   inbPasser: number;
   buzzed: boolean; // period horn already sounded (shot in the air at 0:00)
   net: { on: boolean; side: Dir };
+  // v2 feel: user control
+  shootPressT: number; // sim time of the real shoot press (back-dated by the frame lag), -1 none
+  stickIdleT: number; // seconds the user stick has been idle
+  switchCd: number; // auto-switch cooldown on defense
+  lastHolderSeen: number; // ball holder at the previous control() call
+  defHome: number; // the man the user plays on defense (his own pick with K, else his first defender); -1 none
+  wasOffense: boolean; // user team had the ball at the previous control() call
+  ctlT: number; // sim time of the previous control() call (frame dt for control)
 
   // ball scripting (made shots roll in, bank in, swish)
   seg: { on: boolean; i: number; n: number; left: number; pts: THREE.Vector3[]; dur: number[]; ev: (0 | 1 | 2)[] }; // ev: 0 none, 1 rim, 2 board

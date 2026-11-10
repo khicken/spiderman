@@ -56,6 +56,7 @@ uniform sampler2D tColor; uniform sampler2D tBloom; uniform sampler2D tBlur; uni
 uniform float uBloom; uniform float uExposure; uniform float uTime; uniform float uVignette; uniform float uGrain;
 uniform float uFringe; uniform float uDof; uniform float uFocus; uniform float uNear; uniform float uFar;
 uniform float uLetterbox; uniform float uAspect; uniform float uFlash; uniform vec3 uFlashColor; uniform vec2 uDofPx;
+uniform float uWipe; uniform float uReplay;
 varying vec2 vUv;
 vec3 aces(vec3 color) {
   const mat3 I = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
@@ -69,7 +70,7 @@ vec3 srgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(0.41666)) - 0.055,
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
 float linDepth(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
-float cocAt(float z) { return clamp(abs(z - uFocus) / max(uFocus * 0.55, 0.5) - 0.15, 0.0, 1.0) * uDof; }
+float cocAt(float z) { return clamp(abs(z - uFocus) / max(uFocus * 0.9, 1.0) - 0.3, 0.0, 0.7) * uDof; }
 void main() {
   vec2 uv = vUv;
   vec2 dc = uv - 0.5;
@@ -99,6 +100,11 @@ void main() {
   }
   col += texture2D(tBloom, uv).rgb * uBloom;
   col += uFlashColor * uFlash;
+  if (uReplay > 0.0) {
+    // replay look: a little cooler and flatter than live
+    float rl = luma(col);
+    col = mix(col, vec3(rl) * vec3(0.96, 1.0, 1.06), 0.18 * uReplay);
+  }
   col = aces(col * uExposure);
   float l = luma(col);
   col = mix(vec3(l), col, 1.1);
@@ -116,6 +122,21 @@ void main() {
   if (uLetterbox > 0.0) {
     float bar = uLetterbox * 0.11;
     col *= step(bar, uv.y) * step(uv.y, 1.0 - bar);
+  }
+  if (uWipe > 0.0) {
+    // replay wipe: a slanted panel sweeps in from the left, the cut happens under full cover, then it sweeps out right
+    float s = (uv.x * uAspect + (1.0 - uv.y) * 0.5) / (uAspect + 0.5);
+    float d;
+    if (uWipe < 1.0) d = mix(-0.02, 1.32, smoothstep(0.0, 1.0, uWipe)) - s;
+    else d = s - mix(-0.32, 1.02, smoothstep(0.0, 1.0, uWipe - 1.0));
+    if (d > 0.0) {
+      vec3 panel = vec3(0.035, 0.045, 0.07) + vec3(0.02, 0.025, 0.04) * step(0.5, fract((uv.x * uAspect - uv.y) * 9.0));
+      vec3 w = panel;
+      if (d < 0.03) w = vec3(1.0, 0.42, 0.12);
+      else if (d < 0.045) w = vec3(0.02);
+      else if (d < 0.052) w = vec3(0.95);
+      col = w;
+    }
   }
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -166,6 +187,7 @@ export function createPost(renderer: THREE.WebGLRenderer, preset: QualityPreset)
     uBloom: { value: 0 }, uExposure: { value: 1 }, uTime: { value: 0 }, uVignette: { value: 0 }, uGrain: { value: 0 },
     uFringe: { value: 0 }, uDof: { value: 0 }, uDofPx: { value: new THREE.Vector2(0.006, 0.01) }, uFocus: { value: 20 }, uNear: { value: 0.1 }, uFar: { value: 400 },
     uLetterbox: { value: 0 }, uAspect: { value: 1 }, uFlash: { value: 0 }, uFlashColor: { value: new THREE.Color(1, 1, 1) },
+    uWipe: { value: 0 }, uReplay: { value: 0 },
   });
   const fxaaMat = new THREE.ShaderMaterial({
     vertexShader: VERT, fragmentShader: FXAAShader.fragmentShader,
@@ -185,7 +207,6 @@ export function createPost(renderer: THREE.WebGLRenderer, preset: QualityPreset)
     up.push(new THREE.WebGLRenderTarget(1, 1, hdrOpts()));
   }
   const blur = new THREE.WebGLRenderTarget(1, 1, hdrOpts());
-  const blur2 = new THREE.WebGLRenderTarget(1, 1, hdrOpts());
   const ldr = new THREE.WebGLRenderTarget(1, 1, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
   let W = 1;
   let H = 1;
@@ -211,7 +232,6 @@ export function createPost(renderer: THREE.WebGLRenderer, preset: QualityPreset)
       up[i].setSize(mw, mh);
     }
     blur.setSize(Math.max(1, W >> 2), Math.max(1, H >> 2));
-    blur2.setSize(Math.max(1, W >> 3), Math.max(1, H >> 3));
     ldr.setSize(W, H);
     (fxaaMat.uniforms.resolution.value as THREE.Vector2).set(1 / W, 1 / H);
   }
@@ -247,15 +267,6 @@ export function createPost(renderer: THREE.WebGLRenderer, preset: QualityPreset)
     downMat.uniforms.tSrc.value = target.texture;
     (downMat.uniforms.uTexel.value as THREE.Vector2).set(2 / W, 2 / H);
     pass(downMat, blur);
-    downMat.uniforms.tSrc.value = blur.texture;
-    (downMat.uniforms.uTexel.value as THREE.Vector2).set(1 / blur.width, 1 / blur.height);
-    pass(downMat, blur2);
-    upMat.uniforms.tLow.value = blur2.texture;
-    upMat.uniforms.tCur.value = black;
-    (upMat.uniforms.uTexel.value as THREE.Vector2).set(1 / blur2.width, 1 / blur2.height);
-    upMat.uniforms.uRadius.value = 1.5;
-    pass(upMat, blur);
-    upMat.uniforms.uRadius.value = 1;
     return blur.texture;
   }
 
@@ -289,9 +300,13 @@ export function createPost(renderer: THREE.WebGLRenderer, preset: QualityPreset)
       u.uFringe.value = p.grain ? 0.005 : 0;
       u.uLetterbox.value = params.letterbox;
       u.uAspect.value = W / H;
-      (u.uDofPx.value as THREE.Vector2).set(10 / W, 10 / H);
+      (u.uDofPx.value as THREE.Vector2).set(6 / W, 6 / H);
       u.uFlash.value = params.flash;
       (u.uFlashColor.value as THREE.Color).copy(params.flashColor);
+      // the camera director hands its replay wipe (0..2) and replay grade through the camera's userData
+      const cud = camera.userData as { wipe?: number; replay?: number };
+      u.uWipe.value = cud.wipe ?? 0;
+      u.uReplay.value = cud.replay ?? 0;
       if (p.aa === "fxaa" || (p.aa === "smaa" && p.msaa === 0)) {
         pass(finalMat, ldr);
         fxaaMat.uniforms.tDiffuse.value = ldr.texture;
@@ -310,7 +325,6 @@ export function createPost(renderer: THREE.WebGLRenderer, preset: QualityPreset)
       for (const r of down) r.dispose();
       for (const r of up) r.dispose();
       blur.dispose();
-      blur2.dispose();
       ldr.dispose();
     },
   };

@@ -3,13 +3,13 @@ import type { GameEvent, InputFrame, MatchSetup, PlayerState, Settings, Sim, Tea
 import { COURT, DIFFICULTY } from "./contracts";
 import { starterIndices } from "./data";
 import type { Ctx, PlayerX, ShotPlan } from "./sim-core";
-import { clamp, hashStr, makeRng, sideOf } from "./sim-core";
+import { clamp, dirOf, hashStr, makeRng, sideOf } from "./sim-core";
 import { looseBall, physics, placeHeld, shotFlight, tipTo, tossFlight } from "./sim-ball";
 import { control } from "./sim-control";
 import { passFlight, startPass } from "./sim-pass";
 import { collide, derived, movePlayers, processCommands } from "./sim-play";
 import {
-  beginTip, callTimeout, checkViolations, practiceReset, resetShotClock, setPossession, setUser, substitute, takeBall,
+  beginInbound, beginTip, callTimeout, checkViolations, practiceReset, resetShotClock, setPossession, setUser, substitute, takeBall,
   updateClocks, updateDead, updateFT, updateInbound, updateTip,
 } from "./sim-rules";
 import { checkBlocks, estimateChance, startShot } from "./sim-shot";
@@ -30,7 +30,7 @@ function newShotPlan(): ShotPlan {
   return {
     on: false, kind: "jumper", points: 2, minP: 0.45, maxP: 0.8, targetP: 0.625, releaseP: 0.625, decided: false,
     released: false, grade: "none", user: false, startT: 0, finish: new THREE.Vector3(), from: new THREE.Vector3(),
-    alley: false, style: null, window: 0.1, contest0: 0,
+    alley: false, style: null, window: 0.1, contest0: 0, t0: 0, userRelT: -1,
   };
 }
 
@@ -41,6 +41,7 @@ function newPlayerX(): PlayerX {
     lastMoveT: -9, catchT: -9, catchFrom: -1, dribbles: 0, offRebT: -9, spot: new THREE.Vector3(), spotOn: false,
     spotFace: 0, jumpH: 0, air: new THREE.Vector3(), streak: 0, contestAt: -1, contestBlock: false, blockShot: -1,
     interceptPass: -1, prevP: 0, oopAt: -1, heldT: 0, spinBase: 0, prevMoveT: -9, screenT: 0,
+    plantT: 0, plantV: 0, cmdAge: 0, stopT: 0,
   };
 }
 
@@ -78,6 +79,7 @@ export function createSim(setup: SimSetup): Sim {
     passLoose: null, pokeBy: -1, pokeFrom: -1, looseT: 0, shotResolved: true, rimEvT: -9, boardEvT: -9, bounceEvT: -9,
     crowdT: 0, lastHypeRun: [0, 0], inboundPassed: false, practiceT: 0, lastPossession: -1, clockAtRelease: 0,
     inbPasser: -1, buzzed: false, net: { on: false, side: 1 },
+    shootPressT: -1, stickIdleT: 0, switchCd: 0, lastHolderSeen: -1, defHome: -1, wasOffense: false, ctlT: 0,
     seg: {
       on: false, i: 0, n: 0, left: 0, pts: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
       dur: [0, 0, 0, 0], ev: [0, 0, 0, 0],
@@ -200,6 +202,36 @@ export function createSim(setup: SimSetup): Sim {
         practiceReset(ctx);
         return;
       }
+      if (state.phase === "pregame" && setup.drill) {
+        // defense drill: no jump ball and no scrum at center court. Both teams start in a half-court set: the offense
+        // spread around the arc with the ball at the top, each defender 1.5 m goal-side of his man.
+        const team: TeamSide = ut === 0 ? 1 : 0;
+        const d = dirOf(ctx, team);
+        const rimX = d * COURT.rimX;
+        const SET: [number, number][] = [[0, 7.7], [0.85, 7.4], [-0.85, 7.4], [1.35, 6.9], [-1.35, 6.9]]; // angle from the top, radius
+        for (let k = 0; k < 5; k++) {
+          const [a, r] = SET[k];
+          const o = players[team * 5 + k];
+          o.pos.set(rimX - d * Math.cos(a) * r, 0, Math.sin(a) * r);
+          o.vel.set(0, 0, 0);
+          const df = players[(1 - team) * 5 + k];
+          const rr = r - 1.5;
+          df.pos.set(rimX - d * Math.cos(a) * rr, 0, Math.sin(a) * rr);
+          df.vel.set(0, 0, 0);
+        }
+        for (const x of ctx.px) x.spotOn = false;
+        state.phase = "live";
+        state.deadReason = null;
+        state.inbound = null;
+        ctx.restart = null;
+        setPossession(ctx, team);
+        ctx.frontEstablished = true;
+        takeBall(ctx, team * 5);
+        // the user starts on the wing defender, so the first lesson (switch to the ball) has somewhere to go
+        setUser(ctx, (1 - team) * 5 + 1);
+        if (state.clock > 0) state.clockRunning = true;
+        return;
+      }
       if (state.phase === "pregame") beginTip(ctx);
     },
     control(frame: InputFrame) {
@@ -278,7 +310,7 @@ export function createSim(setup: SimSetup): Sim {
       else resetShotClock(ctx, 24);
       takeBall(ctx, slot);
       if (!practice && state.clock > 0) state.clockRunning = true;
-      if (ctx.userTeam === p.team) setUser(ctx, slot);
+      if (ctx.userTeam === p.team && !practice) setUser(ctx, slot);
       tmpPos.copy(p.pos);
     },
     dispose() {
@@ -286,6 +318,8 @@ export function createSim(setup: SimSetup): Sim {
       for (const t of teams) t.pendingSubs.length = 0;
     },
   };
+  // dev-only handle for test scripts (playwright reads state, checks feel numbers)
+  if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") (window as unknown as { __hoopsSim: Sim }).__hoopsSim = sim;
   return sim;
 }
 

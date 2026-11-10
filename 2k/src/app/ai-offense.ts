@@ -13,7 +13,6 @@ import {
 const RIM = new THREE.Vector3();
 const A = new THREE.Vector3();
 const B = new THREE.Vector3();
-const C = new THREE.Vector3();
 const segTo = [0];
 const MATES: number[] = [];
 const TAKEN: boolean[] = SPACING.map(() => false);
@@ -122,6 +121,7 @@ export function onOwnPossession(ctx: Ctx, b: TeamBrain, transition: boolean): vo
   b.playT = 0;
   b.phase = 0;
   b.possT = 0;
+  b.passes = 0;
   b.transition = transition ? 6 : 0;
   b.screener = -1;
   b.screenFor = -1;
@@ -159,6 +159,7 @@ export function onCatch(ctx: Ctx, b: TeamBrain, slot: number): void {
 
 export function onOwnPass(ctx: Ctx, b: TeamBrain, from: number, to: number): void {
   const { sim, mem } = ctx;
+  if (sim.players[from].team === b.side) b.passes++;
   if (from === sim.userSlot || sim.players[from].team !== b.side) return;
   const m = mem[from];
   m.driving = false;
@@ -778,8 +779,8 @@ function offBall(ctx: Ctx, b: TeamBrain, t: TeamSide, d: Dir, s: number, holder:
       }
     }
   }
-  // the ball is up the floor: never loiter in the backcourt
-  if (pu > HALF_U - 0.5 && hs && uOf(d, hs.pos.x) < HALF_U) urg = 1;
+  // never loiter in the backcourt: sprint up and fill the floor ahead of the ball
+  if (pu > HALF_U - 1.5 && m.role !== "trail") urg = 1;
   // three-second awareness for every off-ball role (transition rim runs included): after ~1.5 s in the lane,
   // clear out to the short corner / dunker spot outside the paint
   const lt = sim.state.laneTimer[s];
@@ -1106,13 +1107,16 @@ function decide(
   if (b.transition > 0 && b.play === "fastBreak" && r > 3.5) want += 0.3; // attack, do not settle
   if (m.catchT < 0.45 && pts === 3) want -= 0.05; // rhythm catch and shoot
   // a hand in the face: with clock left, swing it or attack instead of settling for a contested jumper
-  if (r > 4.5 && tl > 10) want += (1 - myOpen) * 0.3;
+  if (r > 4.5 && tl > 14) want += (1 - myOpen) * 0.3;
   // late clock with a hand up from deep: attack the closeout instead of jacking it
-  else if (pts === 3 && tl > 2.2 && myOpen < 0.45) want += 0.16;
-  // patience: early in the clock only great looks go up, so sets get to develop
+  else if (pts === 3 && tl > 2.2 && myOpen < 0.45) want += 0.1;
+  // patience: one small term, early in the clock only, so a set gets a couple of swings (layups stay open)
   const halfcourt = b.play !== "fastBreak" && b.transition <= 0;
-  const patience = clamp((tl - 10) / 9, 0, 1);
-  if (halfcourt) want += patience * (r < 2.2 ? 0.04 : myOpen > 0.75 && pts === 3 ? 0.06 : 0.16);
+  const patience = clamp((tl - 12) / 9, 0, 1);
+  if (halfcourt) want += patience * (r < 2.2 ? 0.02 : myOpen > 0.75 && pts === 3 ? 0.04 : 0.12);
+  // the set ends in an attack: after ~3 swings or 8 s the ball stops moving and somebody goes
+  const setDone = halfcourt && (b.passes >= 3 || b.possT > 9);
+  if (setDone) want -= 0.05 + clamp((b.passes - 3) * 0.05, 0, 0.18);
   const setPending = b.screener >= 0 && b.screenFor === s && !b.screenUsed && tl > 8;
   if (setPending) want += 0.25;
   if (!front) want = 99;
@@ -1189,7 +1193,8 @@ function decide(
     return;
   }
   // pass
-  const passBar = Math.max(ev, driveV * 0.9) + 0.08 + (setPending ? 0.25 : 0) - (m.holdT > 2.6 ? 0.25 : 0) - (b.play === "motion" && m.holdT > 1.6 ? 0.15 : 0);
+  const passBar = Math.max(ev, driveV * 0.9) + 0.08 + (setPending ? 0.25 : 0) - (m.holdT > 2.6 ? 0.25 : 0) - (b.play === "motion" && m.holdT > 1.6 ? 0.15 : 0)
+    + (setDone ? 0.15 + clamp((b.passes - 3) * 0.08, 0, 0.4) + (s === b.star ? 0.15 : 0) : 0);
   if (pass.slot >= 0 && m.passCd <= 0 && pass.value > passBar && pass.value > 0.55) {
     doPass(ctx, it, m, pass.slot, pass.kind);
     return;
@@ -1209,7 +1214,8 @@ function decide(
   }
   m.fakeT -= 0.1;
   // drive
-  const driveBar = 0.5 - (s === b.star ? 0.08 : 0) - (isoAttack ? 0.15 : 0) + (halfcourt ? patience * 0.18 : 0) + (setPending ? 0.3 : 0) - (tl < 8 ? 0.22 : 0);
+  const driveBar = 0.5 - (s === b.star ? 0.08 : 0) - (isoAttack ? 0.15 : 0) + (halfcourt ? patience * 0.1 : 0) + (setPending ? 0.3 : 0) - (tl < 8 ? 0.22 : 0)
+    - (setDone ? 0.16 + (s === b.star ? 0.12 : 0) : 0);
   if (!m.driving && driveV > driveBar && r < 10.5 && (front || b.play === "fastBreak")) {
     m.driving = true;
     m.driveT = 0;
@@ -1249,6 +1255,13 @@ function decide(
       m.moveCd = rand(1.0, 2.0) * (1.25 - handle * 0.5);
       return;
     }
+  }
+  // the set is over and nothing came open: put it on the floor rather than swing it again
+  if (setDone && !m.driving && front && m.holdT > 2.2 && tl > 3 && r < 10.5) {
+    m.driving = true;
+    m.driveT = 0;
+    m.driveSide = driveSide;
+    return;
   }
   // stuck with the ball too long: move it
   if (m.holdT > 4.2 && pass.slot >= 0 && pass.value > 0.2 && tl > 4) {
@@ -1337,6 +1350,8 @@ export function inbound(ctx: Ctx, t: TeamSide, dt: number): void {
   b.play = "inbound";
   const passer = ib.passer;
   const spotP = ib.spot;
+  // a frontcourt throw-in may not go back over the half-court line
+  const frontIn = spotP.x * d > -0.5;
   // primary receiver: the human, else the best ball handler
   let prim = -1;
   let pv = -1e9;
@@ -1372,8 +1387,8 @@ export function inbound(ctx: Ctx, t: TeamSide, dt: number): void {
       m.urgency = 0;
       steer(p, it, m, null);
       it.move.set(0, 0, 0);
-      const wait = ib.afterMake ? 0.6 : 1.0;
-      if (m.routineT > wait + rand(0, 0.5) && m.passCd <= 0) {
+      const wait = ib.afterMake ? 0.3 : 0.6;
+      if (m.routineT > wait + rand(0, 0.3) && m.passCd <= 0) {
         let best = -1;
         let bv = -1e9;
         for (let j = 0; j < 5; j++) {
@@ -1382,6 +1397,7 @@ export function inbound(ctx: Ctx, t: TeamSide, dt: number): void {
           const mp = sim.players[q];
           const len = dist2(p.pos.x, p.pos.z, mp.pos.x, mp.pos.z);
           if (len > 13 || Math.abs(mp.pos.x) > COURT.halfL || Math.abs(mp.pos.z) > COURT.halfW) continue;
+          if (frontIn && mp.pos.x * d < 1.2) continue;
           const v = openness(ctx, q) * 2 + (q === prim ? 0.9 : 0) - laneRisk(ctx, p, mp, false) * 1.5 - Math.max(0, len - 7) * 0.08;
           if (v > bv) {
             bv = v;
@@ -1409,17 +1425,15 @@ export function inbound(ctx: Ctx, t: TeamSide, dt: number): void {
       m.urgency = 0.85;
       it.cut = true;
     } else if (ib.afterMake) {
-      // run the floor
+      // run the floor: wings and bigs head straight for their frontcourt spots
       if (m.spotIdx >= 0) m.target.copy(SPOT_POS[m.spotIdx]);
       else toWorld(d, 6, (k - 2) * 2.5, m.target);
-      C.copy(m.target);
-      // halfway there: stay in front of the inbound
-      m.target.x = (C.x + spotP.x) * 0.5;
-      m.urgency = 0.6;
+      m.urgency = 0.9;
     } else {
       if (m.spotIdx >= 0) m.target.copy(SPOT_POS[m.spotIdx]);
       m.urgency = 0.6;
     }
+    if (frontIn && m.target.x * d < 2) m.target.x = d * 2;
     keepIn(m.target, 0.4);
     steer(p, it, m, sim.players);
   }

@@ -4,7 +4,7 @@ import { createArena } from "./arena";
 import { createAudio } from "./audio";
 import { createCamera } from "./camera";
 import type {
-  AI, Arena, Audio, FinalReport, Game, GameCallbacks, GameEvent, HudSnapshot, Indicators, MatchSetup, MeterView,
+  AI, Arena, Audio, BroadcastCue, FinalReport, Game, GameCallbacks, GameEvent, HudSnapshot, Indicators, MatchSetup, MeterView,
   PlayerData, ScreenPoint, ScreenTag, Settings, Sim, StatLine, TeamData, TeamSide,
 } from "./contracts";
 import { HUD_HZ, MAX_FRAME_DT, SIM_DT } from "./contracts";
@@ -16,6 +16,7 @@ import { createPlayers } from "./players";
 import { createRender } from "./render";
 import { createSim } from "./sim";
 import { emptyHud, hudPlayer, newStatLine, periodLabel } from "./state";
+import { fillCoachView, newCoachView } from "./tutorial-coach";
 
 // The one requestAnimationFrame loop. Owns module lifetimes and routes events. Owner: lead / integrator.
 // Menu: a mock sim keeps players warming up behind the menus while the camera orbits.
@@ -24,6 +25,8 @@ import { emptyHud, hudPlayer, newStatLine, periodLabel } from "./state";
 const MAX_STEPS = 8;
 const PAD_GLYPHS = ["A", "B", "X", "Y"];
 const KEY_GLYPHS = ["1", "2", "3", "4"];
+/** the controlled player's floor ring and attack chevrons: one gold for every team, matching the HUD's YOU marker */
+const USER_GOLD = "#ffd166";
 
 type Mode = "menu" | "match" | "ended";
 
@@ -53,8 +56,11 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   let acc = 0;
   let hudAcc = 0;
   let endTimer = -1;
+  // v2 camera: sim.begin() waits until the pregame intro (flyover + starting fives) ends or is skipped
+  let beginPending = false;
 
   const frameEvents: GameEvent[] = [];
+  const heldCues: BroadcastCue[] = [];
   const aiEvents: GameEvent[] = [];
   const mates: number[] = [];
   const v3 = new THREE.Vector3();
@@ -63,6 +69,9 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   const tags: ScreenTag[] = Array.from({ length: 5 }, () => ({ on: false, x: 0, y: 0, text: "", kind: "name" as const, color: "#fff" }));
   const ind: Indicators = { user: -1, userColor: "#ffffff", passTarget: -1, icons: false, shotTarget: 0, mark: -1 };
   let hud: HudSnapshot | null = null;
+  // v2 onboarding: coach prompts / action bar context and the tutorial floor target
+  const coachView = newCoachView();
+  let coachSpot: { x: number; y: number; z: number } | null = null;
 
   function dressFor(home: TeamData, away: TeamData) {
     if (!arena) arena = createArena(render, home, away, cur.quality);
@@ -79,6 +88,8 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     frameEvents.length = aiEvents.length = 0;
     acc = 0;
     endTimer = -1;
+    beginPending = false;
+    heldCues.length = 0;
   }
 
   function menuSetup(home: TeamData, away: TeamData): MatchSetup {
@@ -104,17 +115,27 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
 
   function overlays(frame: ReturnType<typeof input.read>) {
     const h = cb.hudRef();
-    if (!sim || !h || mode === "menu") {
+    if (!sim || !h || mode === "menu" || rig.introActive || rig.replayView || rig.cinematic) {
+      // menus, the pregame intro and instant replays: no floor rings, name tags or meter (broadcast packages, and a
+      // replay draws recorded poses that the live tags would not follow)
       ind.user = ind.passTarget = ind.mark = -1;
       ind.icons = false;
       ind.shotTarget = 0;
+      ind.spot = null;
       if (sim) fx.indicators(sim, ind);
+      if (h && mode !== "menu") {
+        meter.on = false;
+        h.meter(meter);
+        for (const tg of tags) tg.on = false;
+        h.tags(tags);
+      }
       return;
     }
     const us = sim.userSlot;
     const u = us >= 0 ? sim.players[us] : null;
     meter.on = false;
-    if (u && (u.meter.active || u.meter.shownT < 1.2)) {
+    // the release read-out lingers 1.2 s after a shot, but never into the next possession (no "GREEN" on defense)
+    if (u && (u.meter.active || (u.meter.shownT < 1.2 && sim.state.possession === u.team))) {
       players.headPos(us, v3);
       rig.toScreen(v3, sp);
       meter.on = sp.on;
@@ -125,6 +146,7 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       meter.window = u.meter.window;
       meter.grade = u.meter.grade;
       meter.fade = u.meter.active ? 1 : Math.max(0, 1 - u.meter.shownT / 1.2);
+      meter.quality = u.meter.grade === "none" ? undefined : u.meter.quality;
     }
     if (!cur.shotMeter && meter.grade === "none") meter.on = false;
     h.meter(meter);
@@ -156,13 +178,33 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
         tg.color = "#ffffff";
       }
     }
+    // defense: name the man the user guards, so a new player always knows whom to stay with
+    if (u && !offense && !icons && u.mark >= 0 && u.mark < 10 && sim.state.phase !== "freeThrow") {
+      players.headPos(u.mark, v3);
+      rig.toScreen(v3, sp);
+      const tg = tags[1];
+      tg.on = sp.on;
+      tg.x = sp.x;
+      tg.y = sp.y;
+      tg.text = "YOUR MAN";
+      tg.kind = "name";
+      tg.color = "#ff4d5e";
+      // stacked on the YOU tag (he is right on his man): slide YOUR MAN to the side, level with it, so both names
+      // read (above would cover the coach chip that floats over the YOU tag)
+      const y0 = tags[0];
+      if (y0.on && Math.abs(tg.x - y0.x) < 0.09 && Math.abs(tg.y - y0.y) < 0.08) {
+        tg.x = y0.x + (tg.x >= y0.x ? 0.085 : -0.085);
+        tg.y = y0.y + 0.012;
+      }
+    }
     h.tags(tags);
     ind.user = us;
-    ind.userColor = u ? sim.teams[u.team].data.primary : "#ffffff";
+    ind.userColor = USER_GOLD;
     ind.icons = icons;
     ind.passTarget = -1;
     ind.mark = u && !offense ? u.mark : -1;
     ind.shotTarget = u && u.meter.active ? sim.dir(u.team) : 0;
+    ind.spot = coachSpot;
     fx.indicators(sim, ind);
   }
 
@@ -203,6 +245,8 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     hud.replay = !!rig.replayView;
     hud.clutch = s.clutch;
     hud.fps = Math.round(render.stats().fps);
+    hud.coach = fillCoachView(sim, rig, coachSpot, coachView);
+    hud.practice = setup.mode === "practice";
     // fresh top-level object so React sees a change; nested arrays are copied shallowly
     cb.hud({ ...hud, teams: [{ ...hud.teams[0] }, { ...hud.teams[1] }], onCourt: [hud.onCourt[0].map((p) => ({ ...p })), hud.onCourt[1].map((p) => ({ ...p }))] });
   }
@@ -245,6 +289,11 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     const replayV = rig.replayView ?? null;
     const ts = rig.timeScale ?? 1;
     if (replayV && mode === "match" && !paused && f.any) rig.skip?.();
+    if (rig.introActive && mode === "match" && !paused && f.any) rig.skip?.();
+    if (beginPending && sim && !rig.introActive) {
+      beginPending = false;
+      sim.begin();
+    }
     if (sim && !paused && !replayV) {
       if (mode === "match") {
         rig.stickToWorld(f.move.x, f.move.y, f.moveWorld).multiplyScalar(f.move.mag);
@@ -271,6 +320,18 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
 
     if (mode === "menu" || !sim) rig.menu(dt, t);
     else rig.update(dt, sim);
+    // v2 camera: presentation beats (matchup, lineups, lower thirds, stat cards, attack arrow) go to the HUD. The intro
+    // raises its first card while the match still waits behind the loading screen, so cues wait for the HUD to mount.
+    const cues = rig.takeCues?.();
+    if (cues) for (const c of cues) if (mode === "match" && heldCues.length < 16) heldCues.push(c);
+    if (heldCues.length) {
+      const hh = mode === "match" ? cb.hudRef() : null;
+      if (mode !== "match") heldCues.length = 0;
+      else if (hh && !paused) {
+        for (const c of heldCues) hh.broadcast?.(c);
+        heldCues.length = 0;
+      }
+    }
     if (replayV && !paused) players.update(dt * ts, replayV);
     else if (sim) players.update(dt * ts, sim);
     arena?.update(dt, mode === "menu" ? null : sim, render.camera);
@@ -300,6 +361,9 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
   window.addEventListener("resize", onResize);
   raf = requestAnimationFrame(frame);
 
+  // dev-only handle for test scripts (playwright): live sim, camera rig and renderer
+  if (process.env.NODE_ENV !== "production")
+    (window as unknown as { __hoopsDev: unknown }).__hoopsDev = { get sim() { return sim; }, get mode() { return mode; }, rig, render, get coach() { return hud?.coach ?? null; } };
   const game: Game = {
     showcase(home: TeamData, away: TeamData, featured?: PlayerData | null) {
       if (disposed) return;
@@ -339,8 +403,15 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
       if (disposed) return;
       mode = "match";
       paused = false;
-      sim.begin();
-      rig.cue("intro");
+      // a focused menu button would take Space (dribble move / hands up) as a click during the game
+      if (typeof document !== "undefined") (document.activeElement as HTMLElement | null)?.blur?.();
+      if (setup.mode === "practice" || setup.drill) {
+        // drills and the tutorial go straight to the floor: no pregame intro
+        sim.begin();
+      } else {
+        beginPending = true;
+        rig.cue("intro");
+      }
       rig.cut();
       audio?.music("game");
       cb.progress(1);
@@ -389,6 +460,16 @@ export function startGame(canvas: HTMLCanvasElement, cb: GameCallbacks, settings
     input,
     get audio() {
       return audio;
+    },
+    // tutorial spots are attack-relative (+x = toward the basket the user attacks): mirror them to the real side
+    setCoachSpot(at) {
+      const d = sim && sim.userTeam !== -1 ? sim.dir(sim.userTeam) : 1;
+      coachSpot = at ? { x: at.x * d, y: at.y, z: at.z * d } : null;
+    },
+    practiceGive(at) {
+      if (!sim || mode !== "match" || sim.userSlot < 0) return;
+      const d = sim.userTeam !== -1 ? sim.dir(sim.userTeam) : 1;
+      sim.debugGive(sim.userSlot, at ? { x: at.x * d, y: 0, z: at.z * d } : undefined);
     },
     unlockAudio() {
       if (!audio) {

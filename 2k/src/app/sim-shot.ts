@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import type { Action, DunkStyle, MeterGrade, PlayerState, ShotKind } from "./contracts";
-import { ACTION_DUR, COURT, distToBasket, shotValue, shotZone } from "./contracts";
+import type { Action, DunkStyle, MeterGrade, PlayerState, ShotKind, ShotQuality } from "./contracts";
+import { ACTION_DUR, COURT, SIM_DT, distToBasket, shotValue, shotZone } from "./contracts";
 import type { Ctx, ShotPlan } from "./sim-core";
 import {
   airY, canDunk, clamp, dirOf, emit, foulMult, horizDist, isUser, launchApex, launchTime, rumble, setAction, shotBonus,
@@ -36,7 +36,7 @@ function actionFor(kind: ShotKind): Action {
 /** Release window per action, in actionP: [min, target, max]. */
 function windowFor(a: Action): [number, number, number] {
   switch (a) {
-    case "jumpShot": return [0.45, 0.625, 0.8];
+    case "jumpShot": return [0.45, 0.6, 0.8]; // target = apex of the rig's jump (AIRBORNE 0.3..0.9)
     case "freeThrow": return [0.5, 0.62, 0.85];
     case "layup": return [0.5, 0.6, 0.75];
     case "floater": return [0.45, 0.58, 0.75];
@@ -48,6 +48,10 @@ function windowFor(a: Action): [number, number, number] {
 /** Season percentages arrive as 0.38 or 38.0 depending on the roster file. */
 export function pct(v: number): number {
   return v > 1.5 ? v / 100 : v;
+}
+
+export function qualityOf(contest: number): ShotQuality {
+  return contest < 0.15 ? "wideOpen" : contest < 0.4 ? "open" : contest < 0.7 ? "contested" : "smothered";
 }
 
 function rnd(ctx: Ctx, a: number, b: number): number {
@@ -76,6 +80,18 @@ export function chooseShot(ctx: Ctx, p: PlayerState): ShotKind {
   if (it.post && dist < 4.8) return dist < 3.4 && r.postScoring >= r.mid - 5 ? "hook" : "fadeaway";
   const driving = along > 2.2;
   const attack = it.sprint > 0.5 || speed > 4.4;
+  // at or behind the backboard plane: only a reverse finish is possible (refused further out, see startShot)
+  if (p.pos.x * dir > COURT.rimX - 0.3 && dist < 3.2) return "reverseLayup";
+  if (isUser(ctx, p.slot) && (dist < 1.9 || (driving && dist < 4.3))) {
+    // the human picks: sprint held = dunk when he can get up there, else the layup package
+    if (dunker && it.sprint > 0.5 && dist < 3.6) {
+      const lane = computeContest(ctx, p.slot);
+      if (lane < 0.55 || ctx.rng() < 0.5 + 0.4 * clamp((r.dunk - 70) / 25, 0, 1)) return "dunk";
+    }
+    if (driving && dist > 2.9 && it.sprint <= 0.5 && (r.close + r.layup) / 2 >= 55) return "floater";
+    const base = Math.abs(tB.x) < 0.4 && p.pos.z * p.vel.z < 0 && Math.abs(p.pos.z) < 2.2;
+    return base ? "reverseLayup" : "layup";
+  }
   if (dist < 1.9 || (driving && dist < 4.3)) {
     const bigPower = dist < 1.8 && p.height > 2.03 && r.dunk >= 70;
     if (dunker && (attack || bigPower)) {
@@ -176,11 +192,11 @@ export function makeChance(ctx: Ctx, slot: number, kind: ShotKind, dist: number,
         if (dist < 3.5) c += 0.04;
         else if (dist < 5) c += 0.015;
       }
-      if (kind === "pullUp") c -= 0.025;
-      else if (kind === "stepBack") c -= 0.035;
-      else if (kind === "fadeaway") c -= 0.045;
+      if (kind === "pullUp") c -= 0.012;
+      else if (kind === "stepBack") c -= 0.025;
+      else if (kind === "fadeaway") c -= 0.04;
       // open looks fall a bit more often; a real hand in the face hurts a lot (non-linear)
-      c = (c + (three ? 0.06 : 0.035)) * (1 - 0.45 * Math.pow(contest, 1.2));
+      c = (c + (three ? 0.085 : 0.055)) * (1 - 0.45 * Math.pow(contest, 1.2));
       break;
     }
     case "layup": case "reverseLayup": case "putback": case "tip": case "alleyOopLayup":
@@ -211,12 +227,17 @@ export function makeChance(ctx: Ctx, slot: number, kind: ShotKind, dist: number,
   const skill = clamp((rt - 40) / 50, 0, 1);
   switch (grade) {
     case "perfect":
-      c += (1 - c) * (close ? 0.45 * (1 - 0.5 * contest) : kind === "freeThrow" ? 0.7 : 0.62 * (1 - contest) * (1 - contest) * (0.3 + 0.7 * skill));
+      // a green release goes in: always when open, most of the time through a hand; a smothered look stays a coin flip
+      if (kind === "freeThrow") c = Math.max(c, 0.985);
+      else if (contest < 0.35) c = Math.max(c, close ? 0.97 : 0.965);
+      else if (contest < 0.7) c = Math.max(c, 0.8 - (contest - 0.35) * 0.3);
+      else c += (1 - c) * 0.35 * (0.3 + 0.7 * skill);
       break;
     case "slightlyEarly": case "slightlyLate": c *= close ? 0.95 : 0.88 + 0.05 * clamp((rt - 60) / 35, 0, 1); break;
     case "early": case "late": c *= close ? 0.7 : kind === "freeThrow" ? 0.55 : 0.45; break;
     default: break;
   }
+  if (grade === "perfect" && contest < 0.7) return clamp(c, 0.02, 0.985); // a green is a green: no fatigue / difficulty tax
   c += shotBonus(ctx, p.team);
   c += p.onFire * 0.04;
   if (p.stamina < 0.6 && kind !== "freeThrow") c -= (0.6 - p.stamina) * 0.2;
@@ -243,6 +264,17 @@ export function startShot(ctx: Ctx, slot: number, forced?: ShotKind): boolean {
   if (ball.holder !== slot || (ball.mode !== "held" && ball.mode !== "dribble")) return false;
   if (x.shot.on || x.passing || p.stunned > 0) return false;
   if (st.phase !== "live" && st.phase !== "freeThrow") return false;
+  if (!forced && st.phase === "live" && isUser(ctx, slot)) {
+    const d0 = dirOf(ctx, p.team);
+    if (p.pos.x * d0 > COURT.rimX - 0.3 && distToBasket(p.pos.x, p.pos.z, d0) >= 3.2) {
+      // no jumper from behind the backboard: pump fake instead
+      if (!x.passing) {
+        setAction(ctx, slot, "pumpFake");
+        ball.mode = "held";
+      }
+      return false;
+    }
+  }
   const kind = forced ?? chooseShot(ctx, p);
   const action = actionFor(kind);
   const sp = x.shot;
@@ -266,7 +298,16 @@ export function startShot(ctx: Ctx, slot: number, forced?: ShotKind): boolean {
   sp.from.set(p.pos.x, 0, p.pos.z);
   sp.contest0 = computeContest(ctx, slot);
   const rt = shotRating(p, kind, dist);
-  sp.window = ctx.diff.perfectWindow * (0.65 + (0.7 * rt) / 99) * (1 - 0.4 * sp.contest0) * (kind === "freeThrow" ? 1.2 : 1) / maxP;
+  // good shooters get a wide green window, poor ones a sliver (so a green is always earned and always goes in)
+  const skill = clamp((rt - 40) / 50, 0, 1);
+  sp.window = ctx.diff.perfectWindow * 1.25 * (0.55 + 0.45 * skill) * (1 - 0.35 * sp.contest0) * (kind === "freeThrow" ? 1.2 : 1) / maxP;
+  // the user's notch moves from shot to shot by more than the green window (more with a hand up): a memorized hold
+  // time greens about one shot in four, reading the notch greens them all. Free throws keep one routine.
+  if (sp.user && kind !== "freeThrow" && !isDunkKind(kind)) {
+    const j = Math.max(2 * sp.window * maxP, 0.1 * (maxP - minP)) * (1 + 0.4 * sp.contest0);
+    sp.targetP = clamp(targetP + (ctx.rng() * 2 - 1) * j, minP + 0.12 * (maxP - minP), maxP * 0.94);
+  }
+  sp.userRelT = -1;
 
   // finish point for drives
   toBasket(ctx, p, tB);
@@ -279,8 +320,16 @@ export function startShot(ctx: Ctx, slot: number, forced?: ShotKind): boolean {
 
   let dur = ACTION_DUR[action];
   if (action === "jumpShot") dur *= 1.1 - (rt / 99) * 0.2;
+  // and the bar's speed varies a little per shot (rhythm, legs): timing comes from the meter, not a count
+  if (action === "jumpShot" && sp.user) dur *= 1 + (ctx.rng() * 2 - 1) * 0.06;
   if (action === "dunk") sp.style = dunkStyle(ctx, p, kind);
   setAction(ctx, slot, action, dur);
+  // the human's gather starts at his real button press: back-date it by the frame lag
+  // (ctx.time already includes this step; a press that waited longer, e.g. catch-and-shoot, starts fresh)
+  const raw = sp.user && ctx.shootPressT >= 0 ? ctx.time - SIM_DT - ctx.shootPressT : 0;
+  const lag = raw > 0 && raw <= 0.1 ? raw : 0;
+  p.actionT = lag;
+  sp.t0 = ctx.time - SIM_DT - lag;
   const v = vertOf(p);
   x.jumpH = action === "jumpShot" ? v * (kind === "three" ? 0.5 : 0.58) : action === "layup" ? v * 0.85 : action === "dunk" ? v : action === "floater" ? v * 0.5 : action === "hook" ? v * 0.45 : 0;
   p.variant = Math.floor(ctx.rng() * 8);
@@ -292,7 +341,7 @@ export function startShot(ctx: Ctx, slot: number, forced?: ShotKind): boolean {
   const m = p.meter;
   m.active = sp.user && !isDunkKind(kind);
   m.fill = 0;
-  m.target = targetP / maxP;
+  m.target = sp.targetP / maxP;
   m.window = sp.window;
   m.grade = "none";
   m.shownT = 0;
@@ -380,22 +429,26 @@ export function updateShot(ctx: Ctx, slot: number): void {
     const it = ctx.intents[slot];
     if (!it.shootHeld) {
       const jumper = JUMPERS.has(sp.kind) && sp.kind !== "freeThrow";
-      if (jumper && ctx.time - sp.startT < 0.12 && Math.hypot(p.vel.x, p.vel.z) < 2.6 && p.pos.y < 0.01) {
+      const exact = sp.user && sp.userRelT >= 0;
+      const heldFor = exact ? sp.userRelT - sp.t0 : ctx.time - sp.startT;
+      if (jumper && heldFor < 0.12 && Math.hypot(p.vel.x, p.vel.z) < 2.6 && p.pos.y < 0.01) {
         sp.on = false;
         p.meter.active = false;
         p.meter.shownT = 99;
         setAction(ctx, slot, "pumpFake");
         return;
       }
-      sp.grade = gradeOf(fill, sp, ctx.diff.goodWindow);
+      const relP = exact && p.actionDur > 0 ? clamp(heldFor / p.actionDur, 0, 1.2) : P;
+      sp.grade = gradeOf(clamp(relP / sp.maxP, 0, 1.2), sp, ctx.diff.goodWindow);
       sp.decided = true;
-      sp.releaseP = clamp(P, sp.minP, sp.maxP);
+      sp.releaseP = clamp(relP, sp.minP, sp.maxP);
     } else if (P >= sp.maxP) {
       sp.grade = "late";
       sp.decided = true;
       sp.releaseP = P;
     }
     if (sp.decided) {
+      p.meter.quality = qualityOf(computeContest(ctx, slot));
       p.meter.grade = sp.grade;
       p.meter.active = false;
       p.meter.shownT = 0;
@@ -537,6 +590,8 @@ function fillShot(ctx: Ctx, slot: number, kind: ShotKind, points: 1 | 2 | 3, dis
 
 function shootingFoulCheck(ctx: Ctx, slot: number, make: boolean, points: 1 | 2 | 3): void {
   if (ctx.pendingFoul) return;
+  // the defense drill teaches contesting: a contest there never draws a shooting foul
+  if (ctx.setup.drill) return;
   const p = ctx.players[slot];
   const sp = ctx.px[slot].shot;
   const near = CLOSE.has(sp.kind) || sp.kind === "floater" || sp.kind === "hook" || isDunkKind(sp.kind);

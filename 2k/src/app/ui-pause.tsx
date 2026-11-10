@@ -31,11 +31,17 @@ type Props = {
   setPending: (p: PendingSubs) => void;
   device: Device;
   family: PadFamily;
+  /** v2 onboarding: replay the Learn to Play tutorial. */
+  onTutorial?: () => void;
+  /** v2 onboarding: the tutorial is running (skip the current step or leave it). */
+  tutorial?: { step: string; onSkip: () => void; onExit: () => void } | null;
+  /** v2 onboarding: practice court (no timeouts, no box score). */
+  practice?: boolean;
 };
 
 export function PauseMenu(p: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const [tab, setTab] = useState<Tab>("summary");
+  const [tab, setTab] = useState<Tab>(p.practice || p.tutorial ? "controls" : "summary");
   const [confirm, setConfirm] = useState<null | "quit" | "restart">(null);
   const [toMsg, setToMsg] = useState<string | null>(null);
   const [side, setSide] = useState<TeamSide>(p.hud?.userTeam === 1 ? 1 : 0);
@@ -54,7 +60,7 @@ export function PauseMenu(p: Props) {
     if (ok) window.setTimeout(p.onResume, 450);
   };
 
-  const item = (t: Tab | "resume" | "timeout" | "restart" | "quit", label: string, onClick: () => void, sub?: string, auto?: boolean) => (
+  const item = (t: Tab | "resume" | "timeout" | "restart" | "quit" | "howto" | "tutorial" | "skip" | "exit", label: string, onClick: () => void, sub?: string, auto?: boolean) => (
     <button
       key={t}
       type="button"
@@ -90,9 +96,13 @@ export function PauseMenu(p: Props) {
             )}
           </div>
           {item("resume", "Resume", p.onResume, undefined, true)}
-          {h && h.userTeam !== -1 && item("timeout", "Call timeout", timeout, `${timeoutsLeft} left`)}
-          {item("restart", "Restart game", () => setConfirm("restart"))}
-          {item("quit", "Quit to menu", () => setConfirm("quit"))}
+          {p.tutorial && item("skip", "Skip this step", p.tutorial.onSkip, p.tutorial.step)}
+          {p.tutorial && item("exit", "Exit tutorial", p.tutorial.onExit)}
+          {item("howto", "How to play", () => setTab("controls"), "Controller map")}
+          {!p.tutorial && !p.practice && h && h.userTeam !== -1 && item("timeout", "Call timeout", timeout, `${timeoutsLeft} left`)}
+          {!p.tutorial && p.onTutorial && item("tutorial", "Replay tutorial", p.onTutorial, "2 min")}
+          {!p.tutorial && item("restart", p.practice ? "Restart practice" : "Restart game", () => setConfirm("restart"))}
+          {!p.tutorial && item("quit", "Quit to menu", () => setConfirm("quit"))}
           {toMsg && <div className="fade mt-1 text-[0.8rem] font-semibold text-warn">{toMsg}</div>}
           <div className="mt-auto">
             <Hints items={[["ok", "Select"], ["navigate4", "Move"], ["tabR", "Next page"], ["back", "Resume"]]} device={p.device} family={p.family} />

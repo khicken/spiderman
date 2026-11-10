@@ -369,8 +369,8 @@ body {
   position: absolute;
   left: 0;
   top: 0;
-  width: 4.2rem;
-  height: 8.4rem;
+  width: 6.3rem;
+  height: 12.6rem;
   pointer-events: none;
   will-change: transform, opacity;
 }
@@ -391,9 +391,10 @@ body {
 }
 .meter-grade {
   position: absolute;
-  left: 4.2rem;
-  top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  top: 100%;
+  margin-top: 0.4rem;
+  transform: translateX(-50%);
   white-space: nowrap;
 }
 
@@ -460,4 +461,182 @@ input[type="range"].rng:focus-visible::-webkit-slider-thumb {
 }
 .tag-icon[data-face="K"] > [data-f="K"] {
   display: grid;
+}
+
+/* =====================================================================================================================
+   v2 onboarding: meter teaching, YOU marker, coach layer, tutorial.
+   =================================================================================================================== */
+.meter-plate {
+  position: absolute;
+  left: -1.6rem;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  width: 8.4rem;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(5 6 10 / 0.62), rgb(5 6 10 / 0.35) 60%, transparent);
+}
+.meter-ghost {
+  position: absolute;
+  transform: translate(0.2rem, -50%);
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  color: #ffd166;
+  text-shadow:
+    0 0 0.6rem rgb(255 209 102 / 0.8),
+    0 1px 3px #000;
+  white-space: nowrap;
+  transition: opacity 80ms linear;
+}
+.meter[data-g="none"] .meter-ghost {
+  animation: blink 0.32s steps(2) infinite;
+}
+
+.tag[data-you="1"] .tag-name > div {
+  outline: 2px solid #ffd166;
+  outline-offset: 0;
+  box-shadow: 0 0 1rem rgb(255 209 102 / 0.55);
+}
+.tag[data-you="1"] .tag-name .ttl {
+  font-size: 1.1rem;
+}
+.you-label {
+  text-shadow: 0 1px 4px #000;
+}
+.you-arrow {
+  width: 0;
+  height: 0;
+  border-left: 0.6rem solid transparent;
+  border-right: 0.6rem solid transparent;
+  border-top: 0.8rem solid #ffd166;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.8));
+  animation: you-bob 0.9s ease-in-out infinite;
+}
+@keyframes you-bob {
+  50% {
+    transform: translateY(0.3rem);
+  }
+}
+
+.coach-chip {
+  animation: chip-in 320ms var(--ease-snap) both;
+}
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem) scale(0.9);
+  }
+}
+.poss-chip {
+  animation: poss 2000ms var(--ease-out) both;
+}
+@keyframes poss {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 1.4rem);
+  }
+  12%,
+  85% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 0);
+  }
+}
+.attack-flash {
+  animation: attack-fade 1.6s var(--ease-out) both;
+}
+@keyframes attack-fade {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  75% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.attack-chev {
+  animation: chev 0.75s ease-in-out infinite;
+}
+@keyframes chev {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.intro-card {
+  animation: intro 6.5s var(--ease-out) both;
+}
+@keyframes intro {
+  0% {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+  6%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Tutorial coach card */
+.tut-card {
+  animation: tut-in 420ms var(--ease-snap) both;
+}
+/* never fade the active step card: it slides in at full opacity so its key glyphs are always readable */
+@keyframes tut-in {
+  from {
+    transform: translateY(-1.2rem) scale(0.96);
+  }
+}
+.tut-check {
+  animation: tut-check 600ms var(--ease-snap) both;
+}
+@keyframes tut-check {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-30deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+.tut-say {
+  animation: chip-in 260ms var(--ease-snap) both;
+}
+.glow-primary {
+  box-shadow:
+    0 0 0 2px var(--color-gold),
+    0 0 2.2rem -0.3rem rgb(255 209 102 / 0.6);
+}
+
+/* Broadcast cue cards */
+.bc-card {
+  animation: bc-in 520ms var(--ease-snap) both;
+}
+@keyframes bc-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.97);
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.bc-lower {
+  animation: slide-l 420ms var(--ease-snap) both;
 }

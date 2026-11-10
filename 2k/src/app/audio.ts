@@ -1,18 +1,25 @@
-// HOOPS audio: all Web Audio, all synthesized. Mixer, spatial sfx, crowd, music, PA organ and announcer.
+// HOOPS audio: mixer, recorded court sfx, recorded crowd, menu music and recorded announcer voice.
 // Owner: audio-fx. createAudio() never throws; every public call is wrapped.
 //
-// Graph:  sfx --+--------------------------------> mix -> glue/limiter/clip -> master vol -> out
-//               '-> arena reverb (generated IR) ---^
-//         crowd (bed loops + reactions + chants) -> mix (+ reverb send)
-//         music (menu / final) -> duck -> mix
-//         PA (DJ beat in timeouts, organ, chime) -> speaker EQ -> mix (+ heavy reverb send)
+// Real recordings (public/sfx, audio-samples.ts): every ball, shoe, rim, net, backboard, whistle, horn and crowd sound,
+// plus the arena reverb impulse once it decodes. Synthesized, on purpose, and only as UI cues: menu clicks, the shot
+// meter tick, the quiet "green" tock and the soft shot-clock tick (audio-bank.ts). The synthesized menu theme
+// (audio-music.ts) plays on the menus only: inside a game there is no music, organ, beat, chime or whoosh, from
+// tip-off to the final horn. Dev builds count oscillator starts during live play (window.__hoopsAudio.osc).
+//
+// Graph:  court sfx -> pan -> sfx bus ------------------------------------> mix -> glue -> limiter -> master -> out
+//                        '-> reverb send (by distance) -> arena reverb ---^
+//         crowd beds + reactions -> crowd bus -> gentle crowd compressor -----------^ (skips the glue)
+//                                       '-> reverb send (puts the reaction takes in the arena)
+//         menu music -> duck -> mix
 import * as THREE from "three";
 import type { Audio, CrowdReaction, GameEvent, MusicTrack, Sfx, SimView, TeamSide, V3 } from "./contracts";
 import { BANK, BANK_ORDER, type BankName, bake } from "./audio-bank";
 import { type Crowd, type CrowdLevels, createCrowd } from "./audio-crowd";
 import { clamp, filter, gain, glide, idle, impulse, masterChain } from "./audio-dsp";
 import { type Music, type StingKind, createMusic } from "./audio-music";
-import { type Announcer, createAnnouncer, periodName } from "./audio-pa";
+import { type Announcer, createAnnouncer } from "./audio-pa";
+import { POOLS, type PoolName, createSamples, dbJitter, rateJitter } from "./audio-samples";
 import { createVoice, createVoiceDirector } from "./audio-voice";
 
 export type AudioPlus = Audio & {
@@ -25,6 +32,25 @@ export type AudioPlus = Audio & {
 };
 
 let warned = 0;
+
+// dev check: nothing may be synthesized with oscillators while the ball is live (only baked UI cues, which are buffers,
+// and recorded clips play then). Counts every OscillatorNode.start by game phase; read window.__hoopsAudio.osc.
+const OSC: Record<string, number> = { menu: 0 };
+let oscPhase = "";
+function watchOscillators() {
+  if (process.env.NODE_ENV === "production" || typeof OscillatorNode === "undefined") return;
+  const proto = OscillatorNode.prototype as unknown as { start: (...a: unknown[]) => void; __hoops?: boolean };
+  if (proto.__hoops) return;
+  proto.__hoops = true;
+  const orig = proto.start;
+  proto.start = function (this: OscillatorNode, ...a: unknown[]) {
+    // counted per game phase ("menu" off the court): test scripts assert every key except "menu" stays 0
+    const k = oscPhase || "menu";
+    OSC[k] = (OSC[k] ?? 0) + 1;
+    if (k === "live" && OSC.live === 1) console.warn("audio: oscillator started during live play", new Error().stack);
+    return orig.apply(this, a);
+  };
+}
 function safe<T>(fn: () => T, fallback: T): T {
   try {
     return fn();
@@ -38,11 +64,8 @@ const SFX_BUS = 0.9;
 const CROWD_BUS = 0.85;
 const MUSIC_BUS = 0.7;
 const PA_BUS = 0.55;
-
-const MAX_PER: Partial<Record<BankName, number>> = { dribble: 6, squeak: 6, floor: 4, catch: 4, pass: 3, bump: 4 };
-const GAP: Partial<Record<BankName, number>> = { dribble: 0.02, squeak: 0.05, floor: 0.04, rim: 0.05, backboard: 0.05, whistle: 0.25, buzzer: 0.8, horn: 0.8, shotClock: 0.3, perfect: 0.2, menuMove: 0.03 };
-const UI: Set<BankName> = new Set(["perfect", "meterTick", "menuMove", "menuSelect", "menuBack", "menuTab", "error"]);
-const MENU_OK: Set<BankName> = new Set(["dribble", "squeak", "rim", "swish", "net", "backboard", "floor", "catch", "pass"]);
+const CROWD_VERB = 0.3; // reaction takes are a close crowd session: the hall reverb puts them in the arena
+const UI_GAP: Partial<Record<BankName, number>> = { shotClock: 0.3, perfect: 0.2, menuMove: 0.03 };
 
 const NOOP: AudioPlus = {
   handle() {}, sfx() {}, update() {}, music() {}, setVolume() {}, setMuted() {}, resume() {}, dispose() {},
@@ -68,18 +91,28 @@ function build(): AudioPlus {
   // --- mixer ------------------------------------------------------------------------------------------------------
   const m = masterChain(ctx, ctx.destination);
   const mix = gain(ctx, m.input, 1);
-  const verb = ctx.createConvolver();
-  verb.buffer = impulse(ctx, "arena");
+  // arena reverb: generated impulse until the recorded hall impulse decodes, then a crossfade to the recording
+  const verb = gain(ctx, null, 1);
   const verbRet = gain(ctx, mix, 0.55);
-  verb.connect(filter(ctx, verbRet, "highpass", 140, 0.6));
+  const verbHp = filter(ctx, verbRet, "highpass", 140, 0.6);
+  const genConv = ctx.createConvolver();
+  genConv.buffer = impulse(ctx, "arena");
+  const genG = gain(ctx, verbHp, 1);
+  verb.connect(genConv).connect(genG);
+  let realConv: ConvolverNode | null = null;
   const sfxBus = gain(ctx, mix, SFX_BUS);
-  const sfxVerb = gain(ctx, verb, 0.22);
-  sfxBus.connect(sfxVerb);
-  const crowdBus = gain(ctx, mix, CROWD_BUS);
-  const crowdVerb = gain(ctx, verb, 0.5);
+  // crowd: its own gentle bus compressor, then straight to the limiter (not through the glue with the court sfx)
+  const crowdComp = ctx.createDynamicsCompressor();
+  crowdComp.threshold.value = -16;
+  crowdComp.knee.value = 8;
+  crowdComp.ratio.value = 1.8;
+  crowdComp.attack.value = 0.06;
+  crowdComp.release.value = 0.5;
+  crowdComp.connect(m.bus);
+  const crowdBus = gain(ctx, crowdComp, CROWD_BUS);
+  const crowdVerb = gain(ctx, verb, CROWD_VERB);
   const musicVol = gain(ctx, mix, MUSIC_BUS);
   const musicDuck = gain(ctx, musicVol, 1);
-  // arena PA speakers: band limited with a presence bump, mostly heard through the room
   const paVol = gain(ctx, mix, PA_BUS);
   const paIn = gain(ctx, null, 1);
   const paHi = filter(ctx, paVol, "lowpass", 7500, 0.7);
@@ -89,33 +122,46 @@ function build(): AudioPlus {
   const paSend = gain(ctx, verb, 0.9);
   paIn.connect(paSend);
 
-  // --- baked sfx bank ---------------------------------------------------------------------------------------------
+  // --- recorded samples -------------------------------------------------------------------------------------------
+  let voice: ReturnType<typeof createVoice> | null = null;
+  const samples = createSamples(ctx);
+  samples.load();
+  samples.onLoad((id, buf) => {
+    if (id === "ir_arena_hall") safe(() => voice?.setRoom(buf), undefined);
+    if (id !== "ir_arena_hall" || realConv) return;
+    safe(() => {
+      realConv = ctx.createConvolver();
+      realConv.buffer = buf;
+      const realG = gain(ctx, verbHp, 0);
+      verb.connect(realConv).connect(realG);
+      const t = ctx.currentTime;
+      glide(realG.gain, 1.1, t, 0.4);
+      glide(genG.gain, 0, t, 0.4);
+    }, undefined);
+  });
+
+  // --- synthesized UI cues ----------------------------------------------------------------------------------------
   const sr = Math.min(48000, ctx.sampleRate);
-  const bank = new Map<BankName, AudioBuffer[]>();
+  const bank = new Map<BankName, AudioBuffer>();
   let closed = false;
   void (async () => {
     for (const name of BANK_ORDER) {
-      const list: AudioBuffer[] = [];
-      for (let k = 0; k < BANK[name].n; k++) {
-        if (closed) return;
-        try {
-          const d = bake(sr, name, k);
-          const b = ctx.createBuffer(1, d.length, sr);
-          b.copyToChannel(d as Float32Array<ArrayBuffer>, 0);
-          list.push(b);
-          bank.set(name, list);
-        } catch (e) {
-          if (warned++ < 10) console.warn("sfx bake", name, e);
-        }
-      }
+      if (closed) return;
+      safe(() => {
+        const d = bake(sr, name, 0);
+        const b = ctx.createBuffer(1, d.length, sr);
+        b.copyToChannel(d as Float32Array<ArrayBuffer>, 0);
+        bank.set(name, b);
+      }, undefined);
       await idle();
     }
   })();
 
-  const crowd: Crowd = createCrowd(ctx, crowdBus, crowdVerb);
-  const music: Music = createMusic(ctx, musicDuck, paIn, (t, lvl) => playAt("clapCrowd", lvl, t));
-  // recorded Chatterbox voice clips (public/voice), no browser speech
-  const voice = createVoice(ctx, mix);
+  const crowd: Crowd = createCrowd(ctx, samples, crowdBus, crowdVerb);
+  const music: Music = createMusic(ctx, musicDuck, paIn, (t, lvl) => crowd.clapHit(t, lvl));
+  voice = createVoice(ctx, mix);
+  const ir = samples.get("ir_arena_hall");
+  if (ir) voice.setRoom(ir);
   void voice.load().catch(() => {});
   const voiceDir = createVoiceDirector(voice);
   const pa: Announcer = createAnnouncer(voice);
@@ -124,45 +170,46 @@ function build(): AudioPlus {
   const camPos = new THREE.Vector3(0, 8, -20);
   const camRight = new THREE.Vector3(1, 0, 0);
 
-  // --- voices -----------------------------------------------------------------------------------------------------
-  const live = new Map<BankName, { end: number; g: GainNode }[]>();
-  const lastAt = new Map<BankName, number>();
-  let active = 0;
-
   function spatial(at: V3 | undefined, vol: number) {
     if (!at) return { pan: 0, g: vol, wet: 1 };
     const dx = at.x - camPos.x, dy = at.y - camPos.y, dz = at.z - camPos.z;
     const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
     const side = (dx * camRight.x + dy * camRight.y + dz * camRight.z) / d;
     // courtside mics: distance matters gently, the room gets wetter with distance
-    return { pan: clamp(side * 1.1, -0.85, 0.85), g: vol * Math.pow(10 / Math.max(10, d), 0.55), wet: clamp(d / 18, 0.6, 1.8) };
+    return { pan: clamp(side * 1.1, -0.85, 0.85), g: vol * Math.pow(10 / Math.max(10, d), 0.55), wet: clamp(d / 14, 0.6, 2.2) };
   }
 
-  function playAt(name: BankName, volume: number, when?: number, at?: V3, rate?: number) {
-    const t = when ?? ctx.currentTime;
+  // --- recorded one-shots -----------------------------------------------------------------------------------------
+  const live = new Map<PoolName, { end: number; g: GainNode }[]>();
+  const lastAt = new Map<string, number>();
+  let active = 0;
+
+  function play(pool: PoolName, volume: number, opts?: { at?: V3; when?: number; rate?: number }) {
+    const def: { gain: number; max?: number; gap?: number; maxDur?: number; wet?: number; lp?: number } = POOLS[pool];
+    const now = ctx.currentTime;
+    const t = Math.max(now, opts?.when ?? now);
     if (volume <= 0.01 || active > 48) return;
-    const bufs = bank.get(name);
-    if (!bufs || bufs.length === 0) return;
-    const gap = GAP[name] ?? 0.03;
-    if (when === undefined && t - (lastAt.get(name) ?? -1) < gap) return;
-    lastAt.set(name, t);
-    const list = live.get(name) ?? [];
-    for (let i = list.length - 1; i >= 0; i--) if (list[i].end < t) list.splice(i, 1);
-    const max = MAX_PER[name] ?? 3;
-    if (list.length >= max) {
-      const old = list.shift()!;
-      glide(old.g.gain, 0, t, 0.015);
-    }
-    const def = BANK[name];
-    let k = Math.floor(Math.random() * bufs.length);
-    if (name === "rim") k = Math.min(bufs.length - 1, (volume > 0.6 ? 2 : 0) + Math.floor(Math.random() * 2));
-    const buf = bufs[k];
-    const sp = spatial(at, volume);
+    const gapKey = pool === "squeakLong" ? "squeakShort" : pool; // one pair of shoes: long and short squeaks share the gap
+    if (opts?.when === undefined && t - (lastAt.get(gapKey) ?? -9) < (def.gap ?? 0.03)) return;
+    const pick = samples.pick(pool);
+    if (!pick) return;
+    lastAt.set(gapKey, t);
+    const list = live.get(pool) ?? [];
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].end < now) list.splice(i, 1);
+    if (list.length >= (def.max ?? 3)) glide(list.shift()!.g.gain, 0, now, 0.015);
+    const sp = spatial(opts?.at, volume);
     const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.playbackRate.value = (rate ?? 1) * (1 + (Math.random() - 0.5) * 2 * def.jitter);
-    const g = gain(ctx, null, def.g * Math.min(1.6, sp.g));
-    src.connect(g);
+    src.buffer = pick.buf;
+    src.playbackRate.value = (opts?.rate ?? 1) * rateJitter(3);
+    const g = gain(ctx, null, def.gain * Math.min(1.6, sp.g) * dbJitter(2));
+    let lp: BiquadFilterNode | null = null;
+    if (def.lp) {
+      lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = Math.min(def.lp, ctx.sampleRate / 2 - 100);
+      lp.Q.value = 0.5;
+      src.connect(lp).connect(g);
+    } else src.connect(g);
     let pan: StereoPannerNode | null = null;
     if (sp.pan !== 0) {
       pan = ctx.createStereoPanner();
@@ -170,23 +217,53 @@ function build(): AudioPlus {
       g.connect(pan).connect(sfxBus);
     } else g.connect(sfxBus);
     let wet: GainNode | null = null;
-    if (!UI.has(name) && sp.wet > 1.01) {
-      wet = gain(ctx, verb, 0.18 * (sp.wet - 1) * def.g * sp.g);
+    const w = (def.wet ?? 1) * 0.16 * sp.wet;
+    if (w > 0.01) {
+      wet = gain(ctx, verb, w);
       g.connect(wet);
     }
+    let dur = pick.buf.duration / src.playbackRate.value;
     src.start(t);
+    if (def.maxDur && dur > def.maxDur) {
+      dur = def.maxDur;
+      g.gain.setTargetAtTime(0, t + dur - 0.12, 0.035);
+      src.stop(t + dur + 0.05);
+    }
     active++;
     src.onended = () => {
       active--;
       src.disconnect();
+      lp?.disconnect();
       g.disconnect();
       pan?.disconnect();
       wet?.disconnect();
     };
-    list.push({ end: t + buf.duration / src.playbackRate.value, g });
-    live.set(name, list);
-    if (name === "buzzer" || name === "dunk") duckMusic(0.5);
+    list.push({ end: t + dur, g });
+    live.set(pool, list);
+    if (pool === "dunk" || pool === "hornPeriod") duckMusic(0.5);
   }
+
+  function playUi(name: BankName, volume: number, when?: number) {
+    const buf = bank.get(name);
+    if (!buf || volume <= 0.01) return;
+    const t = when ?? ctx.currentTime;
+    if (when === undefined && t - (lastAt.get(name) ?? -9) < (UI_GAP[name] ?? 0.03)) return;
+    lastAt.set(name, t);
+    const def = BANK[name];
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = 1 + (Math.random() - 0.5) * 2 * def.jitter;
+    const g = gain(ctx, sfxBus, def.g * volume);
+    src.connect(g);
+    src.start(t);
+    src.onended = () => {
+      src.disconnect();
+      g.disconnect();
+    };
+  }
+
+  // sim strength is 0.45 standing .. ~0.95 at a sprint
+  const dribbleTier = (s: number): PoolName => (s < 0.55 ? "dribbleSoft" : s < 0.8 ? "dribbleMed" : "dribbleHard");
 
   let duckUntil = 0;
   function duckMusic(depth: number) {
@@ -201,313 +278,257 @@ function build(): AudioPlus {
   let playing: MusicTrack = "off";
   let levelsAcc = 0;
   let lastBeep = -1;
-  let chantCheck = 0;
-  let chantCool = 12;
-  let stingCool = 0;
+  let defenseUntil = 0;
   let rimHits = 0;
   let lastShotPts = 2;
   let lastNetT = -99;
   let lastSqueakEvent = -99;
   let lastSubHorn = -99;
+  let lastMakeTeam: TeamSide = 0;
+  let prevPhase = "";
   const prevVel = new Float32Array(20);
   const squeakT = new Float32Array(10);
   let simTime = 0;
   let viewRef: SimView | null = null;
-  const lv: CrowdLevels = { hype: 0.3, clutch: false, hush: 0, distract: 0, chatter: 0, menu: true };
+  const lv: CrowdLevels = { hype: 0.3, clutch: false, hush: 0, distract: 0, chatter: 0, menu: true, defense: false };
 
   const home = (t: TeamSide) => t === 0;
-  const nameOf = (v: SimView, slot: number) => (slot >= 0 && slot < 10 ? v.players[slot].data : null);
   const posOf = (v: SimView, slot: number): V3 | undefined => (slot >= 0 && slot < 10 ? v.players[slot].pos : undefined);
+  const teamOf = (v: SimView, slot: number): TeamSide => v.players[slot]?.team ?? 0;
+  const later = (ms: number, fn: () => void) => setTimeout(() => safe(fn, undefined), ms);
 
-  function sting(kind: StingKind, level = 1) {
-    if (menu) return;
-    music.sting(kind, level);
+  // practice court: a near-empty gym. No crowd reactions to drill shots.
+  let practice = false;
+  function react(kind: CrowdReaction | "bigRoar" | "booLight", strength: number) {
+    if (!practice) crowd.react(kind, strength);
+  }
+  function applaud(strength: number, seconds: number) {
+    if (!practice) crowd.applaud(strength, seconds);
   }
 
   function handleOne(e: GameEvent, v: SimView) {
+    practice = v.mode === "practice";
     const hype = v.state.hype;
+    const clutch = v.state.clutch ? 0.25 : 0;
     const now = ctx.currentTime;
     if (menu) {
       // warmups behind the menu: ball and shoe sounds only, quiet
       switch (e.type) {
-        case "dribble": return playAt("dribble", 0.3 * e.strength, undefined, e.at);
-        case "rim": return playAt("rim", 0.3 * e.strength, undefined, e.at);
-        case "swish": return playAt("swish", 0.3);
-        case "net": return playAt("net", 0.3);
-        case "squeak": return playAt("squeak", 0.25 * e.strength, undefined, e.at);
+        case "dribble": return play(dribbleTier(e.strength * 0.8), 0.35, { at: e.at });
+        case "rim": return play("rim", 0.25 * e.strength, { at: e.at });
+        case "swish":
+        case "net": return play("swish", 0.25);
+        case "squeak": return play("squeakShort", 0.2 * e.strength, { at: e.at });
         default: return;
       }
     }
     switch (e.type) {
       case "dribble":
-        playAt("dribble", 0.55 + 0.45 * e.strength, undefined, e.at);
+        play(dribbleTier(e.strength), 0.7 + 0.3 * e.strength, { at: e.at });
         break;
       case "bounce":
-        playAt("floor", 0.3 + 0.7 * e.strength, undefined, e.at);
+        play(dribbleTier(e.strength), 0.4 + 0.6 * e.strength, { at: e.at });
         break;
       case "squeak":
+        // only hard cuts and stops squeak; the user's own man and the players near the camera are favored by distance
         lastSqueakEvent = simTime;
-        playAt("squeak", 0.4 + 0.6 * e.strength, undefined, e.at);
+        if (e.strength < 0.45) break;
+        play(e.strength > 0.8 ? "squeakLong" : "squeakShort", 0.3 + 0.6 * e.strength, { at: e.at });
         break;
       case "dribbleMove": {
         const p = posOf(v, e.slot);
-        playAt("squeak", e.move === "spin" || e.move === "stepBack" ? 0.9 : 0.6, undefined, p);
-        if (e.move === "behindBack" || e.move === "between") playAt("dribble", 0.6, undefined, p, 1.08);
+        const hard = e.move === "spin" || e.move === "stepBack";
+        play(hard ? "squeakLong" : "squeakShort", hard ? 0.9 : 0.6, { at: p });
         break;
       }
       case "pass":
-        playAt("pass", e.kind === "lob" || e.kind === "alleyOop" ? 0.8 : 0.5, undefined, posOf(v, e.from), e.kind === "bounce" ? 0.9 : 1);
-        if (e.kind === "bounce") playAt("floor", 0.4, ctx.currentTime + 0.18, posOf(v, e.from));
+        if (e.kind === "bounce") play("dribbleMed", 0.6, { at: posOf(v, e.from), when: now + 0.18 });
         break;
       case "catch":
-        playAt("catch", 0.8, undefined, e.at);
+        play("catch", 0.8, { at: e.at });
         break;
       case "bump":
-        playAt("bump", 0.3 + 0.7 * e.strength, undefined, e.at);
-        if (e.strength > 0.55 && Math.random() < 0.35) playAt("grunt", 0.6, undefined, e.at);
+        if (e.strength > 0.75) play("squeakShort", 0.2 + 0.3 * e.strength, { at: e.at });
         break;
       case "screen":
-        playAt("bump", 0.55, undefined, e.at);
         break;
       case "shotStart":
-        if (e.slot === v.userSlot) playAt("meterTick", 0.6);
-        if (Math.random() < 0.3) playAt("grunt", 0.35, undefined, posOf(v, e.slot));
+        if (e.slot === v.userSlot) playUi("meterTick", 0.6);
         break;
       case "shot":
         lastShotPts = e.points;
         rimHits = 0;
-        if (e.points === 3 || v.state.clutch) crowd.rise(home(e.team) ? 0.45 + hype * 0.4 : 0.15, 1.1 + e.dist * 0.04);
+        if (home(e.team) && e.points > 1 && (e.points === 3 || v.state.clutch)) crowd.rise(0.45 + hype * 0.45, 1.1 + e.dist * 0.04);
         break;
       case "rim":
         rimHits++;
-        if (rimHits >= 2 && Math.random() < 0.45) playAt("rimRattle", 0.6 * e.strength + 0.2, undefined, e.at);
-        else playAt("rim", 0.3 + 0.75 * e.strength, undefined, e.at);
+        if (rimHits >= 2 && Math.random() < 0.4) play("rimIn", 0.5 + 0.5 * e.strength, { at: e.at });
+        else play("rim", 0.3 + 0.75 * e.strength, { at: e.at });
         break;
       case "backboard":
-        playAt("backboard", 0.35 + 0.65 * e.strength, undefined, e.at);
+        play("backboard", 0.35 + 0.65 * e.strength, { at: e.at });
         break;
       case "swish":
         lastNetT = simTime;
-        playAt("swish", 1);
+        play("swish", 1);
         break;
       case "net":
         lastNetT = simTime;
-        playAt("net", 0.5 + 0.5 * e.strength);
+        play("swish", 0.35 + 0.35 * e.strength);
         break;
       case "make": {
-        if (simTime - lastNetT > 0.3) playAt(e.swish ? "swish" : "net", 0.9, undefined, e.at);
-        const big = e.points === 3 || e.kind === "dunk" || e.kind === "alleyOopDunk" || e.andOne;
+        lastMakeTeam = e.team;
+        crowd.settle();
+        if (simTime - lastNetT > 0.3) play("swish", e.swish ? 0.9 : 0.5, { at: e.at });
+        const dunk = e.kind === "dunk" || e.kind === "alleyOopDunk";
+        // a home crowd is loud for its own team and quiet for the visitors: the takes are saved for home baskets
         if (home(e.team)) {
-          if (e.kind === "dunk" || e.kind === "alleyOopDunk") crowd.react("bigRoar", 1);
-          else crowd.react(big ? "roar" : "cheer", 0.5 + hype * 0.5 + (v.state.clutch ? 0.3 : 0));
-          const p = nameOf(v, e.slot);
-          if (p) {
-            if (e.andOne) pa.say("And one!", 2);
-            else if (e.points === 3 && Math.random() < 0.75) pa.say(`${p.first} ${p.last}, for three!`, 1);
-            else if ((e.kind === "dunk" || e.kind === "alleyOopDunk") && Math.random() < 0.7) pa.say(`${p.first} ${p.last}!`, 1);
-          }
-          if (v.state.run[0] >= 6 && now > stingCool) {
-            sting(Math.random() < 0.5 ? "rally" : "walkup");
-            stingCool = now + 30;
-          }
-        } else {
-          if (big) crowd.react("groan", 0.4 + hype * 0.3);
-          else if (Math.random() < 0.3) crowd.applaud(0.15, 1.2);
-        }
+          if (dunk) react("bigRoar", 1);
+          else if (e.points === 1) applaud(0.35 + hype * 0.3, 3);
+          else react(e.points === 3 || e.andOne ? "roar" : "cheer", 0.7 + hype * 0.45 + clutch);
+        } else if (e.andOne) react("groan", 0.4 + clutch);
+        else if ((e.points === 3 || dunk) && Math.random() < 0.5) react("aww", 0.3 + clutch);
         break;
       }
       case "miss": {
-        if (e.airball) {
-          if (home(e.team)) crowd.react("groan", 0.7);
-          else if (!crowd.chant("airball", 1)) crowd.react("cheer", 0.5);
-        } else if (home(e.team)) {
-          crowd.react(rimHits >= 2 || lastShotPts === 3 ? "ooh" : "aww", 0.45 + hype * 0.4);
-        } else {
-          crowd.react("cheer", 0.25 + hype * 0.25);
-          if (now > stingCool && Math.random() < 0.15) {
-            sting("tease", 0.8);
-            stingCool = now + 25;
-          }
-        }
+        crowd.settle();
+        if (home(e.team)) {
+          // a near miss gets an "ooh"; an ordinary miss gets a short sigh half the time, or nothing
+          if (rimHits >= 2 || (v.state.clutch && lastShotPts > 1)) react("ooh", 0.45 + hype * 0.4 + clutch);
+          else if (!e.airball && Math.random() < 0.5) react("aww", 0.25 + hype * 0.2);
+        } else crowd.swell(0.25 + hype * 0.25 + clutch); // the visitors miss: the room lifts, no cheer take
         break;
       }
       case "dunk":
-        playAt("dunk", 1, undefined, e.at);
-        if (!home(v.players[e.slot]?.team ?? 0)) crowd.react("gasp", 0.8);
+        play("dunk", 1, { at: e.at });
+        if (!home(teamOf(v, e.slot))) react("gasp", 0.7);
         break;
       case "block":
-        playAt("block", 1, undefined, e.at);
-        if (home(v.players[e.by]?.team ?? 0)) crowd.react("roar", 0.8 + hype * 0.3);
-        else crowd.react("ooh", 0.7);
+        play("slap", 1, { at: e.at });
+        crowd.settle();
+        if (home(teamOf(v, e.by))) react("roar", 0.8 + hype * 0.3);
+        else react("ooh", 0.7);
         break;
       case "steal":
-        playAt("steal", 0.9, undefined, e.at);
-        if (home(v.players[e.by]?.team ?? 0)) crowd.react("cheer", 0.7 + hype * 0.3);
-        else crowd.react("groan", 0.5);
+        play("slap", 0.7, { at: e.at });
+        if (home(teamOf(v, e.by))) react("cheer", 0.8 + hype * 0.3);
+        else if (Math.random() < 0.5) react("aww", 0.3);
         break;
       case "deflection":
-        playAt("slap", 0.7, undefined, e.at);
+        play("slap", 0.6, { at: e.at });
         break;
       case "foul": {
         const offender = v.players[e.by];
         if (offender) {
-          if (home(offender.team)) crowd.react(e.kind === "charge" ? "aww" : "boo", 0.45 + hype * 0.3);
-          else crowd.react(e.kind === "charge" ? "roar" : "cheer", 0.35 + hype * 0.2);
-          if (Math.random() < 0.6) pa.say(`Foul on ${offender.data.last}.`, 0);
+          // a call against the home team draws boos only when it matters; a call for them lifts the room
+          if (home(offender.team)) {
+            if (e.fouledOut) react("boo", 0.6 + clutch);
+            else if (e.kind === "charge" || e.kind === "offensive") react("groan", 0.45);
+            else if (hype > 0.55 || v.state.clutch || Math.random() < 0.3) react("booLight", 0.35 + hype * 0.3 + clutch);
+          } else if (e.kind === "charge") react("cheer", 0.7 + hype * 0.2);
+          else crowd.swell(0.3 + hype * 0.2);
         }
         break;
       }
       case "turnover":
-        if (home(e.team)) crowd.react("groan", 0.45);
-        else crowd.react(e.kind === "shotClock" ? "roar" : "cheer", e.kind === "shotClock" ? 0.8 : 0.55);
+        if (home(e.team)) {
+          if (Math.random() < 0.5) react("aww", 0.3);
+        } else if (e.kind === "shotClock") react("roar", 0.9);
+        else crowd.swell(0.35 + hype * 0.2);
+        if (e.kind === "outOfBounds" && Math.random() < 0.5) play("bounceAway", 0.6, { when: now + 0.25 });
         break;
       case "rebound":
-        if (e.offensive && home(e.team)) crowd.react("cheer", 0.4 + hype * 0.3);
-        if (rimHits === 0) playAt("catch", 0.7, undefined, e.at);
+        if (e.offensive && home(e.team)) crowd.swell(0.3 + hype * 0.25);
+        if (rimHits === 0) play("catch", 0.7, { at: e.at });
         break;
       case "ankleBreaker": {
-        const by = v.players[e.by];
-        crowd.react("gasp", 0.9);
-        if (by && home(by.team)) setTimeout(() => safe(() => crowd.react("bigRoar", 1), undefined), 250);
-        else crowd.react("ooh", 0.9);
-        playAt("squeak", 1, undefined, posOf(v, e.victim));
-        playAt("floor", 0.5, ctx.currentTime + 0.35, posOf(v, e.victim), 0.7);
+        react("gasp", 1);
+        if (home(teamOf(v, e.by))) later(350, () => react("bigRoar", 1));
+        else later(350, () => react("ooh", 0.9));
+        const p = posOf(v, e.victim);
+        play("squeakLong", 1, { at: p });
+        play("dribbleHard", 0.5, { at: p, when: now + 0.35 });
         break;
       }
       case "periodEnd":
-        crowd.applaud(0.6, 3);
-        setTimeout(() => safe(() => {
-          playAt("pa", 1);
-          pa.say(`That's the end of the ${periodName(e.period)}.`, 1);
-        }, undefined), 2200);
+        applaud(0.6, 6);
         break;
       case "halftime":
-        crowd.applaud(0.5, 3);
+        applaud(0.5, 6);
         break;
       case "periodStart":
-        crowd.react("cheer", 0.45);
-        playAt("horn", 0.7);
+        applaud(0.35, 3);
         break;
       case "overtime":
-        crowd.react("bigRoar", 1);
-        sting("climb");
+        react("bigRoar", 1);
         break;
       case "gameEnd":
-        if (e.winner === 0) {
-          crowd.react("bigRoar", 1.2);
-          setTimeout(() => safe(() => sting("climb", 1.1), undefined), 1800);
-        } else crowd.react("groan", 0.8);
-        setTimeout(() => safe(() => pa.say(`Final score. ${v.teams[0].data.city}, ${e.score[0]}. ${v.teams[1].data.city}, ${e.score[1]}.`, 2), undefined), 3500);
+        if (e.winner === 0) react("bigRoar", 1.3);
+        else react("groan", 0.9);
         break;
       case "substitution":
         if (simTime - lastSubHorn > 1.5) {
           lastSubHorn = simTime;
-          playAt("horn", 0.8);
+          play("hornSub", 0.8);
         }
         break;
-      case "timeout": {
-        const team = v.teams[e.team]?.data;
-        sting("timeout");
-        crowd.applaud(0.3, 1.5);
-        setTimeout(() => safe(() => {
-          playAt("pa", 1);
-          if (team) pa.say(`Timeout, ${team.city}.`, 2);
-        }, undefined), 900);
+      case "timeout":
+        applaud(0.3, 3);
         break;
-      }
       case "streak":
-        if (e.level >= 1) {
-          playAt("fire", 1, undefined, posOf(v, e.slot));
-          if (home(v.players[e.slot]?.team ?? 0)) crowd.react("roar", 0.8);
-        }
+        if (e.level >= 1 && home(teamOf(v, e.slot))) react("roar", 0.8);
         break;
       case "crowd":
-        if (e.reaction === "defense") startDefense();
-        else crowd.react(e.reaction, e.strength);
+        // the sim's crowd events duplicate the make/miss/steal/foul cases above; only its defense call is new
+        if (e.reaction === "defense") defenseUntil = now + 14;
         break;
       case "crowdHype":
         if (e.reason === "buzzerBeater") {
-          crowd.react("bigRoar", 1.3);
+          if (home(lastMakeTeam)) react("bigRoar", 1.3);
+          else react("groan", 1);
           duckMusic(0.6);
-        } else if (e.reason === "dunk" || e.reason === "alleyOop" || e.reason === "ankleBreaker") crowd.react("bigRoar", e.level);
-        else if (e.level > 0.6) crowd.react("roar", e.level);
+        } else if (e.reason === "run" && v.state.run[0] > v.state.run[1]) react("roar", e.level);
         break;
       case "meter":
-        if (e.grade === "perfect") playAt("perfect", 1);
+        if (e.grade === "perfect") playUi("perfect", 1);
         break;
       case "tipoff":
-        crowd.react("cheer", 0.7);
+        react("cheer", 0.6);
         break;
       case "possession":
-        if (e.team === 0) crowd.stopChant();
+        if (e.team === 0) {
+          crowd.stopChant();
+          defenseUntil = 0;
+        }
         break;
       case "freeThrowStart":
-        if (e.index === 1 && v.players[e.slot] && !home(v.players[e.slot].team)) crowd.react("boo", 0.35);
+        if (e.index === 1 && v.players[e.slot] && !home(teamOf(v, e.slot)) && (v.state.clutch || Math.random() < 0.25)) react("booLight", 0.3);
         break;
       default:
         break;
     }
   }
 
-  function startDefense() {
-    if (crowd.chant("defense", 4)) {
-      sting("defense", 0.7);
-      chantCool = ctx.currentTime + 35 + Math.random() * 25;
-    }
-  }
-
   function whistleFor(reason: string) {
-    const bufs = bank.get("whistle");
-    if (!bufs) return;
-    const k = reason === "foul" || reason === "jumpBall" ? 1 : reason === "timeout" ? 2 : 0;
-    const b = bufs[Math.min(k, bufs.length - 1)];
-    const t = ctx.currentTime;
-    if (t - (lastAt.get("whistle") ?? -1) < 0.25) return;
-    lastAt.set("whistle", t);
-    const src = ctx.createBufferSource();
-    src.buffer = b;
-    src.playbackRate.value = 0.98 + Math.random() * 0.04;
-    const g = gain(ctx, sfxBus, BANK.whistle.g);
-    const w = gain(ctx, verb, 0.3);
-    g.connect(w);
-    src.connect(g);
-    src.start(t);
-    src.onended = () => {
-      src.disconnect();
-      g.disconnect();
-      w.disconnect();
-    };
+    if (reason === "timeout") {
+      play("whistleShort", 1);
+      play("whistleShort", 0.9, { when: ctx.currentTime + 0.3 });
+    } else if (reason === "foul" || reason === "jumpBall") play("whistleLong", 1);
+    else if (reason !== "sub") play("whistleShort", 1);
   }
 
   function buzzerFor(kind: "shotClock" | "period" | "game") {
-    const bufs = bank.get("buzzer");
-    if (!bufs) return;
-    const b = bufs[kind === "shotClock" ? Math.min(1, bufs.length - 1) : 0];
-    const t = ctx.currentTime;
-    if (t - (lastAt.get("buzzer") ?? -1) < 0.8) return;
-    lastAt.set("buzzer", t);
-    const src = ctx.createBufferSource();
-    src.buffer = b;
-    const g = gain(ctx, sfxBus, BANK.buzzer.g * (kind === "shotClock" ? 0.8 : 1));
-    const w = gain(ctx, verb, 0.5);
-    g.connect(w);
-    src.connect(g);
-    src.start(t);
-    src.onended = () => {
-      src.disconnect();
-      g.disconnect();
-      w.disconnect();
-    };
+    if (kind === "shotClock") play("hornShotClock", 1);
+    else play("hornPeriod", kind === "game" ? 1.1 : 1);
     duckMusic(0.5);
   }
 
   // --- music routing ----------------------------------------------------------------------------------------------
+  // The only music is the menu theme. Everything inside a game (live play, timeouts, breaks, the final horn, the
+  // pause screen) is real crowd audio and recorded voice: no synthesized beat, organ or fanfare over the crowd.
   function effectiveTrack(view: SimView | null): MusicTrack {
-    if (requested === "game" && view) {
-      const ph = view.state.phase;
-      if (ph === "timeout" || ph === "periodBreak") return "timeout";
-    }
-    return requested;
+    if (view) return "off";
+    return requested === "menu" ? "menu" : "off";
   }
 
   // --- volumes ----------------------------------------------------------------------------------------------------
@@ -520,7 +541,7 @@ function build(): AudioPlus {
     glide(paVol.gain, PA_BUS * Math.max(vol.music, vol.crowd * 0.5), t, 0.05);
     glide(paSend.gain, 0.9 * Math.max(vol.music, vol.crowd * 0.5), t, 0.05);
     glide(crowdBus.gain, CROWD_BUS * vol.crowd, t, 0.05);
-    glide(crowdVerb.gain, 0.5 * vol.crowd, t, 0.05);
+    glide(crowdVerb.gain, CROWD_VERB * vol.crowd, t, 0.05);
     glide(sfxBus.gain, SFX_BUS * vol.sfx, t, 0.05);
     pa.setVolume(muted ? 0 : vol.master * Math.max(vol.crowd, vol.sfx) * 0.85);
   }
@@ -541,7 +562,8 @@ function build(): AudioPlus {
       }
       return { rmsDb: Math.round(10 * Math.log10(e / pbuf.length + 1e-12)), peak: +pk.toFixed(3) };
     };
-    (window as unknown as { __hoopsAudio: unknown }).__hoopsAudio = { ctx, crowd, music, bank, pa, level };
+    watchOscillators();
+    (window as unknown as { __hoopsAudio: unknown }).__hoopsAudio = { ctx, crowd, music, samples, bank, pa, level, play, lv, osc: OSC };
   }
 
   const api: AudioPlus = {
@@ -564,15 +586,31 @@ function build(): AudioPlus {
     },
     sfx(name: Sfx, opts) {
       safe(() => {
-        if (name === "whistle") whistleFor("foul");
-        else if (name === "buzzer") buzzerFor("period");
-        else playAt(name, opts?.volume ?? 1, undefined, opts?.at, opts?.rate);
+        const v = opts?.volume ?? 1;
+        const o = { at: opts?.at, rate: opts?.rate };
+        switch (name) {
+          case "whistle": return whistleFor("foul");
+          case "buzzer": return buzzerFor("period");
+          case "horn": return play("hornSub", v);
+          case "dribble": case "floor": return play(dribbleTier(v), v, o);
+          case "squeak": return play("squeakShort", v, o);
+          case "swish": case "net": return play("swish", v, o);
+          case "rim": return play("rim", v, o);
+          case "rimRattle": return play("rimIn", v, o);
+          case "backboard": return play("backboard", v, o);
+          case "dunk": return play("dunk", v, o);
+          case "catch": case "pass": return play("catch", v, o);
+          case "block": case "steal": return play("slap", v, o);
+          case "bump": return play("squeakShort", v * 0.5, o);
+          default: return playUi(name, v);
+        }
       }, undefined);
     },
     update(dt, view, camera) {
       safe(() => {
         const t = ctx.currentTime;
         menu = !view;
+        oscPhase = view ? view.state.phase : "";
         voice.update(dt);
         camera.updateMatrixWorld();
         const me = camera.matrixWorld.elements;
@@ -597,11 +635,24 @@ function build(): AudioPlus {
             const ft = s.phase === "freeThrow" && s.freeThrow ? s.freeThrow : null;
             lv.hush = ft && home(ft.team) ? 1 : 0;
             lv.distract = ft && !home(ft.team) ? 0.6 + s.hype * 0.4 : 0;
-            lv.chatter = s.phase === "timeout" || s.phase === "periodBreak" || s.phase === "pregame" ? 1 : s.phase === "final" ? 0.3 : 0;
+            lv.chatter = s.phase === "timeout" || s.phase === "periodBreak" || s.phase === "pregame" ? 1 : s.phase === "final" ? 0.5 : 0;
+            lv.practice = view.mode === "practice";
+            if (lv.practice) lv.hype = 0;
+            // home crowd claps in rhythm while the visitors set up in the half court late, or when the sim asks
+            const handler = s.ballHandler >= 0 ? view.players[s.ballHandler] : null;
+            const half = handler ? handler.pos.x * view.dir(1) > 0 : false;
+            const awaySet = s.possession === 1 && s.phase === "live" && half;
+            const want = awaySet && (s.clutch || s.hype > 0.6 || t < defenseUntil);
+            lv.defense = want;
+            // applause as play resumes after a timeout
+            if (prevPhase === "timeout" && s.phase !== "timeout") crowd.applaud(0.45 + s.hype * 0.3, 4);
+            prevPhase = s.phase;
           } else {
             lv.hype = 0.2;
             lv.clutch = false;
+            lv.defense = false;
             lv.hush = lv.distract = lv.chatter = 0;
+            lv.practice = false;
           }
           crowd.levels(lv);
         }
@@ -609,24 +660,14 @@ function build(): AudioPlus {
         simTime = view.time;
         const s = view.state;
 
-        // shot clock: a beep on each of the last five seconds
-        if (s.phase === "live" && s.clockRunning && s.shotClockOn && s.shotClock > 0 && s.shotClock <= 5) {
+        // shot clock under five: a soft tick, only while the user's team has the ball
+        if (s.phase === "live" && s.clockRunning && s.shotClockOn && s.shotClock > 0 && s.shotClock <= 5 && view.userTeam !== -1 && s.possession === view.userTeam) {
           const sec = Math.ceil(s.shotClock);
           if (sec !== lastBeep) {
             lastBeep = sec;
-            playAt("shotClock", 0.7);
+            playUi("shotClock", 1);
           }
         } else lastBeep = -1;
-
-        // home crowd chants DE-FENSE when the visitors set up in the half court and the building is loud
-        chantCheck += dt;
-        if (chantCheck > 1) {
-          chantCheck = 0;
-          const awayBall = s.possession === 1 && s.phase === "live";
-          const handler = s.ballHandler >= 0 ? view.players[s.ballHandler] : null;
-          const half = handler ? handler.pos.x * view.dir(1) > 0 : false;
-          if (awayBall && half && (s.hype > 0.45 || s.clutch) && t > chantCool && !crowd.chanting && Math.random() < 0.3) startDefense();
-        }
 
         // sneaker squeaks from hard cuts, only when the sim does not send its own squeak events
         if (simTime - lastSqueakEvent > 8 && dt > 0) {
@@ -638,9 +679,9 @@ function build(): AudioPlus {
             prevVel[i * 2 + 1] = vz;
             const acc = Math.sqrt(ax * ax + az * az);
             squeakT[i] -= dt;
-            if (p.pos.y < 0.05 && acc > 16 && squeakT[i] <= 0 && Math.random() < 0.5) {
-              squeakT[i] = 0.4 + Math.random() * 0.4;
-              playAt("squeak", clamp((acc - 12) / 25, 0.3, 1), undefined, p.pos);
+            if (p.pos.y < 0.05 && acc > 24 && squeakT[i] <= 0 && Math.random() < 0.3) {
+              squeakT[i] = 1.6 + Math.random() * 1.6;
+              play(acc > 30 ? "squeakLong" : "squeakShort", clamp((acc - 12) / 25, 0.3, 1), { at: p.pos });
             }
           }
         }
@@ -679,16 +720,18 @@ function build(): AudioPlus {
       safe(() => pa.setEnabled(on), undefined);
     },
     sting(kind) {
+      // organ stings are synthesized: never inside a game (live play, breaks or timeouts)
+      if (!menu) return;
       safe(() => music.sting(kind), undefined);
     },
     crowd(reaction, strength) {
       safe(() => {
-        if (reaction === "defense") startDefense();
+        if (reaction === "defense") defenseUntil = ctx.currentTime + 14;
         else crowd.react(reaction, strength);
       }, undefined);
     },
     get ready() {
-      return bank.has("dribble") && crowd.ready;
+      return samples.coreReady && crowd.ready;
     },
     dispose() {
       closed = true;
@@ -696,6 +739,7 @@ function build(): AudioPlus {
         music.dispose();
         crowd.dispose();
         pa.dispose();
+        samples.dispose();
       }, undefined);
       void ctx.close().catch(() => {});
     },
