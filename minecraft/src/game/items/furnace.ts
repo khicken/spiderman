@@ -12,6 +12,8 @@ export interface FurnaceData {
   cook: number;
   cookTotal: number;
   xp: number;
+  // Item the cook progress belongs to. Vanilla resets progress when a different item is put in.
+  cookItem?: string;
 }
 
 export function furnaceData(be: BlockEntityData): FurnaceData {
@@ -46,6 +48,11 @@ export function furnaceTick(be: BlockEntityData, kind: FurnaceKind): boolean {
   const items = ensureItems(be, 3);
   const d = furnaceData(be);
   if (d.burn > 0) d.burn--;
+  const inputItem = items[0]?.item;
+  if (inputItem !== d.cookItem) {
+    if (d.cookItem !== undefined || inputItem === undefined) d.cook = 0;
+    d.cookItem = inputItem;
+  }
   const result = canSmelt(items, kind);
   const total = kind === "furnace" ? 200 : 100;
   if (d.burn <= 0 && result && items[1]) {
