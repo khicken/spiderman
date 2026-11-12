@@ -110,6 +110,9 @@ export function createAudio(): GameAudio {
   let warmTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
   let biomeAmb: ReturnType<typeof createBiomeAmbient> | null = null;
+  let resumeAt = 0;
+  let offWake: (() => void) | null = null;
+  const loops = new Map<string, AudioBuffer>();
 
   const offPack = onPackChange(() => {
     for (const n of WARM_SOUNDS) pack(n);
@@ -130,6 +133,22 @@ export function createAudio(): GameAudio {
       b = ctx.createBuffer(1, data.length, ctx.sampleRate);
       b.getChannelData(0).set(data);
       buffers.set(k, b);
+    }
+    return b;
+  }
+
+  // Synth buffers carry a short fade at each end, so a raw loop dips every cycle; crossfade once and keep it.
+  function loopBuffer(name: string): AudioBuffer | null {
+    if (!ctx) return null;
+    const clip = pickPackClip(pack, name);
+    if (clip) return clip.buffer;
+    let b = loops.get(name);
+    if (!b) {
+      const res = resolveSound(name);
+      const raw = res && buffer(res, 0);
+      if (!raw) return null;
+      b = seamless(ctx, raw, 0.75);
+      loops.set(name, b);
     }
     return b;
   }
@@ -187,6 +206,7 @@ export function createAudio(): GameAudio {
     sfx.gain.setTargetAtTime(vol.sfx, now, 0.03);
     musicBus.gain.setTargetAtTime(vol.music * MUSIC_LEVEL, now, 0.03);
     recordsBus.gain.setTargetAtTime(cats.records ?? 1, now, 0.03);
+    if (waterLoop) waterLoop.gain.gain.setTargetAtTime(waterLevel(), now, 0.1);
     if (rainGain) rainGain.gain.setTargetAtTime(rainLevel * 0.3 * (cats.weather ?? 1), now, 0.5);
   }
 
@@ -202,6 +222,8 @@ export function createAudio(): GameAudio {
 
   function play(name: string, x?: number, y?: number, z?: number, volume?: number, pitch?: number): void {
     if (!ctx || !sfx || !sfxMute || disposed || ctx.state === "closed") return;
+    // A suspended context queues every start and fires them all at once on resume.
+    if (ctx.state !== "running" && performance.now() - resumeAt > 1000) return;
     const ui = name.startsWith("ui.");
     if (paused && !ui) return;
     const v = (volume ?? 1) * (cats[soundCategory(name)] ?? 1);
@@ -320,20 +342,23 @@ export function createAudio(): GameAudio {
     };
   }
 
+  function waterLevel(): number {
+    return (resolveSound("ambient.underwater.loop")?.recipe.gain ?? 1) * (cats.ambient ?? 1);
+  }
+
   function startWaterLoop(): void {
     if (!ctx || !sfxMute || waterLoop) return;
-    const clip = pickPackClip(pack, "ambient.underwater.loop");
-    const res = clip ? null : resolveSound("ambient.underwater.loop");
-    const raw = clip ? clip.buffer : res && buffer(res, 0);
-    if (!raw) return;
+    const buf = loopBuffer("ambient.underwater.loop");
+    if (!buf) return;
     const gain = ctx.createGain();
-    gain.gain.value = 0;
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(waterLevel(), now + 2);
     const src = ctx.createBufferSource();
-    src.buffer = clip ? raw : seamless(ctx, raw, 0.75);
+    src.buffer = buf;
     src.loop = true;
     src.connect(gain).connect(sfxMute);
     src.start();
-    gain.gain.linearRampToValueAtTime((res?.recipe.gain ?? 1) * (cats.ambient ?? 1), ctx.currentTime + 2);
     waterLoop = { src, gain };
   }
 
@@ -344,19 +369,28 @@ export function createAudio(): GameAudio {
   }
 
   function stopRain(): void {
-    try { rainSrc?.stop(); } catch { /* not playing */ }
-    try { rainGain?.disconnect(); } catch { /* gone */ }
+    const src = rainSrc, gain = rainGain;
     rainSrc = null;
     rainGain = null;
+    if (!src || !gain || !ctx) return;
+    // Cut at full level would click; a short ramp is inaudible.
+    const now = ctx.currentTime;
+    try {
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.1);
+      src.stop(now + 0.15);
+    } catch { /* not playing */ }
+    src.onended = () => {
+      try { gain.disconnect(); } catch { /* gone */ }
+    };
   }
 
   function setRain(level: number): void {
     if (!ctx || !sfxMute) return;
     rainLevel = Math.min(1, Math.max(0, level));
     if (rainLevel > 0.01 && !rainSrc) {
-      const clip = pickPackClip(pack, "weather.rain");
-      const res = clip ? null : resolveSound("weather.rain");
-      const buf = clip ? clip.buffer : res && buffer(res, 0);
+      const buf = loopBuffer("weather.rain");
       if (!buf) return;
       rainGain = ctx.createGain();
       rainGain.gain.value = 0;
@@ -368,6 +402,30 @@ export function createAudio(): GameAudio {
     }
     if (rainGain) rainGain.gain.setTargetAtTime(rainLevel * 0.3 * (cats.weather ?? 1), ctx.currentTime, 0.5);
     if (rainLevel <= 0.01 && rainSrc && rainGain && rainGain.gain.value < 0.002) stopRain();
+  }
+
+  function wake(): void {
+    if (!ctx || disposed || ctx.state === "running" || ctx.state === "closed") return;
+    resumeAt = performance.now();
+    void ctx.resume().catch((err) => warnOnce("resume-promise", "audio resume failed", err));
+  }
+
+  // The page resumes the context only on its first gesture. Safari and iOS suspend or interrupt it
+  // later (tab switch, lock screen, call), so retry on every return and every gesture.
+  function watchWake(): () => void {
+    const onGesture = () => wake();
+    const onVis = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    const opts = { capture: true, passive: true } as const;
+    for (const t of ["pointerdown", "keydown", "touchend"]) window.addEventListener(t, onGesture, opts);
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      for (const t of ["pointerdown", "keydown", "touchend"]) window.removeEventListener(t, onGesture, opts);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
   }
 
   function guard<A extends unknown[]>(key: string, fn: (...a: A) => void): (...a: A) => void {
@@ -404,12 +462,7 @@ export function createAudio(): GameAudio {
         biomeAmb = createBiomeAmbient({
           ctx,
           out: sfxMute,
-          loopBuffer: (n) => {
-            const clip = pickPackClip(pack, n);
-            if (clip) return clip.buffer;
-            const r = resolveSound(n);
-            return r ? buffer(r, 0) : null;
-          },
+          loopBuffer,
           play: (n, v) => play(n, undefined, undefined, undefined, v),
           level: () => cats.ambient ?? 1,
         });
@@ -418,8 +471,9 @@ export function createAudio(): GameAudio {
         music.setKind(musicKind);
         warmTimer = setTimeout(warm, 100);
         syncWaterLoop();
+        offWake = watchWake();
       }
-      if (ctx.state === "suspended") void ctx.resume().catch((err) => warnOnce("resume-promise", "audio resume failed", err));
+      wake();
     }),
     play: guard("play", play),
     playRecord: guard("record", (id: string, disc: string, x: number, y: number, z: number, seconds: number) => records?.play(id, disc, x, y, z, seconds)),
@@ -486,6 +540,8 @@ export function createAudio(): GameAudio {
     changeDim: guard("dim", () => {
       biomeAmb?.stop();
       stopWaterLoop(0.1);
+      // Re-enter on the next frame if the new dimension also puts the camera in water.
+      underwater = false;
       moodiness = 0;
       moodBiome = null;
       stopSfx(true);
@@ -494,6 +550,14 @@ export function createAudio(): GameAudio {
       music?.fadeAll();
     }),
     stopAll: guard("stop", () => {
+      // Leaving the world: drop world state too, or setPaused(false) restarts the water loop
+      // in the menu and the mood sampler keeps the old world alive.
+      biomeAmb?.stop();
+      underwater = false;
+      moodWorld = null;
+      moodBiome = null;
+      moodiness = 0;
+      lastTick = 0;
       stopWaterLoop(0.1);
       stopSfx(true);
       stopRain();
@@ -504,6 +568,8 @@ export function createAudio(): GameAudio {
     musicState: () => music?.state() ?? null,
     dispose: guard("dispose", () => {
       disposed = true;
+      offWake?.();
+      offWake = null;
       biomeAmb?.stop();
       stopWaterLoop(0);
       offPack();
@@ -516,6 +582,7 @@ export function createAudio(): GameAudio {
       }
       stopRain();
       buffers.clear();
+      loops.clear();
       if (ctx && ctx.state !== "closed") void ctx.close().catch(() => undefined);
       ctx = null;
     }),
