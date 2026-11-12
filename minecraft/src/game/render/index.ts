@@ -262,7 +262,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       cloudColor(angle, r, th, cloud3);
       const hide = Math.max(fx.blindness, darkBlend);
       for (let i = 0; i < 3; i++) cloud3[i] += (fog3[i] - cloud3[i]) * hide;
-      clouds.update(dt, cam, cloud3, fog3);
+      clouds.update(dt, cam, cloud3, fog3, range.far < blocks ? range.far : Infinity);
       weather.update(dt, cam, time, r, day);
     } else {
       weather.update(dt, cam, time, 0, day);

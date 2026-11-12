@@ -27,6 +27,7 @@ uniform vec3 uFog;
 uniform vec3 uCam;
 uniform float uFadeEnd;
 uniform float uDrift;
+uniform float uSpherical;
 uniform sampler2D uMap;
 varying float vShade;
 varying vec3 vWorld;
@@ -35,7 +36,7 @@ void main() {
   vec2 uv = vec2(vWorld.x + uDrift, vWorld.z) / ${(CELL * MAP).toFixed(1)};
   if (texture2D(uMap, uv).r < 0.5) discard;
   #endif
-  float d = length(vWorld.xz - uCam.xz);
+  float d = mix(length(vWorld.xz - uCam.xz), length(vWorld - uCam), uSpherical);
   float f = smoothstep(uFadeEnd * 0.4, uFadeEnd, d);
   vec3 c = mix(uColor * vShade, uFog, f);
   gl_FragColor = sRGBTransferEOTF(vec4(c, 0.8 * (1.0 - smoothstep(0.85, 1.0, d / uFadeEnd))));
@@ -70,6 +71,7 @@ export function createClouds(scene: THREE.Scene) {
     uCam: { value: new THREE.Vector3() },
     uFadeEnd: { value: 384 },
     uDrift: { value: 0 },
+    uSpherical: { value: 0 },
     uMap: { value: tex },
   };
 
@@ -132,13 +134,15 @@ export function createClouds(scene: THREE.Scene) {
     fancyGeo.setIndex(_pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(_idx, 1) : new THREE.Uint16BufferAttribute(_idx, 1));
   }
 
-  function update(dt: number, cam: THREE.Vector3, color: Rgb, fog: Rgb) {
+  function update(dt: number, cam: THREE.Vector3, color: Rgb, fog: Rgb, fogFar = Infinity) {
     drift = (drift + dt * SPEED) % (CELL * MAP);
     uniforms.uDrift.value = drift;
     uniforms.uCam.value.copy(cam);
     uniforms.uColor.value.set(color[0], color[1], color[2]);
     uniforms.uFog.value.set(fog[0], fog[1], fog[2]);
-    uniforms.uFadeEnd.value = range;
+    // Water, lava and blindness fog close in far below the cloud layer; vanilla fogs the clouds out with them.
+    uniforms.uFadeEnd.value = Math.max(1, Math.min(range, fogFar));
+    uniforms.uSpherical.value = fogFar < range ? 1 : 0;
     group.visible = mode !== "off";
     fancyA.visible = fancyB.visible = mode === "fancy";
     flat.visible = mode === "flat";
