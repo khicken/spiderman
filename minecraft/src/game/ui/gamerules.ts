@@ -40,6 +40,7 @@ export const GAMERULES: Record<string, boolean | number> = {
   naturalRegeneration: true,
   playersSleepingPercentage: 100,
   projectilesCanBreakBlocks: true,
+  pvp: true,
   randomTickSpeed: 3,
   reducedDebugInfo: false,
   sendCommandFeedback: true,

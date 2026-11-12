@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Effect, Entity, GameCtx, ItemStack } from "../contracts";
+import type { Effect, Entity, GameCtx, ItemStack, PlayerApi } from "../contracts";
 import { AIR, Face, idOf } from "../contracts";
 import { blockByName, blockDef, OPAQUE } from "../blocks/registry";
 import { segmentBody, bodiesTouch } from "./geom";
@@ -12,6 +12,7 @@ import { advTrigger } from "../systems/advancements/bus";
 import { markProjectile } from "../systems/advancements/hooks";
 import { shatterPot } from "../systems/features/pots";
 import { breakBlock } from "../mechanics/util";
+import { pvpHook } from "../net/pvp-hook";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -25,6 +26,7 @@ interface Hit {
   kind: "block" | "entity" | "player";
   t: number;
   entity?: Entity;
+  pl?: PlayerApi; // a player other than ctx.player (multiplayer PvP)
   face?: Face;
   bx?: number;
   by?: number;
@@ -50,7 +52,7 @@ function ownerEntity(ctx: GameCtx, o: Owner): Entity | "player" | undefined {
 }
 
 // First block, mob or player hit along this tick's motion, or null.
-function trace(e: Entity, ctx: GameCtx, inflate: number): Hit | null {
+function trace(e: Entity, ctx: GameCtx, inflate: number, pvp = false): Hit | null {
   const b = e.body;
   const v = b.vel;
   const len = v.length();
@@ -68,6 +70,7 @@ function trace(e: Entity, ctx: GameCtx, inflate: number): Hit | null {
     hit.by = bh.y;
     hit.bz = bh.z;
     hit.entity = undefined;
+    hit.pl = undefined;
     best = hit;
   }
   const owner = e.data.owner as Owner;
@@ -97,10 +100,22 @@ function trace(e: Entity, ctx: GameCtx, inflate: number): Hit | null {
       target = undefined;
     }
   }
-  if (target || hitPlayer) {
-    hit.kind = hitPlayer ? "player" : "entity";
+  let other: PlayerApi | undefined;
+  if (pvp && owner === "player")
+    for (const o of pvpHook(ctx)?.targets?.(ctx) ?? []) {
+      const t = segmentBody(origin.x, origin.y, origin.z, v.x, v.y, v.z, o.body, inflate);
+      if (t >= 0 && t < et) {
+        et = t;
+        other = o;
+        hitPlayer = false;
+        target = undefined;
+      }
+    }
+  if (target || hitPlayer || other) {
+    hit.kind = target ? "entity" : "player";
     hit.t = et;
     hit.entity = target;
+    hit.pl = other;
     return hit;
   }
   return best;
@@ -150,7 +165,7 @@ export function tickArrow(e: Entity, ctx: GameCtx) {
       return;
     }
   }
-  const h = trace(e, ctx, 0.3);
+  const h = trace(e, ctx, 0.3, true);
   if (h) {
     advance(e, h.t);
     if (h.kind === "block") stick(e, ctx, h);
@@ -201,7 +216,17 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
   if (e.data.crit) dmg += Math.floor(ctx.random() * (dmg / 2 + 2));
   const owner = ownerEntity(ctx, e.data.owner as Owner);
   const punch = (e.data.punch as number) ?? 0;
-  if (h.kind === "player") {
+  if (h.pl) {
+    const fx = b.pos.x - b.vel.x, fz = b.pos.z - b.vel.z;
+    if (shieldFaces(h.pl, fx, fz)) {
+      b.vel.multiplyScalar(-0.1);
+      e.data.owner = undefined;
+    }
+    const hl = Math.hypot(b.vel.x, b.vel.z);
+    const k = hl > 1e-4 ? ((punch * 0.6 + 0.4) / hl) * 0.5 : 0;
+    pvpHook(ctx)?.shot?.(ctx, h.pl, dmg, "arrow", { x: fx, y: b.pos.y, z: fz }, { x: b.vel.x * k, z: b.vel.z * k });
+    if (e.data.owner === undefined) return;
+  } else if (h.kind === "player") {
     const pf = ctx.player as typeof ctx.player & { fireTicks?: number };
     if (e.data.fire) pf.fireTicks = Math.max(pf.fireTicks ?? 0, 100);
     const fx = b.pos.x - b.vel.x, fz = b.pos.z - b.vel.z;

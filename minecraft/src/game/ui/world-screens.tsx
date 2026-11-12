@@ -244,8 +244,8 @@ const MODE_DESC: Record<CreateMode, string> = {
 };
 const DIFFS: Rules["difficulty"][] = ["peaceful", "easy", "normal", "hard"];
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
-type GameRules = Pick<Rules, "keepInventory" | "doDaylightCycle" | "doMobSpawning" | "mobGriefing" | "doFireTick" | "randomTickSpeed">;
-const DEFAULT_RULES: GameRules = { keepInventory: false, doDaylightCycle: true, doMobSpawning: true, mobGriefing: true, doFireTick: true, randomTickSpeed: 3 };
+type GameRules = Pick<Rules, "keepInventory" | "doDaylightCycle" | "doMobSpawning" | "mobGriefing" | "doFireTick" | "randomTickSpeed"> & { pvp: boolean };
+const DEFAULT_RULES: GameRules = { keepInventory: false, pvp: true, doDaylightCycle: true, doMobSpawning: true, mobGriefing: true, doFireTick: true, randomTickSpeed: 3 };
 
 export function CreateWorldScreen({ onCreate, onCancel, worldTypes = ["Default"] }: CreateWorldScreenProps) {
   const { width, height } = useGui();
@@ -377,7 +377,7 @@ function TabButton({ x, w, label, active, onClick }: { x: number; w: number; lab
 }
 
 const RULE_GROUPS: [string, [keyof GameRules, string][]][] = [
-  ["Player", [["keepInventory", "Keep inventory after death"]]],
+  ["Player", [["keepInventory", "Keep inventory after death"], ["pvp", "Players can hurt each other"]]],
   ["Mobs", [["doMobSpawning", "Spawn mobs"], ["mobGriefing", "Allow destructive mob actions"]]],
   ["Updates", [["doDaylightCycle", "Advance time of day"], ["doFireTick", "Update fire"], ["randomTickSpeed", "Random tick speed rate"]]],
 ];

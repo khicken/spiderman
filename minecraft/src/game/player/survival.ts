@@ -116,9 +116,9 @@ export function disableShield(p: PlayerState, ctx: GameCtx): void {
   sound(ctx, "item.shield.break", p, 0.8, 0.8 + ctx.random() * 0.4);
 }
 
-// Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them.
+// Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them. Player attackers' types start with "@" (net/pvp.ts).
 export function difficultyScale(ctx: Pick<GameCtx, "rules">, amount: number, source: DamageSource, attacker?: Entity): number {
-  if (source !== "mob" && source !== "explosion" && source !== "sonic_boom" && !((source === "arrow" || source === "trident") && attacker)) return amount;
+  if (source !== "mob" && source !== "explosion" && source !== "sonic_boom" && !((source === "arrow" || source === "trident") && attacker && !attacker.type.startsWith("@"))) return amount;
   switch (ctx.rules.difficulty) {
     case "peaceful": return 0;
     case "easy": return Math.min(amount / 2 + 1, amount);

@@ -99,6 +99,7 @@ export type ClientMsg =
   | { t: "dropxp"; n: number; x: number; y: number; z: number }
   | { t: "hit"; id: number; amount: number; source: DamageSource }
   | { t: "kb"; id: number; dx: number; dz: number; s: number }
+  | { t: "pvp"; id: number; s: number; crit: boolean } // melee swing at another player
   | { t: "interact"; id: number; inv: unknown; seq?: number }
   | { t: "explode"; x: number; y: number; z: number; power: number; fire: boolean }
   | { t: "open"; kind: ContainerKind; at: { x: number; y: number; z: number; entityId?: number }; inv: unknown; seq?: number }

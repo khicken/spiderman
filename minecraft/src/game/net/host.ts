@@ -32,6 +32,8 @@ import { setAdvancementSink } from "../systems/advancements";
 import { claimEffects, eatCredit, exhaust, foodDelta, grantEffect, healBy, hostDamage, newHealth, resetHealth, tickHealth, type Health, type HealthOwner } from "./host-health";
 import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
 import type { Counts } from "./inv-guard";
+import { createHostPvp } from "./pvp";
+import { setPvpHook } from "./pvp-hook";
 
 export interface LanOptions {
   gameMode: GameMode;
@@ -138,6 +140,8 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   const worldOf = (d: Dim): World | null => (d === g.dim ? g.world : dims.get(d)?.world ?? null);
   const entsOf = (d: Dim): EntityApi | null => (d === g.dim ? g.entities : dims.get(d)?.entities ?? null);
   const ctxFor = (d: Dim): GameCtx | null => (d === g.dim ? g.ctx : dims.get(d)?.sub ?? null);
+  const pvp = createHostPvp({ g, hostName, remotes: () => remotes.values(), ctxFor, send: (r, m) => send(r as Remote, m), tick: () => tick, others: () => avatars.list() });
+  const pvpHook = pvp.hook();
 
   const dimOpts = {
     base: g.ctx,
@@ -710,6 +714,10 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         withPlayer(r, () => entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), m.source, "player"));
         return;
       }
+      case "pvp":
+        if (limited(r, "pvp") || int(m.id, 0, 1e6) === null) return;
+        pvp.melee(r.num, m.id, { s: num(m.s, 0, 1) ?? 0, crit: m.crit === true });
+        return;
       case "kb":
         entsOf(r.dim)?.knockback(m.id, +m.dx || 0, +m.dz || 0, Math.min(5, +m.s || 0));
         return;
@@ -956,7 +964,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
 
   function hostFlags(): number {
     const p = g.player as PlayerApi & { pose?: string; swimming?: boolean };
-    return (p.pose === "crouching" ? F.sneak : 0) | (p.sprinting ? F.sprint : 0) | (p.body.onGround ? F.ground : 0) | (p.sleeping ? F.sleep : 0) | (p.dead ? F.dead : 0) | (p.flying ? F.fly : 0) | (p.pose === "swimming" ? F.swim : 0);
+    return (p.pose === "crouching" ? F.sneak : 0) | (p.sprinting ? F.sprint : 0) | (p.body.onGround ? F.ground : 0) | (p.sleeping ? F.sleep : 0) | (p.dead ? F.dead : 0) | (p.flying ? F.fly : 0) | (p.pose === "swimming" ? F.swim : 0) | ((p as unknown as { hurtTime: number }).hurtTime > 0 ? F.hurt : 0);
   }
 
   function snapshot(): PlayerSnap[] {
@@ -965,7 +973,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     if (anim > 0 && (prevAnim === 0 || anim < prevAnim)) hostSw++;
     prevAnim = anim;
     const list: PlayerSnap[] = [{ id: 0, name: hostName, dim: g.dim, x: p.body.pos.x, y: p.body.pos.y, z: p.body.pos.z, yaw: p.yaw, pitch: p.pitch, f: hostFlags(), sw: hostSw, eq: hostEquip(), skin: hostLook.slim ? 1 : 0 }];
-    for (const r of remotes.values()) list.push({ id: r.num, name: r.name, dim: r.dim, x: r.pos.x, y: r.pos.y, z: r.pos.z, yaw: r.yaw, pitch: r.pitch, f: r.f, sw: r.sw, eq: r.eq, skin: r.skin });
+    for (const r of remotes.values()) list.push({ id: r.num, name: r.name, dim: r.dim, x: r.pos.x, y: r.pos.y, z: r.pos.z, yaw: r.yaw, pitch: r.pitch, f: (r.f & ~F.hurt) | (r.hp.invulnerable > 10 ? F.hurt : 0), sw: r.sw, eq: r.eq, skin: r.skin });
     return list;
   }
 
@@ -1059,6 +1067,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       const ctx = g.ctx as GameCtx & { playerFor?: PlayerPicker };
       ctx.playerFor = picker(g.dim);
       (ctx as GameCtx & { playersAll?: () => PlayerApi[] }).playersAll = () => everyone(g.dim);
+      setPvpHook(ctx, pvpHook);
       const mainKeep: KeepCenter[] = [];
       for (const r of remotes.values()) if (r.dim === g.dim && r.center) mainKeep.push(r.center);
       g.world.keep(mainKeep);
@@ -1078,6 +1087,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         st.sub.inventory = focus.inv;
         st.sub.playerFor = picker(d);
         (st.sub as GameCtx & { playersAll?: () => PlayerApi[] }).playersAll = () => everyone(d);
+        setPvpHook(st.sub, pvpHook);
         try {
           ticking = st.sub;
           tickDim(st, focus.center!, inDim.slice(1).map((r) => r.center!));
@@ -1156,6 +1166,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       g.ctx.rules.cheats = ownCheats;
       delete (g.ctx as GameCtx & { playerFor?: PlayerPicker }).playerFor;
       delete (g.ctx as GameCtx & { playersAll?: unknown }).playersAll;
+      setPvpHook(g.ctx, null);
       avatars.dispose();
       setTimeout(() => t.leave(), 300);
     },

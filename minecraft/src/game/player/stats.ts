@@ -154,7 +154,7 @@ const ENTITY_NAMES: Record<string, string> = {
   breeze_wind_charge: "Wind Charge", area_effect_cloud: "Area Effect Cloud", player: PLAYER_NAME,
 };
 const display = (type: string) =>
-  mobDef(type)?.displayName ?? ENTITY_NAMES[type] ?? type.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+  type.startsWith("@") ? type.slice(1) : mobDef(type)?.displayName ?? ENTITY_NAMES[type] ?? type.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 
 export function deathMessage(source: DamageSource, attackerType?: string, fell = 0): string {
   const p = PLAYER_NAME;

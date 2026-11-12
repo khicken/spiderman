@@ -17,6 +17,8 @@ import type { GameInternals, Inventory, NetLink } from "./index";
 import { BIN, F, PROTOCOL, hostUse, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type WelcomeMsg } from "./protocol";
 import { createTransport, type Transport } from "./transport";
 import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
+import { clientPvpHook } from "./pvp";
+import { setPvpHook } from "./pvp-hook";
 
 export type JoinStatus = "connecting" | "joining" | "loading" | "offline";
 
@@ -468,6 +470,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       send({ t: "skin", look: localLook() });
       lookAt = performance.now();
       gi.ctx.behaviors = hostUses(gi.ctx.behaviors);
+      setPvpHook(gi.ctx, clientPvpHook(() => avatars.list(), send));
       const rawRespawn = p.respawn.bind(p);
       p.respawn = () => {
         rawRespawn();
@@ -654,6 +657,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       closed = true;
       offLook();
       clearInterval(watch);
+      if (g) setPvpHook(g.ctx, null);
       avatars.dispose();
       setTimeout(() => t.leave(), 300);
     },
