@@ -261,7 +261,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
         p.w = w;
         inFlight.set(id, p);
         w.busy++;
-        w.w.postMessage({ id, input: inp, fancyLeaves: GFX.fancyLeaves });
+        // The padded arrays are built fresh per job, so hand them over instead of copying. Tints are cached and shared.
+        const transfer: Transferable[] = [inp.blocks.buffer, inp.light.buffer, inp.biomes.buffer];
+        if (inp.waterlogged) transfer.push(inp.waterlogged.buffer);
+        w.w.postMessage({ id, input: inp, fancyLeaves: GFX.fancyLeaves }, transfer);
       } else {
         const p = popPending();
         if (!p) break;
