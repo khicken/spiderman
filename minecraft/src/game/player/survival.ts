@@ -370,7 +370,9 @@ function tickEnvironment(p: PlayerState, ctx: GameCtx): void {
   const eye = p.eye();
   const spectator = p.gameMode === "spectator";
   const eyeFluid = spectator ? null : fluidAt(w, eye.x, eye.y - 0.11111111, eye.z);
-  if (eyeFluid === "water" && !p.hasEffect("water_breathing") && !p.hasEffect("conduit_power") && !invulnerableMode(p)) {
+  // Vanilla: air does not drain while the eye is in a bubble column.
+  const inBubbles = eyeFluid === "water" && idOf(w.getBlock(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z))) === blockIds.bubble;
+  if (eyeFluid === "water" && !inBubbles && !p.hasEffect("water_breathing") && !p.hasEffect("conduit_power") && !invulnerableMode(p)) {
     const resp = ench(ctx.inventory.slots[36], "respiration");
     if (!(resp > 0 && ctx.random() >= 1 / (resp + 1))) p.air--;
     if (p.air <= -20) {

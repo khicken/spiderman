@@ -216,6 +216,8 @@ export function createInput(canvas: HTMLElement): InputApi {
 
   function onKeyUp(e: KeyboardEvent) {
     up(e.code);
+    // macOS sends no keyup for keys released while Cmd is held, so they would stay pressed.
+    if (e.code === "MetaLeft" || e.code === "MetaRight") for (const k of [...keys]) if (!k.startsWith("Shift") && !k.startsWith("Control") && !k.startsWith("Alt") && !k.startsWith("Mouse")) up(k);
   }
 
   function up(c: string) {

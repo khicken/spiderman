@@ -368,6 +368,16 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     }
   }
 
+  // Vanilla isHorizontalCollisionMinor: brushing a wall within 8 degrees of the input direction keeps the sprint.
+  let minorHit = false;
+  function minorCollision(fwd: number, str: number, yaw: number, dx: number, dz: number) {
+    const sn = Math.sin(yaw), cs = Math.cos(yaw);
+    const ix = -sn * fwd + cs * str, iz = -cs * fwd - sn * str;
+    const a = ix * ix + iz * iz, b = dx * dx + dz * dz;
+    if (a < 1e-5 || b < 1e-5) return false;
+    return Math.acos(Math.max(-1, Math.min(1, (ix * dx + iz * dz) / Math.sqrt(a * b)))) < 0.13962634;
+  }
+
   function tickMovement(ctx: GameCtx) {
     const w = ctx.world;
     const on = input.enabled && !p.dead && !p.sleeping;
@@ -394,7 +404,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     const canStart = enoughFood && !p.using && fwd >= 0.8 && !p.hasEffect("blindness") && !crouched && (!body.inWater || eyeWater);
     if (!p.sprinting && canStart && on && (input.sprint || sprintTap)) p.sprinting = true;
     sprintTap = false;
-    if (p.sprinting && (!on || fwd < 0.8 || !enoughFood || (body.horizontalCollision && !p.flying) || (body.inWater && !eyeWater && !p.swimming) || (p.swimming && !body.inWater) || p.using)) p.sprinting = false;
+    if (p.sprinting && (!on || fwd < 0.8 || !enoughFood || (body.horizontalCollision && !minorHit && !p.flying) || (body.inWater && !eyeWater && !p.swimming) || (p.swimming && !body.inWater) || p.using)) p.sprinting = false;
     if (p.flying && on) {
       if (input.sneak) body.vel.y -= FLY_SPEED * 3;
       if (input.jump) body.vel.y += FLY_SPEED * 3;
@@ -414,7 +424,8 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     inp.gliding = p.fallFlying;
     inp.depthStrider = ench(ctx.inventory.slots[39], "depth_strider");
     inp.dolphin = p.hasEffect("dolphins_grace") > 0;
-    inp.sneaking = crouched || sneakKey;
+    // Vanilla edge guard, ladder hold and scaffolding use the shift key only, not a forced crouch.
+    inp.sneaking = sneakKey;
     inp.sprinting = p.sprinting;
     inp.speed = speedAttr();
     inp.airSpeed = p.flying ? (p.sprinting ? FLY_SPEED * 2 : FLY_SPEED) : p.sprinting ? 0.026 : 0.02;
@@ -434,6 +445,7 @@ export function createPlayer(getCtx: () => GameCtx, input: InputApi): PlayerHand
     if (p.flying) body.fallDistance = 0;
     if (p.flying && body.onGround && p.gameMode === "creative") p.flying = false;
     const dx = body.pos.x - x0, dy = body.pos.y - y0, dz = body.pos.z - z0;
+    minorHit = body.horizontalCollision && minorCollision(fwd, str, p.yaw, dx, dz);
     if (motion.jumped) addExhaustion(p, p.sprinting ? 0.2 : 0.05);
     const h = Math.hypot(dx, dz);
     if (p.sprinting && body.onGround) addExhaustion(p, 0.1 * h);
