@@ -178,3 +178,13 @@ export function withOffHand<T>(inv: { slots: (ItemStack | null)[]; selected: num
     [inv.slots[s], inv.slots[40]] = [inv.slots[40], inv.slots[s]];
   }
 }
+
+// A same-name hello while the old session has sent no move this long is that player reconnecting.
+export const STALE_MS = 3000;
+
+// Sessions a hello with this name replaces: same name, case-insensitive, and silent past STALE_MS.
+export function staleSessions(remotes: Map<string, { name: string; lastMove: number }>, name: string, now: number): string[] {
+  const out: string[] = [];
+  for (const [peer, r] of remotes) if (r.name.toLowerCase() === name.toLowerCase() && now - r.lastMove > STALE_MS) out.push(peer);
+  return out;
+}
