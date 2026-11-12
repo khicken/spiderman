@@ -86,7 +86,7 @@ export function Text({ text, color = 0xffffff, shadow = true, amp = false, x, y,
   const img = textImage(text, color, shadow, amp);
   const w = img.width * scale;
   const positioned = x !== undefined || y !== undefined;
-  const left = x === undefined ? undefined : align === "center" ? x - (textWidth(text, amp) * scale) / 2 : align === "right" ? x - textWidth(text, amp) * scale : x;
+  const left = x === undefined ? undefined : align === "center" ? Math.floor(x - Math.floor(textWidth(text, amp) / 2) * scale) : align === "right" ? x - textWidth(text, amp) * scale : x;
   return (
     <img
       alt={text}
