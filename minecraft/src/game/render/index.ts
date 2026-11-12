@@ -66,7 +66,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   const chunks = createChunkMeshes(world, scene, mats, Math.max(2, Math.min(4, hc - 4)), renderer.getContext() as WebGL2RenderingContext);
   const sky = createSky();
   const clouds = createClouds(scene);
-  const particles = createParticles(scene, world, getAtlas);
+  const particles = createParticles(scene, world, getAtlas, uniforms);
   const weather = createWeather(scene, world, particles.rainSplash);
   const netherSample = (x: number, y: number, z: number) => netherAmbient(world, x, y, z, particles.ambient);
   const overlays = createOverlays(scene, getAtlas);
