@@ -11,7 +11,7 @@ function absorb(ctx: GameCtx, x: number, y: number, z: number): boolean {
   const q: [number, number, number, number][] = [[x, y, z, 0]];
   const seen = new Set<string>([`${x},${y},${z}`]);
   let removed = 0;
-  while (q.length && removed < 65) {
+  while (q.length && removed < 64) {
     const [cx, cy, cz, d] = q.shift()!;
     for (let f = 0; f < 6; f++) {
       const nx = cx + FX[f], ny = cy + FY[f], nz = cz + FZ[f];
@@ -34,8 +34,8 @@ function absorb(ctx: GameCtx, x: number, y: number, z: number): boolean {
       }
       if (!hit) continue;
       removed++;
-      if (d < 6) q.push([nx, ny, nz, d + 1]);
-      if (removed >= 65) break;
+      if (d + 1 < 6) q.push([nx, ny, nz, d + 1]);
+      if (removed >= 64) break;
     }
   }
   return removed > 0;

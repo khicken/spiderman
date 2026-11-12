@@ -70,14 +70,34 @@ const MAX_NETWORK = 8192;
 let updating = false;
 const deferred: number[] = [];
 
-function add(ctx: GameCtx, x: number, y: number, z: number) {
-  if (nx.length >= MAX_NETWORK) return;
+// Reverse links as linked lists: the wires that read from node i (vanilla dust pulls power from
+// the neighbors its own scan finds, so a one-way step link carries power only toward its owner).
+const revHead: number[] = [];
+const revNext: number[] = [];
+const revTo: number[] = [];
+
+function add(ctx: GameCtx, x: number, y: number, z: number): number {
   const k = posKey(x, y, z);
-  if (index.has(k) || !isWire(ctx.world.getBlock(x, y, z))) return;
+  const have = index.get(k);
+  if (have !== undefined) return have;
+  if (nx.length >= MAX_NETWORK || !isWire(ctx.world.getBlock(x, y, z))) return -1;
   index.set(k, nx.length);
   nx.push(x);
   ny.push(y);
   nz.push(z);
+  revHead.push(-1);
+  return nx.length - 1;
+}
+
+let gatherCtx: GameCtx | null = null;
+let gatherFrom = 0;
+function gatherLink(x: number, y: number, z: number) {
+  const j = add(gatherCtx!, x, y, z);
+  if (j < 0) return;
+  // gatherFrom reads from j, so j's power feeds gatherFrom.
+  revTo.push(gatherFrom);
+  revNext.push(revHead[j]);
+  revHead[j] = revTo.length - 1;
 }
 
 function forLinks(ctx: GameCtx, x: number, y: number, z: number, fn: (x: number, y: number, z: number) => void) {
@@ -112,9 +132,15 @@ export function updateWires(ctx: GameCtx, seeds: number[]) {
 
 function runNetwork(ctx: GameCtx, seeds: number[]) {
   nx.length = ny.length = nz.length = level.length = 0;
+  revHead.length = revNext.length = revTo.length = 0;
   index.clear();
   for (let i = 0; i < seeds.length; i += 3) add(ctx, seeds[i], seeds[i + 1], seeds[i + 2]);
-  for (let i = 0; i < nx.length; i++) forLinks(ctx, nx[i], ny[i], nz[i], (x, y, z) => add(ctx, x, y, z));
+  gatherCtx = ctx;
+  for (let i = 0; i < nx.length; i++) {
+    gatherFrom = i;
+    forLinks(ctx, nx[i], ny[i], nz[i], gatherLink);
+  }
+  gatherCtx = null;
   if (!nx.length) return;
 
   setWireSignals(false);
@@ -132,13 +158,13 @@ function runNetwork(ctx: GameCtx, seeds: number[]) {
     for (let j = 0; j < list.length; j++) {
       const i = list[j];
       if (level[i] !== p) continue;
-      forLinks(ctx, nx[i], ny[i], nz[i], (x, y, z) => {
-        const k = index.get(posKey(x, y, z));
-        if (k !== undefined && level[k] < p - 1) {
+      for (let e = revHead[i]; e >= 0; e = revNext[e]) {
+        const k = revTo[e];
+        if (level[k] < p - 1) {
           level[k] = p - 1;
           if (p - 1 > 1) buckets[p - 1].push(k);
         }
-      });
+      }
     }
     list.length = 0;
   }

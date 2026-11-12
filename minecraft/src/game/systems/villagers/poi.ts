@@ -76,8 +76,10 @@ export function tickScan(ctx: GameCtx) {
 
 export function poiEvent(e: GameEvent) {
   if (e.type !== "block_changed") return;
-  const k = posKey(e.x, e.y, e.z);
   const kind = kindOf(e.to);
+  // Most changes (fluids, redstone) touch no POI; skip the string key for them.
+  if (!kind && !kindOf(e.from)) return;
+  const k = posKey(e.x, e.y, e.z);
   if (kind) pois.set(k, { x: e.x, y: e.y, z: e.z, kind });
   else pois.delete(k);
 }

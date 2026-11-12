@@ -105,6 +105,16 @@ export function insertOne(be: BlockEntityData, face: Face, stack: ItemStack): bo
   return false;
 }
 
+// insertOne without changing anything.
+export function canInsertOne(be: BlockEntityData, face: Face, stack: ItemStack): boolean {
+  const items = be.items!;
+  for (const i of insertSlots(be, face, stack)) {
+    const cur = items[i];
+    if (!cur || (sameItem(cur, stack) && cur.count < maxStack(cur.item))) return true;
+  }
+  return false;
+}
+
 export function extractOne(be: BlockEntityData, face: Face, accept: (st: ItemStack) => boolean): ItemStack | null {
   const items = be.items!;
   for (const i of extractSlots(be, face)) {

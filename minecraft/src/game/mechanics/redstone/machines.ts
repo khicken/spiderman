@@ -3,7 +3,7 @@ import { AIR, Face, idOf, metaOf, stateOf, type BlockBehavior, type BlockEntityD
 import { blockDef } from "../../blocks/registry";
 import { craftRemainder, matchCrafting } from "../../items/recipes";
 import { primeTnt } from "./consumers";
-import { containerAt, containerChanged, disabledSlots, extractOne, fullness, insertOne, SIZE, containerType } from "./inventory";
+import { canInsertOne, containerAt, containerChanged, disabledSlots, extractOne, fullness, insertOne, SIZE, containerType } from "./inventory";
 import { isPowered } from "./power";
 import { DX, DY, DZ, hasTick, id, isAir, lookNearest, nameOf, OPP, schedule, setState, sound, ticked } from "./util";
 
@@ -274,7 +274,7 @@ export const CRAFTER_BEHAVIOR = machine("crafter", false, (ctx, x, y, z) => {
 const disabled = (s: BlockState) => (metaOf(s) & 8) !== 0;
 const scratch: Entity[] = [];
 
-const hasRoom = (be: BlockEntityData, st: ItemStack) => insertOne({ ...be, items: be.items!.map((i) => (i ? { ...i } : null)) }, Face.Up, st);
+const hasRoom = (be: BlockEntityData, st: ItemStack) => canInsertOne(be, Face.Up, st);
 
 function hopperMove(ctx: GameCtx, x: number, y: number, z: number, s: BlockState): boolean {
   const be = containerAt(ctx, x, y, z)!;
