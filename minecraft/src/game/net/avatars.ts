@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { ChunkUniforms, GameCtx } from "../contracts";
 import { createArmorLayer, type ArmorLayer } from "../entities/armor-layer";
 import { brightnessAt } from "../entities/render";
+import { blockDef } from "../blocks/registry";
 import { createHand, createHeldSlot, type HandView } from "../player/hand";
 import { createItemMeshes, type ItemMeshes } from "../player/item-mesh";
 import { createPlayerModel, type PlayerModel } from "../player/model";
@@ -26,6 +27,7 @@ interface Avatar {
   lastSw: number;
   hurt: number;
   cape: Cape | null;
+  stepDist: number;
 }
 
 interface NameTag {
@@ -99,6 +101,21 @@ export interface Avatars {
   dispose(): void;
 }
 
+// Other players' footsteps: each client plays only its own, so replay vanilla's step cadence
+// (one per block of walked distance, never while sneaking or airborne) from the synced pose.
+function stepSound(ctx: GameCtx, a: Avatar, moved: number) {
+  const f = a.snap.f;
+  if (moved > 2 || (f & (F.sneak | F.dead | F.fly | F.sleep | F.swim)) || !(f & F.ground)) return;
+  a.stepDist += moved * 0.6;
+  if (a.stepDist < 1) return;
+  a.stepDist = 0;
+  const x = Math.floor(a.pos.x), z = Math.floor(a.pos.z);
+  let b = ctx.world.getBlock(x, Math.floor(a.pos.y - 0.2), z);
+  if (b === 0) b = ctx.world.getBlock(x, Math.floor(a.pos.y - 1.2), z);
+  if (b === 0) return;
+  ctx.audio.play(`block.${blockDef(b).sound}.step`, a.pos.x, a.pos.y, a.pos.z, 0.15, 1);
+}
+
 export function createAvatars(getCtx: () => GameCtx): Avatars {
   const all = new Map<number, Avatar>();
   const looks = new Map<number, Look>();
@@ -121,7 +138,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
     getCtx().renderer.scene.add(model.model.root);
     model.model.root.userData.shadowRadius = 0.5;
     model.model.root.scale.setScalar(0.9375);
-    return { snap: s, model, hand, off, armor, tag, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0, cape };
+    return { snap: s, model, hand, off, armor, tag, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, bodyYaw: s.yaw, pitch: s.pitch, walk: 0, walkSpeed: 0, swing: 0, lastSw: s.sw, hurt: 0, cape, stepDist: 0 };
   }
 
   function free(a: Avatar) {
@@ -194,6 +211,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
         a.yaw = lerpAngle(a.yaw, s.yaw, k);
         a.pitch += (s.pitch - a.pitch) * k;
         const moved = Math.hypot(a.pos.x - ox, a.pos.z - oz);
+        stepSound(ctx, a, moved);
         const speed = dt > 0 ? Math.min(1, (moved / dt / 20) * 4) : 0;
         a.walkSpeed += (speed - a.walkSpeed) * Math.min(1, dt * 8);
         a.walk += a.walkSpeed * dt * 20;
