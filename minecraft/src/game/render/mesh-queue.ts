@@ -25,7 +25,7 @@ export function createMeshQueue() {
   const distTo = (j: SectionJob) => {
     // Vertical distance counts a quarter so a column's sky and deep sections do not wait behind the whole horizon.
     const dx = j.cx * CHUNK + 8 - camX, dy = (MIN_Y + j.sy * CHUNK + 8 - camY) * 0.25, dz = j.cz * CHUNK + 8 - camZ;
-    return dx * dx + dy * dy + dz * dz;
+    return Math.min(dx * dx + dy * dy + dz * dz, 0x3fffffff) | 0;
   };
 
   function push(cx: number, sy: number, cz: number, high: boolean) {

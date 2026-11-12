@@ -190,7 +190,7 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     if (versions.get(p.key) !== p.version) return;
     meshedOnce.add(p.key);
     let s = sections.get(p.key);
-    cave.setVis(p.key, out?.vis ?? ALL_VIS);
+    cave.setVis(p.cx, p.sy, p.cz, out?.vis ?? ALL_VIS);
     if (!out || (!out.opaque && !out.cutout && !out.translucent)) {
       if (s) disposeSection(s);
       return;
@@ -295,7 +295,8 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     for (const s of sections.values()) {
       if (!(Math.abs(s.cx - pcx) <= maxD && Math.abs(s.cz - pcz) <= maxD && cave.visible(s.cx, s.sy, s.cz) && _frustum.intersectsBox(s.box))) continue;
       const dx = (s.box.min.x + 8) - px, dy = (s.box.min.y + 8) - py, dz = (s.box.min.z + 8) - pz;
-      s.dist = dx * dx + dy * dy + dz * dz;
+      // Integer distances keep the sort comparator in small-integer math, so it allocates no heap numbers.
+      s.dist = Math.min(dx * dx + dy * dy + dz * dz, 0x3fffffff) | 0;
       drawList[visible++] = s;
     }
     drawList.length = visible;
