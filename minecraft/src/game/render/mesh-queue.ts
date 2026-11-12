@@ -1,7 +1,17 @@
 import { CHUNK, MIN_Y } from "../contracts";
 
-export const sectionKey = (cx: number, sy: number, cz: number) => ((cx + 32768) * 65536 + (cz + 32768)) * 32 + sy;
-export const chunkKey = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
+// Within 2048 chunks of the origin keys fit a V8 small integer, so Map lookups neither allocate nor hash a
+// double. Farther keys start at 2^30 and cannot collide with near ones.
+const NEAR = 2048;
+const near = (cx: number, cz: number) => cx >= -NEAR && cx < NEAR && cz >= -NEAR && cz < NEAR;
+export const chunkKey = (cx: number, cz: number) =>
+  near(cx, cz) ? ((cx + NEAR) << 12) | (cz + NEAR) : 0x40000000 + (cx + 32768) * 65536 + (cz + 32768);
+export const sectionKey = (cx: number, sy: number, cz: number) => chunkKey(cx, cz) * 32 + sy;
+export function chunkOfKey(k: number): [number, number] {
+  if (k < 0x40000000) return [(k >> 12) - NEAR, (k & 4095) - NEAR];
+  k -= 0x40000000;
+  return [Math.floor(k / 65536) - 32768, (k % 65536) - 32768];
+}
 
 export interface SectionJob {
   key: number;

@@ -5,7 +5,7 @@ import { GFX, meshSection } from "../mesh";
 import { ALL_VIS } from "../mesh/vis";
 import { createCaveCull } from "./cave-cull";
 import { createSectionBatches } from "./section-batch";
-import { chunkKey, createMeshQueue, sectionKey } from "./mesh-queue";
+import { chunkKey, chunkOfKey, createMeshQueue, sectionKey } from "./mesh-queue";
 
 interface Materials {
   opaque: THREE.Material;
@@ -333,7 +333,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
       sections: sections.size, visible, queued: queue.size(), inFlight: inFlight.size, results: results.length, workers: workers.length }),
     setRenderDistance(n: number) { renderDistance = n; },
     remeshAll() {
-      for (const k of ready) queueChunk(Math.floor(k / 65536) - 32768, (k % 65536) - 32768, false);
+      for (const k of ready) {
+        const [cx, cz] = chunkOfKey(k);
+        queueChunk(cx, cz, false);
+      }
     },
     setUploadBudget(ms: number) { uploadMs = ms; },
     dispose() {

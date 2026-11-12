@@ -18,7 +18,12 @@ export interface Chunk {
   announced: boolean;
 }
 
-export const chunkKey = (cx: number, cz: number) => (cx + 2097152) * 4194304 + (cz + 2097152);
+// Within 16384 chunks of the origin the key fits a V8 small integer, so Map lookups neither allocate nor hash a
+// double. Farther keys start at 2^30 and cannot collide with near ones.
+export const chunkKey = (cx: number, cz: number) =>
+  cx >= -16384 && cx < 16384 && cz >= -16384 && cz < 16384
+    ? ((cx + 16384) << 15) | (cz + 16384)
+    : 0x40000000 + (cx + 2097152) * 4194304 + (cz + 2097152);
 
 export interface Store {
   chunks: Map<number, Chunk>;
