@@ -79,8 +79,9 @@ export function createClouds(scene: THREE.Scene) {
   const fancyColor = new THREE.ShaderMaterial({
     uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, depthFunc: THREE.LessEqualDepth, side: THREE.DoubleSide,
   });
+  // Flat clouds write depth so water (drawn later, at renderOrder 10) cannot paint over them from above.
   const flatMat = new THREE.ShaderMaterial({
-    uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide, defines: { FLAT: "" },
+    uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, side: THREE.DoubleSide, defines: { FLAT: "" },
   });
 
   const fancyGeo = new THREE.BufferGeometry();
