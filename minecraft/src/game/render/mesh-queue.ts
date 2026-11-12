@@ -69,6 +69,23 @@ export function createMeshQueue() {
     return null;
   }
 
+  // First live fast job within r sections (Chebyshev) of the camera section; far fast jobs stay queued for the workers.
+  function popFastNear(cx: number, sy: number, cz: number, r: number): SectionJob | null {
+    let w = 0;
+    let hit: SectionJob | null = null;
+    for (let i = 0; i < fast.length; i++) {
+      const j = fast[i];
+      if (!j.queued || !j.fast) continue;
+      if (!hit && Math.abs(j.cx - cx) <= r && Math.abs(j.cz - cz) <= r && Math.abs(j.sy - sy) <= r) {
+        hit = j;
+        continue;
+      }
+      fast[w++] = j;
+    }
+    fast.length = w;
+    return hit ? take(hit) : null;
+  }
+
   function take(j: SectionJob) {
     j.queued = false;
     j.fast = false;
@@ -105,7 +122,7 @@ export function createMeshQueue() {
     count = 0;
   }
 
-  return { push, pop, setCamera, removeChunk, clear, size: () => count, has: (key: number) => !!jobs.get(key)?.queued, hasFast: () => fast.some((j) => j.queued && j.fast) };
+  return { push, pop, popFastNear, setCamera, removeChunk, clear, size: () => count, has: (key: number) => !!jobs.get(key)?.queued };
 }
 
 export type MeshQueue = ReturnType<typeof createMeshQueue>;

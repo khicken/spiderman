@@ -42,6 +42,7 @@ interface PoolWorker {
 
 const LAYERS = ["opaque", "cutout", "translucent"] as const;
 const MAX_IN_FLIGHT = 4;
+const SYNC_RADIUS = 1;
 const now = () => performance.now();
 
 const _frustum = new THREE.Frustum();
@@ -234,14 +235,20 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     const t0 = now();
     queue.setCamera(camera.position.x, camera.position.y, camera.position.z);
 
-    while (queue.hasFast() && now() - t0 < uploadMs) {
-      const p = popPending();
-      if (!p) break;
-      const inp = input(p);
-      if (inp) apply(p, meshSection(inp));
+    const live = workers.some(isLive);
+    // Edits next to the camera mesh here so they show this frame. Farther fast jobs (light spill from
+    // newly loaded chunks, random ticks, flowing fluids) go to the workers ahead of the slow queue.
+    if (live) {
+      const ccx = Math.floor(camera.position.x / CHUNK), csy = Math.floor((camera.position.y - MIN_Y) / CHUNK), ccz = Math.floor(camera.position.z / CHUNK);
+      while (now() - t0 < uploadMs) {
+        const j = queue.popFastNear(ccx, csy, ccz, SYNC_RADIUS);
+        if (!j) break;
+        const p: Pending = { key: j.key, version: versions.get(j.key) ?? 0, cx: j.cx, sy: j.sy, cz: j.cz };
+        const inp = input(p);
+        if (inp) apply(p, meshSection(inp));
+      }
     }
 
-    const live = workers.some(isLive);
     while (now() - t0 < uploadMs) {
       if (live) {
         const w = freeWorker();
