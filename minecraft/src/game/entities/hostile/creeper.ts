@@ -10,8 +10,9 @@ export const FUSE = 30;
 function explode(e: Entity, ctx: GameCtx): void {
   const p = e.body.pos;
   const power = e.data.powered ? 6 : 3;
-  mobExplode(ctx, e, p.x, p.y, p.z, power);
+  // Vanilla leaves the source out of the blast, so the creeper never takes its own damage or drops loot.
   discard(e);
+  mobExplode(ctx, e, p.x, p.y, p.z, power);
 }
 
 function tick(e: Entity, ctx: GameCtx): void {

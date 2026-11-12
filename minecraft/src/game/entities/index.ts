@@ -14,7 +14,7 @@ import { tickCloud } from "./cloud";
 import { tickBobber } from "./fishing";
 import { tickEnderEye, tickTrident } from "./trident";
 import { explodeAt } from "./explosion";
-import { createSpawner, despawns } from "./spawning";
+import { createSpawner, despawns, despawnRange, spawnCat } from "./spawning";
 import { baseTick, isBurning, rollDrops, deathSound, hurtSound, ambientTick, stepSounds } from "./living";
 import { createViews } from "./visuals";
 import { advKill } from "../systems/advancements/hooks";
@@ -326,6 +326,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     if (e.type === "witch" && (source === "magic" || source === "sonic_boom" || source === "thorns")) dealt *= 0.15;
     e.health -= dealt;
     e.data._idle = 0;
+    // Whether the latest hit came from a living attacker (vanilla source.getEntity() instanceof LivingEntity).
+    e.data._hitLiving = attacker === "player" || (attacker !== undefined && isMob(attacker.type));
     if (e.effects.length && dealt > 0) mobEffectHurt(ctx, e);
     if (fresh) {
       e.hurtTicks = 10;
@@ -406,6 +408,16 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     if (leadInteract(ctx, e, held)) return true;
     const def = mobDef(e.type);
     return def?.onInteract?.(e, ctx, held) ?? false;
+  }
+
+  function farFromPlayers(ctx: GameCtx, e: Entity, far: number) {
+    const everyone = (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player];
+    const p = e.body.pos;
+    for (const pl of everyone) {
+      const q = pl.body.pos;
+      if ((q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2 <= far * far) return false;
+    }
+    return true;
   }
 
   function isFrozen(e: Entity, ctx: GameCtx) {
@@ -541,7 +553,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
         if (isFrozen(e, ctx)) {
           e.data._frozen = true;
           const def = mobDef(e.type);
-          if (def && despawns(e, def)) e.data._remove = true;
+          // Unloaded mobs keep their place like vanilla's saved chunk entities; only the 128-block rule removes them.
+          if (def && despawns(e, def) && farFromPlayers(ctx, e, despawnRange(spawnCat(def)))) e.data._remove = true;
           continue;
         }
         e.data._frozen = false;

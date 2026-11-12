@@ -253,7 +253,8 @@ export function avoid(e: Entity, ctx: GameCtx, types: string[], range: number, s
     }
     return false;
   }
-  if (!e.data._fleeing || !hasPath(e)) {
+  if ((!e.data._fleeing || !hasPath(e)) && e.age >= ((e.data._fmin as number) || 0)) {
+    e.data._fmin = e.age + 5;
     const s = randomSpot(ctx, e, 16, 7, near.body.pos.x, near.body.pos.z);
     if (s) {
       away.set(s.x, s.y, s.z);
