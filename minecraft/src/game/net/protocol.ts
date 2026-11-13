@@ -84,7 +84,7 @@ export interface EntSpawn {
 
 // Client to host.
 export type ClientMsg =
-  | { t: "hello"; v: number; name: string; rd: number }
+  | { t: "hello"; v: number; name: string; rd: number; tok?: string }
   | { t: "move"; x: number; y: number; z: number; yaw: number; pitch: number; f: number; sw: number; dim: Dim }
   | { t: "equip"; eq: Equip }
   | { t: "center"; dim: Dim; cx: number; cz: number; r: number }

@@ -2,6 +2,7 @@ import { cleanName, validCode } from "./protocol";
 
 const NAME_KEY = "mc-player-name";
 const SERVERS_KEY = "mc-servers";
+const TOKEN_KEY = "mc-rejoin-token";
 
 export interface ServerEntry {
   name: string;
@@ -29,6 +30,17 @@ export function playerName(): string {
   if (n.length >= 3) return n;
   const made = `Player${Math.floor(100 + Math.random() * 900)}`;
   write(NAME_KEY, made);
+  return made;
+}
+
+// Secret per browser: lets a reconnecting player take back their own session before the old one times out.
+export function rejoinToken(): string {
+  const t = read<string>(TOKEN_KEY, "");
+  if (typeof t === "string" && t.length >= 16) return t;
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  const made = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  write(TOKEN_KEY, made);
   return made;
 }
 

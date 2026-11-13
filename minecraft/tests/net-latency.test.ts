@@ -118,12 +118,29 @@ test("a host update after the window applies at once and drops the held one", ()
 
 test("a reconnecting player replaces their own silent session", () => {
   const now = 100000;
+  const tok = "a".repeat(32);
   const remotes = new Map([
-    ["old", { name: "Steve", lastMove: now - STALE_MS - 1 }],
-    ["live", { name: "Alex", lastMove: now - 10 }],
+    ["old", { name: "Steve", lastMove: now - STALE_MS - 1, token: tok }],
+    ["live", { name: "Alex", lastMove: now - 10, token: "b".repeat(32) }],
     ["busy", { name: "steve2", lastMove: now - 99999 }],
   ]);
-  assert.deepEqual(staleSessions(remotes, "steve", now), ["old"], "same name, any case, gone quiet");
-  assert.deepEqual(staleSessions(remotes, "Alex", now), [], "a live player with the name keeps it");
-  assert.deepEqual(staleSessions(remotes, "Notch", now), []);
+  const gone = () => -1;
+  assert.deepEqual(staleSessions(remotes, "steve", now, gone), ["old"], "same name, any case, gone quiet");
+  assert.deepEqual(staleSessions(remotes, "Alex", now, gone), [], "a live player with the name keeps it");
+  assert.deepEqual(staleSessions(remotes, "Notch", now, gone), []);
+});
+
+test("a same-name hello cannot kick a player whose connection is still alive", () => {
+  const now = 100000;
+  const tok = "a".repeat(32);
+  // No accepted move for a while (loading after a portal, moves rejected, a backgrounded tab) but pings still arrive.
+  const remotes = new Map([["steve", { name: "Steve", lastMove: now - 60000, token: tok }]]);
+  const pinged = () => now - 900;
+  assert.equal(STALE_MS >= 8000, true);
+  assert.deepEqual(staleSessions(remotes, "Steve", now, pinged), [], "an impostor with only the name gets Steve_2");
+  assert.deepEqual(staleSessions(remotes, "Steve", now, pinged, "c".repeat(32)), [], "a wrong token does not help");
+  assert.deepEqual(staleSessions(remotes, "Steve", now, pinged, "short"), [], "nor does a short one");
+  assert.deepEqual(staleSessions(remotes, "Steve", now, pinged, tok), ["steve"], "the same browser takes its session back at once");
+  assert.deepEqual(staleSessions(remotes, "Steve", now, () => now - STALE_MS - 1), ["steve"], "a session silent on every channel is stale");
+  assert.deepEqual(staleSessions(new Map([["s", { name: "Steve", lastMove: now - 10, token: null }]]), "Steve", now, () => -1, tok), [], "a null token matches nothing");
 });

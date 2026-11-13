@@ -59,6 +59,8 @@ export interface Transport {
   backlog(to: string): number;
   // Round trip in ms, or -1 before the first pong.
   rtt(to: string): number;
+  // performance.now() of the last frame of any kind from a peer, pings included, or -1 for an unknown peer.
+  heardAt(from: string): number;
   onMessage: ((from: string, msg: unknown) => void) | null;
   onBinary: ((from: string, data: Uint8Array) => void) | null;
   onPeer: ((id: string, joined: boolean) => void) | null;
@@ -248,6 +250,7 @@ export async function createTransport(code: string): Promise<Transport> {
     },
     backlog: (to) => backlogs.get(to) ?? 0,
     rtt: (to) => rtts.get(to) ?? -1,
+    heardAt: (from) => seen.get(from) ?? -1,
     onMessage: null,
     onBinary: null,
     onPeer: null,

@@ -12,7 +12,7 @@ import { itemDef } from "../items/registry";
 import { makeBody } from "../player/physics";
 import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, STEW_EFFECTS } from "../player/stats";
 import { IMPLICIT_WATER } from "../blocks/waterlog";
-import { isPartner, moveOk, staleSessions, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
+import { isPartner, moveOk, staleSessions, validToken, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
 import { mobDef } from "../entities/registry";
 import { createGuard, type Guard, type RateKind } from "./host-guard";
 import { boxDistSq } from "../entities/geom";
@@ -64,6 +64,7 @@ interface Remote {
   record: PlayerRecord;
   viewJson: string;
   lastMove: number;
+  token: string | null;
   moveTick: number;
   joinedAt: number;
   arrive: Arrival | null;
@@ -443,7 +444,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     const base = cleanName(String(m.name)) || "Player";
     // The old session of a player who reconnects is still here until the transport notices it went silent.
     // Drop it now, so the player gets their own name, position and inventory back instead of a "_2" copy.
-    for (const p of staleSessions(remotes, base, performance.now())) {
+    for (const p of staleSessions(remotes, base, performance.now(), (id) => t.heardAt(id), m.tok)) {
       send(remotes.get(p)!, { t: "bye", reason: "You logged in from another location" });
       leave(p, true);
     }
@@ -463,7 +464,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     const r: Remote = {
       peer, num: nextNum++, name, skin: 0, look: null, dim: record.dim, pos, speed: 0, pair: null, yaw: 0, pitch: 0, f: 0, sw: 0,
       eq: { held: null, off: null, armor: [null, null, null, null] }, center: null, reqs: new Map(), tracker: createTracker(),
-      inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), moveTick: tick, joinedAt: performance.now(), arrive: null, respawnTick: -1e9,
+      inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), token: validToken(m.tok) ? m.tok : null, moveTick: tick, joinedAt: performance.now(), arrive: null, respawnTick: -1e9,
       hp: newHealth(), owner: null!, shot: newShotState(), guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
     };
     r.owner = {

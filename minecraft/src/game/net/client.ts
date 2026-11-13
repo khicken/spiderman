@@ -12,6 +12,7 @@ import type { RemoteLink } from "../world";
 import type { WorldMeta } from "../world/save";
 import { createAvatars } from "./avatars";
 import { createBlockPredictions } from "./predict";
+import { rejoinToken } from "./profile";
 import { unpackChunk, unpackMoves, type EntMove } from "./codec";
 import { entData } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
@@ -78,7 +79,7 @@ export function connectClient(code: string, name: string, rd: number, status?: (
         return;
       }
       status?.("connecting");
-      const hello: ClientMsg = { t: "hello", v: PROTOCOL, name, rd };
+      const hello: ClientMsg = { t: "hello", v: PROTOCOL, name, rd, tok: rejoinToken() };
       let offline = false;
       tr.onMessage = (from, raw) => {
         const m = raw as HostMsg;

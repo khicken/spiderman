@@ -179,12 +179,23 @@ export function withOffHand<T>(inv: { slots: (ItemStack | null)[]; selected: num
   }
 }
 
-// A same-name hello while the old session has sent no move this long is that player reconnecting.
-export const STALE_MS = 3000;
+// A same-name hello while the old session has been silent this long is that player reconnecting.
+export const STALE_MS = 8000;
 
-// Sessions a hello with this name replaces: same name, case-insensitive, and silent past STALE_MS.
-export function staleSessions(remotes: Map<string, { name: string; lastMove: number }>, name: string, now: number): string[] {
+export const validToken = (t: unknown): t is string => typeof t === "string" && t.length >= 16 && t.length <= 64;
+
+// Sessions a hello with this name replaces: same name, case-insensitive, and either the same rejoin token or
+// silent past STALE_MS. Silent means no accepted move and no frame at all, pings included, so a live player who
+// is loading, respawning or getting moves rejected cannot be kicked by someone who only knows their name.
+export function staleSessions(
+  remotes: Map<string, { name: string; lastMove: number; token?: string | null }>, name: string, now: number, heardAt: (peer: string) => number, token?: unknown,
+): string[] {
   const out: string[] = [];
-  for (const [peer, r] of remotes) if (r.name.toLowerCase() === name.toLowerCase() && now - r.lastMove > STALE_MS) out.push(peer);
+  for (const [peer, r] of remotes) {
+    if (r.name.toLowerCase() !== name.toLowerCase()) continue;
+    const heard = heardAt(peer);
+    const silent = now - r.lastMove > STALE_MS && (heard < 0 || now - heard > STALE_MS);
+    if (silent || (validToken(token) && r.token === token)) out.push(peer);
+  }
   return out;
 }
