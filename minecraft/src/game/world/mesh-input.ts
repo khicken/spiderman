@@ -89,25 +89,38 @@ export function buildMeshInput(store: Store, cx: number, sy: number, cz: number,
     const gz = lz < 0 ? 0 : lz > 15 ? 2 : 1;
     for (let px = 0; px < PAD; px++) {
       const lx = px - 1;
-      const gx = lx < 0 ? 0 : lx > 15 ? 2 : 1;
-      const ch = grid[gz * 3 + gx]!;
-      const col = ((lz & 15) << 4) | (lx & 15);
-      biomes[pz * PAD + px] = ch.data.biomes[col];
-      const cb = ch.blocks;
-      const cl = ch.light;
-      const wl = wet && ch.wl.size ? ch.wl : null;
-      for (let py = 0; py < PAD; py++) {
-        const ry = base + py;
-        const o = (py * PAD + pz) * PAD + px;
-        if (ry < 0) continue;
-        if (ry >= HEIGHT) {
-          light[o] = sky;
-          continue;
-        }
-        const i = (ry << 8) | col;
-        blocks[o] = cb[i];
-        light[o] = cl[i];
-        if (wl && wl.has(i)) wet![o] = 1;
+      biomes[pz * PAD + px] = grid[gz * 3 + (lx < 0 ? 0 : lx > 15 ? 2 : 1)]!.data.biomes[((lz & 15) << 4) | (lx & 15)];
+    }
+  }
+  // Row by row: the 16 middle cells of each x row come from one chunk and are contiguous there.
+  for (let py = 0; py < PAD; py++) {
+    const ry = base + py;
+    const yo = py * PAD * PAD;
+    if (ry < 0) continue;
+    if (ry >= HEIGHT) {
+      light.fill(sky, yo, yo + PAD * PAD);
+      continue;
+    }
+    const rb = ry << 8;
+    for (let pz = 0; pz < PAD; pz++) {
+      const lz = pz - 1;
+      const g = (lz < 0 ? 0 : lz > 15 ? 2 : 1) * 3;
+      const row = rb | ((lz & 15) << 4);
+      const o = yo + pz * PAD;
+      const w = grid[g]!, m = grid[g + 1]!, e = grid[g + 2]!;
+      blocks[o] = w.blocks[row | 15];
+      light[o] = w.light[row | 15];
+      const mb = m.blocks, ml = m.light;
+      for (let k = 0; k < 16; k++) {
+        blocks[o + 1 + k] = mb[row + k];
+        light[o + 1 + k] = ml[row + k];
+      }
+      blocks[o + 17] = e.blocks[row];
+      light[o + 17] = e.light[row];
+      if (!wet) continue;
+      for (let px = 0; px < PAD; px++) {
+        const ch = px === 0 ? w : px === 17 ? e : m;
+        if (ch.wl.size && ch.wl.has(row | ((px - 1) & 15))) wet[o + px] = 1;
       }
     }
   }

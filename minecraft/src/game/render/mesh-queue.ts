@@ -1,7 +1,17 @@
 import { CHUNK, MIN_Y } from "../contracts";
 
-export const sectionKey = (cx: number, sy: number, cz: number) => ((cx + 32768) * 65536 + (cz + 32768)) * 32 + sy;
-export const chunkKey = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
+// Within 2048 chunks of the origin keys fit a V8 small integer, so Map lookups neither allocate nor hash a
+// double. Farther keys start at 2^30 and cannot collide with near ones.
+const NEAR = 2048;
+const near = (cx: number, cz: number) => cx >= -NEAR && cx < NEAR && cz >= -NEAR && cz < NEAR;
+export const chunkKey = (cx: number, cz: number) =>
+  near(cx, cz) ? ((cx + NEAR) << 12) | (cz + NEAR) : 0x40000000 + (cx + 32768) * 65536 + (cz + 32768);
+export const sectionKey = (cx: number, sy: number, cz: number) => chunkKey(cx, cz) * 32 + sy;
+export function chunkOfKey(k: number): [number, number] {
+  if (k < 0x40000000) return [(k >> 12) - NEAR, (k & 4095) - NEAR];
+  k -= 0x40000000;
+  return [Math.floor(k / 65536) - 32768, (k % 65536) - 32768];
+}
 
 export interface SectionJob {
   key: number;
@@ -25,7 +35,7 @@ export function createMeshQueue() {
   const distTo = (j: SectionJob) => {
     // Vertical distance counts a quarter so a column's sky and deep sections do not wait behind the whole horizon.
     const dx = j.cx * CHUNK + 8 - camX, dy = (MIN_Y + j.sy * CHUNK + 8 - camY) * 0.25, dz = j.cz * CHUNK + 8 - camZ;
-    return dx * dx + dy * dy + dz * dz;
+    return Math.min(dx * dx + dy * dy + dz * dz, 0x3fffffff) | 0;
   };
 
   function push(cx: number, sy: number, cz: number, high: boolean) {
@@ -69,6 +79,23 @@ export function createMeshQueue() {
     return null;
   }
 
+  // First live fast job within r sections (Chebyshev) of the camera section; far fast jobs stay queued for the workers.
+  function popFastNear(cx: number, sy: number, cz: number, r: number): SectionJob | null {
+    let w = 0;
+    let hit: SectionJob | null = null;
+    for (let i = 0; i < fast.length; i++) {
+      const j = fast[i];
+      if (!j.queued || !j.fast) continue;
+      if (!hit && Math.abs(j.cx - cx) <= r && Math.abs(j.cz - cz) <= r && Math.abs(j.sy - sy) <= r) {
+        hit = j;
+        continue;
+      }
+      fast[w++] = j;
+    }
+    fast.length = w;
+    return hit ? take(hit) : null;
+  }
+
   function take(j: SectionJob) {
     j.queued = false;
     j.fast = false;
@@ -105,7 +132,7 @@ export function createMeshQueue() {
     count = 0;
   }
 
-  return { push, pop, setCamera, removeChunk, clear, size: () => count, has: (key: number) => !!jobs.get(key)?.queued, hasFast: () => fast.some((j) => j.queued && j.fast) };
+  return { push, pop, popFastNear, setCamera, removeChunk, clear, size: () => count, has: (key: number) => !!jobs.get(key)?.queued };
 }
 
 export type MeshQueue = ReturnType<typeof createMeshQueue>;

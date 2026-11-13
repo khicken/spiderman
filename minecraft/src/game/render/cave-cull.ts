@@ -1,6 +1,6 @@
 import { SECTIONS } from "../contracts";
 import { ALL_VIS, pairBit } from "../mesh/vis";
-import { sectionKey } from "./mesh-queue";
+import { chunkKey } from "./mesh-queue";
 
 // Vanilla cave culling: a breadth-first walk from the camera section that only crosses a section
 // between two faces joined by open blocks, and never turns back toward the camera.
@@ -14,7 +14,9 @@ const REBUILD_MS = 100;
 export const CAVE_CULL = { on: true };
 
 export function createCaveCull(isLoaded: (cx: number, cz: number) => boolean) {
-  const vis = new Map<number, number>();
+  // Per chunk column, one visibility mask per section. Columns where every section is open are absent.
+  const vis = new Map<number, Int32Array>();
+  let colVis: (Int32Array | undefined)[] = [];
   let w = 0;
   let seen = new Uint8Array(0);
   let entry = new Uint8Array(0);
@@ -37,10 +39,16 @@ export function createCaveCull(isLoaded: (cx: number, cz: number) => boolean) {
       dirs = new Uint8Array(n);
       queue = new Int32Array(n);
       cols = new Uint8Array(w * w);
+      colVis = new Array(w * w);
     } else seen.fill(0);
     ox = camCx - r - 1;
     oz = camCz - r - 1;
-    for (let z = 0; z < w; z++) for (let x = 0; x < w; x++) cols[z * w + x] = isLoaded(ox + x, oz + z) ? 1 : 0;
+    for (let z = 0; z < w; z++) {
+      for (let x = 0; x < w; x++) {
+        cols[z * w + x] = isLoaded(ox + x, oz + z) ? 1 : 0;
+        colVis[z * w + x] = vis.get(chunkKey(ox + x, oz + z));
+      }
+    }
     const start = (camSy * w + (camCz - oz)) * w + (camCx - ox);
     seen[start] = 1;
     entry[start] = 6;
@@ -51,7 +59,8 @@ export function createCaveCull(isLoaded: (cx: number, cz: number) => boolean) {
       const n = queue[head++];
       const x = n % w, z = ((n / w) | 0) % w, y = (n / (w * w)) | 0;
       const e = entry[n];
-      const v = e === 6 ? ALL_VIS : vis.get(sectionKey(ox + x, y, oz + z)) ?? ALL_VIS;
+      const cv = e === 6 ? undefined : colVis[z * w + x];
+      const v = cv === undefined ? ALL_VIS : cv[y];
       const dn = dirs[n];
       for (let d = 0; d < 6; d++) {
         if (dn & (1 << OPP[d])) continue;
@@ -70,17 +79,19 @@ export function createCaveCull(isLoaded: (cx: number, cz: number) => boolean) {
   }
 
   return {
-    setVis(key: number, mask: number) {
-      if ((vis.get(key) ?? ALL_VIS) === mask) return;
-      if (mask === ALL_VIS) vis.delete(key);
-      else vis.set(key, mask);
+    setVis(cx: number, sy: number, cz: number, mask: number) {
+      const k = chunkKey(cx, cz);
+      let col = vis.get(k);
+      if ((col ? col[sy] : ALL_VIS) === mask) return;
+      if (!col) vis.set(k, (col = new Int32Array(SECTIONS).fill(ALL_VIS)));
+      col[sy] = mask;
       dirty = true;
     },
     touch() {
       dirty = true;
     },
     clearChunk(cx: number, cz: number) {
-      for (let sy = 0; sy < SECTIONS; sy++) vis.delete(sectionKey(cx, sy, cz));
+      vis.delete(chunkKey(cx, cz));
       dirty = true;
     },
     update(cx: number, sy: number, cz: number, r: number, now: number) {
