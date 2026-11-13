@@ -420,8 +420,26 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     return true;
   }
 
+  // Vanilla simulation distance (12 chunks by default): with a larger render distance, entities in the
+  // outer ring stay loaded and drawn but do not tick. simX/simZ hold each player's chunk this tick.
+  const SIM_CHUNKS = 12;
+  const simX: number[] = [];
+  const simZ: number[] = [];
+  function simCenters(ctx: GameCtx) {
+    const everyone = (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player];
+    simX.length = simZ.length = 0;
+    for (const pl of everyone) {
+      simX.push(Math.floor(pl.body.pos.x) >> 4);
+      simZ.push(Math.floor(pl.body.pos.z) >> 4);
+    }
+  }
+
   function isFrozen(e: Entity, ctx: GameCtx) {
-    return !ctx.world.isLoaded(Math.floor(e.body.pos.x), Math.floor(e.body.pos.z));
+    const x = Math.floor(e.body.pos.x), z = Math.floor(e.body.pos.z);
+    if (!ctx.world.isLoaded(x, z)) return true;
+    const cx = x >> 4, cz = z >> 4;
+    for (let i = 0; i < simX.length; i++) if (Math.abs(cx - simX[i]) <= SIM_CHUNKS && Math.abs(cz - simZ[i]) <= SIM_CHUNKS) return false;
+    return simX.length > 0;
   }
 
   function tickOne(e: Entity, ctx: GameCtx) {
@@ -488,7 +506,9 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
   const crammed: Entity[] = [];
   function cramming(e: Entity, ctx: GameCtx) {
     const max = ctx.rules.maxEntityCramming ?? 24;
-    if (max <= 0 || e.data.mount !== undefined) return;
+    // Vanilla rolls a 1 in 4 chance every tick; checking every 4th tick instead keeps the same damage rate
+    // and skips three of four neighbor queries per mob.
+    if (max <= 0 || e.data.mount !== undefined || (e.age + e.id) & 3) return;
     const b = e.body;
     near(b.pos.x, b.pos.y + b.height / 2, b.pos.z, b.width + b.height + 1, crammed);
     let n = 0;
@@ -498,7 +518,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
       if (Math.abs(ob.pos.x - b.pos.x) < w && Math.abs(ob.pos.z - b.pos.z) < w && ob.pos.y < b.pos.y + b.height && b.pos.y < ob.pos.y + ob.height) n++;
     }
     crammed.length = 0;
-    if (n > max - 1 && ctx.random() < 0.25) damage(e.id, 6, "cramming");
+    if (n > max - 1) damage(e.id, 6, "cramming");
   }
 
   function walkAnim(e: Entity) {
@@ -546,6 +566,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
       return n;
     },
     tick(ctx) {
+      simCenters(ctx);
       const n = list.length;
       for (let i = 0; i < n && i < list.length; i++) {
         const e = list[i];

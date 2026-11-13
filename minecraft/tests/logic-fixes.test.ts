@@ -145,7 +145,7 @@ test("bone meal stops bamboo at 16 blocks", () => {
   const b: Record<string, number> = {};
   for (let y = 0; y < 16; y++) b[`0,${y},0`] = bamboo;
   const w = flatWorld(b);
-  const ctx = { ...ctxOf(w), world: w } as GameCtx;
+  const ctx = ctxOf(w);
   assert.equal(applyBoneMeal(ctx, 0, 5, 0, bamboo), false);
   w.at.delete("0,15,0");
   assert.equal(applyBoneMeal(ctx, 0, 5, 0, bamboo), true);
