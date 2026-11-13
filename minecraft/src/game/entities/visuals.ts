@@ -11,6 +11,7 @@ import { createShadows, shadowRadius } from "./shadows";
 import { activeSettings } from "../ui/settings";
 import { createFlames, type Flames } from "./fire-overlay";
 import { isBurning } from "./living";
+import { isBaby } from "./geom";
 
 interface View {
   group: THREE.Group;
@@ -123,7 +124,7 @@ export function createViews(getCtx: () => GameCtx) {
     v.update = (en, pt, x, y, z) => {
       v.group.position.set(x, y, z);
       v.group.rotation.y = lerpAngle((en.data._pyaw as number) ?? en.yaw, en.yaw, pt);
-      v.group.rotation.x = en.pitch;
+      v.group.rotation.x = lerpAngle((en.data._ppitch as number) ?? en.pitch, en.pitch, pt);
       const shake = ((en.data.shake as number) ?? 0) - pt;
       v.group.rotation.z = shake > 0 ? -Math.sin(shake * 3) * shake * 0.05 : 0;
       shadeMaterials(v.group, brightnessAt(getCtx(), x, y, z), false);
@@ -193,22 +194,22 @@ export function createViews(getCtx: () => GameCtx) {
     v.update = (en, pt, x, y, z) => {
       v.group.position.set(x, y, z);
       const yaw = lerpAngle((en.data._pyaw as number) ?? en.yaw, en.yaw, pt);
-      const death = en.dead ? Math.min(1, Math.sqrt(Math.max(0, (((en.data._death as number) ?? 0) + pt - 1) / 20) * 1.6)) : 0;
+      const death = en.dead ? Math.min(1, Math.sqrt(Math.max(0, ((((en.data._death as number) ?? 0) + pt - 1) / 20) * 1.6))) : 0;
       inner.rotation.set(0, yaw + Math.PI, death * (Math.PI / 2));
-      const baby = ((en.data.grow as number) ?? 0) < 0;
-      if (baby !== v.baby) {
-        v.baby = baby;
-        inner.scale.setScalar(baby ? 0.5 : 1);
-      }
+      // Baby zombies scale their own model from data.baby; only grow-based babies shrink here.
+      v.baby = isBaby(en);
+      inner.scale.setScalar(((en.data.grow as number) ?? 0) < 0 ? 0.5 : 1);
       const ws = (en.data._ws as number) ?? 0;
       const wso = (en.data._wso as number) ?? ws;
       const walk = Math.min(1, wso + (ws - wso) * pt);
       const phase = ((en.data._wp as number) ?? 0) - ws * (1 - pt);
-      const hy = en.headYaw;
+      const hy = en.headYaw, pitch = en.pitch;
       en.headYaw = lerpAngle((en.data._phy as number) ?? hy, hy, pt) - yaw + en.yaw;
+      en.pitch = lerpAngle((en.data._ppitch as number) ?? pitch, pitch, pt);
       model.animate(en, pt, walk, phase);
       if (skinMat) syncPackSkin(en.type, model.root, skinMat, en);
       en.headYaw = hy;
+      en.pitch = pitch;
       shadeModel(model, getCtx(), en);
       const flash = (en.data.flash as number) ?? 0;
       if (flash > 0) model.root.traverse((o) => {

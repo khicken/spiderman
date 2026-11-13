@@ -66,7 +66,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   const chunks = createChunkMeshes(world, scene, mats, Math.max(2, Math.min(4, hc - 4)), renderer.getContext() as WebGL2RenderingContext);
   const sky = createSky();
   const clouds = createClouds(scene);
-  const particles = createParticles(scene, world, getAtlas);
+  const particles = createParticles(scene, world, getAtlas, uniforms);
   const weather = createWeather(scene, world, particles.rainSplash);
   const netherSample = (x: number, y: number, z: number) => netherAmbient(world, x, y, z, particles.ambient);
   const overlays = createOverlays(scene, getAtlas);
@@ -262,7 +262,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       cloudColor(angle, r, th, cloud3);
       const hide = Math.max(fx.blindness, darkBlend);
       for (let i = 0; i < 3; i++) cloud3[i] += (fog3[i] - cloud3[i]) * hide;
-      clouds.update(dt, cam, cloud3, fog3);
+      clouds.update(dt, cam, cloud3, fog3, range.far < blocks ? range.far : Infinity);
       weather.update(dt, cam, time, r, day);
     } else {
       weather.update(dt, cam, time, 0, day);

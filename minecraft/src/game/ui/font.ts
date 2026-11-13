@@ -203,7 +203,10 @@ export function wrapText(text: string, maxWidth: number, amp = false): string[] 
     let line = "";
     let lineW = 0;
     let prefix = "";
-    for (const word of para.split(/(?= )/)) {
+    // A word wider than the line breaks between characters, like vanilla ComponentRenderUtils.
+    const glyphs = amp ? /[§&][0-9a-fk-or]|[^]/gi : /§[0-9a-fk-or]|[^]/gi;
+    const words = para.split(/(?= )/).flatMap((w) => (textWidth(w, amp) > maxWidth ? w.match(glyphs) ?? [w] : [w]));
+    for (const word of words) {
       const w = textWidth(word, amp);
       if (lineW + w > maxWidth && line) {
         lines.push(line);

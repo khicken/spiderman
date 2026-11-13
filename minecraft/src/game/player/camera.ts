@@ -35,7 +35,7 @@ export function interpolatedEye(p: PlayerState, pt: number, out: THREE.Vector3):
 export function bobMatrix(p: PlayerState, pt: number, bobbing: boolean, out: THREE.Matrix4): THREE.Matrix4 {
   out.identity();
   const ht = p.hurtTime - pt;
-  if (p.dead) out.multiply(tmp.makeRotationZ((40 - 8000 / (Math.min(20, p.deathTime) + pt + 200)) * D));
+  if (p.dead) out.multiply(tmp.makeRotationZ((40 - 8000 / (Math.min(20, p.deathTime + pt) + 200)) * D));
   else if (ht > 0) {
     let f = ht / 10;
     f = Math.sin(f * f * f * f * Math.PI);

@@ -32,6 +32,7 @@ attribute vec2 aTex;
 varying vec2 vUv;
 varying vec4 vColor;
 varying vec2 vTex;
+varying float vFogDepth;
 void main() {
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
@@ -39,20 +40,27 @@ void main() {
   vUv = aUv.xy + vec2(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5) * aUv.zw;
   vColor = aColor;
   vTex = aTex;
+  vec3 d = w - cameraPosition;
+  vFogDepth = max(length(d.xz), abs(d.y));
   gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
 }`;
 
 const FRAG = /* glsl */ `
 uniform sampler2DArray uSheet;
 uniform sampler2DArray uAtlas;
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
 varying vec2 vUv;
 varying vec4 vColor;
 varying vec2 vTex;
+varying float vFogDepth;
 void main() {
   vec4 t = vTex.y < 0.5 ? texture(uSheet, vec3(vUv, vTex.x)) : texture(uAtlas, vec3(vUv, vTex.x));
   float a = t.a * vColor.a;
   if (a < 0.1) discard;
-  gl_FragColor = vec4(t.rgb * sRGBTransferEOTF(vec4(vColor.rgb, 1.0)).rgb, a);
+  float fog = vFogDepth <= uFogNear ? 0.0 : smoothstep(uFogNear, max(uFogFar, uFogNear + 0.001), vFogDepth);
+  gl_FragColor = vec4(mix(t.rgb * sRGBTransferEOTF(vec4(vColor.rgb, 1.0)).rgb, uFogColor, fog), a);
   #include <colorspace_fragment>
 }`;
 
@@ -75,7 +83,11 @@ function touch(a: THREE.BufferAttribute, n: number) {
   a.needsUpdate = true;
 }
 
-export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () => THREE.DataArrayTexture | null) {
+// fog: the chunk uniforms, shared so particles fade into the same fog as terrain.
+export function createParticles(
+  scene: THREE.Scene, world: WorldApi, atlas: () => THREE.DataArrayTexture | null,
+  fog?: { uFogColor: { value: THREE.Color }; uFogNear: { value: number }; uFogFar: { value: number } },
+) {
   const makeSheet = () => {
     const data = paintParticleSheet();
     for (const [layer, path] of PARTICLE_PATHS) {
@@ -92,7 +104,10 @@ export function createParticles(scene: THREE.Scene, world: WorldApi, atlas: () =
   let sheet = makeSheet();
 
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uSheet: { value: sheet }, uAtlas: { value: null } },
+    uniforms: {
+      uSheet: { value: sheet }, uAtlas: { value: null },
+      uFogColor: fog?.uFogColor ?? { value: new THREE.Color() }, uFogNear: fog?.uFogNear ?? { value: 1e9 }, uFogFar: fog?.uFogFar ?? { value: 1e9 },
+    },
     vertexShader: VERT,
     fragmentShader: FRAG,
     transparent: true,

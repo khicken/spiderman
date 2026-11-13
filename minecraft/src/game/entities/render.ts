@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Entity, GameCtx, MobModel } from "../contracts";
 import { lightmap } from "../mesh/lightmap";
+import { rasterText } from "../ui/font";
 
 type Shaded = THREE.MeshLambertMaterial | THREE.MeshBasicMaterial;
 const cache = new WeakMap<THREE.Object3D, Shaded[]>();
@@ -82,20 +83,20 @@ export function shadeMaterials(root: THREE.Object3D, br: number, hurt: boolean) 
   }
 }
 
-// Vanilla name tag: white text on a translucent black plate, faces the camera.
+// Vanilla name tag: white game-font text on a translucent black plate 1 px wider than the text, faces the camera.
 export function nameTag(text: string): { sprite: THREE.Sprite; dispose(): void } {
+  const r = rasterText(text, 0xffffff, false);
   const scale = 4;
-  const w = Math.max(8, text.length * 6 + 2) * scale;
+  const w = (r.width + 2) * scale;
   const h = 10 * scale;
   const canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : Object.assign(document.createElement("canvas"), { width: w, height: h });
   const g = canvas.getContext("2d") as CanvasRenderingContext2D;
   g.fillStyle = "rgba(0,0,0,0.25)";
   g.fillRect(0, 0, w, h);
-  g.font = `${8 * scale}px monospace`;
-  g.textBaseline = "middle";
-  g.textAlign = "center";
   g.fillStyle = "#ffffff";
-  g.fillText(text, w / 2, h / 2 + scale / 2);
+  for (let y = 0; y < r.height; y++)
+    for (let x = 0; x < r.width; x++)
+      if (r.data[(y * r.width + x) * 4 + 3]) g.fillRect((x + 1) * scale, (y - r.top + 1) * scale, scale, scale);
   const tex = new THREE.CanvasTexture(canvas as HTMLCanvasElement);
   tex.magFilter = THREE.NearestFilter;
   tex.colorSpace = THREE.SRGBColorSpace;

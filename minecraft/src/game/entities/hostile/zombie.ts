@@ -206,9 +206,12 @@ function zombieModel(type: ZombieCfg["type"]) {
       });
     const animate = m.animate;
     const base = m.root.scale.x;
+    const head = m.root.getObjectByName("head");
     m.animate = (e, pt, walk, phase) => {
       animate(e, pt, walk, phase);
       m.root.scale.setScalar(e.data.baby ? base * 0.5 : base);
+      // Vanilla baby humanoids draw the head at 1.5 / 2 = 0.75 scale against the half-size body.
+      head?.scale.setScalar(e.data.baby ? 1.5 : 1);
       if (e.data.shaking) m.root.rotation.z = Math.sin((e.age + pt) * 3.25) * 0.05;
     };
     return m;
