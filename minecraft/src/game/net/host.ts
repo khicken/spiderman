@@ -1005,8 +1005,10 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         give(r, stack);
         e.dead = true;
         e.data._fly = 3;
-        all({ t: "sound", name: "entity.item.pickup", x: r.pos.x, y: r.pos.y, z: r.pos.z, volume: 0.2, pitch: 1.4 + Math.random() * 0.6 });
-        g.ctx.audio.play("entity.item.pickup", r.pos.x, r.pos.y, r.pos.z, 0.2, 1.6);
+        // The picker hears its own pickup from the "give" handler; others only in the same dimension.
+        const pick: HostMsg = { t: "sound", name: "entity.item.pickup", x: r.pos.x, y: r.pos.y, z: r.pos.z, volume: 0.2, pitch: 1.4 + Math.random() * 0.6 };
+        for (const o of remotes.values()) if (o !== r && o.dim === r.dim) send(o, pick);
+        if (r.dim === g.dim) g.ctx.audio.play("entity.item.pickup", r.pos.x, r.pos.y, r.pos.z, 0.2, 1.6);
       } else if (e.type === "xp_orb") {
         const now = g.ctx.time.tick;
         const last = xpAt.get(r);

@@ -3,6 +3,7 @@
 export interface BiomeAmbientDeps {
   ctx: AudioContext;
   out: AudioNode;
+  // Must already loop cleanly (crossfaded or a pack loop).
   loopBuffer(name: string): AudioBuffer | null;
   play(name: string, volume: number): void;
   level(): number;
@@ -25,7 +26,6 @@ export function seamless(ctx: AudioContext, b: AudioBuffer, fade: number): Audio
 export function createBiomeAmbient(d: BiomeAmbientDeps) {
   let biome: string | null = null;
   let loop: Loop | null = null;
-  const cache = new Map<string, AudioBuffer | null>();
   let last = 0;
 
   function fadeOut(l: Loop) {
@@ -42,21 +42,17 @@ export function createBiomeAmbient(d: BiomeAmbientDeps) {
   }
 
   function start(name: string) {
-    let buf = cache.get(name);
-    if (buf === undefined) {
-      const raw = d.loopBuffer(name);
-      buf = raw ? seamless(d.ctx, raw, 0.75) : null;
-      cache.set(name, buf);
-    }
+    const buf = d.loopBuffer(name);
     if (!buf) return;
     const gain = d.ctx.createGain();
-    gain.gain.value = 0;
+    // setTarget, not a ramp: set() retargets this every 100 ms and the two must compose.
+    gain.gain.setValueAtTime(0, d.ctx.currentTime);
+    gain.gain.setTargetAtTime(0.6 * d.level(), d.ctx.currentTime, 0.5);
     const src = d.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
     src.connect(gain).connect(d.out);
     src.start();
-    gain.gain.linearRampToValueAtTime(0.6 * d.level(), d.ctx.currentTime + 2);
     loop = { src, gain };
   }
 
