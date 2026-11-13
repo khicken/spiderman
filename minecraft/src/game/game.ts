@@ -48,6 +48,9 @@ export interface GameUi {
   toast?(t: Toast): void;
   credits?(): void;
   lockHint?(show: boolean): void; // gameplay wants pointer lock but the browser refused it
+  // The GPU context came back after a loss (phone backgrounding, driver reset). The world is saved;
+  // the page restarts the game on it. Without a handler the page reloads.
+  contextRestored?(): void;
 }
 
 export interface GameOptions {
@@ -539,6 +542,27 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   let lastView = -1;
   let dark = false;
 
+  // A lost WebGL context leaves every GPU resource dead. Stop ticking and drawing, save, and let the
+  // page restart the game on a fresh renderer once the browser restores the context.
+  let contextLost = false;
+  let lostSave: Promise<void> = Promise.resolve();
+  const onContextLost = (e: Event) => {
+    e.preventDefault();
+    if (contextLost) return;
+    contextLost = true;
+    lostSave = save();
+  };
+  const onContextRestored = () => {
+    if (!contextLost || disposed) return;
+    void lostSave.then(() => {
+      if (disposed) return;
+      if (ui.contextRestored) ui.contextRestored();
+      else location.reload();
+    });
+  };
+  canvas.addEventListener("webglcontextlost", onContextLost);
+  canvas.addEventListener("webglcontextrestored", onContextRestored);
+
   // True when a dimension change ended the step.
   function runTicks(dt: number): boolean {
     acc += dt;
@@ -561,7 +585,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   // A hidden tab gets no animation frames, so in multiplayer the world would stop and peers would time out.
   // A worker clock keeps ticking (and, on the host, serving chunks) while the tab is hidden.
   function hiddenStep(now: number) {
-    if (!net || typeof document === "undefined" || !document.hidden || phase !== "playing") return;
+    if (contextLost || !net || typeof document === "undefined" || !document.hidden || phase !== "playing") return;
     const dt = Math.min(0.25, Math.max(0, (now - last) / 1000));
     last = now;
     try {
@@ -576,6 +600,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   let drawnAt = 0;
   function frame(now: number) {
     raf = requestAnimationFrame(frame);
+    if (contextLost) return;
     const cap = settings.maxFps ?? 260;
     if (cap < 260 && now - drawnAt < 1000 / cap - 2) return;
     drawnAt = now;
@@ -958,6 +983,8 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       net = null;
       cancelAnimationFrame(raf);
       pulse.stop();
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       window.removeEventListener("resize", onResize);
       offAction();
       player.dispose();
