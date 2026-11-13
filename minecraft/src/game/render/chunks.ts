@@ -41,7 +41,7 @@ interface PoolWorker {
 }
 
 const LAYERS = ["opaque", "cutout", "translucent"] as const;
-const MAX_IN_FLIGHT = 4;
+const MAX_IN_FLIGHT = 8;
 const SYNC_RADIUS = 1;
 const now = () => performance.now();
 
