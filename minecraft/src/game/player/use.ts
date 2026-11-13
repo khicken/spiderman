@@ -6,7 +6,7 @@ import { IMPLICIT_WATER, canHoldWater } from "../blocks/waterlog";
 import { itemDef } from "../items/registry";
 import type { InputApi } from "./input";
 import { blockBoxes } from "./interact";
-import { bodyBox, intersects } from "./physics";
+import { bodyBox, intersects, noCollision } from "./physics";
 import { POTIONS, STEW_EFFECTS, ench } from "./stats";
 import { damageSlot, eat } from "./survival";
 import type { PlayerState, UseState } from "./state";
@@ -381,6 +381,9 @@ function placeBoat(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack): boo
   if (!hit) return false;
   const chest = stack.item.includes("chest_");
   const wood = stack.item.replace(/_chest_(boat|raft)$/, "").replace(/_(boat|raft)$/, "");
+  // Vanilla BoatItem fails when the new boat's box would overlap blocks, so it cannot spawn inside a wall.
+  const q = hit.point, hw = 1.375 / 2;
+  if (!noCollision(ctx.world, { minX: q.x - hw, minY: q.y + 1e-4, minZ: q.z - hw, maxX: q.x + hw, maxY: q.y + 0.5625, maxZ: q.z + hw })) return false;
   const e = ctx.entities.spawn(chest ? "chest_boat" : "boat", hit.point.x, hit.point.y, hit.point.z, { wood });
   if (!e) return false;
   e.yaw = p.yaw;

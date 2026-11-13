@@ -53,10 +53,10 @@ const tint = new THREE.Color();
 const warm = new THREE.Color();
 
 // Lambert color carries the lightmap; the renderer's fixed ambient 0.4 + two 0.6 lights give the vanilla entity face shade.
-export function shadeModel(model: MobModel | { root: THREE.Object3D }, ctx: GameCtx, e: Entity) {
+export function shadeModel(model: MobModel | { root: THREE.Object3D }, ctx: GameCtx, e: Entity, canHurt = true) {
   const b = e.body;
   const br = brightnessAt(ctx, b.pos.x, b.pos.y + b.height * 0.5, b.pos.z);
-  const hurt = e.hurtTicks > 0 || (e.dead && e.type !== "item");
+  const hurt = canHurt && (e.hurtTicks > 0 || (e.dead && e.type !== "item"));
   shadeMaterials(model.root, br, hurt);
 }
 
