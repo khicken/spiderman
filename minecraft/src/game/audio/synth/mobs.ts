@@ -5,7 +5,8 @@ import {
 } from "./mob-kit";
 
 function zombie(k: number, shift: number, extra: Gen | null = null): MobSounds {
-  const groan = tremolo(say({ dur: 1.3, f: [92 * k, 108 * k, 96 * k, 80 * k, 66 * k], vowels: ["o", "uh", "a", "uh", "u"], rough: 0.7, breath: 0.22, jitter: 0.04, shift, vibRate: 4.5, vibDepth: 0.04 }), 26, 0.3);
+  // Flat pitch and unrounded vowels: a moving pitch or "o"/"u" vowels make the groan sound like a person saying words.
+  const groan = lowpass(tremolo(say({ dur: 1.0, f: [64 * k, 68 * k, 62 * k, 56 * k], vowels: ["m", "n", "uh", "n"], rough: 0.4, breath: 0.03, jitter: 0.08, shift: shift * 0.82, vibDepth: 0, pulse: 0.15 }), 11, 0.25), 3800);
   const s: MobSounds = {
     ambient: R(extra ? seq([[groan, 0], [extra, 0.2, 0.5]]) : groan, 0.7),
     hurt: R(say({ dur: 0.35, f: [140 * k, 175 * k, 110 * k], vowels: ["uh", "a", "u"], rough: 0.5, breath: 0.2, shift }), 0.9),
