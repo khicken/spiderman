@@ -36,7 +36,7 @@ function takeAmmo(p: PlayerState, ctx: GameCtx, rockets: boolean, keep: boolean)
 }
 
 // Tipped arrows carry the potion at one eighth of its duration.
-function arrowEffects(s: ItemStack): Effect[] | undefined {
+export function arrowEffects(s: ItemStack): Effect[] | undefined {
   if (s.item !== "tipped_arrow") return undefined;
   const list = POTIONS[String(s.data?.potion ?? "")];
   return list?.map(([id, sec, amp]) => ({ id, amplifier: amp, ticks: Math.max(1, Math.round((sec * 20) / 8)) }));

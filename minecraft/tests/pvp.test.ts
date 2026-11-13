@@ -163,3 +163,49 @@ test("host-side melee refuses a held item the host's inventory does not have", (
   pvp.melee(1, 2, { s: 1, crit: false });
   assert.equal(steve.hp.health, 19, "an unbacked claim hits like a fist");
 });
+
+test("the host rebuilds a remote arrow or trident from the shooter's own gear, never from the client's numbers", async () => {
+  const { checkShot, newShotState } = await import("../src/game/net/shot-guard");
+  const bow: ItemStack = { item: "bow", count: 1, ench: { power: 2 } };
+  const inv = (...stacks: ItemStack[]) => ({ slots: [...stacks, ...Array(41 - stacks.length).fill(null)], selected: 0 });
+  const shooter = (o: Partial<Parameters<typeof checkShot>[0]> = {}): Parameters<typeof checkShot>[0] => ({
+    pos: { x: 0, y: 64, z: 0 }, f: F.ground, speed: 0, eq: { held: "bow", off: null }, invs: [inv(bow, { item: "arrow", count: 8 })], creative: false, shot: newShotState(), ...o,
+  });
+  const eye = 64 + 1.62 - 0.1;
+  const arrow = (o: Record<string, unknown> = {}) => ({ type: "arrow", x: 0, y: eye, z: 0, vel: [0, 0, -3], data: { damage: 1e6, crit: true, effects: [{ id: "instant_damage", amplifier: 120, ticks: 1 }], noGravity: true }, ...o });
+
+  const s = shooter();
+  const v = checkShot(s, arrow(), 10_000);
+  assert.ok(v.ok, "a fully drawn bow shot from the eye is accepted");
+  assert.equal(v.data.damage, 2 + 2 * 0.5 + 0.5, "damage comes from the bow's Power, not the claim");
+  assert.equal(v.data.crit, true, "a full draw may crit");
+  assert.equal(v.data.effects, undefined, "plain arrows carry no effects, whatever the client says");
+  assert.equal(v.data.noGravity, undefined);
+  assert.deepEqual(checkShot(s, arrow(), 10_200), { ok: false, why: "speed" }, "a second full-speed shot needs a full draw first");
+  const quick = checkShot(s, arrow({ vel: [0, 0, -1] }), 10_400);
+  assert.ok(quick.ok && quick.data.crit === false, "a short draw is a weak shot that cannot crit");
+  assert.deepEqual(checkShot(shooter(), arrow({ vel: [0, 0, -40] }), 10_000), { ok: false, why: "speed" }, "launch speed is capped");
+  assert.deepEqual(checkShot(shooter(), arrow({ x: 10 }), 10_000), { ok: false, why: "origin" }, "it must leave the shooter's eye");
+  assert.deepEqual(checkShot(shooter({ eq: { held: "stick", off: null } }), arrow(), 10_000), { ok: false, why: "weapon" });
+  assert.deepEqual(checkShot(shooter({ invs: [inv(bow)] }), arrow(), 10_000), { ok: false, why: "ammo" });
+  assert.ok(checkShot(shooter({ invs: [inv(bow)], creative: true }), arrow(), 10_000).ok, "creative needs no arrows");
+
+  const tipped = checkShot(shooter({ invs: [inv(bow, { item: "tipped_arrow", count: 1, data: { potion: "poison" } })] }), arrow({ data: { potion: "poison" } }), 10_000);
+  assert.ok(tipped.ok && tipped.data.item === "tipped_arrow" && Array.isArray(tipped.data.effects), "a real tipped arrow keeps its potion");
+
+  const xbow: ItemStack = { item: "crossbow", count: 1, ench: { multishot: 1 }, data: { charged: true, projectile: "arrow" } };
+  const xs = shooter({ eq: { held: "crossbow", off: null }, invs: [inv(xbow)] });
+  const bolt = arrow({ vel: [0, 0, -3.15], data: { fromCrossbow: true } });
+  for (let i = 0; i < 3; i++) assert.ok(checkShot(xs, bolt, 10_000).ok, "multishot fires three at once");
+  assert.equal(checkShot(xs, bolt, 10_001).ok, false, "but not four");
+  assert.equal(checkShot(xs, bolt, 10_300).ok, false, "and must reload first");
+
+  const trident: ItemStack = { item: "trident", count: 1, ench: { loyalty: 3 } };
+  const ts = shooter({ eq: { held: "trident", off: null }, invs: [inv(trident)] });
+  const throwIt = (vel: number[]) => checkShot(ts, { type: "trident", x: 0, y: eye, z: 0, vel, data: { damage: 500, item: { item: "trident", count: 1, ench: { impaling: 255 } } } }, 20_000);
+  assert.deepEqual(throwIt([0, 0, -9]), { ok: false, why: "speed" });
+  const tv = throwIt([0, 0, -2.5]);
+  assert.ok(tv.ok && tv.data.damage === 8, "a trident deals its own 8");
+  assert.deepEqual(tv.ok && tv.data.item, { ...trident, count: 1 }, "the thrown trident is the one the host knows about");
+  assert.deepEqual(checkShot(shooter(), { type: "trident", x: 0, y: eye, z: 0, vel: [0, 0, -2.5], data: {} }, 10_000), { ok: false, why: "weapon" });
+});

@@ -34,6 +34,7 @@ import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
 import type { Counts } from "./inv-guard";
 import { createHostPvp } from "./pvp";
 import { setPvpHook } from "./pvp-hook";
+import { SHOT_TYPES, checkShot, newShotState, type ShotState } from "./shot-guard";
 
 export interface LanOptions {
   gameMode: GameMode;
@@ -70,6 +71,7 @@ interface Remote {
   hp: Health;
   owner: HealthOwner;
   guard: Guard;
+  shot: ShotState;
 }
 
 type Meta = WorldMeta & { players?: Record<string, PlayerRecord> };
@@ -462,7 +464,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       peer, num: nextNum++, name, skin: 0, look: null, dim: record.dim, pos, speed: 0, pair: null, yaw: 0, pitch: 0, f: 0, sw: 0,
       eq: { held: null, off: null, armor: [null, null, null, null] }, center: null, reqs: new Map(), tracker: createTracker(),
       inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), moveTick: tick, joinedAt: performance.now(), arrive: null, respawnTick: -1e9,
-      hp: newHealth(), owner: null!, guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
+      hp: newHealth(), owner: null!, shot: newShotState(), guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
     };
     r.owner = {
       get hp() {
@@ -702,6 +704,13 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (!e || !nearPos(r, m, 16) || typeof m.type !== "string" || limited(r, "spawn")) return;
         const def = mobDef(m.type);
         if (def && def.category !== "misc" && !exempt(r) && (!SURVIVAL_MOBS.has(m.type) || limited(r, "mob"))) return r.guard.strike(performance.now(), 5);
+        if (SHOT_TYPES.has(m.type)) {
+          const shooter = { pos: r.pos, f: r.f, speed: r.speed, eq: r.eq, invs: [r.record.inventory, r.inv.save()], creative: exempt(r), shot: r.shot };
+          const v = checkShot(shooter, m, performance.now());
+          if (!v.ok) return r.guard.strike(performance.now(), v.why === "rate" ? 1 : 5);
+          withPlayer(r, () => e.spawn(m.type, m.x, m.y, m.z, { ...v.data, vel: v.vel, yaw: num(m.yaw) ?? 0, pitch: num(m.pitch) ?? 0, _net: r.num }));
+          return;
+        }
         withPlayer(r, () => e.spawn(String(m.type), m.x, m.y, m.z, { ...(m.data ?? {}), vel: m.vel, yaw: m.yaw, pitch: m.pitch, _net: r.num }));
         return;
       }
