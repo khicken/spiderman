@@ -6,4 +6,33 @@ body {
   overscroll-behavior: none;
   margin: 0;
   overflow: hidden;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+.pwa-update {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px 6px 12px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid #555;
+  color: #fff;
+  font: 14px monospace;
+  white-space: nowrap;
+}
+
+.pwa-update button {
+  padding: 2px 10px;
+  background: #6f6f6f;
+  border: 2px solid #000;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
 }
