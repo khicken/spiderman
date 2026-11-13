@@ -11,6 +11,7 @@ import type { AdvTrigger } from "../systems/advancements/bus";
 import type { RemoteLink } from "../world";
 import type { WorldMeta } from "../world/save";
 import { createAvatars } from "./avatars";
+import { createBlockPredictions } from "./predict";
 import { unpackChunk, unpackMoves, type EntMove } from "./codec";
 import { entData } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
@@ -145,6 +146,8 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
   let muting = false;
   const shadow = { hp: -1, food: 0, sat: 0 };
   const avatars = createAvatars(() => g!.ctx);
+  const edits = createBlockPredictions();
+  const dueBlocks: number[] = [];
   setPlayerName(name);
   setAdvancementPlayer(name);
 
@@ -270,7 +273,11 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       case "blocks": {
         if (m.dim !== g.dim) return;
         const w = g.world;
-        for (let i = 0; i + 3 < m.list.length; i += 4) w.applyBlock(m.list[i], m.list[i + 1], m.list[i + 2], m.list[i + 3]);
+        const now = performance.now();
+        for (let i = 0; i + 3 < m.list.length; i += 4) {
+          const x = m.list[i], y = m.list[i + 1], z = m.list[i + 2], s = m.list[i + 3];
+          if (edits.host(x, y, z, s, now)) w.applyBlock(x, y, z, s);
+        }
         for (const b of m.be ?? []) w.applyBlockEntity(b.be ? { ...b.be } : null, b.x, b.y, b.z);
         return;
       }
@@ -284,7 +291,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         }
         return;
       case "players":
-        avatars.set(m.list, welcome.you, g.dim);
+        avatars.set(m.list, welcome.you, g.dim, typeof m.at === "number" ? m.at : undefined);
         return;
 
       case "list":
@@ -505,10 +512,14 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       } as WorldMeta;
     },
     remoteWorld(d: Dim): RemoteLink {
+      edits.clear();
       return {
         request: (cx, cz) => send({ t: "req", dim: d, cx, cz }),
         center: (cx, cz, r) => send({ t: "center", dim: d, cx, cz, r }),
-        setBlock: (x, y, z, s, f) => send({ t: "set", dim: d, x, y, z, s, f }),
+        setBlock: (x, y, z, s, f) => {
+          edits.local(x, y, z, performance.now(), t.rtt(hostId));
+          send({ t: "set", dim: d, x, y, z, s, f });
+        },
         setBlockEntity: (be, x, y, z) => send({ t: "be", dim: d, x, y, z, be: be ? JSON.parse(JSON.stringify(be)) : null }),
         setWaterlogged: (x, y, z, on) => send({ t: "wl", dim: d, x, y, z, on }),
         action(kind, x, y, z, predict, face) {
@@ -603,6 +614,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         lookDue = null;
         lookAt = performance.now();
       }
+      for (let i = 0, q = edits.due(performance.now(), dueBlocks); i < q.length; i += 4) g.world.applyBlock(q[i], q[i + 1], q[i + 2], q[i + 3]);
       applyMoves();
       raw?.tickMirror();
       local = true;
@@ -638,7 +650,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     frame(dt) {
       avatars.frame(dt);
     },
-    debug: () => ({ avatars: avatars.list(), direct: t.direct(hostId), relayUp: t.relayUp }),
+    debug: () => ({ avatars: avatars.list(), direct: t.direct(hostId), relayUp: t.relayUp, rtt: Math.round(t.rtt(hostId)) }),
     say(text) {
       send({ t: "chat", text });
     },

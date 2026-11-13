@@ -126,7 +126,7 @@ export type HostMsg =
   | { t: "nochunk"; dim: Dim; cx: number; cz: number }
   | { t: "blocks"; dim: Dim; list: number[]; be?: { x: number; y: number; z: number; be: BlockEntityData | null }[] }
   | { t: "ents"; spawn?: EntSpawn[]; gone?: number[]; data?: [number, Record<string, unknown>][]; clear?: boolean }
-  | { t: "players"; list: PlayerSnap[] }
+  | { t: "players"; list: PlayerSnap[]; at?: number } // at: host clock in ms, for interpolation
   | { t: "skins"; list: { id: number; look: Look }[] }
   | { t: "list"; list: PlayerListEntry[] }
   | { t: "chat"; text: string; color?: string }

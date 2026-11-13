@@ -12,7 +12,7 @@ import { itemDef } from "../items/registry";
 import { makeBody } from "../player/physics";
 import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, STEW_EFFECTS } from "../player/stats";
 import { IMPLICIT_WATER } from "../blocks/waterlog";
-import { isPartner, moveOk, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
+import { isPartner, moveOk, staleSessions, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
 import { mobDef } from "../entities/registry";
 import { createGuard, type Guard, type RateKind } from "./host-guard";
 import { boxDistSq } from "../entities/geom";
@@ -77,6 +77,9 @@ type Meta = WorldMeta & { players?: Record<string, PlayerRecord> };
 const SOUND_RANGE = 48;
 const TICKED = new Set(["furnace", "lit_furnace", "blast_furnace", "lit_blast_furnace", "smoker", "lit_smoker", "brewing_stand", "hopper"]);
 const CHUNKS_PER_TICK = 6;
+// Chunks wait while this much is still queued to a peer, so block changes and other reliable messages
+// never sit behind seconds of terrain data.
+const CHUNK_BACKLOG = 48 * 1024;
 const MAX_RD = 8;
 const key = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
 const clampRd = (r: number) => Math.max(2, Math.min(MAX_RD, r | 0));
@@ -435,11 +438,17 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       t.send(peer, { t: "full", reason: "Outdated client!" } satisfies HostMsg);
       return;
     }
+    const base = cleanName(String(m.name)) || "Player";
+    // The old session of a player who reconnects is still here until the transport notices it went silent.
+    // Drop it now, so the player gets their own name, position and inventory back instead of a "_2" copy.
+    for (const p of staleSessions(remotes, base, performance.now())) {
+      send(remotes.get(p)!, { t: "bye", reason: "You logged in from another location" });
+      leave(p, true);
+    }
     if (remotes.size >= MAX_PLAYERS - 1) {
       t.send(peer, { t: "full", reason: "The server is full!" } satisfies HostMsg);
       return;
     }
-    const base = cleanName(String(m.name)) || "Player";
     let name = base;
     const taken = (n: string) => n.toLowerCase() === hostName.toLowerCase() || [...remotes.values()].some((r) => r.name.toLowerCase() === n.toLowerCase());
     for (let i = 2; taken(name); i++) name = `${base.slice(0, 13)}_${i}`;
@@ -948,6 +957,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         send(r, { t: "nochunk", dim: r.dim, cx, cz });
         continue;
       }
+      if (t.backlog(r.peer) > CHUNK_BACKLOG) break;
       const data = w.readyChunk(cx, cz);
       if (!data) continue;
       r.reqs.delete(k);
@@ -1102,6 +1112,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       const players = snapshot();
       avatars.set(players, 0, g.dim);
       const tm = g.ctx.time;
+      const playersMsg: HostMsg = { t: "players", list: players, at: performance.now() };
       for (const r of remotes.values()) {
         const hc = ctxFor(r.dim);
         if (hc) tickHealth(r.owner, hc, hc.rules, tick);
@@ -1116,7 +1127,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
           r.tracker.sync(ents, r.pos.x, r.pos.y, r.pos.z, tick, (m) => send(r, m), (b) => t.sendBin(r.peer, b, false));
           pickups(r, ents);
         }
-        send(r, { t: "players", list: players });
+        t.sendFast(r.peer, playersMsg);
         if (tick % 20 === 0) send(r, { t: "time", tick: tm.tick, dayTime: tm.dayTime, day: tm.day, rain: tm.rain, thunder: tm.thunder });
         if (tick % 5 === 0 && r.inv.view()) {
           const v = JSON.stringify(r.inv.view());
@@ -1149,7 +1160,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     }),
     players() {
       const list: PlayerListEntry[] = [{ id: 0, name: hostName, ping: 0 }];
-      for (const r of remotes.values()) list.push({ id: r.num, name: r.name, ping: t.direct(r.peer) ? 20 : 150 });
+      for (const r of remotes.values()) list.push({ id: r.num, name: r.name, ping: Math.round(t.rtt(r.peer) >= 0 ? t.rtt(r.peer) : t.direct(r.peer) ? 20 : 150) });
       return list;
     },
     dispose() {
