@@ -152,7 +152,7 @@ export function skyDarken(ctx: GameCtx): number {
   const t = ctx.time.dayTime / 24000 - 0.25;
   const f = t - Math.floor(t);
   const tod = (f * 2 + (0.5 - Math.cos(f * Math.PI) / 2)) / 3;
-  let d = 1 - (Math.cos(tod * Math.PI * 2) * 2 + 0.2);
+  let d = 1 - (Math.cos(tod * Math.PI * 2) * 2 + 0.5);
   d = Math.min(1, Math.max(0, d));
   d = 1 - d;
   d *= 1 - (ctx.time.rain * 5) / 16;

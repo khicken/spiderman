@@ -14,7 +14,7 @@ import { tickCloud } from "./cloud";
 import { tickBobber } from "./fishing";
 import { tickEnderEye, tickTrident } from "./trident";
 import { explodeAt } from "./explosion";
-import { createSpawner, despawns } from "./spawning";
+import { createSpawner, despawns, despawnRange, spawnCat } from "./spawning";
 import { baseTick, isBurning, rollDrops, deathSound, hurtSound, ambientTick, stepSounds } from "./living";
 import { createViews } from "./visuals";
 import { advKill } from "../systems/advancements/hooks";
@@ -326,6 +326,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     if (e.type === "witch" && (source === "magic" || source === "sonic_boom" || source === "thorns")) dealt *= 0.15;
     e.health -= dealt;
     e.data._idle = 0;
+    // Whether the latest hit came from a living attacker (vanilla source.getEntity() instanceof LivingEntity).
+    e.data._hitLiving = attacker === "player" || (attacker !== undefined && isMob(attacker.type));
     if (e.effects.length && dealt > 0) mobEffectHurt(ctx, e);
     if (fresh) {
       e.hurtTicks = 10;
@@ -408,8 +410,36 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     return def?.onInteract?.(e, ctx, held) ?? false;
   }
 
+  function farFromPlayers(ctx: GameCtx, e: Entity, far: number) {
+    const everyone = (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player];
+    const p = e.body.pos;
+    for (const pl of everyone) {
+      const q = pl.body.pos;
+      if ((q.x - p.x) ** 2 + (q.y - p.y) ** 2 + (q.z - p.z) ** 2 <= far * far) return false;
+    }
+    return true;
+  }
+
+  // Vanilla simulation distance (12 chunks by default): with a larger render distance, entities in the
+  // outer ring stay loaded and drawn but do not tick. simX/simZ hold each player's chunk this tick.
+  const SIM_CHUNKS = 12;
+  const simX: number[] = [];
+  const simZ: number[] = [];
+  function simCenters(ctx: GameCtx) {
+    const everyone = (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player];
+    simX.length = simZ.length = 0;
+    for (const pl of everyone) {
+      simX.push(Math.floor(pl.body.pos.x) >> 4);
+      simZ.push(Math.floor(pl.body.pos.z) >> 4);
+    }
+  }
+
   function isFrozen(e: Entity, ctx: GameCtx) {
-    return !ctx.world.isLoaded(Math.floor(e.body.pos.x), Math.floor(e.body.pos.z));
+    const x = Math.floor(e.body.pos.x), z = Math.floor(e.body.pos.z);
+    if (!ctx.world.isLoaded(x, z)) return true;
+    const cx = x >> 4, cz = z >> 4;
+    for (let i = 0; i < simX.length; i++) if (Math.abs(cx - simX[i]) <= SIM_CHUNKS && Math.abs(cz - simZ[i]) <= SIM_CHUNKS) return false;
+    return simX.length > 0;
   }
 
   function tickOne(e: Entity, ctx: GameCtx) {
@@ -476,7 +506,9 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
   const crammed: Entity[] = [];
   function cramming(e: Entity, ctx: GameCtx) {
     const max = ctx.rules.maxEntityCramming ?? 24;
-    if (max <= 0 || e.data.mount !== undefined) return;
+    // Vanilla rolls a 1 in 4 chance every tick; checking every 4th tick instead keeps the same damage rate
+    // and skips three of four neighbor queries per mob.
+    if (max <= 0 || e.data.mount !== undefined || (e.age + e.id) & 3) return;
     const b = e.body;
     near(b.pos.x, b.pos.y + b.height / 2, b.pos.z, b.width + b.height + 1, crammed);
     let n = 0;
@@ -486,7 +518,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
       if (Math.abs(ob.pos.x - b.pos.x) < w && Math.abs(ob.pos.z - b.pos.z) < w && ob.pos.y < b.pos.y + b.height && b.pos.y < ob.pos.y + ob.height) n++;
     }
     crammed.length = 0;
-    if (n > max - 1 && ctx.random() < 0.25) damage(e.id, 6, "cramming");
+    if (n > max - 1) damage(e.id, 6, "cramming");
   }
 
   function walkAnim(e: Entity) {
@@ -534,6 +566,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
       return n;
     },
     tick(ctx) {
+      simCenters(ctx);
       const n = list.length;
       for (let i = 0; i < n && i < list.length; i++) {
         const e = list[i];
@@ -541,7 +574,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
         if (isFrozen(e, ctx)) {
           e.data._frozen = true;
           const def = mobDef(e.type);
-          if (def && despawns(e, def)) e.data._remove = true;
+          // Unloaded mobs keep their place like vanilla's saved chunk entities; only the 128-block rule removes them.
+          if (def && despawns(e, def) && farFromPlayers(ctx, e, despawnRange(spawnCat(def)))) e.data._remove = true;
           continue;
         }
         e.data._frozen = false;

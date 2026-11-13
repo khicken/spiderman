@@ -49,7 +49,8 @@ export function spawnCat(def: MobDef): SpawnCat | null {
 }
 
 export function despawns(e: Entity, def: MobDef) {
-  if (e.data.persistent || e.data.name || e.data.owner || e.data.noDespawn || e.data.fromBucket) return false;
+  // Endermen stay only while they carry a block (vanilla requiresCustomPersistence).
+  if (e.data.persistent || e.data.name || e.data.owner || e.data.noDespawn || e.data.fromBucket || e.data.carried) return false;
   const c = spawnCat(def) ?? (def.category === "hostile" ? "hostile" : null);
   return c !== null && c !== "passive";
 }
@@ -315,7 +316,7 @@ function nearWorldSpawn(s: { x: number; y: number; z: number } | undefined, x: n
   const dx = s.x + 0.5 - (x + 0.5), dy = s.y + 0.5 - y, dz = s.z + 0.5 - (z + 0.5);
   return dx * dx + dy * dy + dz * dz < 24 * 24;
 }
-const despawnRange = (cat: SpawnCat | null) => (cat === "water_ambient" ? 64 : 128);
+export const despawnRange = (cat: SpawnCat | null) => (cat === "water_ambient" ? 64 : 128);
 
 export function createSpawner() {
   const visited = new Set<number>();

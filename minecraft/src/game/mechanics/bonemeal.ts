@@ -28,7 +28,7 @@ function grassBonemeal(ctx: GameCtx, x: number, y: number, z: number) {
     let px = x, py = y + 1, pz = z;
     for (let j = 0; j < i / 16; j++) {
       px += randInt(ctx, 3) - 1;
-      py += Math.floor(((randInt(ctx, 3) - 1) * randInt(ctx, 3)) / 2);
+      py += Math.trunc(((randInt(ctx, 3) - 1) * randInt(ctx, 3)) / 2);
       pz += randInt(ctx, 3) - 1;
       if (!isName(w.getBlock(px, py - 1, pz), "grass_block") || isSolid(w.getBlock(px, py, pz))) continue outer;
     }
@@ -205,11 +205,16 @@ function boneMeal(ctx: GameCtx, x: number, y: number, z: number, s: BlockState):
     return true;
   }
   if (n === "bamboo" || n === "bamboo_sapling") {
+    const isStalk = (b: BlockState) => idOf(b) === idOf(s) || isName(b, "bamboo") || isName(b, "bamboo_sapling");
     let ty = y;
-    while (idOf(w.getBlock(x, ty + 1, z)) === idOf(s) || isName(w.getBlock(x, ty + 1, z), "bamboo")) ty++;
-    if (!isAir(w.getBlock(x, ty + 1, z))) return false;
+    while (isStalk(w.getBlock(x, ty + 1, z))) ty++;
+    let by = y;
+    while (isStalk(w.getBlock(x, by - 1, z))) by--;
+    // Vanilla BambooStalkBlock caps bone meal growth at 16 blocks tall.
+    const height = ty - by + 1;
+    if (height >= 16 || !isAir(w.getBlock(x, ty + 1, z))) return false;
     const bamboo = st("bamboo");
-    const k = between(ctx, 1, 2);
+    const k = Math.min(between(ctx, 1, 2), 16 - height);
     for (let i = 1; i <= k && isAir(w.getBlock(x, ty + i, z)); i++) w.setBlock(x, ty + i, z, bamboo, SET_NOTIFY);
     return true;
   }
