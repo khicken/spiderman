@@ -3,7 +3,8 @@ import type { DamageSource, Dim, Entity, GameCtx, GameEvent, GameMode, ItemStack
 import { knockBody, playerKbResist } from "../entities/combat";
 import { segmentBox } from "../entities/geom";
 import type { PlayerState } from "../player/state";
-import { CREATIVE_ENTITY_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, attackStats, attackStrength, ench, enchantDamageBonus, toolOf } from "../player/stats";
+import { mobDef } from "../entities/registry";
+import { CREATIVE_ENTITY_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, attackStats, attackStrength, ench, enchantDamageBonus, toolOf } from "../player/stats";
 import type { Health } from "./host-health";
 import type { GameInternals, Inventory } from "./index";
 import { INTERP_DELAY_MS } from "./interp";
@@ -39,7 +40,7 @@ export type Ray = (origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number) =
 
 export type Verdict =
   | { ok: false; why: "pvp" | "self" | "dim" | "attacker" | "target" | "reach" | "sight" | "weak" }
-  | { ok: true; s: number; total: number; crit: boolean; sprint: boolean; sweep: number; knock: number };
+  | { ok: true; s: number; total: number; crit: boolean; sprint: boolean; sweep: number; sweepBase: number; knock: number };
 
 // Ticks of attack-cooldown slack for a client whose swing reaches the host a little late.
 const COOLDOWN_SLACK = 3;
@@ -55,6 +56,22 @@ function boxDist2(x: number, y: number, z: number, t: Fighter) {
   const dy = Math.max(t.pos.y - y, 0, y - t.pos.y - height(t));
   const dz = Math.max(t.pos.z - 0.3 - z, 0, z - t.pos.z - 0.3);
   return dx * dx + dy * dy + dz * dz;
+}
+
+// Vanilla sweep: the target's box inflated 1 x 0.25 x 1 touches o's box, and o stands within 3 blocks of the attacker.
+export interface SweepBox {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  h: number;
+}
+export function inSweep(t: SweepBox, o: SweepBox, a: { x: number; y: number; z: number }) {
+  const r = t.w / 2 + 1 + o.w / 2;
+  if (Math.abs(o.x - t.x) >= r || Math.abs(o.z - t.z) >= r) return false;
+  if (o.y >= t.y + t.h + 0.25 || o.y + o.h <= t.y - 0.25) return false;
+  const dx = o.x - a.x, dy = o.y - a.y, dz = o.z - a.z;
+  return dx * dx + dy * dy + dz * dz < 9;
 }
 
 const rayO = new THREE.Vector3();
@@ -100,8 +117,9 @@ export function meleeVerdict(a: Fighter, t: Fighter, o: { pvp: boolean; tick: nu
   if (crit) dmg *= 1.5;
   const sword = toolOf(held)?.kind === "sword";
   const ratio = ench(held, "sweeping_edge");
-  const sweep = charged && !crit && !sprint && (a.f & F.ground) !== 0 && sword ? (1 + dmg * (ratio / (ratio + 1)) + enchantDamageBonus(held, "player")) * s : 0;
-  return { ok: true, s, total: dmg + bonus, crit, sprint, sweep, knock: ench(held, "knockback") + (sprint ? 1 : 0) };
+  const sweepBase = charged && !crit && !sprint && (a.f & F.ground) !== 0 && sword ? 1 + dmg * (ratio / (ratio + 1)) : 0;
+  const sweep = sweepBase > 0 ? (sweepBase + enchantDamageBonus(held, "player")) * s : 0;
+  return { ok: true, s, total: dmg + bonus, crit, sprint, sweep, sweepBase, knock: ench(held, "knockback") + (sprint ? 1 : 0) };
 }
 
 // Lag compensation: attackers aim at where they saw the target, INTERP_DELAY_MS plus a round trip ago.
@@ -170,6 +188,7 @@ export function clientPvpHook(others: () => Iterable<{ id: number; x: number; y:
   return {
     pick: (eye, dir, max) => pickPlayer(eye, dir, max, others()),
     attack: (id, c) => send({ t: "pvp", id, s: c.s, crit: c.crit }),
+    sweep: (box, s) => send({ t: "psweep", x: box.x, y: box.y, z: box.z, w: box.w, h: box.h, s }),
   };
 }
 
@@ -195,6 +214,7 @@ export interface HostPvpDeps {
   tick(): number;
   now?(): number; // ms clock for lag compensation, performance.now() by default
   rtt?(r: PvpRemote): number; // round trip to a remote in ms, -1 when unknown
+  as?(r: PvpRemote, fn: () => void): void; // runs fn with the remote as ctx.player, so mobs it hurts credit it
   others(): Iterable<{ id: number; x: number; y: number; z: number; f?: number }>; // avatars the host player sees
 }
 
@@ -226,8 +246,13 @@ export function createHostPvp(d: HostPvpDeps) {
 
   function remoteFighter(r: PvpRemote): HostFighter {
     const level = (id: string) => {
-      for (const [e, a] of r.hp.effects) if (e === id) return a + 1;
-      return 0;
+      let claimed = 0;
+      for (const [e, a] of r.hp.effects) if (e === id) claimed = a + 1;
+      if (id !== "strength" && id !== "weakness") return claimed;
+      // The client's effect list is only a claim: strength counts up to what the host granted, weakness at least that much.
+      const g = r.hp.granted.get(id);
+      const granted = g && r.hp.now <= g.until ? g.amp + 1 : 0;
+      return id === "strength" ? Math.min(claimed, granted) : Math.max(claimed, granted);
     };
     const gm = r.proxy.gameMode;
     return { id: r.num, name: r.name, dim: r.dim, pos: r.pos, yaw: r.yaw, f: r.f, gameMode: gm, dead: r.hp.dead || (r.f & F.dead) !== 0, held: remoteHeld(r), effect: level, player: r.proxy, remote: r };
@@ -261,8 +286,87 @@ export function createHostPvp(d: HostPvpDeps) {
   function strike(a: HostFighter, t: HostFighter, amount: number, source: DamageSource, from: { x: number; y: number; z: number }): boolean {
     const before = invuln(t);
     t.player.damageFrom = { x: from.x, y: from.y, z: from.z };
-    t.player.damage(amount, source, asEntity(a));
+    reflecting(a, t, () => t.player.damage(amount, source, asEntity(a)));
     return before <= 10 && invuln(t) === 20;
+  }
+
+  // Thorns hurts the attacker through ctx.entities.damage by entity id, which the stand-in attacker does not have; route it to the attacking player.
+  function reflecting(a: HostFighter, t: HostFighter, fn: () => void) {
+    const ents = d.ctxFor(t.dim)?.entities;
+    if (!ents) return fn();
+    const id = asEntity(a).id;
+    const orig = ents.damage;
+    ents.damage = (eid, amount, source, by) => {
+      if (eid !== id) return orig.call(ents, eid, amount, source, by);
+      a.player.damageFrom = { x: t.pos.x, y: t.pos.y, z: t.pos.z };
+      a.player.damage(amount, source, asEntity(t));
+    };
+    try {
+      fn();
+    } finally {
+      ents.damage = orig;
+    }
+  }
+
+  function ignite(t: HostFighter, ticks: number) {
+    if (t.remote) d.send(t.remote, { t: "fire", ticks });
+    else {
+      const p = t.player as unknown as PlayerState;
+      p.fireTicks = Math.max(p.fireTicks ?? 0, ticks);
+    }
+  }
+
+  // Vanilla Arrow.doPostHurtEffects: instant effects act at once, the rest are added.
+  function effectOn(a: HostFighter, t: HostFighter, id: string, amp: number, ticks: number) {
+    if (id === "instant_damage") t.player.damage(6 << amp, "magic", asEntity(a));
+    else if (id === "instant_health") t.player.heal(4 << amp);
+    else (t.player as unknown as { addEffect(id: string, amp: number, ticks: number): void }).addEffect(id, amp, ticks);
+  }
+
+  // Arrow data on the host comes from shot-guard.ts for remote shooters, so it is the shooter's real ammo.
+  function arrowHit(a: HostFighter, t: HostFighter, arrow: Entity) {
+    if (arrow.data.fire) ignite(t, 100);
+    if (arrow.type === "spectral_arrow" || arrow.data.type === "spectral_arrow") effectOn(a, t, "glowing", 0, 200);
+    const fx = Array.isArray(arrow.data.effects)
+      ? (arrow.data.effects as { id: string; amplifier: number; ticks: number }[])
+      : (POTIONS[String(arrow.data.potion ?? "")] ?? []).map(([id, sec, amp]) => ({ id, amplifier: amp, ticks: Math.max(1, Math.round((sec * 20) / 8)) }));
+    for (const f of fx) if (typeof f.id === "string" && f.amplifier >= 0 && f.amplifier <= 255) effectOn(a, t, f.id, f.amplifier, Math.max(1, Math.min(f.ticks | 0, 20 * 60 * 8)));
+  }
+
+  // Mobs and armor stands in a sweep, judged on the host with its own entities. base: sweep damage before enchantment bonus and attack strength.
+  function sweepMobs(a: HostFighter, box: SweepBox, s: number, base: number) {
+    const ctx = d.ctxFor(a.dim);
+    if (!ctx) return;
+    const fx = -Math.sin(a.yaw), fz = -Math.cos(a.yaw);
+    const fire = ench(a.held, "fire_aspect");
+    const run = () => {
+      for (const o of ctx.entities.near?.(box.x, box.y, box.z, 4, []) ?? []) {
+        if (o.dead || !(mobDef(o.type) || o.type === "armor_stand") || o.data.marker) continue;
+        if (!inSweep(box, { x: o.body.pos.x, y: o.body.pos.y, z: o.body.pos.z, w: o.body.width, h: o.body.height }, a.pos)) continue;
+        ctx.entities.knockback(o.id, fx, fz, 0.4);
+        ctx.entities.damage(o.id, (base + enchantDamageBonus(a.held, o.type)) * s, "player", "player");
+        if (fire > 0) o.data._fire = Math.max(Number(o.data._fire ?? 0), fire * 80);
+      }
+    };
+    if (a.remote && d.as) d.as(a.remote, run);
+    else run();
+  }
+
+  // Players in a sweep. skip: the one hit directly.
+  function sweepPlayers(a: HostFighter, box: SweepBox, amount: number, skip?: number) {
+    const fx = -Math.sin(a.yaw), fz = -Math.cos(a.yaw);
+    const fire = ench(a.held, "fire_aspect");
+    for (const o of all()) {
+      if (o.id === a.id || o.id === skip || o.dim !== a.dim || !vulnerable(o)) continue;
+      if (!inSweep(box, { x: o.pos.x, y: o.pos.y, z: o.pos.z, w: 0.6, h: height(o) }, a.pos)) continue;
+      const hp = health(o);
+      const fresh = strike(a, o, amount, "player", a.pos);
+      if (fresh) knock(o, fx, fz, 0.4);
+      if (fresh || health(o) < hp) {
+        hurtSound(o);
+        if (fire > 0) ignite(o, fire * 80);
+      }
+    }
   }
 
   function knock(t: HostFighter, dx: number, dz: number, s: number) {
@@ -316,19 +420,17 @@ export function createHostPvp(d: HostPvpDeps) {
       return "nodamage";
     }
     hurtSound(t);
+    const fire = ench(a.held, "fire_aspect");
+    if (fire > 0) ignite(t, fire * 80);
     const fx = -Math.sin(a.yaw), fz = -Math.cos(a.yaw);
     if (fresh) {
       knock(t, t.pos.x - a.pos.x, t.pos.z - a.pos.z, 0.4);
       if (v.knock > 0) knock(t, fx, fz, v.knock * 0.5);
     }
     if (v.sweep > 0) {
-      for (const o of all()) {
-        if (o.id === a.id || o.id === t.id || o.dim !== a.dim || !vulnerable(o)) continue;
-        const near = Math.abs(o.pos.x - t.pos.x) <= 1.6 && Math.abs(o.pos.z - t.pos.z) <= 1.6 && o.pos.y < t.pos.y + 2.05 && o.pos.y + 1.8 > t.pos.y - 0.25;
-        if (!near || o.pos.distanceToSquared(a.pos) >= 9) continue;
-        if (strike(a, o, v.sweep, "player", a.pos)) knock(o, fx, fz, 0.4);
-        hurtSound(o);
-      }
+      const box = { x: t.pos.x, y: t.pos.y, z: t.pos.z, w: 0.6, h: height(t) };
+      sweepPlayers(a, box, v.sweep, t.id);
+      sweepMobs(a, box, v.s, v.sweepBase);
       sound(a, "entity.player.attack.sweep");
       emit(a.dim, { type: "particles", kind: "sweep", x: a.pos.x + fx, y: a.pos.y + 0.9, z: a.pos.z + fz });
     }
@@ -339,21 +441,43 @@ export function createHostPvp(d: HostPvpDeps) {
     return "hit";
   }
 
+  // The attacker's sword hit a mob: players beside the mob take the sweep. The host rechecks reach, sight, cooldown and the sweep rules.
+  function sweepAround(attackerId: number, box: SweepBox, s: number): string {
+    const a = fighter(attackerId);
+    if (!a) return "missing";
+    if (![box.x, box.y, box.z].every(Number.isFinite) || !(box.w > 0 && box.w <= 4) || !(box.h > 0 && box.h <= 4)) return "box";
+    const tick = d.tick();
+    const last = lastSwing.get(attackerId) ?? -1e9;
+    lastSwing.set(attackerId, tick);
+    const w = d.ctxFor(a.dim)?.world;
+    if (!w) return "dim";
+    const mob: Fighter = { id: -1, name: "", dim: a.dim, pos: new THREE.Vector3(box.x, box.y, box.z), yaw: 0, f: F.ground, gameMode: "survival", dead: false, held: null, effect: () => 0 };
+    const ray = (o: THREE.Vector3, dir: THREE.Vector3, max: number) => w.raycast(o, dir, max, false);
+    const v = meleeVerdict(a, mob, { pvp: pvpOn(g.ctx.rules), tick, last, claim: { s, crit: false }, ray });
+    if (!v.ok) return v.why;
+    if (!(v.sweep > 0)) return "nosweep";
+    sweepPlayers(a, box, v.sweep);
+    return "hit";
+  }
+
   function hook(): PvpHook {
     return {
       pick: (eye, dir, max) => pickPlayer(eye, dir, max, d.others()),
       attack: (id, c) => void melee(0, id, c),
+      sweep: (box, s) => void sweepAround(0, box, s),
       targets(ctx) {
         if (!pvpOn(g.ctx.rules)) return [];
         const shooter = fighterOf(ctx.player);
         if (!shooter) return [];
         return all().filter((o) => o.id !== shooter.id && o.dim === shooter.dim && vulnerable(o)).map((o) => o.player);
       },
-      shot(ctx, target, amount, source, from, push) {
+      shot(ctx, target, amount, source, from, push, arrow) {
         const a = fighterOf(ctx.player), t = fighterOf(target);
         if (!a || !t || a.id === t.id || !pvpOn(g.ctx.rules)) return;
+        const hp = health(t);
         // Projectile damage comes from client-spawned entity data; vanilla tops out near 25 for a Power V crit.
         const fresh = strike(a, t, Math.min(25, Math.max(0, amount)), source, from);
+        if (arrow && (fresh || health(t) < hp)) arrowHit(a, t, arrow);
         if (!fresh) return;
         hurtSound(t);
         if (push) {
@@ -377,5 +501,5 @@ export function createHostPvp(d: HostPvpDeps) {
     history.keep(live);
   }
 
-  return { melee, hook, fighter, record };
+  return { melee, sweepAround, hook, fighter, record };
 }

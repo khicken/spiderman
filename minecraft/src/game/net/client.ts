@@ -382,6 +382,11 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       case "effect":
         g.player.addEffect(m.id, m.amp, m.ticks);
         return;
+      case "fire": {
+        const p = g.player as unknown as { fireTicks: number };
+        p.fireTicks = Math.max(p.fireTicks, m.ticks);
+        return;
+      }
       case "tp":
         g.player.teleport(m.x, m.y, m.z);
         return;

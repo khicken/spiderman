@@ -7,6 +7,7 @@ import { blockIds, blockOn, bodyBox, fallMultiplier, fluidAt } from "./physics";
 import { BYPASS_ARMOR, MAX_AIR, armorReduce, deathMessage, ench, fallDamage, protectionReduce, xpNeeded } from "./stats";
 import type { PlayerState } from "./state";
 import { rainAt } from "../entities/light";
+import { attackSource, facesSource } from "../entities/combat";
 
 const box = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
 
@@ -94,7 +95,7 @@ export function useTotem(p: PlayerState, ctx: GameCtx): boolean {
 
 // Vanilla LivingEntity.isDamageSourceBlocked: the source must be in front of the view; a mob that canDisableShield (axe, warden) disables it for 5 s.
 export const shieldFaces = (p: PlayerApi, x: number, z: number) =>
-  !!(p as { blocking?: boolean }).blocking && -Math.sin(p.yaw) * (x - p.body.pos.x) - Math.cos(p.yaw) * (z - p.body.pos.z) > 0;
+  !!(p as { blocking?: boolean }).blocking && facesSource(p.yaw, p.body.pos.x, p.body.pos.z, x, z);
 
 function blockWithShield(p: PlayerState, ctx: GameCtx, amount: number, from: { x: number; z: number }, melee: Entity | undefined): boolean {
   const dx = from.x - p.body.pos.x, dz = from.z - p.body.pos.z;
@@ -153,7 +154,7 @@ export function damage(p: PlayerState, amount: number, source: DamageSource, att
   }
   amount = difficultyScale(ctx, amount, source, attacker);
   if (amount <= 0) return;
-  const from = p.damageFrom ?? (attacker ? attacker.body.pos : null);
+  const from = attackSource(p.body.pos.x, p.body.pos.z, p.damageFrom, attacker, p.body.width / 2);
   p.damageFrom = null;
   if (p.blocking && from && (source === "mob" || source === "arrow" || source === "explosion" || source === "player" || source === "trident") && blockWithShield(p, ctx, amount, from, source === "mob" || source === "player" ? attacker : undefined)) return;
   let dealt = amount;
