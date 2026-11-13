@@ -65,7 +65,9 @@ export function createSculk(cache: BlockCache) {
     return false;
   }
 
-  function vibrate(ctx: GameCtx, x: number, y: number, z: number, freq: number, player: boolean, force = true) {
+  // Unscanned chunks are left to the per-tick scan budget (the player-centred polls keep nearby chunks warm);
+  // forcing them here scanned up to 9 whole chunks (~900k block reads) on one block change.
+  function vibrate(ctx: GameCtx, x: number, y: number, z: number, freq: number, player: boolean, force = false) {
     if (freq <= 0) return;
     cache.each(Math.floor(x), Math.floor(y), Math.floor(z), 17, Kind.Sensor, (sx, sy, sz, s) => {
       const cal = isCalibrated(s);

@@ -1,7 +1,7 @@
 import type * as THREE from "three";
 import type { Entity, GameCtx } from "../contracts";
-import { MIN_Y, idOf } from "../contracts";
-import { SOLID, IS_FLUID, blockByName, blockDef } from "../blocks/registry";
+import { MIN_Y, idOf, metaOf } from "../contracts";
+import { SOLID, IS_FLUID, BLOCKS, blockByName, blockDef } from "../blocks/registry";
 import { fluidState } from "../blocks/waterlog";
 import { moveBody, blockBelow, blockOn, blockJumpFactor, fallMultiplier, isFree, submergedHeight, type MoveOpts } from "../player/physics";
 import { mobSpeedFactor } from "../systems/brewing/effects";
@@ -27,6 +27,9 @@ let WATER = -1;
 const DANGER = new Uint8Array(4096); // never step into
 const BAD_FLOOR = new Uint8Array(4096); // never stand on
 const NEAR_DANGER = new Uint8Array(4096); // cost to stand next to
+// Path passability per block id: 0 blocked, 1 free, 2 depends on the state (doors, gates, snow layers).
+const PASS = new Uint8Array(4096);
+const WATERY = new Uint8Array(4096);
 
 function initIds() {
   if (idsReady) return;
@@ -46,11 +49,36 @@ function initIds() {
     const i = id(n);
     if (i > 0) NEAR_DANGER[i] = 1;
   }
+  for (const b of BLOCKS) {
+    const i = b.id;
+    WATERY[i] = i === WATER || (IS_FLUID[i] === 1 && i !== LAVA && b.name.includes("water")) ? 1 : 0;
+    if (DANGER[i]) continue;
+    switch (b.shape) {
+      case "fence":
+      case "wall":
+        // 1.5 tall: never walk through or stand on top (vanilla BlockPathTypes.FENCE).
+        BAD_FLOOR[i] = 1;
+        break;
+      case "fence_gate":
+        BAD_FLOOR[i] = 1;
+        PASS[i] = 2;
+        break;
+      case "door":
+      case "snow_layer":
+        PASS[i] = 2;
+        break;
+      case "carpet":
+        PASS[i] = 1;
+        break;
+      default:
+        PASS[i] = SOLID[i] === 0 ? 1 : 0;
+    }
+  }
 }
 
 export function isWater(state: number) {
   initIds();
-  return idOf(state) === WATER || (IS_FLUID[idOf(state)] === 1 && idOf(state) !== LAVA && blockDef(state).name.includes("water"));
+  return WATERY[idOf(state)] === 1;
 }
 
 export function isLava(state: number) {
@@ -99,7 +127,7 @@ export function walkToward(e: Entity, ctx: GameCtx, x: number, z: number, speed:
   e.yaw = rotlerp(e.yaw, yawTo(dx, dz), 30 * DEG);
   e.headYaw = rotlerp(e.headYaw, e.yaw, 30 * DEG);
   let a: number;
-  if (b.inWater || b.inLava) a = 0.98 * speed * 0.02 * 2;
+  if (b.inWater || b.inLava) a = 0.98 * speed * 0.02;
   else if (b.onGround) {
     const slip = slipAt(ctx, e);
     a = 0.98 * speed * speed * (0.216 / (slip * slip * slip));
@@ -149,7 +177,8 @@ export function applyPhysics(e: Entity, ctx: GameCtx) {
     v.x *= 0.8;
     v.z *= 0.8;
     v.y *= 0.8;
-    if (!noGravity) v.y -= 0.02;
+    // Vanilla getFluidFallingAdjustedMovement: gravity / 16 in water.
+    if (!noGravity) v.y -= 0.005;
     if (b.horizontalCollision && !e.data.sinks && isFree(ctx.world, b, v.x, v.y + 0.6, v.z)) v.y = 0.3;
   } else if (b.inLava) {
     v.x *= 0.5;
@@ -239,8 +268,23 @@ let pSwim = true;
 let pAvoidWater = false;
 
 function passable(ctx: GameCtx, x: number, y: number, z: number) {
-  const id = idOf(ctx.world.getBlock(x, y, z));
-  return SOLID[id] === 0 && DANGER[id] === 0;
+  const s = ctx.world.getBlock(x, y, z);
+  const k = PASS[idOf(s)];
+  return k === 2 ? passState(ctx, s, x, y, z) : k === 1;
+}
+
+// Open doors and gates, and snow up to 4 layers (collision at most half a block), can be walked through.
+function passState(ctx: GameCtx, s: number, x: number, y: number, z: number) {
+  const d = blockDef(s);
+  const m = metaOf(s);
+  if (d.shape === "snow_layer") return (m & 7) <= 4;
+  if (d.shape === "fence_gate") return (m & 4) !== 0;
+  if (d.shape === "door") {
+    if (!(m & 8)) return (m & 4) !== 0;
+    const lower = ctx.world.getBlock(x, y - 1, z);
+    return idOf(lower) === idOf(s) && (metaOf(lower) & 4) !== 0;
+  }
+  return false;
 }
 
 function clearAt(ctx: GameCtx, x: number, y: number, z: number) {
@@ -253,8 +297,9 @@ function standKind(ctx: GameCtx, x: number, y: number, z: number) {
   if (!clearAt(ctx, x, y, z)) return 0;
   const feet = ctx.world.getBlock(x, y, z);
   if (isWater(feet)) return pSwim ? 2 : 0;
-  const below = idOf(ctx.world.getBlock(x, y - 1, z));
-  if (SOLID[below] === 1 && BAD_FLOOR[below] === 0) return 1;
+  const bs = ctx.world.getBlock(x, y - 1, z);
+  const below = idOf(bs);
+  if (SOLID[below] === 1 && BAD_FLOOR[below] === 0 && PASS[below] !== 1 && !(PASS[below] === 2 && passState(ctx, bs, x, y - 1, z))) return 1;
   if (pSwim && isWater(ctx.world.getBlock(x, y - 1, z))) return 2;
   return 0;
 }
@@ -529,7 +574,9 @@ export function panic(e: Entity, ctx: GameCtx, modifier = 1.25) {
   if (t <= 0) return false;
   e.data._panic = t - 1;
   const speed = ((e.data._speed as number) || 0.25) * modifier;
-  if (!hasPath(e) || e.data._wander || !e.data._fleeing) {
+  // Re-plan at most every 5 ticks: a penned or swimming animal with no reachable spot would otherwise search every tick.
+  if ((!hasPath(e) || e.data._wander || !e.data._fleeing) && e.age >= ((e.data._fmin as number) || 0)) {
+    e.data._fmin = e.age + 5;
     const spot = randomSpot(ctx, e, 5, 4, e.data._fromX as number | undefined, e.data._fromZ as number | undefined);
     if (spot) {
       const p = findPath(ctx, e.body.pos, spot, 120, { height: e.body.height });

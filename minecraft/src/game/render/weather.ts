@@ -1,6 +1,18 @@
 import * as THREE from "three";
 import type { WorldApi } from "../contracts";
+import { idOf } from "../contracts";
+import { IS_FLUID, SOLID } from "../blocks/registry";
 import { warmEnoughToRain } from "../entities/light";
+
+// Vanilla MOTION_BLOCKING heightmap: rain passes through grass, flowers, torches and other blocks without collision.
+function motionBlockingTop(world: WorldApi, x: number, z: number) {
+  let y = world.topY(x, z);
+  for (let i = 0; i < 8; i++, y--) {
+    const id = idOf(world.getBlock(x, y, z));
+    if (id === 0 || SOLID[id] || IS_FLUID[id]) break;
+  }
+  return y;
+}
 import { rng } from "./sky-art";
 import { artOr } from "./pack-art";
 
@@ -139,10 +151,10 @@ export function createWeather(scene: THREE.Scene, world: WorldApi, splash: (x: n
         if (!world.isLoaded(x, z)) continue;
         const biome = world.getBiome(x, z);
         if (biome.precipitation === "none") continue;
-        const top = world.topY(x, z) + 1;
+        const top = motionBlockingTop(world, x, z) + 1;
         const yb = Math.max(top, by - radius), yt = Math.max(top, by + radius);
         if (yb >= yt) continue;
-        const snow = biome.precipitation === "snow" || !warmEnoughToRain(biome.temperature, top);
+        const snow = biome.precipitation === "snow" || !warmEnoughToRain(biome.temperature, yb);
         cols[n * 4] = x; cols[n * 4 + 1] = z; cols[n * 4 + 2] = yb; cols[n * 4 + 3] = yt - yb;
         const h = Math.imul(x * 3121 + z * 45238971, 0x9e3779b1) >>> 0;
         kinds[n * 2] = snow ? 1 : 0; kinds[n * 2 + 1] = (h % 1000) / 1000;

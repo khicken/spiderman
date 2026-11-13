@@ -102,7 +102,6 @@ function takeBlock(e: Entity, ctx: GameCtx): void {
   if (!canHold(s) || !canSeeBlock(ctx, e, x, y, z)) return;
   ctx.world.setBlock(x, y, z, AIR);
   e.data.carried = s;
-  e.data.persistent = true;
 }
 
 function canSeeBlock(ctx: GameCtx, e: Entity, x: number, y: number, z: number): boolean {
@@ -138,7 +137,8 @@ function tick(e: Entity, ctx: GameCtx): void {
     const by = attackerOf(e);
     if (by === "player" && playerTargetable(ctx)) anger(e, ctx);
     else if (typeof by === "number") e.data._target = by;
-    if (ctx.random() < 0.9) teleportRandom(e, ctx, 64);
+    // Vanilla EnderMan.hurt teleports away only from damage with no living attacker (fire, cactus, TNT).
+    if (!e.data._hitLiving && ctx.random() < 0.9) teleportRandom(e, ctx, 64);
   }
   if (wetAt(ctx, e)) {
     ctx.entities.damage(e.id, 1, "drown");

@@ -6,6 +6,7 @@ import { findNear } from "../worldgen/structure-grid";
 import { advTrigger } from "../systems/advancements/bus";
 import { advLightning, markProjectile } from "../systems/advancements/hooks";
 import { projectileBreaks } from "./projectiles";
+import { pvpHook } from "../net/pvp-hook";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -77,6 +78,16 @@ export function tickTrident(e: Entity, ctx: GameCtx): void {
           return;
         }
       }
+      if (e.data.owner === "player")
+        for (const o of pvpHook(ctx)?.targets?.(ctx) ?? []) {
+          const t = segmentBody(origin.x, origin.y, origin.z, b.vel.x, b.vel.y, b.vel.z, o.body, 0.3);
+          if (t < 0 || t >= limit) continue;
+          b.pos.addScaledVector(b.vel, t);
+          pvpHook(ctx)?.shot?.(ctx, o, Number(e.data.damage ?? 8), "trident", { x: b.pos.x - b.vel.x, y: b.pos.y, z: b.pos.z - b.vel.z });
+          ctx.emit({ type: "sound", name: "item.trident.hit", x: o.body.pos.x, y: o.body.pos.y, z: o.body.pos.z, volume: 1, pitch: 1 });
+          bounce(e, ctx);
+          return;
+        }
     }
     if (target) {
       b.pos.addScaledVector(b.vel, limit);

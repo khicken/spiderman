@@ -84,7 +84,7 @@ export interface EntSpawn {
 
 // Client to host.
 export type ClientMsg =
-  | { t: "hello"; v: number; name: string; rd: number }
+  | { t: "hello"; v: number; name: string; rd: number; tok?: string }
   | { t: "move"; x: number; y: number; z: number; yaw: number; pitch: number; f: number; sw: number; dim: Dim }
   | { t: "equip"; eq: Equip }
   | { t: "center"; dim: Dim; cx: number; cz: number; r: number }
@@ -99,6 +99,7 @@ export type ClientMsg =
   | { t: "dropxp"; n: number; x: number; y: number; z: number }
   | { t: "hit"; id: number; amount: number; source: DamageSource }
   | { t: "kb"; id: number; dx: number; dz: number; s: number }
+  | { t: "pvp"; id: number; s: number; crit: boolean } // melee swing at another player
   | { t: "interact"; id: number; inv: unknown; seq?: number }
   | { t: "explode"; x: number; y: number; z: number; power: number; fire: boolean }
   | { t: "open"; kind: ContainerKind; at: { x: number; y: number; z: number; entityId?: number }; inv: unknown; seq?: number }
@@ -125,7 +126,7 @@ export type HostMsg =
   | { t: "nochunk"; dim: Dim; cx: number; cz: number }
   | { t: "blocks"; dim: Dim; list: number[]; be?: { x: number; y: number; z: number; be: BlockEntityData | null }[] }
   | { t: "ents"; spawn?: EntSpawn[]; gone?: number[]; data?: [number, Record<string, unknown>][]; clear?: boolean }
-  | { t: "players"; list: PlayerSnap[] }
+  | { t: "players"; list: PlayerSnap[]; at?: number } // at: host clock in ms, for interpolation
   | { t: "skins"; list: { id: number; look: Look }[] }
   | { t: "list"; list: PlayerListEntry[] }
   | { t: "chat"; text: string; color?: string }

@@ -31,6 +31,7 @@ import { setPortalSpin } from "./player/effects-fx";
 import { vehicleInventoryKey } from "./entities/riding";
 import { forgiveDeadPlayer } from "./entities/combat";
 import { entityScreenValid } from "./player/riding";
+import { startPulse } from "./net/pulse";
 
 export type GamePhase = "loading" | "playing";
 
@@ -47,6 +48,9 @@ export interface GameUi {
   toast?(t: Toast): void;
   credits?(): void;
   lockHint?(show: boolean): void; // gameplay wants pointer lock but the browser refused it
+  // The GPU context came back after a loss (phone backgrounding, driver reset). The world is saved;
+  // the page restarts the game on it. Without a handler the page reloads.
+  contextRestored?(): void;
 }
 
 export interface GameOptions {
@@ -538,9 +542,65 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
   let lastView = -1;
   let dark = false;
 
+  // A lost WebGL context leaves every GPU resource dead. Stop ticking and drawing, save, and let the
+  // page restart the game on a fresh renderer once the browser restores the context.
+  let contextLost = false;
+  let lostSave: Promise<void> = Promise.resolve();
+  const onContextLost = (e: Event) => {
+    e.preventDefault();
+    if (contextLost) return;
+    contextLost = true;
+    lostSave = save();
+  };
+  const onContextRestored = () => {
+    if (!contextLost || disposed) return;
+    void lostSave.then(() => {
+      if (disposed) return;
+      if (ui.contextRestored) ui.contextRestored();
+      else location.reload();
+    });
+  };
+  canvas.addEventListener("webglcontextlost", onContextLost);
+  canvas.addEventListener("webglcontextrestored", onContextRestored);
+
+  // True when a dimension change ended the step.
+  function runTicks(dt: number): boolean {
+    acc += dt;
+    let n = 0;
+    while (acc >= TICK && n < MAX_TICKS) {
+      tick();
+      acc -= TICK;
+      n++;
+      if (queued.length) break;
+    }
+    if (acc > TICK) acc = TICK;
+    prof.ticks = ema(prof.ticks, n);
+    if (!queued.length) return false;
+    const e = queued.shift()!;
+    queued.length = 0;
+    changeDim(e as Extract<GameEvent, { type: "change_dim" }>);
+    return true;
+  }
+
+  // A hidden tab gets no animation frames, so in multiplayer the world would stop and peers would time out.
+  // A worker clock keeps ticking (and, on the host, serving chunks) while the tab is hidden.
+  function hiddenStep(now: number) {
+    if (contextLost || !net || typeof document === "undefined" || !document.hidden || phase !== "playing") return;
+    const dt = Math.min(0.25, Math.max(0, (now - last) / 1000));
+    last = now;
+    try {
+      if (runTicks(dt)) return;
+      world.update(chunkCenter.x, chunkCenter.z, settings.renderDistance);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  const pulse = startPulse(() => hiddenStep(performance.now()));
+
   let drawnAt = 0;
   function frame(now: number) {
     raf = requestAnimationFrame(frame);
+    if (contextLost) return;
     const cap = settings.maxFps ?? 260;
     if (cap < 260 && now - drawnAt < 1000 / cap - 2) return;
     drawnAt = now;
@@ -571,24 +631,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
         return;
       }
       const p0 = performance.now();
-      if (!paused || net) {
-        acc += dt;
-        let n = 0;
-        while (acc >= TICK && n < MAX_TICKS) {
-          tick();
-          acc -= TICK;
-          n++;
-          if (queued.length) break;
-        }
-        if (acc > TICK) acc = TICK;
-        prof.ticks = ema(prof.ticks, n);
-        if (queued.length) {
-          const e = queued.shift()!;
-          queued.length = 0;
-          changeDim(e as Extract<GameEvent, { type: "change_dim" }>);
-          return;
-        }
-      }
+      if ((!paused || net) && runTicks(dt)) return;
       const pt = paused && !net ? 1 : acc / TICK;
       touch?.update(input.enabled);
       const p1 = performance.now();
@@ -939,6 +982,9 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
       net?.dispose();
       net = null;
       cancelAnimationFrame(raf);
+      pulse.stop();
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       window.removeEventListener("resize", onResize);
       offAction();
       player.dispose();

@@ -87,7 +87,8 @@ export function createTouchControls(input: InputApi, guiScale: () => number) {
       const now = performance.now();
       if (now - lastJump < DOUBLE_TAP_MS) { input.trigger("toggle_fly"); lastJump = 0; } else lastJump = now;
     } else if (b === "sneak") {
-      sneakOn = !sneakOn;
+      // Toggle from the live input state: a window blur clears input.sneak behind the button's back.
+      sneakOn = !input.sneak;
       input.sneak = sneakOn;
     } else if (b === "attack") { input.left = true; input.leftClicks++; }
     else if (b === "use") { input.right = true; input.rightClicks++; }
@@ -103,11 +104,11 @@ export function createTouchControls(input: InputApi, guiScale: () => number) {
     else if (b === "use") input.right = false;
   }
 
-  function endLook() {
+  function endLook(cancelled: boolean) {
     if (holdTimer) clearTimeout(holdTimer);
     holdTimer = null;
     if (holding) input.left = false;
-    else if (!lookMoved && performance.now() - lookT < HOLD_MS) input.rightClicks++;
+    else if (!cancelled && !lookMoved && performance.now() - lookT < HOLD_MS) input.rightClicks++;
     holding = false;
     lookId = -1;
   }
@@ -117,9 +118,12 @@ export function createTouchControls(input: InputApi, guiScale: () => number) {
     for (const t of Array.from(e.changedTouches)) {
       const ctl = (t.target as HTMLElement).closest?.("[data-ctl]") as HTMLElement | null;
       const id = ctl?.dataset.ctl;
-      if (id === "joy" && joyId < 0) {
-        joyId = t.identifier;
-        setJoy(t.clientX, t.clientY);
+      if (id === "joy") {
+        // A second finger on the stick is ignored rather than turned into a camera drag.
+        if (joyId < 0) {
+          joyId = t.identifier;
+          setJoy(t.clientX, t.clientY);
+        }
       } else if (id && id !== "joy") {
         pressed.set(t.identifier, id as Btn);
         press(id as Btn);
@@ -159,7 +163,7 @@ export function createTouchControls(input: InputApi, guiScale: () => number) {
         knob.style.transform = "";
         input.forward = input.strafe = 0;
         input.sprint = false;
-      } else if (t.identifier === lookId) endLook();
+      } else if (t.identifier === lookId) endLook(e.type === "touchcancel");
       const b = pressed.get(t.identifier);
       if (b) { pressed.delete(t.identifier); release(b); }
     }

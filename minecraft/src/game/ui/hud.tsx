@@ -238,7 +238,7 @@ function Effects({ state, width }: { state: HudState; width: number }) {
         .map((e) => {
           const info = EFFECTS[e.id];
           if (info?.instant) return null;
-          const harmful = info?.kind === "bad";
+          const harmful = info?.kind !== "good";
           const n = harmful ? ++bad : ++good;
           const x = width - 25 * n;
           const y = harmful ? 27 : 1;

@@ -87,6 +87,12 @@ function rollInto(t: Table, r: JavaRandom, out: ItemStack[], depth: number) {
       if (item === "empty" || !itemDef(item)) continue;
       const st: ItemStack = { item, count: min + r.nextInt(max - min + 1) };
       if (fn) applyFn(st, fn, r);
+      // Vanilla LootTable.createStackSplitter: never hand out a stack above the item's max size.
+      const m = maxStack(item);
+      while (st.count > m) {
+        out.push({ ...st, count: m });
+        st.count -= m;
+      }
       out.push(st);
     }
   }

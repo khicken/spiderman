@@ -6,6 +6,7 @@ import { Text, useGui } from "./gui";
 import { Button, Screen } from "./widgets";
 import { buttonUrl, gridUrl, pixelUrl } from "./sprites";
 import { paintBlockTexture } from "../textures";
+import { promptInstall, useCanInstall } from "../../pwa/install";
 
 const LETTERS: Record<string, string[]> = {
   M: ["#...#", "##.##", "#.#.#", "#...#", "#...#"],
@@ -123,6 +124,7 @@ export function TitleScreen({ onSingleplayer, onOptions, account, onMultiplayer,
   const { width, height } = useGui();
   const [text] = useState(() => splash ?? SPLASHES[Math.floor(Math.random() * SPLASHES.length)]);
   const splashRef = useRef<HTMLDivElement>(null);
+  const canInstall = useCanInstall();
   const [img, setImg] = useState<{ url: string; w: number; h: number } | null>(null);
   useEffect(() => setImg(minecraftLogo()), []);
   useEffect(() => {
@@ -154,7 +156,11 @@ export function TitleScreen({ onSingleplayer, onOptions, account, onMultiplayer,
       <Button x={bx} y={by + 48} label="Minecraft Realms" disabled />
       <IconButton x={bx - 24} y={by + 84} icon="language" />
       <Button x={bx} y={by + 84} width={98} label="Options..." onClick={onOptions} />
-      <Button x={bx + 102} y={by + 84} width={98} label="Quit Game" disabled />
+      {canInstall ? (
+        <Button x={bx + 102} y={by + 84} width={98} label="Install Game" onClick={() => void promptInstall()} />
+      ) : (
+        <Button x={bx + 102} y={by + 84} width={98} label="Quit Game" disabled />
+      )}
       <IconButton x={bx + 204} y={by + 84} icon="accessibility" />
       {account && <Button x={width - 104} y={4} width={100} label={account.label} onClick={account.onClick} />}
       <Text text={version} x={2} y={height - 10} />

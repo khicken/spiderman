@@ -72,7 +72,8 @@ export function moveInto(menu: Menu, s: ItemStack, from: number, to: number, rev
 export function shiftTo(menu: Menu, i: number, ranges: [number, number, boolean?][]): boolean {
   const slot = menu.slots[i];
   const orig = slot.get();
-  if (!orig) return false;
+  // Vanilla QUICK_MOVE also respects mayPickup (Curse of Binding armor stays put).
+  if (!orig || !mayPickup(slot)) return false;
   let s: ItemStack | null = orig;
   for (const [a, b, rev] of ranges) {
     s = moveInto(menu, s, a, b, rev);

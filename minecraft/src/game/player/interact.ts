@@ -14,6 +14,7 @@ import { addExhaustion, damageSlot } from "./survival";
 import type { PlayerState } from "./state";
 import { useItem } from "./use";
 import { statMined } from "../systems/features/stats";
+import { pvpHook } from "../net/pvp-hook";
 
 const outline: Aabb[] = [];
 const pool: Aabb[] = [];
@@ -57,6 +58,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
   let destroyDelay = 0;
   let rightDelay = 0;
   let lastTarget: RaycastHit | null = null;
+  let targetPlayer: number | null = null; // another player in multiplayer, picked like an entity
 
   const reach = () => BLOCK_REACH + (p.gameMode === "creative" ? CREATIVE_REACH_BONUS : 0);
   const entityReach = () => ENTITY_REACH + (p.gameMode === "creative" ? CREATIVE_ENTITY_BONUS : 0);
@@ -82,6 +84,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
   }
 
   function updateTarget(ctx: GameCtx) {
+    targetPlayer = null;
     if (p.dead) {
       p.target = null;
       p.targetEntity = null;
@@ -95,6 +98,13 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     const kind = pickKind(hit ? hit.dist : null, ent ? ent.dist : null, entityReach());
     p.targetEntity = kind === "entity" ? ent : null;
     p.target = kind === "block" ? hit : null;
+    const near = Math.min(entityReach(), hit ? hit.dist : Infinity, ent ? ent.dist : Infinity);
+    const other = p.gameMode === "spectator" ? null : pvpHook(ctx)?.pick(eyeV, dirV, near);
+    if (other && other.dist < near + 1e-6) {
+      targetPlayer = other.id;
+      p.targetEntity = null;
+      p.target = null;
+    }
     setOutline(ctx, p.target);
   }
 
@@ -293,9 +303,31 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     if (kind || held?.item === "trident" || held?.item === "mace") damageSlot(ctx, ctx.inventory.selected, kind && kind !== "sword" ? 2 : 1);
   }
 
+  // Another player: the host judges the hit; this side only reports the swing and pays its costs.
+  function attackPlayer(ctx: GameCtx, id: number) {
+    const hook = pvpHook(ctx);
+    if (!hook) return;
+    const held = ctx.inventory.held();
+    const s = attackStrength(p.attackTicker, attackStats(held).speed);
+    p.attackTicker = 0;
+    const b = p.body;
+    const charged = s > 0.9;
+    const crit = charged && b.fallDistance > 0 && !b.onGround && !b.onClimbable && !b.inWater && !p.hasEffect("blindness") && p.vehicle == null && !p.sprinting;
+    hook.attack(id, { s, crit });
+    if (charged && (p.sprinting || ench(held, "knockback") > 0)) {
+      b.vel.x *= 0.6;
+      b.vel.z *= 0.6;
+      p.sprinting = false;
+    }
+    addExhaustion(p, 0.1);
+    const kind = toolOf(held)?.kind;
+    if (kind || held?.item === "trident" || held?.item === "mace") damageSlot(ctx, ctx.inventory.selected, kind && kind !== "sword" ? 2 : 1);
+  }
+
   function leftClick(ctx: GameCtx) {
     p.swing();
-    if (p.targetEntity) attackEntity(ctx, p.targetEntity.id);
+    if (targetPlayer !== null) attackPlayer(ctx, targetPlayer);
+    else if (p.targetEntity) attackEntity(ctx, p.targetEntity.id);
     else if (p.target) startDestroy(ctx, p.target);
     else if (p.gameMode !== "spectator") p.attackTicker = 0;
   }

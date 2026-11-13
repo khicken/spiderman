@@ -69,9 +69,11 @@ export function createScreenFx(items: ItemMeshes): ScreenFx {
   const center = new THREE.Mesh(plane, scopeMat);
   const left = new THREE.Mesh(plane, side);
   const right = new THREE.Mesh(plane, side);
-  scope.add(center, left, right);
+  const top = new THREE.Mesh(plane, side);
+  const bottom = new THREE.Mesh(plane, side);
+  scope.add(center, left, right, top, bottom);
   scope.renderOrder = 100;
-  for (const m of [center, left, right]) m.renderOrder = 100;
+  for (const m of [center, left, right, top, bottom]) m.renderOrder = 100;
   root.add(scope);
   const totem = new THREE.Group();
   root.add(totem);
@@ -122,13 +124,19 @@ export function createScreenFx(items: ItemMeshes): ScreenFx {
       }
       scope.visible = spyglass;
       if (spyglass) {
-        center.scale.set(h, h, 1);
+        // Vanilla sizes the scope square to the shorter side and fills all four sides around it.
+        const c = Math.min(w, h);
+        center.scale.set(c, c, 1);
         center.position.set(0, 0, -DIST);
-        const sw = (w - h) / 2 + 0.001;
+        const sw = (w - c) / 2 + 0.001, sh = (h - c) / 2 + 0.001;
         left.scale.set(sw, h, 1);
         right.scale.set(sw, h, 1);
-        left.position.set(-(h / 2 + sw / 2), 0, -DIST);
-        right.position.set(h / 2 + sw / 2, 0, -DIST);
+        left.position.set(-(c / 2 + sw / 2), 0, -DIST);
+        right.position.set(c / 2 + sw / 2, 0, -DIST);
+        top.scale.set(c, sh, 1);
+        bottom.scale.set(c, sh, 1);
+        top.position.set(0, c / 2 + sh / 2, -DIST);
+        bottom.position.set(0, -(c / 2 + sh / 2), -DIST);
       }
       totem.visible = totemTicks > 0;
       if (totemTicks > 0) {

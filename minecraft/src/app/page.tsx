@@ -204,6 +204,13 @@ export default function Page() {
             setTimeout(() => setToasts((l) => l.filter((x) => x.id !== id)), TOAST_MS);
           },
           lockHint: setLockHint,
+          contextRestored: () => {
+            // A multiplayer client's world lives on the host, so it rejoins from the server list.
+            if (clientRef.current) return void quitRef.current();
+            void loadMeta(meta.id).then((m) => {
+              if (!cancelled) playRef.current(m ?? { ...meta });
+            });
+          },
           credits: () => {
             game?.setPaused(true);
             audioRef.current?.setMusic("credits");
@@ -289,6 +296,12 @@ export default function Page() {
     refreshWorlds();
     audioRef.current?.setMusic("menu");
   }, [refreshWorlds]);
+
+  // The game effect outlives renders, so its context-restore handler reads these through refs.
+  const playRef = useRef(play);
+  playRef.current = play;
+  const quitRef = useRef(quit);
+  quitRef.current = quit;
 
   const openMultiplayer = useCallback(() => {
     audio();

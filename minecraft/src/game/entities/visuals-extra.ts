@@ -127,6 +127,13 @@ function tridentGeometry(): THREE.BufferGeometry {
   return tridentGeo;
 }
 
+function lerpRad(a: number, b: number, t: number) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  else if (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
 function tridentView(ctx: GameCtx): ExtraView {
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
   const mesh = new THREE.Mesh(tridentGeometry(), mat);
@@ -136,10 +143,10 @@ function tridentView(ctx: GameCtx): ExtraView {
   return {
     root,
     owned: [mat],
-    update(e, _pt, x, y, z) {
+    update(e, pt, x, y, z) {
       root.position.set(x, y, z);
-      root.rotation.y = e.yaw;
-      root.rotation.x = e.pitch;
+      root.rotation.y = lerpRad((e.data._pyaw as number) ?? e.yaw, e.yaw, pt);
+      root.rotation.x = lerpRad((e.data._ppitch as number) ?? e.pitch, e.pitch, pt);
       const glint = e.data.item && (e.data.item as { ench?: Record<string, number> }).ench ? 0.15 * Math.sin(e.age * 0.3) + 0.15 : 0;
       mat.color.setRGB(1, 1, 1).multiplyScalar(brightnessAt(ctx, x, y, z)).add(glintCol.setRGB(glint * 0.6, glint * 0.2, glint));
     },

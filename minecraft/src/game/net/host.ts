@@ -12,7 +12,7 @@ import { itemDef } from "../items/registry";
 import { makeBody } from "../player/physics";
 import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, STEW_EFFECTS } from "../player/stats";
 import { IMPLICIT_WATER } from "../blocks/waterlog";
-import { isPartner, moveOk, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
+import { isPartner, moveOk, staleSessions, validToken, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
 import { mobDef } from "../entities/registry";
 import { createGuard, type Guard, type RateKind } from "./host-guard";
 import { boxDistSq } from "../entities/geom";
@@ -32,6 +32,9 @@ import { setAdvancementSink } from "../systems/advancements";
 import { claimEffects, eatCredit, exhaust, foodDelta, grantEffect, healBy, hostDamage, newHealth, resetHealth, tickHealth, type Health, type HealthOwner } from "./host-health";
 import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
 import type { Counts } from "./inv-guard";
+import { createHostPvp } from "./pvp";
+import { setPvpHook } from "./pvp-hook";
+import { SHOT_TYPES, checkShot, newShotState, type ShotState } from "./shot-guard";
 
 export interface LanOptions {
   gameMode: GameMode;
@@ -61,6 +64,7 @@ interface Remote {
   record: PlayerRecord;
   viewJson: string;
   lastMove: number;
+  token: string | null;
   moveTick: number;
   joinedAt: number;
   arrive: Arrival | null;
@@ -68,6 +72,7 @@ interface Remote {
   hp: Health;
   owner: HealthOwner;
   guard: Guard;
+  shot: ShotState;
 }
 
 type Meta = WorldMeta & { players?: Record<string, PlayerRecord> };
@@ -75,6 +80,9 @@ type Meta = WorldMeta & { players?: Record<string, PlayerRecord> };
 const SOUND_RANGE = 48;
 const TICKED = new Set(["furnace", "lit_furnace", "blast_furnace", "lit_blast_furnace", "smoker", "lit_smoker", "brewing_stand", "hopper"]);
 const CHUNKS_PER_TICK = 6;
+// Chunks wait while this much is still queued to a peer, so block changes and other reliable messages
+// never sit behind seconds of terrain data.
+const CHUNK_BACKLOG = 48 * 1024;
 const MAX_RD = 8;
 const key = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
 const clampRd = (r: number) => Math.max(2, Math.min(MAX_RD, r | 0));
@@ -138,6 +146,8 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   const worldOf = (d: Dim): World | null => (d === g.dim ? g.world : dims.get(d)?.world ?? null);
   const entsOf = (d: Dim): EntityApi | null => (d === g.dim ? g.entities : dims.get(d)?.entities ?? null);
   const ctxFor = (d: Dim): GameCtx | null => (d === g.dim ? g.ctx : dims.get(d)?.sub ?? null);
+  const pvp = createHostPvp({ g, hostName, remotes: () => remotes.values(), ctxFor, send: (r, m) => send(r as Remote, m), tick: () => tick, rtt: (r) => t.rtt((r as Remote).peer), others: () => avatars.list() });
+  const pvpHook = pvp.hook();
 
   const dimOpts = {
     base: g.ctx,
@@ -431,11 +441,17 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       t.send(peer, { t: "full", reason: "Outdated client!" } satisfies HostMsg);
       return;
     }
+    const base = cleanName(String(m.name)) || "Player";
+    // The old session of a player who reconnects is still here until the transport notices it went silent.
+    // Drop it now, so the player gets their own name, position and inventory back instead of a "_2" copy.
+    for (const p of staleSessions(remotes, base, performance.now(), (id) => t.heardAt(id), m.tok)) {
+      send(remotes.get(p)!, { t: "bye", reason: "You logged in from another location" });
+      leave(p, true);
+    }
     if (remotes.size >= MAX_PLAYERS - 1) {
       t.send(peer, { t: "full", reason: "The server is full!" } satisfies HostMsg);
       return;
     }
-    const base = cleanName(String(m.name)) || "Player";
     let name = base;
     const taken = (n: string) => n.toLowerCase() === hostName.toLowerCase() || [...remotes.values()].some((r) => r.name.toLowerCase() === n.toLowerCase());
     for (let i = 2; taken(name); i++) name = `${base.slice(0, 13)}_${i}`;
@@ -448,8 +464,8 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     const r: Remote = {
       peer, num: nextNum++, name, skin: 0, look: null, dim: record.dim, pos, speed: 0, pair: null, yaw: 0, pitch: 0, f: 0, sw: 0,
       eq: { held: null, off: null, armor: [null, null, null, null] }, center: null, reqs: new Map(), tracker: createTracker(),
-      inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), moveTick: tick, joinedAt: performance.now(), arrive: null, respawnTick: -1e9,
-      hp: newHealth(), owner: null!, guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
+      inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), token: validToken(m.tok) ? m.tok : null, moveTick: tick, joinedAt: performance.now(), arrive: null, respawnTick: -1e9,
+      hp: newHealth(), owner: null!, shot: newShotState(), guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
     };
     r.owner = {
       get hp() {
@@ -689,6 +705,13 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (!e || !nearPos(r, m, 16) || typeof m.type !== "string" || limited(r, "spawn")) return;
         const def = mobDef(m.type);
         if (def && def.category !== "misc" && !exempt(r) && (!SURVIVAL_MOBS.has(m.type) || limited(r, "mob"))) return r.guard.strike(performance.now(), 5);
+        if (SHOT_TYPES.has(m.type)) {
+          const shooter = { pos: r.pos, f: r.f, speed: r.speed, eq: r.eq, invs: [r.record.inventory, r.inv.save()], creative: exempt(r), shot: r.shot };
+          const v = checkShot(shooter, m, performance.now());
+          if (!v.ok) return r.guard.strike(performance.now(), v.why === "rate" ? 1 : 5);
+          withPlayer(r, () => e.spawn(m.type, m.x, m.y, m.z, { ...v.data, vel: v.vel, yaw: num(m.yaw) ?? 0, pitch: num(m.pitch) ?? 0, _net: r.num }));
+          return;
+        }
         withPlayer(r, () => e.spawn(String(m.type), m.x, m.y, m.z, { ...(m.data ?? {}), vel: m.vel, yaw: m.yaw, pitch: m.pitch, _net: r.num }));
         return;
       }
@@ -710,6 +733,10 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         withPlayer(r, () => entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), m.source, "player"));
         return;
       }
+      case "pvp":
+        if (limited(r, "pvp") || int(m.id, 0, 1e6) === null) return;
+        pvp.melee(r.num, m.id, { s: num(m.s, 0, 1) ?? 0, crit: m.crit === true });
+        return;
       case "kb":
         entsOf(r.dim)?.knockback(m.id, +m.dx || 0, +m.dz || 0, Math.min(5, +m.s || 0));
         return;
@@ -940,6 +967,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         send(r, { t: "nochunk", dim: r.dim, cx, cz });
         continue;
       }
+      if (t.backlog(r.peer) > CHUNK_BACKLOG) break;
       const data = w.readyChunk(cx, cz);
       if (!data) continue;
       r.reqs.delete(k);
@@ -956,7 +984,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
 
   function hostFlags(): number {
     const p = g.player as PlayerApi & { pose?: string; swimming?: boolean };
-    return (p.pose === "crouching" ? F.sneak : 0) | (p.sprinting ? F.sprint : 0) | (p.body.onGround ? F.ground : 0) | (p.sleeping ? F.sleep : 0) | (p.dead ? F.dead : 0) | (p.flying ? F.fly : 0) | (p.pose === "swimming" ? F.swim : 0);
+    return (p.pose === "crouching" ? F.sneak : 0) | (p.sprinting ? F.sprint : 0) | (p.body.onGround ? F.ground : 0) | (p.sleeping ? F.sleep : 0) | (p.dead ? F.dead : 0) | (p.flying ? F.fly : 0) | (p.pose === "swimming" ? F.swim : 0) | ((p as unknown as { hurtTime: number }).hurtTime > 0 ? F.hurt : 0);
   }
 
   function snapshot(): PlayerSnap[] {
@@ -965,7 +993,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     if (anim > 0 && (prevAnim === 0 || anim < prevAnim)) hostSw++;
     prevAnim = anim;
     const list: PlayerSnap[] = [{ id: 0, name: hostName, dim: g.dim, x: p.body.pos.x, y: p.body.pos.y, z: p.body.pos.z, yaw: p.yaw, pitch: p.pitch, f: hostFlags(), sw: hostSw, eq: hostEquip(), skin: hostLook.slim ? 1 : 0 }];
-    for (const r of remotes.values()) list.push({ id: r.num, name: r.name, dim: r.dim, x: r.pos.x, y: r.pos.y, z: r.pos.z, yaw: r.yaw, pitch: r.pitch, f: r.f, sw: r.sw, eq: r.eq, skin: r.skin });
+    for (const r of remotes.values()) list.push({ id: r.num, name: r.name, dim: r.dim, x: r.pos.x, y: r.pos.y, z: r.pos.z, yaw: r.yaw, pitch: r.pitch, f: (r.f & ~F.hurt) | (r.hp.invulnerable > 10 ? F.hurt : 0), sw: r.sw, eq: r.eq, skin: r.skin });
     return list;
   }
 
@@ -987,8 +1015,10 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         give(r, stack);
         e.dead = true;
         e.data._fly = 3;
-        all({ t: "sound", name: "entity.item.pickup", x: r.pos.x, y: r.pos.y, z: r.pos.z, volume: 0.2, pitch: 1.4 + Math.random() * 0.6 });
-        g.ctx.audio.play("entity.item.pickup", r.pos.x, r.pos.y, r.pos.z, 0.2, 1.6);
+        // The picker hears its own pickup from the "give" handler; others only in the same dimension.
+        const pick: HostMsg = { t: "sound", name: "entity.item.pickup", x: r.pos.x, y: r.pos.y, z: r.pos.z, volume: 0.2, pitch: 1.4 + Math.random() * 0.6 };
+        for (const o of remotes.values()) if (o !== r && o.dim === r.dim) send(o, pick);
+        if (r.dim === g.dim) g.ctx.audio.play("entity.item.pickup", r.pos.x, r.pos.y, r.pos.z, 0.2, 1.6);
       } else if (e.type === "xp_orb") {
         const now = g.ctx.time.tick;
         const last = xpAt.get(r);
@@ -1055,10 +1085,12 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     tick() {
       if (disposed) return;
       tick++;
+      pvp.record();
       if (tick === 300 && t.relayDown) g.chat("§eNo relay server reachable. Some players may not join.");
       const ctx = g.ctx as GameCtx & { playerFor?: PlayerPicker };
       ctx.playerFor = picker(g.dim);
       (ctx as GameCtx & { playersAll?: () => PlayerApi[] }).playersAll = () => everyone(g.dim);
+      setPvpHook(ctx, pvpHook);
       const mainKeep: KeepCenter[] = [];
       for (const r of remotes.values()) if (r.dim === g.dim && r.center) mainKeep.push(r.center);
       g.world.keep(mainKeep);
@@ -1078,6 +1110,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         st.sub.inventory = focus.inv;
         st.sub.playerFor = picker(d);
         (st.sub as GameCtx & { playersAll?: () => PlayerApi[] }).playersAll = () => everyone(d);
+        setPvpHook(st.sub, pvpHook);
         try {
           ticking = st.sub;
           tickDim(st, focus.center!, inDim.slice(1).map((r) => r.center!));
@@ -1092,6 +1125,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       const players = snapshot();
       avatars.set(players, 0, g.dim);
       const tm = g.ctx.time;
+      const playersMsg: HostMsg = { t: "players", list: players, at: performance.now() };
       for (const r of remotes.values()) {
         const hc = ctxFor(r.dim);
         if (hc) tickHealth(r.owner, hc, hc.rules, tick);
@@ -1106,7 +1140,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
           r.tracker.sync(ents, r.pos.x, r.pos.y, r.pos.z, tick, (m) => send(r, m), (b) => t.sendBin(r.peer, b, false));
           pickups(r, ents);
         }
-        send(r, { t: "players", list: players });
+        t.sendFast(r.peer, playersMsg);
         if (tick % 20 === 0) send(r, { t: "time", tick: tm.tick, dayTime: tm.dayTime, day: tm.day, rain: tm.rain, thunder: tm.thunder });
         if (tick % 5 === 0 && r.inv.view()) {
           const v = JSON.stringify(r.inv.view());
@@ -1139,7 +1173,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     }),
     players() {
       const list: PlayerListEntry[] = [{ id: 0, name: hostName, ping: 0 }];
-      for (const r of remotes.values()) list.push({ id: r.num, name: r.name, ping: t.direct(r.peer) ? 20 : 150 });
+      for (const r of remotes.values()) list.push({ id: r.num, name: r.name, ping: Math.round(t.rtt(r.peer) >= 0 ? t.rtt(r.peer) : t.direct(r.peer) ? 20 : 150) });
       return list;
     },
     dispose() {
@@ -1156,6 +1190,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       g.ctx.rules.cheats = ownCheats;
       delete (g.ctx as GameCtx & { playerFor?: PlayerPicker }).playerFor;
       delete (g.ctx as GameCtx & { playersAll?: unknown }).playersAll;
+      setPvpHook(g.ctx, null);
       avatars.dispose();
       setTimeout(() => t.leave(), 300);
     },

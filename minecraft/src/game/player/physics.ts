@@ -347,7 +347,7 @@ function stuckMultiplier(world: WorldApi, body: Body, weaving: boolean, out: THR
     for (let z = Math.floor(bb.minZ + 1e-5); z <= Math.floor(bb.maxZ - 1e-5); z++)
       for (let x = Math.floor(bb.minX + 1e-5); x <= Math.floor(bb.maxX - 1e-5); x++) {
         const id = idOf(world.getBlock(x, y, z));
-        if (id === ID.cobweb) { const h = weaving ? 0.5 : 0.25; out.set(h, 0.05, h); return true; }
+        if (id === ID.cobweb) { const h = weaving ? 0.5 : 0.25; out.set(h, weaving ? 0.25 : 0.05, h); return true; }
         if (id === ID.powder) { out.set(0.9, 1.5, 0.9); found = true; }
         else if (id === ID.berry && !found) { out.set(0.8, 0.75, 0.8); found = true; }
       }

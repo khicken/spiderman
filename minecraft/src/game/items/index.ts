@@ -420,11 +420,15 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
       if (typeof d.enchantSeed === "number") enchantSeed.value = d.enchantSeed;
       menu = null;
       env.cursor = null;
-      if (Array.isArray(d.carried)) for (const s of d.carried) if (valid(s)) add(s as ItemStack);
-      for (let i = 0; i < 4; i++) {
-        if (craft2[i]) add(craft2[i]!);
-        craft2[i] = null;
-      }
+      // Stacks that do not fit a full inventory stay in the 2x2 grid instead of vanishing.
+      for (let i = 0; i < 4; i++) if (craft2[i]) craft2[i] = add(craft2[i]!);
+      if (Array.isArray(d.carried))
+        for (const s of d.carried) {
+          if (!valid(s)) continue;
+          const rest = add(s as ItemStack);
+          const free = craft2.indexOf(null);
+          if (rest && free >= 0) craft2[free] = rest;
+        }
       api.version++;
     },
     dispose() {

@@ -1,7 +1,7 @@
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { applyPhysics, canSeePlayer, knockBody, playerTargetable, rotlerp, walkToward, yawTo } from "../ai";
 import { bodiesTouch } from "../geom";
-import { diffId, discard, hurtAmount, naturalSpawn, num, particles, sound, targetInfo, updateTarget } from "./brain";
+import { diffId, hurtAmount, num, particles, sound, targetInfo, updateTarget } from "./brain";
 import { slimeModel } from "./looks-overworld";
 import { SWAMPS } from "./spawns";
 
@@ -37,10 +37,6 @@ function slimeTick(magma: boolean) {
   const prefix = magma ? "entity.magma_cube" : "entity.slime";
   return (e: Entity, ctx: GameCtx) => {
     init(e, ctx, magma);
-    if (naturalSpawn(e) && !magma) {
-      const y = e.body.pos.y;
-      if (y < 51 || y > 69) return discard(e);
-    }
     const size = num(e, "size", 1);
     const hurt = hurtAmount(e);
     const b = e.body;
@@ -122,7 +118,7 @@ export const SLIMES: MobDef[] = [
         const n = Math.floor(ctx.random() * 3);
         if (n > 0) ctx.entities.dropItem({ item: "slime_ball", count: n }, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
       }
-      ctx.entities.dropXp(size, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
+      deathXp(e, ctx, size);
       split(e, ctx);
     },
   },
@@ -141,10 +137,16 @@ export const SLIMES: MobDef[] = [
     onDeath(e, ctx) {
       const size = num(e, "size", 1);
       if (size > 1 && ctx.random() < 0.25) ctx.entities.dropItem({ item: "magma_cream", count: 1 }, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
-      ctx.entities.dropXp(size, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
+      deathXp(e, ctx, size);
       split(e, ctx);
     },
   },
 ];
+
+// Vanilla drops size XP only for a player kill (lastHurtByPlayerTime > 0) with doMobLoot on.
+function deathXp(e: Entity, ctx: GameCtx, size: number) {
+  if (((e.data._byPlayer as number) ?? 0) <= 0 || ctx.rules.doMobLoot === false) return;
+  ctx.entities.dropXp(size, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
+}
 
 export { setSize as setSlimeSize };

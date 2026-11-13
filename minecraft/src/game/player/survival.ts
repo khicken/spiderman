@@ -116,9 +116,9 @@ export function disableShield(p: PlayerState, ctx: GameCtx): void {
   sound(ctx, "item.shield.break", p, 0.8, 0.8 + ctx.random() * 0.4);
 }
 
-// Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them.
+// Vanilla DamageScaling: explosions always scale; arrows and tridents only when a mob (not a player) shot them. Player attackers' types start with "@" (net/pvp.ts).
 export function difficultyScale(ctx: Pick<GameCtx, "rules">, amount: number, source: DamageSource, attacker?: Entity): number {
-  if (source !== "mob" && source !== "explosion" && source !== "sonic_boom" && !((source === "arrow" || source === "trident") && attacker)) return amount;
+  if (source !== "mob" && source !== "explosion" && source !== "sonic_boom" && !((source === "arrow" || source === "trident") && attacker && !attacker.type.startsWith("@"))) return amount;
   switch (ctx.rules.difficulty) {
     case "peaceful": return 0;
     case "easy": return Math.min(amount / 2 + 1, amount);
@@ -370,7 +370,9 @@ function tickEnvironment(p: PlayerState, ctx: GameCtx): void {
   const eye = p.eye();
   const spectator = p.gameMode === "spectator";
   const eyeFluid = spectator ? null : fluidAt(w, eye.x, eye.y - 0.11111111, eye.z);
-  if (eyeFluid === "water" && !p.hasEffect("water_breathing") && !p.hasEffect("conduit_power") && !invulnerableMode(p)) {
+  // Vanilla: air does not drain while the eye is in a bubble column.
+  const inBubbles = eyeFluid === "water" && idOf(w.getBlock(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z))) === blockIds.bubble;
+  if (eyeFluid === "water" && !inBubbles && !p.hasEffect("water_breathing") && !p.hasEffect("conduit_power") && !invulnerableMode(p)) {
     const resp = ench(ctx.inventory.slots[36], "respiration");
     if (!(resp > 0 && ctx.random() >= 1 / (resp + 1))) p.air--;
     if (p.air <= -20) {

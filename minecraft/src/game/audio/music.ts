@@ -144,9 +144,9 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
       src.start(ctx.currentTime + 0.2);
       stream = { src, out, kind: k };
       src.onended = () => {
+        try { out.disconnect(); } catch { /* gone */ }
         if (stream?.src !== src) return;
         stream = null;
-        try { out.disconnect(); } catch { /* gone */ }
         scheduleNext(k);
       };
       return true;
@@ -213,7 +213,9 @@ export function createMusic(ctx: AudioContext, dest: AudioNode, pack: PackLookup
     if (current) {
       const p = current;
       while (p.next < p.events.length && p.start + p.events[p.next].t < now + LOOKAHEAD) {
-        playEvent(p, p.events[p.next]);
+        const e = p.events[p.next];
+        // A throttled background tab ticks late; notes already past would all sound at once on return.
+        if (p.start + e.t > now - 0.25) playEvent(p, e);
         p.next++;
       }
       // Each note takes 10-25 ms to render: warm the cache ahead under a small budget per tick.

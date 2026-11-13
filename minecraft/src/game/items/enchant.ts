@@ -147,7 +147,8 @@ export function applyMending(stacks: (ItemStack | null)[], xp: number, random: (
   const repair = Math.min(xp * 2, s.damage ?? 0);
   s.damage = (s.damage ?? 0) - repair;
   if (!s.damage) delete s.damage;
-  const left = xp - Math.ceil(repair / 2);
+  // Vanilla: value - repaired * value / (2 * value) in integer math.
+  const left = xp - Math.floor(repair / 2);
   return left > 0 ? applyMending(stacks, left, random) : 0;
 }
 

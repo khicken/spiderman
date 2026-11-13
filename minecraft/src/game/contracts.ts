@@ -760,6 +760,7 @@ export interface Rules {
   doLimitedCrafting?: boolean;
   globalSoundEvents?: boolean;
   spectatorsGenerateChunks?: boolean;
+  pvp?: boolean; // not a vanilla game rule: server.properties pvp
 }
 
 // Every module gets this object. game.ts creates it and fills each field.

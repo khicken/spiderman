@@ -5,7 +5,7 @@ import { GFX, meshSection } from "../mesh";
 import { ALL_VIS } from "../mesh/vis";
 import { createCaveCull } from "./cave-cull";
 import { createSectionBatches } from "./section-batch";
-import { chunkKey, createMeshQueue, sectionKey } from "./mesh-queue";
+import { chunkKey, chunkOfKey, createMeshQueue, sectionKey } from "./mesh-queue";
 
 interface Materials {
   opaque: THREE.Material;
@@ -41,11 +41,14 @@ interface PoolWorker {
 }
 
 const LAYERS = ["opaque", "cutout", "translucent"] as const;
-const MAX_IN_FLIGHT = 4;
+const MAX_IN_FLIGHT = 8;
+const SYNC_RADIUS = 1;
 const now = () => performance.now();
 
 const _frustum = new THREE.Frustum();
 const _proj = new THREE.Matrix4();
+const _colBox = new THREE.Box3();
+let colSeen = new Uint8Array(0);
 
 export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Materials, workerCount: number, gl: WebGL2RenderingContext) {
   const group = new THREE.Group();
@@ -189,7 +192,7 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     if (versions.get(p.key) !== p.version) return;
     meshedOnce.add(p.key);
     let s = sections.get(p.key);
-    cave.setVis(p.key, out?.vis ?? ALL_VIS);
+    cave.setVis(p.cx, p.sy, p.cz, out?.vis ?? ALL_VIS);
     if (!out || (!out.opaque && !out.cutout && !out.translucent)) {
       if (s) disposeSection(s);
       return;
@@ -234,14 +237,20 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     const t0 = now();
     queue.setCamera(camera.position.x, camera.position.y, camera.position.z);
 
-    while (queue.hasFast() && now() - t0 < uploadMs) {
-      const p = popPending();
-      if (!p) break;
-      const inp = input(p);
-      if (inp) apply(p, meshSection(inp));
+    const live = workers.some(isLive);
+    // Edits next to the camera mesh here so they show this frame. Farther fast jobs (light spill from
+    // newly loaded chunks, random ticks, flowing fluids) go to the workers ahead of the slow queue.
+    if (live) {
+      const ccx = Math.floor(camera.position.x / CHUNK), csy = Math.floor((camera.position.y - MIN_Y) / CHUNK), ccz = Math.floor(camera.position.z / CHUNK);
+      while (now() - t0 < uploadMs) {
+        const j = queue.popFastNear(ccx, csy, ccz, SYNC_RADIUS);
+        if (!j) break;
+        const p: Pending = { key: j.key, version: versions.get(j.key) ?? 0, cx: j.cx, sy: j.sy, cz: j.cz };
+        const inp = input(p);
+        if (inp) apply(p, meshSection(inp));
+      }
     }
 
-    const live = workers.some(isLive);
     while (now() - t0 < uploadMs) {
       if (live) {
         const w = freeWorker();
@@ -254,7 +263,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
         p.w = w;
         inFlight.set(id, p);
         w.busy++;
-        w.w.postMessage({ id, input: inp, fancyLeaves: GFX.fancyLeaves });
+        // The padded arrays are built fresh per job, so hand them over instead of copying. Tints are cached and shared.
+        const transfer: Transferable[] = [inp.blocks.buffer, inp.light.buffer, inp.biomes.buffer];
+        if (inp.waterlogged) transfer.push(inp.waterlogged.buffer);
+        w.w.postMessage({ id, input: inp, fancyLeaves: GFX.fancyLeaves }, transfer);
       } else {
         const p = popPending();
         if (!p) break;
@@ -285,10 +297,24 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     batches.opaque.begin();
     batches.cutout.begin();
     batches.translucent.begin();
+    // One frustum test per chunk column, cached here, rejects most sections before their own box test.
+    const cw = 2 * maxD + 1;
+    if (colSeen.length < cw * cw) colSeen = new Uint8Array(cw * cw);
+    else colSeen.fill(0, 0, cw * cw);
     for (const s of sections.values()) {
-      if (!(Math.abs(s.cx - pcx) <= maxD && Math.abs(s.cz - pcz) <= maxD && cave.visible(s.cx, s.sy, s.cz) && _frustum.intersectsBox(s.box))) continue;
+      const gx = s.cx - pcx + maxD, gz = s.cz - pcz + maxD;
+      if (gx < 0 || gz < 0 || gx >= cw || gz >= cw || !cave.visible(s.cx, s.sy, s.cz)) continue;
+      const ci = gz * cw + gx;
+      let c = colSeen[ci];
+      if (c === 0) {
+        _colBox.min.set(s.cx * CHUNK, MIN_Y, s.cz * CHUNK);
+        _colBox.max.set(s.cx * CHUNK + CHUNK, MIN_Y + SECTIONS * CHUNK, s.cz * CHUNK + CHUNK);
+        colSeen[ci] = c = _frustum.intersectsBox(_colBox) ? 1 : 2;
+      }
+      if (c === 2 || !_frustum.intersectsBox(s.box)) continue;
       const dx = (s.box.min.x + 8) - px, dy = (s.box.min.y + 8) - py, dz = (s.box.min.z + 8) - pz;
-      s.dist = dx * dx + dy * dy + dz * dz;
+      // Integer distances keep the sort comparator in small-integer math, so it allocates no heap numbers.
+      s.dist = Math.min(dx * dx + dy * dy + dz * dz, 0x3fffffff) | 0;
       drawList[visible++] = s;
     }
     drawList.length = visible;
@@ -325,7 +351,10 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
       sections: sections.size, visible, queued: queue.size(), inFlight: inFlight.size, results: results.length, workers: workers.length }),
     setRenderDistance(n: number) { renderDistance = n; },
     remeshAll() {
-      for (const k of ready) queueChunk(Math.floor(k / 65536) - 32768, (k % 65536) - 32768, false);
+      for (const k of ready) {
+        const [cx, cz] = chunkOfKey(k);
+        queueChunk(cx, cz, false);
+      }
     },
     setUploadBudget(ms: number) { uploadMs = ms; },
     dispose() {

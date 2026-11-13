@@ -11,6 +11,7 @@ export const RATES = {
   chat: [2, 6],
   open: [4, 12],
   skin: [0.2, 3],
+  pvp: [20, 40],
   cheap: [0.1, 4], // cheap items gained in ways the host does not model
 } as const satisfies Record<string, readonly [perSecond: number, burst: number]>;
 export type RateKind = keyof typeof RATES;

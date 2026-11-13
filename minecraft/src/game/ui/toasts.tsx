@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { Text, useGui } from "./gui";
 import { ItemIcon } from "./item-icon";
+import { wrapText } from "./font";
 import { pixelUrl } from "./sprites";
 import type { Toast } from "../systems/ui-bridge";
 
@@ -42,11 +43,19 @@ export function Toasts({ toasts }: { toasts: ToastEntry[] }) {
       <style>{CSS}</style>
       {toasts.slice(0, 5).map((t, i) => {
         const [head, color] = HEADER[t.kind];
+        const lines = wrapText(t.title, 125).slice(0, 2);
         return (
           <div key={t.id} style={{ ...abs(width - 160, i * 32, 160, 32), animation: `mc-toast ${TOAST_MS}ms linear forwards`, backgroundImage: `url(${frameUrl(t.kind === "recipe")})` }}>
             <ItemIcon stack={{ item: t.icon, count: 1 }} x={8} y={8} count={false} />
-            <Text text={head} color={color} x={30} y={7} shadow={t.kind !== "recipe"} />
-            <Text text={t.title} color={t.kind === "recipe" ? 0x000000 : 0xffffff} x={30} y={18} shadow={t.kind !== "recipe"} />
+            {t.kind === "recipe" || lines.length === 1 ? (
+              <>
+                <Text text={head} color={color} x={30} y={7} shadow={t.kind !== "recipe"} />
+                <Text text={t.title} color={t.kind === "recipe" ? 0x000000 : 0xffffff} x={30} y={18} shadow={t.kind !== "recipe"} />
+              </>
+            ) : (
+              // Vanilla AdvancementToast: a title wider than 125 px wraps and replaces the header line.
+              lines.map((l, j) => <Text key={j} text={l} color={0xffffff} x={30} y={16 - (lines.length * 9) / 2 + j * 9} />)
+            )}
           </div>
         );
       })}

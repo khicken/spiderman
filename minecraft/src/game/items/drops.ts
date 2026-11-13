@@ -148,7 +148,8 @@ function grassSeeds(c: DropCtx): ItemStack[] {
 
 function matureCrop(c: DropCtx, max: number, product: string, seed: string, bonusSeeds: boolean): ItemStack[] {
   if (cropAge(c, max === 3 ? 3 : 7) < max) return one(seed);
-  const seeds = bonusSeeds ? binomial(c.random, 3 + c.fortune, 0.5714286) : 0;
+  // binomial_with_bonus_count adds to the entry's base count of 1.
+  const seeds = bonusSeeds ? 1 + binomial(c.random, 3 + c.fortune, 0.5714286) : 0;
   return [{ item: product, count: 1 }, ...one(seed, seeds)];
 }
 

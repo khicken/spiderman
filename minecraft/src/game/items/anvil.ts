@@ -68,6 +68,8 @@ export function anvilResult(left: ItemStack | null, right: ItemStack | null, ren
         let mult = anvilMult(def.weight);
         if (isBook) mult = Math.max(1, Math.floor(mult / 2));
         cost += mult * lvl;
+        // Vanilla AnvilMenu: enchanting a stack of more than one item is always too expensive.
+        if (left.count > 1) cost = 40;
       }
       if (anyFail && !anyOk) return null;
       if (left.item === "enchanted_book") out.data = { ...out.data, stored: target };

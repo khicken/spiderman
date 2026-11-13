@@ -4,7 +4,7 @@ import { computeDrops } from "../../items/drops";
 import { SIZE, containerType } from "./inventory";
 import { observerMoved } from "./observer";
 import { signalInto } from "./power";
-import { breakBlock, DX, DY, DZ, hold, id, inWorld, isAir, lookNearest, nameOf, notifyNeighbors, OPP, posKey, sound } from "./util";
+import { breakBlock, DX, DY, DZ, hold, id, inWorld, isAir, lookNearest, nameOf, notifyNeighbors, OPP, posKey, schedule, sound, ticked } from "./util";
 
 export const PUSH_LIMIT = 12;
 const PISTON = id("piston");
@@ -242,13 +242,15 @@ function shouldExtend(ctx: GameCtx, x: number, y: number, z: number, f: Face): b
   return false;
 }
 
-function checkPiston(ctx: GameCtx, x: number, y: number, z: number, s: BlockState) {
+// Returns true when the piston moved.
+function checkPiston(ctx: GameCtx, x: number, y: number, z: number, s: BlockState): boolean {
   const f = facing(s);
   const want = shouldExtend(ctx, x, y, z, f);
   const sticky = idOf(s) === STICKY;
   if (want && !extended(s)) {
-    if (!moveBlocks(ctx, x, y, z, f, true, sticky)) return;
+    if (!moveBlocks(ctx, x, y, z, f, true, sticky)) return false;
     sound(ctx, "block.piston.extend", x, y, z, 0.5, ctx.random() * 0.25 + 0.6);
+    return true;
   } else if (!want && extended(s)) {
     ctx.world.setBlock(x, y, z, stateOf(idOf(s), f), SET_NO_DROP);
     const hx = x + DX[f], hy = y + DY[f], hz = z + DZ[f];
@@ -263,13 +265,26 @@ function checkPiston(ctx: GameCtx, x: number, y: number, z: number, s: BlockStat
     notifyNeighbors(ctx, x, y, z);
     notifyNeighbors(ctx, hx, hy, hz);
     sound(ctx, "block.piston.contract", x, y, z, 0.5, ctx.random() * 0.15 + 0.6);
+    return true;
   }
+  return false;
+}
+
+// Vanilla queues piston moves as block events and the blocks travel for 2 ticks. Moving on the
+// neighbor update itself let a self-powering sticky piston loop thousands of times in one tick.
+function queuePiston(ctx: GameCtx, x: number, y: number, z: number, s: BlockState) {
+  if (shouldExtend(ctx, x, y, z, facing(s)) !== extended(s)) schedule(ctx, x, y, z, 1);
 }
 
 export const PISTON_BEHAVIOR: BlockBehavior = {
   place: (ctx, _x, _y, _z, info, def) => stateOf(idOf(def), OPP[lookNearest(ctx, info)]),
-  onPlaced: checkPiston,
-  neighborChanged: checkPiston,
+  onPlaced: queuePiston,
+  neighborChanged: queuePiston,
+  scheduledTick(ctx, x, y, z, s) {
+    ticked(ctx, x, y, z);
+    // Look again once the move has finished, in case the power changed meanwhile.
+    if (checkPiston(ctx, x, y, z, s)) schedule(ctx, x, y, z, 2);
+  },
   onRemoved(ctx, x, y, z, s) {
     if (!extended(s)) return;
     const f = facing(s);

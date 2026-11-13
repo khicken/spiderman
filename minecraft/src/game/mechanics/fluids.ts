@@ -71,16 +71,43 @@ export function newLiquid(w: WorldApi, x: number, y: number, z: number, fid: num
   return a <= 0 ? AIR : stateOf(fid, 8 - a);
 }
 
-function slopeDistance(w: WorldApi, x: number, y: number, z: number, depth: number, from: number, fid: number): number {
+// Per-spread cache of the cells around the spreading block, by offset (vanilla keeps the same
+// Short2BooleanMap caches). 0 unknown, 1 yes, 2 no; a stamp marks entries from this spread.
+const CR = 6;
+const CW = CR * 2 + 1;
+const passC = new Uint8Array(CW * CW);
+const holeC = new Uint8Array(CW * CW);
+const stampC = new Uint32Array(CW * CW);
+let gen = 0;
+let ox = 0, oz = 0;
+
+function cell(w: WorldApi, x: number, y: number, z: number, fid: number): number {
+  const i = (x - ox + CR) * CW + (z - oz + CR);
+  if (stampC[i] !== gen) {
+    stampC[i] = gen;
+    const n = w.getBlock(x, y, z);
+    passC[i] = canPassInto(n) && !isSourceOf(n, fid) ? 1 : 2;
+    holeC[i] = 0;
+  }
+  return i;
+}
+
+// Call only after cell() returned i for a passable cell.
+function holeAt(w: WorldApi, i: number, x: number, y: number, z: number, fid: number): boolean {
+  if (holeC[i] === 0) holeC[i] = isHole(w.getBlock(x, y - 1, z), fid) ? 1 : 2;
+  return holeC[i] === 1;
+}
+
+function slopeDistance(w: WorldApi, x: number, y: number, z: number, depth: number, from: number, fid: number, max: number): number {
   let best = 1000;
   for (let h = 0; h < 4; h++) {
     if (h === from) continue;
     const nx = x + HX[h], nz = z + HZ[h];
-    const n = w.getBlock(nx, y, nz);
-    if (!canPassInto(n) || isSourceOf(n, fid)) continue;
-    if (isHole(w.getBlock(nx, y - 1, nz), fid)) return depth;
-    if (depth < slopeDist(w, fid)) {
-      const d = slopeDistance(w, nx, y, nz, depth + 1, oppH(h), fid);
+    const i = cell(w, nx, y, nz, fid);
+    if (passC[i] !== 1) continue;
+    if (holeAt(w, i, nx, y, nz, fid)) return depth;
+    if (depth < max) {
+      const d = slopeDistance(w, nx, y, nz, depth + 1, oppH(h), fid, max);
       if (d < best) best = d;
     }
   }
@@ -88,13 +115,17 @@ function slopeDistance(w: WorldApi, x: number, y: number, z: number, depth: numb
 }
 
 function spreadMask(w: WorldApi, x: number, y: number, z: number, fid: number): number {
+  gen = (gen + 1) >>> 0 || 1;
+  ox = x;
+  oz = z;
+  const max = slopeDist(w, fid);
   let min = 1000;
   let mask = 0;
   for (let h = 0; h < 4; h++) {
     const nx = x + HX[h], nz = z + HZ[h];
-    const n = w.getBlock(nx, y, nz);
-    if (!canPassInto(n) || isSourceOf(n, fid)) continue;
-    const cost = isHole(w.getBlock(nx, y - 1, nz), fid) ? 0 : slopeDistance(w, nx, y, nz, 1, oppH(h), fid);
+    const i = cell(w, nx, y, nz, fid);
+    if (passC[i] !== 1) continue;
+    const cost = holeAt(w, i, nx, y, nz, fid) ? 0 : slopeDistance(w, nx, y, nz, 1, oppH(h), fid, max);
     if (cost < min) mask = 0;
     if (cost <= min) {
       mask |= 1 << h;
@@ -173,7 +204,7 @@ function fluidTick(ctx: GameCtx, x: number, y: number, z: number, s: BlockState)
     }
     if (ns !== s) {
       let delay = fluidDelay(w, fid);
-      if (fid === LAVA && metaOf(s) !== 8 && metaOf(ns) !== 8 && amount(ns) < amount(s) && randInt(ctx, 4) !== 0) delay *= 4;
+      if (fid === LAVA && metaOf(s) !== 8 && metaOf(ns) !== 8 && amount(ns) > amount(s) && randInt(ctx, 4) !== 0) delay *= 4;
       w.setBlock(x, y, z, ns, SET_NOTIFY);
       w.scheduleTick(x, y, z, delay);
       s = ns;

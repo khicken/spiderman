@@ -2,7 +2,7 @@ import type { Effect, Entity, GameCtx, ItemStack } from "../contracts";
 import { castBobber, reelBobber } from "../entities/fishing";
 import { segmentBody } from "../entities/geom";
 import { isMob } from "../entities/registry";
-import { fluidAt } from "./physics";
+import { bodyBox, fluidAt, noCollision } from "./physics";
 import { POTIONS, ench } from "./stats";
 import type { PlayerState } from "./state";
 import { damageSlot } from "./survival";
@@ -36,7 +36,7 @@ function takeAmmo(p: PlayerState, ctx: GameCtx, rockets: boolean, keep: boolean)
 }
 
 // Tipped arrows carry the potion at one eighth of its duration.
-function arrowEffects(s: ItemStack): Effect[] | undefined {
+export function arrowEffects(s: ItemStack): Effect[] | undefined {
   if (s.item !== "tipped_arrow") return undefined;
   const list = POTIONS[String(s.data?.potion ?? "")];
   return list?.map(([id, sec, amp]) => ({ id, amplifier: amp, ticks: Math.max(1, Math.round((sec * 20) / 8)) }));
@@ -114,6 +114,21 @@ const wet = (p: PlayerState, ctx: GameCtx) => {
 
 export const canRiptide = (p: PlayerState, ctx: GameCtx, stack: ItemStack) => ench(stack, "riptide") <= 0 || wet(p, ctx);
 
+// Vanilla moves the player up 1.2 with collision, so a low ceiling stops the lift instead of being clipped through.
+const liftBox = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
+function riptideLift(ctx: GameCtx, p: PlayerState): number {
+  bodyBox(p.body, liftBox);
+  let dy = 0;
+  while (dy < 1.1999999) {
+    const next = Math.min(1.1999999, dy + 0.0625);
+    liftBox.minY += next - dy;
+    liftBox.maxY += next - dy;
+    if (!noCollision(ctx.world, liftBox)) break;
+    dy = next;
+  }
+  return dy;
+}
+
 // Vanilla TridentItem.releaseUsing: throw at 2.5, or launch the player with Riptide.
 export function releaseTrident(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack, ticks: number, shoot: Shoot): void {
   if (ticks < 10) return;
@@ -127,7 +142,7 @@ export function releaseTrident(p: PlayerState, ctx: GameCtx, h: Hand, stack: Ite
     b.vel.y += Math.sin(p.pitch) * f5;
     b.vel.z += -Math.cos(p.yaw) * c * f5;
     p.spinTicks = 20;
-    if (b.onGround) b.pos.y += 1.1999999;
+    if (b.onGround) b.pos.y += riptideLift(ctx, p);
     b.fallDistance = 0;
     sound(ctx, p, `item.trident.riptide_${Math.min(3, rip)}`);
     if (!creative(p)) damageSlot(ctx, slotOf(ctx, h), 1);
