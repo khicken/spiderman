@@ -146,7 +146,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   const worldOf = (d: Dim): World | null => (d === g.dim ? g.world : dims.get(d)?.world ?? null);
   const entsOf = (d: Dim): EntityApi | null => (d === g.dim ? g.entities : dims.get(d)?.entities ?? null);
   const ctxFor = (d: Dim): GameCtx | null => (d === g.dim ? g.ctx : dims.get(d)?.sub ?? null);
-  const pvp = createHostPvp({ g, hostName, remotes: () => remotes.values(), ctxFor, send: (r, m) => send(r as Remote, m), tick: () => tick, others: () => avatars.list() });
+  const pvp = createHostPvp({ g, hostName, remotes: () => remotes.values(), ctxFor, send: (r, m) => send(r as Remote, m), tick: () => tick, rtt: (r) => t.rtt((r as Remote).peer), others: () => avatars.list() });
   const pvpHook = pvp.hook();
 
   const dimOpts = {
@@ -1085,6 +1085,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     tick() {
       if (disposed) return;
       tick++;
+      pvp.record();
       if (tick === 300 && t.relayDown) g.chat("§eNo relay server reachable. Some players may not join.");
       const ctx = g.ctx as GameCtx & { playerFor?: PlayerPicker };
       ctx.playerFor = picker(g.dim);

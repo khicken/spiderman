@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import type { DamageSource, Entity, GameCtx, ItemStack } from "../src/game/contracts";
 import { F, type HostMsg } from "../src/game/net/protocol";
-import { createHostPvp, meleeVerdict, pickPlayer, pvpOn, type Fighter, type PvpRemote, type Ray } from "../src/game/net/pvp";
+import { REWIND_MAX_MS, createHostPvp, createPoseHistory, meleeVerdict, rewindMs, pickPlayer, pvpOn, type Fighter, type PvpRemote, type Ray } from "../src/game/net/pvp";
 import { hostDamage, newHealth, type HealthOwner } from "../src/game/net/host-health";
 import { attackStats, deathMessage } from "../src/game/player/stats";
 import { difficultyScale } from "../src/game/player/survival";
@@ -89,7 +89,7 @@ test("a player attacker names the death message and skips difficulty scaling", (
 });
 
 // Two remote players on a fake host: Alex (1) hits Steve (2) until Steve dies.
-function hostRig() {
+function hostRig(lag: { now?: () => number; rtt?: number } = {}) {
   const sent: [number, HostMsg][] = [];
   const events: unknown[] = [];
   const ctx = {
@@ -122,7 +122,7 @@ function hostRig() {
   let tick = 100;
   const hostPlayer = { body: { pos: new THREE.Vector3(500, 64, 500), vel: new THREE.Vector3(), onGround: true }, yaw: 0, dead: false, gameMode: "creative", hasEffect: () => 0, invulnerable: 0 };
   const g = { ctx, dim: "overworld", player: hostPlayer, inventory: { held: () => null } } as unknown as Parameters<typeof createHostPvp>[0]["g"];
-  const pvp = createHostPvp({ g, hostName: "Host", remotes: () => [alex, steve], ctxFor: () => ctx, send: (r, m) => sent.push([r.num, m]), tick: () => tick, others: () => [] });
+  const pvp = createHostPvp({ g, hostName: "Host", remotes: () => [alex, steve], ctxFor: () => ctx, send: (r, m) => sent.push([r.num, m]), tick: () => tick, now: lag.now, rtt: () => lag.rtt ?? -1, others: () => [] });
   return { pvp, alex, steve, sent, events, ctx, step: (n: number) => (tick += n) };
 }
 
@@ -208,4 +208,39 @@ test("the host rebuilds a remote arrow or trident from the shooter's own gear, n
   assert.ok(tv.ok && tv.data.damage === 8, "a trident deals its own 8");
   assert.deepEqual(tv.ok && tv.data.item, { ...trident, count: 1 }, "the thrown trident is the one the host knows about");
   assert.deepEqual(checkShot(shooter(), { type: "trident", x: 0, y: eye, z: 0, vel: [0, 0, -2.5], data: {} }, 10_000), { ok: false, why: "weapon" });
+});
+
+test("pose history interpolates between ticks and forgets old samples", () => {
+  const h = createPoseHistory();
+  for (let i = 0; i <= 20; i++) h.record(7, i * 50, { x: i, y: 64, z: 0 }, i);
+  assert.equal(h.at(7, 975)?.x, 19.5);
+  assert.equal(h.at(7, 5000)?.x, 20, "the newest when asked about the future");
+  assert.ok((h.at(7, 0)?.x ?? 0) >= 9, "nothing older than about 500 ms is kept");
+  h.keep(new Set());
+  assert.equal(h.at(7, 975), null);
+  assert.equal(rewindMs(80), 180);
+  assert.equal(rewindMs(-1), 100, "an unknown round trip rewinds only the interpolation delay");
+  assert.equal(rewindMs(5000), REWIND_MAX_MS);
+});
+
+test("host melee accepts a hit on where the attacker saw a fleeing target, within the rewind cap", () => {
+  let clock = 0;
+  const { pvp, steve, step } = hostRig({ now: () => clock, rtt: 100 });
+  // Steve runs away at sprint speed; Alex swings at the Steve he sees 200 ms (interp + round trip) in the past.
+  const run = (ms: number) => {
+    for (let t = 0; t < ms; t += 50) {
+      clock += 50;
+      steve.pos.z -= 0.28;
+      pvp.record();
+    }
+  };
+  steve.pos.z = -3.5;
+  pvp.record();
+  run(200);
+  assert.ok(steve.pos.z < -4.5, "now more than 4 blocks from the eye to the hitbox");
+  assert.equal(pvp.melee(1, 2, { s: 1, crit: false }), "hit", "valid against the rewound position");
+  step(20);
+  steve.hp.invulnerable = 0;
+  run(500);
+  assert.equal(pvp.melee(1, 2, { s: 1, crit: false }), "reach", "far beyond what any rewind explains");
 });

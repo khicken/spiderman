@@ -6,6 +6,7 @@ import type { PlayerState } from "../player/state";
 import { CREATIVE_ENTITY_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, attackStats, attackStrength, ench, enchantDamageBonus, toolOf } from "../player/stats";
 import type { Health } from "./host-health";
 import type { GameInternals, Inventory } from "./index";
+import { INTERP_DELAY_MS } from "./interp";
 import { F, type ClientMsg, type Equip, type HostMsg } from "./protocol";
 import type { PvpHook } from "./pvp-hook";
 
@@ -103,6 +104,52 @@ export function meleeVerdict(a: Fighter, t: Fighter, o: { pvp: boolean; tick: nu
   return { ok: true, s, total: dmg + bonus, crit, sprint, sweep, knock: ench(held, "knockback") + (sprint ? 1 : 0) };
 }
 
+// Lag compensation: attackers aim at where they saw the target, INTERP_DELAY_MS plus a round trip ago.
+export const HISTORY_MS = 500;
+export const REWIND_MAX_MS = 300;
+
+export interface PastPose {
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  f: number;
+}
+
+// Recent positions of each fighter as the host saw them.
+export function createPoseHistory() {
+  const byId = new Map<number, PastPose[]>();
+  return {
+    record(id: number, t: number, pos: { x: number; y: number; z: number }, f: number) {
+      const list = byId.get(id) ?? [];
+      byId.set(id, list);
+      list.push({ t, x: pos.x, y: pos.y, z: pos.z, f });
+      while (list.length > 2 && list[1].t < t - HISTORY_MS) list.shift();
+    },
+    at(id: number, t: number): PastPose | null {
+      const list = byId.get(id);
+      if (!list?.length) return null;
+      if (t <= list[0].t) return list[0];
+      for (let i = list.length - 1; i >= 0; i--) {
+        const a = list[i];
+        if (a.t > t) continue;
+        const b = list[i + 1];
+        if (!b) return a;
+        const k = (t - a.t) / Math.max(1e-6, b.t - a.t);
+        return { t, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: a.z + (b.z - a.z) * k, f: k < 0.5 ? a.f : b.f };
+      }
+      return null;
+    },
+    // Drops fighters that are gone.
+    keep(ids: Set<number>) {
+      for (const id of byId.keys()) if (!ids.has(id)) byId.delete(id);
+    },
+  };
+}
+
+// How far back the attacker saw the world: the interpolation delay plus the round trip of the snapshot out and the swing back.
+export const rewindMs = (rtt: number) => Math.min(REWIND_MAX_MS, INTERP_DELAY_MS + Math.max(0, rtt));
+
 const segEnd = new THREE.Vector3();
 
 export function pickPlayer(eye: THREE.Vector3, dir: THREE.Vector3, maxDist: number, list: Iterable<{ id: number; x: number; y: number; z: number; f?: number }>) {
@@ -146,6 +193,8 @@ export interface HostPvpDeps {
   ctxFor(d: Dim): GameCtx | null;
   send(r: PvpRemote, m: HostMsg): void;
   tick(): number;
+  now?(): number; // ms clock for lag compensation, performance.now() by default
+  rtt?(r: PvpRemote): number; // round trip to a remote in ms, -1 when unknown
   others(): Iterable<{ id: number; x: number; y: number; z: number; f?: number }>; // avatars the host player sees
 }
 
@@ -165,6 +214,8 @@ function remoteHeld(r: PvpRemote): ItemStack | null {
 
 export function createHostPvp(d: HostPvpDeps) {
   const lastSwing = new Map<number, number>();
+  const history = createPoseHistory();
+  const now = () => d.now?.() ?? performance.now();
   const g = d.g;
 
   function hostFighter(): HostFighter {
@@ -246,7 +297,16 @@ export function createHostPvp(d: HostPvpDeps) {
     lastSwing.set(attackerId, tick);
     const w = d.ctxFor(a.dim)?.world;
     if (!w) return "dim";
-    const v = meleeVerdict(a, t, { pvp: pvpOn(g.ctx.rules), tick, last, claim, ray: (o, dir, max) => w.raycast(o, dir, max, false) });
+    const opts = { pvp: pvpOn(g.ctx.rules), tick, last, claim, ray: (o: THREE.Vector3, dir: THREE.Vector3, max: number) => w.raycast(o, dir, max, false) };
+    let v = meleeVerdict(a, t, opts);
+    // Out of reach or sight now, but maybe not where the attacker saw the target.
+    if (!v.ok && (v.why === "reach" || v.why === "sight")) {
+      const past = history.at(t.id, now() - rewindMs(a.remote ? (d.rtt?.(a.remote) ?? -1) : 0));
+      if (past) {
+        const then = meleeVerdict(a, { ...t, pos: new THREE.Vector3(past.x, past.y, past.z), f: past.f }, opts);
+        if (then.ok) v = then;
+      }
+    }
     if (!v.ok) return v.why;
     if (v.sprint) sound(a, "entity.player.attack.knockback");
     const hp = health(t);
@@ -306,5 +366,16 @@ export function createHostPvp(d: HostPvpDeps) {
     };
   }
 
-  return { melee, hook, fighter };
+  // Called once per host tick.
+  function record() {
+    const t = now();
+    const live = new Set<number>();
+    for (const f of all()) {
+      history.record(f.id, t, f.pos, f.f);
+      live.add(f.id);
+    }
+    history.keep(live);
+  }
+
+  return { melee, hook, fighter, record };
 }
