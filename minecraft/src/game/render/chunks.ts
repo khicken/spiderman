@@ -47,6 +47,8 @@ const now = () => performance.now();
 
 const _frustum = new THREE.Frustum();
 const _proj = new THREE.Matrix4();
+const _colBox = new THREE.Box3();
+let colSeen = new Uint8Array(0);
 
 export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Materials, workerCount: number, gl: WebGL2RenderingContext) {
   const group = new THREE.Group();
@@ -295,8 +297,21 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     batches.opaque.begin();
     batches.cutout.begin();
     batches.translucent.begin();
+    // One frustum test per chunk column, cached here, rejects most sections before their own box test.
+    const cw = 2 * maxD + 1;
+    if (colSeen.length < cw * cw) colSeen = new Uint8Array(cw * cw);
+    else colSeen.fill(0, 0, cw * cw);
     for (const s of sections.values()) {
-      if (!(Math.abs(s.cx - pcx) <= maxD && Math.abs(s.cz - pcz) <= maxD && cave.visible(s.cx, s.sy, s.cz) && _frustum.intersectsBox(s.box))) continue;
+      const gx = s.cx - pcx + maxD, gz = s.cz - pcz + maxD;
+      if (gx < 0 || gz < 0 || gx >= cw || gz >= cw || !cave.visible(s.cx, s.sy, s.cz)) continue;
+      const ci = gz * cw + gx;
+      let c = colSeen[ci];
+      if (c === 0) {
+        _colBox.min.set(s.cx * CHUNK, MIN_Y, s.cz * CHUNK);
+        _colBox.max.set(s.cx * CHUNK + CHUNK, MIN_Y + SECTIONS * CHUNK, s.cz * CHUNK + CHUNK);
+        colSeen[ci] = c = _frustum.intersectsBox(_colBox) ? 1 : 2;
+      }
+      if (c === 2 || !_frustum.intersectsBox(s.box)) continue;
       const dx = (s.box.min.x + 8) - px, dy = (s.box.min.y + 8) - py, dz = (s.box.min.z + 8) - pz;
       // Integer distances keep the sort comparator in small-integer math, so it allocates no heap numbers.
       s.dist = Math.min(dx * dx + dy * dy + dz * dz, 0x3fffffff) | 0;
