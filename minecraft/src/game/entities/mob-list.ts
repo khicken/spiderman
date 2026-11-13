@@ -5,6 +5,7 @@ import { GROUP_A } from "./passive/group-a";
 import { GROUP_B } from "./passive/group-b";
 import { GROUP_C } from "./hostile/group-c";
 import { GROUP_D } from "./hostile/group-d";
+import { GROUP_E } from "./passive/group-e";
 import { VEHICLES } from "./vehicles";
 import { EYE_OF_ENDER } from "../systems/end/eye";
 import { HANGING_MOBS } from "./decor/hanging";
@@ -14,7 +15,7 @@ import { ARMOR_STAND } from "../systems/features/armor-stand";
 setMobLists((defs) => {
   for (const d of PASSIVE_MOBS) defs.set(d.type, d);
   for (const d of HOSTILE_MOBS) defs.set(d.type, d);
-  for (const d of [...GROUP_A, ...GROUP_B, ...GROUP_C, ...GROUP_D, ...VEHICLES]) defs.set(d.type, d);
+  for (const d of [...GROUP_A, ...GROUP_B, ...GROUP_C, ...GROUP_D, ...GROUP_E, ...VEHICLES]) defs.set(d.type, d);
   defs.set(EYE_OF_ENDER.type, EYE_OF_ENDER);
   for (const d of HANGING_MOBS) defs.set(d.type, d);
   defs.set(LIGHTNING_BOLT.type, LIGHTNING_BOLT);

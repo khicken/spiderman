@@ -20,6 +20,8 @@ const SNOW_GOLEM: [number, number, (n: string) => boolean][] = [[0, -1, SNOW], [
 const IRON_GOLEM: [number, number, (n: string) => boolean][] = [[0, -1, IRON], [-1, -1, IRON], [1, -1, IRON], [0, -2, IRON]];
 const WITHER_BODY: [number, number, (n: string) => boolean][] = [[0, 0, SKULL], [0, -1, SOUL], [-1, -1, SOUL], [1, -1, SOUL], [0, -2, SOUL], [-1, 0, SKULL], [1, 0, SKULL]];
 const IRON_EMPTY: [number, number][] = [[-1, -2], [1, -2]];
+const COPPER_STAGE: Record<string, number> = { copper_block: 0, exposed_copper: 1, weathered_copper: 2, oxidized_copper: 3 };
+const copperStage = (n: string) => COPPER_STAGE[n.replace(/^waxed_/, "")];
 
 const name = (ctx: GameCtx, x: number, y: number, z: number) => blockDef(ctx.world.getBlock(x, y, z)).name;
 
@@ -66,6 +68,12 @@ function headPlaced(ctx: GameCtx, x: number, y: number, z: number) {
   if (iron) {
     clear(ctx, [[x, y, z], ...iron]);
     if (ctx.entities.spawn("iron_golem", x + 0.5, y - 2, z + 0.5, { playerCreated: true, persistent: true }) && playerNear(ctx, x + 0.5, y - 2, z + 0.5, 5)) advTrigger({ t: "summoned", type: "iron_golem" });
+    return;
+  }
+  const cn = name(ctx, x, y - 1, z), cs = copperStage(cn);
+  if (cs !== undefined) {
+    clear(ctx, [[x, y, z], [x, y - 1, z]]);
+    ctx.entities.spawn("copper_golem", x + 0.5, y - 1, z + 0.5, { persistent: true, oxidation: cs, waxed: cn.startsWith("waxed_") });
   }
 }
 
