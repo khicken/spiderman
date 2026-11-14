@@ -146,7 +146,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   const worldOf = (d: Dim): World | null => (d === g.dim ? g.world : dims.get(d)?.world ?? null);
   const entsOf = (d: Dim): EntityApi | null => (d === g.dim ? g.entities : dims.get(d)?.entities ?? null);
   const ctxFor = (d: Dim): GameCtx | null => (d === g.dim ? g.ctx : dims.get(d)?.sub ?? null);
-  const pvp = createHostPvp({ g, hostName, remotes: () => remotes.values(), ctxFor, send: (r, m) => send(r as Remote, m), tick: () => tick, rtt: (r) => t.rtt((r as Remote).peer), others: () => avatars.list() });
+  const pvp = createHostPvp({ g, hostName, remotes: () => remotes.values(), ctxFor, send: (r, m) => send(r as Remote, m), tick: () => tick, rtt: (r) => t.rtt((r as Remote).peer), others: () => avatars.list(), as: (r, fn) => void withPlayer(r as Remote, fn) });
   const pvpHook = pvp.hook();
 
   const dimOpts = {
@@ -172,6 +172,9 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       },
       get pitch() {
         return r.pitch;
+      },
+      get blocking() {
+        return r.hp.blocking;
       },
       set pitch(v: number) {
         r.pitch = v;
@@ -736,6 +739,10 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       case "pvp":
         if (limited(r, "pvp") || int(m.id, 0, 1e6) === null) return;
         pvp.melee(r.num, m.id, { s: num(m.s, 0, 1) ?? 0, crit: m.crit === true });
+        return;
+      case "psweep":
+        if (limited(r, "pvp")) return;
+        pvp.sweepAround(r.num, { x: +m.x, y: +m.y, z: +m.z, w: +m.w, h: +m.h }, num(m.s, 0, 1) ?? 0);
         return;
       case "kb":
         entsOf(r.dim)?.knockback(m.id, +m.dx || 0, +m.dz || 0, Math.min(5, +m.s || 0));

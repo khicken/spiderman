@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { AIR } from "../../contracts";
 import { blockDef, hasTag } from "../../blocks/registry";
+import { attackSource, facesSource } from "../combat";
 import { applyPhysics, clearPath, findPath, followPath, hasPath, idleLook, knockBody, meleeAttack, playerTargetable, randomSpot, type Target } from "../ai";
 import { isBaby } from "../geom";
 import { animalAI, breedTick, feed, type AnimalOpts } from "../passive/common";
@@ -18,7 +19,7 @@ function swingDown(e: Entity) {
 
 function hoglinHit(e: Entity, ctx: GameCtx): boolean {
   const dmg = isBaby(e) ? 0.5 : 3 + Math.floor(ctx.random() * 6);
-  if (!meleeAttack(e, ctx, dmg, 40)) return false;
+  if (!meleeAttack(e, ctx, dmg, 40, 0, 10)) return false;
   const t = (e.data._target as Target) ?? "player";
   const body = t === "player" ? ctx.player.body : ctx.entities.get(t)?.body;
   if (!body) return true;
@@ -155,8 +156,8 @@ const CROPS = new Set(["wheat", "carrots", "potatoes", "beetroots", "melon_stem"
 function blockedByShield(e: Entity, ctx: GameCtx): boolean {
   const pl = ctx.player as unknown as { blocking?: boolean; yaw: number; body: { pos: THREE.Vector3 } };
   if (!pl.blocking) return false;
-  const dx = e.body.pos.x - pl.body.pos.x, dz = e.body.pos.z - pl.body.pos.z;
-  return -Math.sin(pl.yaw) * dx - Math.cos(pl.yaw) * dz > 0;
+  const p = pl.body.pos, s = attackSource(p.x, p.z, null, e)!;
+  return facesSource(pl.yaw, p.x, p.z, s.x, s.z);
 }
 
 function breakLeaves(e: Entity, ctx: GameCtx) {
@@ -230,7 +231,7 @@ function ravagerTick(e: Entity, ctx: GameCtx) {
   if (t !== undefined && targetInfo(ctx, t)) {
     chase(e, ctx, t, 0.4);
     const shield = t === "player" && blockedByShield(e, ctx);
-    if (meleeAttack(e, ctx, 12)) {
+    if (meleeAttack(e, ctx, 12, 20, 0, 10)) {
       sound(ctx, e, "entity.ravager.attack");
       if (shield && ctx.random() < 0.5) {
         e.data.stun = 40;

@@ -273,7 +273,9 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
         if (!bodiesTouch(e.body, o.body, 1, 0.25, 1) || o.body.pos.distanceToSquared(b.pos) >= 9) continue;
         ctx.entities.knockback(o.id, -Math.sin(p.yaw), -Math.cos(p.yaw), 0.4);
         ctx.entities.damage(o.id, (sd + enchantDamageBonus(held, o.type)) * s, "player", "player");
+        if (fire > 0) o.data._fire = Math.max(Number(o.data._fire ?? 0), fire * 80);
       }
+      pvpHook(ctx)?.sweep?.({ x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z, w: e.body.width, h: e.body.height }, s);
       ctx.emit({ type: "sound", name: "entity.player.attack.sweep", x: b.pos.x, y: b.pos.y, z: b.pos.z });
       ctx.emit({ type: "particles", kind: "sweep", x: b.pos.x - Math.sin(p.yaw), y: b.pos.y + b.height * 0.5, z: b.pos.z - Math.cos(p.yaw) });
     }

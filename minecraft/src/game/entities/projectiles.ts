@@ -13,6 +13,7 @@ import { markProjectile } from "../systems/advancements/hooks";
 import { shatterPot } from "../systems/features/pots";
 import { breakBlock } from "../mechanics/util";
 import { pvpHook } from "../net/pvp-hook";
+import { teleportRandom } from "./hostile/enderman";
 
 const scratch: Entity[] = [];
 const origin = new THREE.Vector3();
@@ -198,11 +199,17 @@ function stick(e: Entity, ctx: GameCtx, h: Hit) {
   }
 }
 
-function applyArrowEffects(e: Entity, list: Effect[], ctx: GameCtx, t: Entity | "player") {
-  if (typeof e.data.potion === "string") applyPotion(ctx, e.data.potion, t, 1, undefined, 0.125);
+function applyArrowEffects(e: Entity, list: Effect[], ctx: GameCtx, t: Entity | "player", pl: PlayerApi = ctx.player) {
+  if (typeof e.data.potion === "string" && pl === ctx.player) applyPotion(ctx, e.data.potion, t, 1, undefined, 0.125);
   const fx = e.data.effects as Effect[] | undefined;
   if (!Array.isArray(fx)) return;
+  // A host's proxy for a remote player keeps no effects list of its own; addEffect forwards to that client.
+  const add = t === "player" ? (pl as { addEffect?: (id: string, amp: number, ticks: number) => void }).addEffect : undefined;
   for (const f of fx) {
+    if (add) {
+      add.call(pl, f.id, f.amplifier, f.ticks);
+      continue;
+    }
     const cur = list.find((o) => o.id === f.id);
     if (!cur) list.push({ ...f });
     else if (f.amplifier > cur.amplifier || (f.amplifier === cur.amplifier && f.ticks > cur.ticks)) Object.assign(cur, f);
@@ -218,14 +225,16 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
   const punch = (e.data.punch as number) ?? 0;
   if (h.pl) {
     const fx = b.pos.x - b.vel.x, fz = b.pos.z - b.vel.z;
-    if (shieldFaces(h.pl, fx, fz)) {
+    const blocked = shieldFaces(h.pl, fx, fz);
+    const hl = Math.hypot(b.vel.x, b.vel.z);
+    const k = hl > 1e-4 && !blocked ? ((punch * 0.6 + 0.4) / hl) * 0.5 : 0;
+    pvpHook(ctx)?.shot?.(ctx, h.pl, dmg, "arrow", { x: fx, y: b.pos.y, z: fz }, { x: b.vel.x * k, z: b.vel.z * k }, e);
+    if (blocked) {
       b.vel.multiplyScalar(-0.1);
       e.data.owner = undefined;
+      return;
     }
-    const hl = Math.hypot(b.vel.x, b.vel.z);
-    const k = hl > 1e-4 ? ((punch * 0.6 + 0.4) / hl) * 0.5 : 0;
-    pvpHook(ctx)?.shot?.(ctx, h.pl, dmg, "arrow", { x: fx, y: b.pos.y, z: fz }, { x: b.vel.x * k, z: b.vel.z * k });
-    if (e.data.owner === undefined) return;
+    applyArrowEffects(e, h.pl.effects, ctx, "player", h.pl);
   } else if (h.kind === "player") {
     const pf = ctx.player as typeof ctx.player & { fireTicks?: number };
     if (e.data.fire) pf.fireTicks = Math.max(pf.fireTicks ?? 0, 100);
@@ -249,8 +258,10 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
     applyArrowEffects(e, ctx.player.effects, ctx, "player");
   } else if (h.entity) {
     const t = h.entity;
+    // Vanilla EnderMan.hurt: a projectile only makes it teleport (up to 64 tries). Once it is gone the arrow flies on;
+    // if no spot was found the hurt failed and the arrow bounces back.
     if (t.type === "enderman") {
-      b.vel.multiplyScalar(-0.1);
+      if (!teleportRandom(t, ctx, 64)) b.vel.multiplyScalar(-0.1);
       return;
     }
     if (e.data.fire) t.data._fire = Math.max((t.data._fire as number) ?? 0, 100);
@@ -275,9 +286,9 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
 function arrowPickup(e: Entity, ctx: GameCtx) {
   const p = ctx.player;
   if (p.dead || p.gameMode === "spectator" || e.data.life === undefined || (e.data.life as number) < 1) return;
-  if (!bodiesTouch(p.body, e.body, 1, 0.5, 1)) return;
+  if (e.data.shake || !bodiesTouch(p.body, e.body, 1, 0.5, 1)) return;
   const mode = e.data.pickup === undefined ? 1 : Number(e.data.pickup);
-  if (!mode) return;
+  if (!mode || (mode === 2 && p.gameMode !== "creative")) return;
   if (mode === 1 && p.gameMode !== "creative") {
     const item = (e.data.item as string) ?? (e.type === "spectral_arrow" ? "spectral_arrow" : "arrow");
     const rest = ctx.inventory.add({ item, count: 1, data: e.data.potion ? { potion: e.data.potion } : undefined });

@@ -34,6 +34,24 @@ export function canSee(ctx: GameCtx, e: Entity, x: number, y: number, z: number)
   return lineClear(ctx.world, b.pos.x, b.pos.y + b.height * 0.85, b.pos.z, x, y, z);
 }
 
+// Where a hit on a player at (px, pz) comes from, for the shield check. Mobs are not pushed off players, so a
+// small chaser ends with its centre on the player's centre, where its position gives no direction. Inside the
+// player's box use the side meleeAttack last saw it on, else the point behind its facing.
+export function attackSource(px: number, pz: number, from: { x: number; z: number } | null | undefined, attacker?: Entity, half = 0.3): { x: number; z: number } | null {
+  if (from) return from;
+  if (!attacker) return null;
+  const p = attacker.body.pos;
+  if (Math.abs(p.x - px) >= half || Math.abs(p.z - pz) >= half) return p;
+  const ax = attacker.data?._appX, az = attacker.data?._appZ;
+  if (typeof ax === "number" && typeof az === "number") return { x: px + ax, z: pz + az };
+  const yaw = attacker.headYaw ?? attacker.yaw;
+  return { x: p.x + Math.sin(yaw), z: p.z + Math.cos(yaw) };
+}
+
+// Vanilla LivingEntity.isDamageSourceBlocked: the source lies in front of the horizontal view.
+export const facesSource = (yaw: number, px: number, pz: number, sx: number, sz: number) =>
+  -Math.sin(yaw) * (sx - px) - Math.cos(yaw) * (sz - pz) > 0;
+
 // Vanilla 1.21 Mob.DEFAULT_ATTACK_REACH: the attack box grows this much on x and z.
 export const ATTACK_REACH = Math.sqrt(2.04) - 0.6;
 
@@ -81,9 +99,8 @@ export function knockBody(body: { vel: THREE.Vector3; onGround: boolean }, dx: n
 // Vanilla MeleeAttackGoal: in melee range, line of sight from eye to eye, 20 tick cooldown.
 // Hits e.data._target, or the player when no target is set. Returns true on a hit.
 // knock is the attacker's knockback attribute; Mob.doHurtTarget pushes the target by half of it along the attack.
-export function meleeAttack(e: Entity, ctx: GameCtx, damage: number, cooldown = 20, knock = 0) {
-  const cd = (e.data._atk as number) || 0;
-  if (cd > e.age) return false;
+// swing is the arm swing length in ticks: vanilla Mob.getCurrentSwingDuration is 6; ravager and hoglin animate over 10.
+export function meleeAttack(e: Entity, ctx: GameCtx, damage: number, cooldown = 20, knock = 0, swing = 6) {
   const t = (e.data._target as Target) ?? "player";
   const b = e.body;
   let tb: Body;
@@ -98,12 +115,19 @@ export function meleeAttack(e: Entity, ctx: GameCtx, damage: number, cooldown = 
     tb = o.body;
     eyeY = tb.pos.y + tb.height * 0.85;
   }
+  const ox = b.pos.x - tb.pos.x, oz = b.pos.z - tb.pos.z;
+  if (Math.abs(ox) >= tb.width / 2 || Math.abs(oz) >= tb.width / 2) {
+    e.data._appX = ox;
+    e.data._appZ = oz;
+  }
+  if (((e.data._atk as number) || 0) > e.age) return false;
   if (!inMeleeRange(b, tb, e.type === "ravager" ? ATTACK_REACH - 0.05 : ATTACK_REACH)) return false;
   if (!canSee(ctx, e, tb.pos.x, eyeY, tb.pos.z)) return false;
   const dx = tb.pos.x - b.pos.x;
   const dz = tb.pos.z - b.pos.z;
   e.data._atk = e.age + cooldown;
-  e.data._swing = 10;
+  e.data._swing = swing;
+  e.data._swingLen = swing;
   if (t === "player") {
     const pl = ctx.player as GameCtx["player"] & { invulnerable?: number };
     const fresh = (pl.invulnerable ?? 0) <= 10;

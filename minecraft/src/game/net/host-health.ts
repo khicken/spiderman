@@ -1,6 +1,7 @@
 import type { DamageSource, Entity, GameCtx, GameMode, ItemStack, Rules } from "../contracts";
 import { armorTotals, difficultyScale, protectionEpf } from "../player/survival";
 import { BYPASS_ARMOR, armorReduce, ench, protectionReduce } from "../player/stats";
+import { attackSource, facesSource } from "../entities/combat";
 import type { HostMsg } from "./protocol";
 
 // The host owns each remote player's health and hunger. Clients report what they detect (falls, fire, eating) and display what the host sends.
@@ -112,8 +113,11 @@ export function hostDamage(o: HealthOwner, ctx: GameCtx, amount: number, source:
   amount = difficultyScale(ctx, amount, source, attacker);
   if (amount <= 0) return;
   const src = from ?? (attacker ? attacker.body.pos : null);
-  if (h.blocking && src && SHIELDED.has(source) && -Math.sin(o.yaw) * (src.x - o.pos.x) - Math.cos(o.yaw) * (src.z - o.pos.z) > 0) {
-    o.send({ t: "hurt", amount, source, blocked: String(attacker?.data.held ?? "").endsWith("_axe") && ctx.random() < 0.25 ? 2 : 1 });
+  const shot = attackSource(o.pos.x, o.pos.z, from, attacker);
+  if (h.blocking && shot && SHIELDED.has(source) && facesSource(o.yaw, o.pos.x, o.pos.z, shot.x, shot.z)) {
+    const melee = attacker && (source === "mob" || source === "player");
+    if (melee) ctx.entities.knockback(attacker.id, shot.x - o.pos.x, shot.z - o.pos.z, 0.5);
+    o.send({ t: "hurt", amount, source, blocked: melee && (String(attacker.data?.held ?? "").endsWith("_axe") || attacker.type === "warden") ? 2 : 1 });
     return;
   }
   let dealt = amount;
