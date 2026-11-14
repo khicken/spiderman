@@ -339,6 +339,7 @@ const ARMOR_MAT: Record<string, Ramp> = {
   golden: MAT.golden,
   diamond: MAT.diamond,
   netherite: MAT.netherite,
+  copper: MAT.copper,
 };
 
 const armor = (shape: readonly string[], m: string, ramp = ARMOR_MAT[m]): Painter => (p) => {
@@ -465,7 +466,7 @@ const HORSE = [
   "................",
 ];
 
-for (const m of ["leather", "chainmail", "iron", "golden", "diamond", "netherite"]) {
+for (const m of ["leather", "chainmail", "iron", "golden", "diamond", "netherite", "copper"]) {
   GEAR_PAINTERS[`${m}_helmet`] = armor(HELMET, m);
   GEAR_PAINTERS[`${m}_chestplate`] = armor(CHEST, m);
   GEAR_PAINTERS[`${m}_leggings`] = armor(LEGS, m);

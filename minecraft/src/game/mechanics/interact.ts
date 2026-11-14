@@ -11,6 +11,7 @@ import { fireStateAt, igniteTnt } from "./fire";
 import { insertEye, lightPortal } from "./portal";
 import { applyBoneMeal, boneMealEffects } from "./bonemeal";
 import { canScrape, canWax, isWaxed, scrape, waxOff, waxOn } from "./copper";
+import { useStatue } from "./copper-statue";
 
 export type UseFn = NonNullable<BlockBehavior["use"]>;
 
@@ -362,6 +363,7 @@ export function blockUseFor(name: string, shape: string, tags: string[]): UseFn 
   if (name === "cave_vines" || name === "cave_vines_plant") return useCaveVines;
   if (name === "end_portal_frame") return useFrame;
   if (name === "pumpkin") return usePumpkin;
+  if (tags.includes("copper_golem_statues")) return useStatue;
   if (containerKind(name)) return useContainer;
   return undefined;
 }

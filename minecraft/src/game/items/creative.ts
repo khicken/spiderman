@@ -109,9 +109,10 @@ const FUNCTIONAL = [
   "bee_nest", "beehive", "suspicious_sand", "suspicious_gravel", "lightning_rod", "flower_pot", "decorated_pot", "armor_stand",
   "item_frame", "glow_item_frame", "painting", "bookshelf", "chiseled_bookshelf", "lectern", "tinted_glass",
   ...WOODS.flatMap((w) => [`${w}_sign`, `${w}_hanging_sign`]),
-  "chest", "barrel", "ender_chest", "shulker_box", ...colors("shulker_box"), "respawn_anchor", "infested_stone", "infested_cobblestone", "infested_stone_bricks",
+  "chest", ...["", "waxed_"].flatMap((w) => COPPER_PREFIXES.map((p) => `${w}${p}copper_chest`)), "barrel", "ender_chest", "shulker_box", ...colors("shulker_box"), "respawn_anchor", "infested_stone", "infested_cobblestone", "infested_stone_bricks",
   "infested_mossy_stone_bricks", "infested_cracked_stone_bricks", "infested_chiseled_stone_bricks", "infested_deepslate",
   "end_portal_frame", "vault", "skeleton_skull", "wither_skeleton_skull", "player_head", "zombie_head", "creeper_head", "piglin_head", "dragon_head", "dragon_egg",
+  "copper_torch", ...["copper_lantern", "copper_chain", "copper_bars", "copper_golem_statue"].flatMap((n) => ["", "waxed_"].flatMap((w) => COPPER_PREFIXES.map((p) => `${w}${p}${n}`))),
 ];
 
 const REDSTONE = [
@@ -132,7 +133,7 @@ const TOOLS = [
   "bucket", "water_bucket", "cod_bucket", "salmon_bucket", "tropical_fish_bucket", "pufferfish_bucket", "axolotl_bucket",
   "tadpole_bucket", "powder_snow_bucket", "lava_bucket", "milk_bucket", "fishing_rod", "flint_and_steel", "fire_charge", "bone_meal",
   "shears", "brush", "name_tag", "lead", "compass", "recovery_compass", "clock", "spyglass", "map", "writable_book",
-  "wind_charge", "ender_pearl", "ender_eye", "elytra",
+  "wind_charge", "ender_pearl", "ender_eye", "elytra", "copper_shovel", "copper_pickaxe", "copper_axe", "copper_hoe",
 ];
 const TOOLS_AFTER_ROCKETS = [
   "saddle", "carrot_on_a_stick", "warped_fungus_on_a_stick",
@@ -145,7 +146,9 @@ const COMBAT = [
   ...TOOL_TIERS.map((t) => `${t}_sword`), ...TOOL_TIERS.map((t) => `${t}_axe`), "trident", "mace", "shield",
   ...ARMOR_MATERIALS.flatMap((m) => [`${m}_helmet`, `${m}_chestplate`, `${m}_leggings`, `${m}_boots`]),
   "turtle_helmet", "leather_horse_armor", "iron_horse_armor", "golden_horse_armor", "diamond_horse_armor", "wolf_armor",
+  "copper_nautilus_armor", "iron_nautilus_armor", "golden_nautilus_armor", "diamond_nautilus_armor", "netherite_nautilus_armor",
   "totem_of_undying", "tnt", "end_crystal", "snowball", "egg", "wind_charge", "bow", "crossbow",
+  "copper_sword", "copper_axe", "copper_helmet", "copper_chestplate", "copper_leggings", "copper_boots",
 ];
 
 const INGREDIENTS = [
@@ -160,7 +163,7 @@ const INGREDIENTS = [
   "golden_carrot", "ghast_tear", "turtle_helmet", "phantom_membrane",
   ...BANNER_PATTERNS.map((p) => `${p}_banner_pattern`), ...POTTERY_SHERDS.map((s) => `${s}_pottery_sherd`),
   "netherite_upgrade_smithing_template", ...TRIM_PATTERNS.map((p) => `${p}_armor_trim_smithing_template`), "experience_bottle", "trial_key",
-  "ominous_trial_key",
+  "ominous_trial_key", "copper_nugget",
 ];
 
 const OP = ["command_block", "chain_command_block", "repeating_command_block", "command_block_minecart", "jigsaw", "structure_block", "structure_void", "barrier", "debug_stick", "light"];

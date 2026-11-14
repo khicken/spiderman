@@ -1,5 +1,8 @@
 import type { BlockBehavior, GameCtx } from "../contracts";
-import { AIR, SET_NO_DROP, SET_NOTIFY } from "../contracts";
+import { AIR, SET_NO_DROP, SET_NOTIFY, metaOf } from "../contracts";
+import { COPPER_STAGES } from "../blocks/names";
+import { placeChestFacing } from "./chest";
+import { FACE_H, idn } from "./util";
 import { blockDef } from "../blocks/registry";
 import { advTrigger } from "../systems/advancements/bus";
 
@@ -70,10 +73,14 @@ function headPlaced(ctx: GameCtx, x: number, y: number, z: number) {
     if (ctx.entities.spawn("iron_golem", x + 0.5, y - 2, z + 0.5, { playerCreated: true, persistent: true }) && playerNear(ctx, x + 0.5, y - 2, z + 0.5, 5)) advTrigger({ t: "summoned", type: "iron_golem" });
     return;
   }
-  const cn = name(ctx, x, y - 1, z), cs = copperStage(cn);
+  const cs = copperStage(name(ctx, x, y - 1, z));
   if (cs !== undefined) {
+    const h = FACE_H[metaOf(ctx.world.getBlock(x, y, z)) & 7] ?? 0;
     clear(ctx, [[x, y, z], [x, y - 1, z]]);
-    ctx.entities.spawn("copper_golem", x + 0.5, y - 1, z + 0.5, { persistent: true, oxidation: cs, waxed: cn.startsWith("waxed_") });
+    // Vanilla: a waxed copper block still gives an unwaxed golem and chest.
+    const chest = idn(`${COPPER_STAGES[cs]}copper_chest`);
+    if (chest >= 0) placeChestFacing(ctx, x, y - 1, z, chest, h);
+    ctx.entities.spawn("copper_golem", x + 0.5, y, z + 0.5, { persistent: true, oxidation: cs });
   }
 }
 

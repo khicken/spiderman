@@ -8,6 +8,8 @@ import { MISC_RECIPES } from "./recipes-misc";
 import { smeltRecipe, smeltTicks, SMELT_RECIPES, type SmeltKind } from "./recipes-smelt";
 import { STONE_RECIPES, STONECUT_EDGES } from "./recipes-stone";
 import { WOOD_RECIPES } from "./recipes-wood";
+import { COPPER_CHEST_RECIPES } from "./recipes-copper-chest";
+import { COPPER_AGE_RECIPES } from "./recipes-copper-age";
 import { copyStack, maxDurability } from "./stack";
 
 export type { SmeltKind } from "./recipes-smelt";
@@ -27,7 +29,7 @@ const templates: CraftRecipe[] = [
   }),
 ];
 
-export const CRAFT_RECIPES: CraftRecipe[] = [...WOOD_RECIPES, ...STONE_RECIPES, ...MISC_RECIPES, ...templates];
+export const CRAFT_RECIPES: CraftRecipe[] = [...WOOD_RECIPES, ...STONE_RECIPES, ...MISC_RECIPES, ...templates, ...COPPER_CHEST_RECIPES, ...COPPER_AGE_RECIPES];
 
 const ALTS = new Map<string, Set<string>>();
 function ingSet(ing: Ing): Set<string> {
@@ -306,7 +308,7 @@ export function stonecutterOptions(item: string | ItemStack): ItemStack[] {
 }
 
 const NETHERITE_BASES = new Set(
-  ["sword", "shovel", "pickaxe", "axe", "hoe", "helmet", "chestplate", "leggings", "boots"].map((k) => `diamond_${k}`),
+  ["sword", "shovel", "pickaxe", "axe", "hoe", "helmet", "chestplate", "leggings", "boots", "nautilus_armor"].map((k) => `diamond_${k}`),
 );
 
 export function smithingResult(template: ItemStack | null, base: ItemStack | null, addition: ItemStack | null): ItemStack | null {

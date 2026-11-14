@@ -12,6 +12,9 @@ export type Table = Pool[];
 
 const P = (min: number, max: number, entries: Entry[], chance?: number): Pool => ({ rolls: [min, max], entries, chance });
 
+// 1.21.11 nautilus armor in ocean chests: 10.8% copper, 5.4% iron, 2.7% golden, 1.1% diamond.
+const NAUTILUS_ARMOR = P(1, 1, [["empty", 148], ["copper_nautilus_armor", 20], ["iron_nautilus_armor", 10], ["golden_nautilus_armor", 5], ["diamond_nautilus_armor", 2]]);
+
 export const LOOT: Record<string, Table> = {
   simple_dungeon: [
     P(1, 3, [
@@ -102,11 +105,13 @@ export const LOOT: Record<string, Table> = {
     P(1, 1, [["golden_apple", 1]]),
   ],
   shipwreck_map: [
+    NAUTILUS_ARMOR,
     P(1, 1, [["map", 1]]),
     P(3, 3, [["compass", 1], ["map", 1], ["clock", 1], ["paper", 20, 1, 10], ["feather", 10, 1, 5], ["book", 5, 1, 5]]),
     P(2, 2, [["empty", 5], ["coast_armor_trim_smithing_template", 1, 2, 2]]),
   ],
   shipwreck_supply: [
+    NAUTILUS_ARMOR,
     P(3, 10, [
       ["paper", 8, 1, 12], ["potato", 7, 2, 6], ["moss_block", 7, 1, 4], ["poisonous_potato", 7, 2, 6], ["carrot", 7, 4, 8], ["wheat", 7, 8, 21],
       ["suspicious_stew", 10, 1, 1, "stew"], ["coal", 6, 2, 8], ["rotten_flesh", 5, 5, 24], ["pumpkin", 2, 1, 3], ["bamboo", 2, 1, 3],
@@ -116,11 +121,13 @@ export const LOOT: Record<string, Table> = {
     P(2, 2, [["empty", 5], ["coast_armor_trim_smithing_template", 1, 2, 2]]),
   ],
   shipwreck_treasure: [
+    NAUTILUS_ARMOR,
     P(3, 6, [["iron_ingot", 90, 1, 5], ["gold_ingot", 10, 1, 5], ["emerald", 40, 1, 5], ["diamond", 5], ["experience_bottle", 5]]),
     P(2, 5, [["iron_nugget", 50, 1, 10], ["gold_nugget", 10, 1, 10], ["lapis_lazuli", 20, 1, 10]]),
     P(2, 2, [["empty", 5], ["coast_armor_trim_smithing_template", 1, 2, 2]]),
   ],
   buried_treasure: [
+    NAUTILUS_ARMOR,
     P(1, 1, [["heart_of_the_sea", 1]]),
     P(5, 8, [["iron_ingot", 20, 1, 4], ["gold_ingot", 10, 1, 4], ["tnt", 5, 1, 2]]),
     P(1, 3, [["emerald", 5, 4, 8], ["diamond", 5, 1, 2], ["prismarine_crystals", 5, 1, 5]]),
@@ -129,10 +136,12 @@ export const LOOT: Record<string, Table> = {
     P(0, 2, [["potion", 1, 1, 1, "potion:water_breathing"]]),
   ],
   underwater_ruin_small: [
+    NAUTILUS_ARMOR,
     P(2, 8, [["coal", 10, 1, 4], ["stone_axe", 2], ["rotten_flesh", 5], ["emerald", 1], ["wheat", 10, 2, 3]]),
     P(1, 1, [["leather_chestplate", 1], ["golden_helmet", 1], ["fishing_rod", 5, 1, 1, "ench"], ["map", 10]]),
   ],
   underwater_ruin_big: [
+    NAUTILUS_ARMOR,
     P(2, 8, [["coal", 10, 1, 4], ["gold_nugget", 10, 1, 3], ["emerald", 1], ["wheat", 10, 2, 3]]),
     P(1, 1, [["golden_apple", 1], ["book", 5, 1, 1, "ench"], ["leather_chestplate", 1], ["golden_helmet", 1], ["fishing_rod", 5, 1, 1, "ench"], ["map", 10]]),
   ],

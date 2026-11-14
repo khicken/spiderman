@@ -1,10 +1,13 @@
 import type { BlockState, GameCtx } from "../contracts";
 import { SET_NOTIFY, idOf, metaOf, stateOf } from "../contracts";
 import { BLOCKS, blockDef } from "../blocks/registry";
-import { idn } from "./util";
+import { HX, HZ, idn } from "./util";
+import { chestPartnerH, setKeepingItems } from "./chest";
 
 const STAGES = ["", "exposed_", "weathered_", "oxidized_"];
-const SUFFIXES = ["cut_copper", "cut_copper_stairs", "cut_copper_slab", "chiseled_copper", "copper_grate", "copper_bulb", "copper_door", "copper_trapdoor"];
+const SUFFIXES = ["cut_copper", "cut_copper_stairs", "cut_copper_slab", "chiseled_copper", "copper_grate", "copper_bulb", "copper_door", "copper_trapdoor",
+  // Copper Age families; missing names are skipped by chain().
+  "copper_chest", "copper_golem_statue", "copper_lantern", "copper_bars", "copper_chain"];
 
 const NEXT = new Int16Array(4096).fill(-1);
 const PREV = new Int16Array(4096).fill(-1);
@@ -50,13 +53,22 @@ export const canWax = (s: BlockState) => WAX[idOf(s)] >= 0;
 export const isWaxed = (s: BlockState) => UNWAX[idOf(s)] >= 0;
 export const canScrape = (s: BlockState) => PREV[idOf(s)] >= 0;
 
-// Doors keep both halves the same block, so convert the other half too.
+// Doors and large chests keep both halves the same block, so convert the other half too.
 function setKeepingDoor(ctx: GameCtx, x: number, y: number, z: number, s: BlockState, id: number) {
   const m = metaOf(s);
-  if (blockDef(s).shape === "door") {
+  const shape = blockDef(s).shape;
+  if (shape === "door") {
     const oy = m & 8 ? y - 1 : y + 1;
     const o = ctx.world.getBlock(x, oy, z);
     if (idOf(o) === idOf(s)) ctx.world.setBlock(x, oy, z, stateOf(id, metaOf(o)), 0);
+  } else if (shape === "chest") {
+    const d = chestPartnerH(ctx.world, x, y, z, s);
+    if (d >= 0) {
+      const px = x + HX[d], pz = z + HZ[d];
+      setKeepingItems(ctx, px, y, pz, stateOf(id, metaOf(ctx.world.getBlock(px, y, pz))), 0);
+    }
+    setKeepingItems(ctx, x, y, z, stateOf(id, m), SET_NOTIFY);
+    return;
   }
   ctx.world.setBlock(x, y, z, stateOf(id, m), SET_NOTIFY);
 }
@@ -76,6 +88,7 @@ export function copperRandomTick(ctx: GameCtx, x: number, y: number, z: number, 
   const next = NEXT[idOf(s)];
   if (next < 0 || ctx.random() >= 0.05688889) return;
   if (blockDef(s).shape === "door" && metaOf(s) & 8) return;
+  if (blockDef(s).shape === "chest" && !(metaOf(s) & 8) && chestPartnerH(ctx.world, x, y, z, s) >= 0) return;
   const age = STAGE[idOf(s)];
   let higher = 0, same = 0;
   for (let dx = -4; dx <= 4; dx++) {

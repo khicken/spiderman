@@ -8,6 +8,8 @@ import type { BlockSpec } from "./spec";
 import { STONE_BLOCKS } from "./stone";
 import { UTILITY_BLOCKS } from "./utility";
 import { WOOD_BLOCKS } from "./wood";
+import { COPPER_CHEST_BLOCKS } from "./copper-chest";
+import { COPPER_AGE_BLOCKS } from "./copper-age";
 
 export type { BlockSpec } from "./spec";
 
@@ -24,4 +26,6 @@ export const BLOCK_DATA: BlockSpec[] = [
   ...UTILITY_BLOCKS,
   ...REDSTONE_BLOCKS,
   ...NETHER_END_BLOCKS,
+  ...COPPER_CHEST_BLOCKS,
+  ...COPPER_AGE_BLOCKS,
 ];
