@@ -3,6 +3,11 @@ import {
   bubbles, chirps, clank, clicks, genericMob, grunt, hissNoise, lowpass, noiseSweep, R, repeat, ringMod, say, seq,
   squelch, step, thud, tremolo, whoosh, type Gen, type MobSounds,
 } from "./mob-kit";
+import { CREAKING_SOUNDS } from "./sfx-creaking";
+import { HAPPY_GHAST_SOUNDS } from "./sfx-happy-ghast";
+import { COPPER_GOLEM_SOUNDS } from "./sfx-copper-golem";
+import { NAUTILUS_SOUNDS } from "./sfx-nautilus";
+import { DESERT_UNDEAD_SOUNDS } from "./sfx-desert-undead";
 
 function zombie(k: number, shift: number, extra: Gen | null = null): MobSounds {
   // Flat pitch and unrounded vowels: a moving pitch or "o"/"u" vowels make the groan sound like a person saying words.
@@ -458,6 +463,11 @@ export const MOB_SOUNDS: Record<string, MobSounds> = {
   strider: { ...smallCritter(700), ambient: R(say({ dur: 0.5, f: [300, 380, 260], vowels: ["o", "u"], vibRate: 14, vibDepth: 0.08 }), 0.5) },
   player: genericMob(140),
   generic: genericMob(130),
+  ...CREAKING_SOUNDS,
+  ...HAPPY_GHAST_SOUNDS,
+  ...COPPER_GOLEM_SOUNDS,
+  ...NAUTILUS_SOUNDS,
+  ...DESERT_UNDEAD_SOUNDS,
 };
 
 export const GENERIC_MOB = MOB_SOUNDS.generic;

@@ -60,6 +60,8 @@ export const EGG_COLORS: Record<string, [number, number]> = {
   wither: [0x141414, 0x4d72a0], wither_skeleton: [0x141414, 0x474d4d], wolf: [0xd7d3d3, 0xceaf96],
   zoglin: [0xc66e55, 0xe6e6e6], zombie: [0x00afaf, 0x799c65], zombie_horse: [0x315234, 0x97c284],
   zombie_villager: [0x563c33, 0x799c65], zombified_piglin: [0xea9393, 0x4c7129],
+  creaking: [0x5f5f5f, 0xfc7812], happy_ghast: [0xf9f9f9, 0x8fa8c4], copper_golem: [0xc66a43, 0x4fa38c],
+  nautilus: [0xe9dcc0, 0xb2552c], zombie_nautilus: [0x6f8f62, 0x3d5236], camel_husk: [0xa39478, 0x6e6250], parched: [0xd8c79c, 0x8a6e47],
 };
 
 const spawnEgg = (base: string, spot: string): Painter => (p) => {
