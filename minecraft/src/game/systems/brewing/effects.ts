@@ -4,7 +4,7 @@ import { blockByName, blockDef } from "../../blocks/registry";
 import { INSTANT, potionColor, potionEffects } from "../../items/potions";
 
 export const UNDEAD = new Set([
-  "zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "phantom", "zombified_piglin",
+  "zombie", "husk", "drowned", "camel_husk", "parched", "zombie_nautilus", "giant", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "phantom", "zombified_piglin",
   "wither", "zombie_horse", "skeleton_horse", "zoglin",
 ]);
 const WATER_HURT = new Set(["enderman", "blaze", "strider", "snow_golem"]);

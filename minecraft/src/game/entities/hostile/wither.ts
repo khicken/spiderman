@@ -12,7 +12,7 @@ import { rig, setPivot, setRot, toSpecs, wrap, type VPart } from "./rig";
 import { addEffect, attackerOf, hurtAmount, nearby, num, sound, targetInfo } from "./brain";
 import { initMissile, miscDef, missileStep } from "./missile";
 
-const UNDEAD = new Set(["zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "zombified_piglin", "zoglin", "phantom", "skeleton_horse", "zombie_horse", "wither", "ender_dragon"]);
+const UNDEAD = new Set(["zombie", "husk", "drowned", "camel_husk", "parched", "zombie_nautilus", "giant", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "zombified_piglin", "zoglin", "phantom", "skeleton_horse", "zombie_horse", "wither", "ender_dragon"]);
 const RIB = 0.20420352;
 
 const PARTS: VPart[] = [

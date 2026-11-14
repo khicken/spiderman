@@ -64,7 +64,7 @@ export function MountPreview({ view, panel, mouse }: { view: ContainerView; pane
       e.age = v.mount.age + Math.floor(ticks);
       e.yaw = Math.PI - f * 20 * D;
       e.headYaw = e.yaw - f * 20 * D;
-      e.pitch = -g * 20 * D;
+      e.pitch = g * 20 * D;
       tilt.rotation.x = -g * 20 * D;
       inner.rotation.set(0, e.yaw + Math.PI, 0);
       model.animate(e, ticks % 1, 0, 0);

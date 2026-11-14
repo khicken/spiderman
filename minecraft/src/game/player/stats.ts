@@ -142,7 +142,7 @@ export function enchantDamageBonus(held: ItemStack | null, targetType: string): 
   return b;
 }
 
-const UNDEAD = new Set(["zombie", "husk", "drowned", "skeleton", "stray", "bogged", "wither_skeleton", "zombie_villager", "zombified_piglin", "zoglin", "phantom", "wither", "skeleton_horse", "zombie_horse"]);
+const UNDEAD = new Set(["zombie", "husk", "drowned", "camel_husk", "parched", "zombie_nautilus", "giant", "skeleton", "stray", "bogged", "wither_skeleton", "zombie_villager", "zombified_piglin", "zoglin", "phantom", "wither", "skeleton_horse", "zombie_horse"]);
 const ARTHROPODS = new Set(["spider", "cave_spider", "silverfish", "endermite", "bee"]);
 
 // Vanilla entity names for attackers that are not mobs.
