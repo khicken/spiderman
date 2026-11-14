@@ -107,6 +107,11 @@ function teleport(e: Entity, ctx: GameCtx): boolean {
   return false;
 }
 
+// The lid moves 0.05 a tick toward where the shulker wants it.
+function peekToward(cur: number, peek: number) {
+  return cur < peek ? Math.min(peek, cur + 0.05) : Math.max(peek, cur - 0.05);
+}
+
 function shoot(e: Entity, ctx: GameCtx, t: "player" | number) {
   const b = e.body;
   const [dx, dy, dz] = DIRS[num(e, "attach")] ?? DIRS[0];
@@ -158,7 +163,7 @@ function shulkerTick(e: Entity, ctx: GameCtx) {
     e.data._peekT = pt;
   }
   const was = num(e, "peekCur");
-  const cur = was < peek ? Math.min(peek, was + 0.05) : Math.max(peek, was - 0.05);
+  const cur = peekToward(was, peek);
   if (was === 0 && cur > 0) sound(ctx, e, "entity.shulker.open");
   if (was > 0 && cur === 0) sound(ctx, e, "entity.shulker.close");
   e.data.peek = peek;
@@ -180,6 +185,10 @@ export const SHULKER: MobDef = {
   sounds: { hurt: "entity.shulker.hurt", death: "entity.shulker.death" },
   createModel: shulkerModel,
   tick: shulkerTick,
+  // Multiplayer client mirror: the lid eases toward the synced peek target like the host's does.
+  mirror(e) {
+    e.data.peekCur = peekToward(num(e, "peekCur"), num(e, "peek"));
+  },
 };
 
 const BULLET: VPart[] = [

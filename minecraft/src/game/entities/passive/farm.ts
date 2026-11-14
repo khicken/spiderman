@@ -351,6 +351,17 @@ function chickenModel() {
   );
 }
 
+// Vanilla Chicken.aiStep wing flap: speeds up in the air, settles on the ground.
+function flapWings(e: Entity) {
+  const ground = e.body.onGround;
+  e.data._flapO = num(e, "_flap");
+  e.data._flapSO = num(e, "_flapS");
+  e.data._flapS = Math.min(1, Math.max(0, num(e, "_flapS") + (ground ? -1 : 4) * 0.3));
+  const fp = num(e, "_flapP", 1) * (!ground && num(e, "_flapP", 1) < 1 ? 1 : 0.9);
+  e.data._flapP = ground ? fp : Math.max(1, fp);
+  e.data._flap = num(e, "_flap") + num(e, "_flapP", 1) * 2;
+}
+
 const SEEDS = ["wheat_seeds", "melon_seeds", "pumpkin_seeds", "beetroot_seeds", "torchflower_seeds", "pitcher_pod"];
 const chickenOpts: AnimalOpts = { food: SEEDS, panic: 1.4 };
 
@@ -370,16 +381,11 @@ export const CHICKEN: MobDef = {
   sounds: { ambient: "entity.chicken.ambient", hurt: "entity.chicken.hurt", death: "entity.chicken.death", step: "entity.chicken.step" },
   spawn: { dims: ["overworld"], biomes: FARM_BIOMES, light: "grass", group: [4, 4], weight: 10 },
   createModel: chickenModel,
+  mirror: flapWings,
   tick(e, ctx) {
     e.data.noFall = true;
     const b = e.body;
-    e.data._flapO = num(e, "_flap");
-    e.data._flapSO = num(e, "_flapS");
-    const fs = Math.min(1, Math.max(0, num(e, "_flapS") + (b.onGround ? -1 : 4) * 0.3));
-    e.data._flapS = fs;
-    const fp = num(e, "_flapP", 1) * (!b.onGround && num(e, "_flapP", 1) < 1 ? 1 : 0.9);
-    e.data._flapP = b.onGround ? fp : Math.max(1, fp);
-    e.data._flap = num(e, "_flap") + num(e, "_flapP", 1) * 2;
+    flapWings(e);
     if (!isBaby(e) && !e.data.chickenJockey) {
       let egg = num(e, "eggTime", -1);
       if (egg < 0) egg = 6000 + Math.floor(ctx.random() * 6000);

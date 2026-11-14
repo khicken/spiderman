@@ -15,6 +15,12 @@ function explode(e: Entity, ctx: GameCtx): void {
   mobExplode(ctx, e, p.x, p.y, p.z, power);
 }
 
+// Multiplayer client mirror: the swell steps one a tick the way the host's goes, so only its direction is sent.
+function swellStep(e: Entity) {
+  e.data.swellPrev = num(e, "swell");
+  e.data.swell = Math.max(0, Math.min(FUSE, num(e, "swell") + num(e, "_sdir", -1)));
+}
+
 function tick(e: Entity, ctx: GameCtx): void {
   const hurt = hurtAmount(e);
   e.data.swellPrev = num(e, "swell");
@@ -43,6 +49,7 @@ function tick(e: Entity, ctx: GameCtx): void {
   if (dir > 0 && s === 0) sound(ctx, e, "entity.creeper.primed", 1, 0.5);
   s = Math.max(0, s + dir);
   e.data.swell = s;
+  e.data._sdir = dir;
   if (s >= FUSE) {
     e.data.swell = FUSE;
     explode(e, ctx);
@@ -65,6 +72,7 @@ export const CREEPER: MobDef = {
   spawn: { dims: ["overworld"], biomes: MONSTER_BIOMES, light: "dark", group: [4, 4], weight: 100 },
   createModel: creeperModel,
   tick,
+  mirror: swellStep,
   onDeath(e, ctx) {
     const by = e.data._killer ?? e.data._hurtBy;
     if (typeof by === "number" && ["skeleton", "stray", "bogged"].includes(ctx.entities.get(by)?.type ?? "")) {

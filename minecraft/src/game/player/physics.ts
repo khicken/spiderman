@@ -253,7 +253,8 @@ function addFlow(world: WorldApi, x: number, y: number, z: number, s: BlockState
 
 const flowSum = new THREE.Vector3();
 // Sets inWater / inLava and pushes the body along flowing fluid (vanilla updateFluidHeightAndDoFluidPushing).
-function updateFluids(world: WorldApi, body: Body, nether: boolean): void {
+// Multiplayer mirrors pass push = false: they only need the flags their models read.
+export function updateFluids(world: WorldApi, body: Body, nether: boolean, push = true): void {
   bodyBox(body, bb);
   bb.minX += 0.001; bb.minY += 0.001; bb.minZ += 0.001; bb.maxX -= 0.001; bb.maxY -= 0.001; bb.maxZ -= 0.001;
   let water = false, lava = false;
@@ -282,6 +283,7 @@ function updateFluids(world: WorldApi, body: Body, nether: boolean): void {
       }
   body.inWater = water;
   body.inLava = lava;
+  if (!push) return;
   if (wn > 0 && wsum.lengthSq() > 0) pushFlow(body, wsum.divideScalar(wn), WATER_PUSH);
   if (ln > 0 && (lx || ly || lz)) pushFlow(body, wsum.set(lx / ln, ly / ln, lz / ln), nether ? 0.007 : 0.0023333333);
 }

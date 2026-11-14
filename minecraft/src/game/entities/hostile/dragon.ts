@@ -169,6 +169,15 @@ function headHit(e: Entity, ctx: GameCtx): boolean {
   return Math.hypot(eye.x - hx, eye.y - hy, eye.z - hz) < 5;
 }
 
+// Vanilla EnderDragon wing beat: slower at speed, faster climbing, slow while perched. It reads only motion, so
+// multiplayer client mirrors run it too. Returns the step.
+function flapWings(e: Entity) {
+  const v = e.body.vel;
+  const step = e.data.perched ? 0.1 : (0.2 / (Math.hypot(v.x, v.z) * 10 + 1)) * Math.pow(2, v.y);
+  e.data.flap = num(e, "flap") + step;
+  return step;
+}
+
 function dragonTick(e: Entity, ctx: GameCtx): void {
   e.data.noGravity = true;
   e.data.noFall = true;
@@ -249,10 +258,8 @@ function dragonTick(e: Entity, ctx: GameCtx): void {
     crystal.data.beam = [b.pos.x, b.pos.y + 3, b.pos.z];
     if (e.age % 10 === 0 && e.health < e.maxHealth) e.health = Math.min(e.maxHealth, e.health + 1);
   } else e.data._crystal = undefined;
-  const hs = Math.hypot(b.vel.x, b.vel.z);
   const prev = num(e, "flap");
-  const step = e.data.perched ? 0.1 : (0.2 / (hs * 10 + 1)) * Math.pow(2, b.vel.y);
-  e.data.flap = prev + step;
+  const step = flapWings(e);
   if (Math.cos(prev * Math.PI * 2) <= -0.3 && Math.cos((prev + step) * Math.PI * 2) >= -0.3) sound(ctx, e, "entity.ender_dragon.flap", 5, 0.8 + ctx.random() * 0.3);
   if (ctx.random() < 0.002) sound(ctx, e, "entity.ender_dragon.growl", 5);
   // Vanilla ties the boss bar to the End fight: a dragon summoned elsewhere shows none.
@@ -364,6 +371,7 @@ export const END_MOBS: MobDef[] = [
     sounds: { hurt: "entity.ender_dragon.hurt", death: "entity.ender_dragon.death" },
     createModel: dragonModel,
     tick: dragonTick,
+    mirror: flapWings,
     onDeath(e, ctx) {
       e.dead = false;
       e.health = 1;

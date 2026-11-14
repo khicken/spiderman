@@ -33,6 +33,21 @@ function init(e: Entity, ctx: GameCtx, magma: boolean): void {
   if (magma) e.data.armor = 3 * size;
 }
 
+// Vanilla Slime squish: eases toward a dip on landing and a stretch on take-off. It reads only the on-ground flag,
+// so multiplayer client mirrors run it too.
+function squishStep(e: Entity) {
+  const ground = e.body.onGround;
+  const was = !!e.data._ground;
+  let target = num(e, "_tsq");
+  if (ground && !was) target = -0.5;
+  else if (!ground && was) target = 1;
+  target *= 0.6;
+  e.data._tsq = target;
+  e.data.squishPrev = num(e, "squish");
+  e.data.squish = num(e, "squish") + (target - num(e, "squish")) * 0.5;
+  e.data._ground = ground;
+}
+
 function slimeTick(magma: boolean) {
   const prefix = magma ? "entity.magma_cube" : "entity.slime";
   return (e: Entity, ctx: GameCtx) => {
@@ -41,7 +56,6 @@ function slimeTick(magma: boolean) {
     const hurt = hurtAmount(e);
     const b = e.body;
     const wasGround = !!e.data._ground;
-    e.data.squishPrev = num(e, "squish");
     const t = updateTarget(e, ctx, { range: 16 }, hurt);
     const info = targetInfo(ctx, t);
     if (info) e.yaw = rotlerp(e.yaw, yawTo(info.pos.x - b.pos.x, info.pos.z - b.pos.z), 10 * Math.PI / 180);
@@ -65,16 +79,11 @@ function slimeTick(magma: boolean) {
     } else walkToward(e, ctx, fx, fz, speed);
     if (b.inWater) b.vel.y = Math.max(b.vel.y, 0.08);
     applyPhysics(e, ctx);
-    let target = num(e, "_tsq");
     if (b.onGround && !wasGround) {
       particles(ctx, magma ? "flame" : "dust", b.pos.x, b.pos.y, b.pos.z, size * 8, magma ? undefined : 0x7ec85a);
       sound(ctx, e, size > 1 ? prefix + ".squish" : prefix + ".squish_small", 0.4 * size, ((ctx.random() - ctx.random()) * 0.2 + 1) / 0.8);
-      target = -0.5;
-    } else if (!b.onGround && wasGround) target = 1;
-    target *= 0.6;
-    e.data._tsq = target;
-    e.data.squish = num(e, "squish") + (target - num(e, "squish")) * 0.5;
-    e.data._ground = b.onGround;
+    }
+    squishStep(e);
     const deals = magma || size > 1;
     if (deals && info && t === "player" && playerTargetable(ctx) && num(e, "_hitCd") <= e.age && bodiesTouch(b, ctx.player.body, 0.1, 0, 0.1) && canSeePlayer(ctx, e)) {
       e.data._hitCd = e.age + 10;
@@ -112,6 +121,7 @@ export const SLIMES: MobDef[] = [
     spawn: { dims: ["overworld"], biomes: SWAMPS, light: "dark", group: [1, 1], weight: 100 },
     createModel: () => slimeModel(false),
     tick: slimeTick(false),
+    mirror: squishStep,
     onDeath(e, ctx) {
       const size = num(e, "size", 1);
       if (size === 1) {
@@ -134,6 +144,7 @@ export const SLIMES: MobDef[] = [
     spawn: { dims: ["nether"], biomes: ["basalt_deltas"], light: "dark", group: [2, 5], weight: 100 },
     createModel: () => slimeModel(true),
     tick: slimeTick(true),
+    mirror: squishStep,
     onDeath(e, ctx) {
       const size = num(e, "size", 1);
       if (size > 1 && ctx.random() < 0.25) ctx.entities.dropItem({ item: "magma_cream", count: 1 }, e.body.pos.x, e.body.pos.y + 0.3, e.body.pos.z);
