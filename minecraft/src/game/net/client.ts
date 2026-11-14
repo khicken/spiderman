@@ -11,6 +11,7 @@ import type { AdvTrigger } from "../systems/advancements/bus";
 import type { RemoteLink } from "../world";
 import type { WorldMeta } from "../world/save";
 import { createAvatars } from "./avatars";
+import { catchFire } from "./host-fire";
 import { createBlockPredictions } from "./predict";
 import { rejoinToken } from "./profile";
 import { unpackChunk, unpackMoves, type EntMove } from "./codec";
@@ -415,11 +416,9 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       case "effect":
         g.player.addEffect(m.id, m.amp, m.ticks);
         return;
-      case "fire": {
-        const p = g.player as unknown as { fireTicks: number };
-        p.fireTicks = Math.max(p.fireTicks, m.ticks);
+      case "fire":
+        catchFire(ctx, g.player as unknown as PlayerState, m.ticks);
         return;
-      }
       case "tp":
         g.player.teleport(m.x, m.y, m.z);
         return;

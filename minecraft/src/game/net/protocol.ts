@@ -148,7 +148,7 @@ export type HostMsg =
   | { t: "advt"; trig: unknown }
   | { t: "tp"; x: number; y: number; z: number }
   | { t: "effect"; id: string; amp: number; ticks: number }
-  | { t: "fire"; ticks: number } // set on fire for at least this many ticks
+  | { t: "fire"; ticks: number } // set on fire for at least this many ticks; 0 puts the fire out
   | { t: "wake" }
   | { t: "host" }
   | { t: "bye"; reason: string };

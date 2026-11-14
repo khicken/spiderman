@@ -111,12 +111,18 @@ function strike(e: Entity, ctx: GameCtx) {
     o.data._fire = Math.max(Number(o.data._fire ?? 0), 160);
     ctx.entities.damage(o.id, 5, "lightning");
   }
-  const pl = ctx.player.body.pos;
-  if (Math.abs(pl.x - p.x) <= 3 && Math.abs(pl.z - p.z) <= 3 && pl.y >= p.y - 3 && pl.y <= p.y + 6 && ctx.player.gameMode !== "creative" && ctx.player.gameMode !== "spectator") {
-    const ps = ctx.player as { fireTicks?: number };
+  for (const pl of (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player]) {
+    if (pl.dead || pl.gameMode === "creative" || pl.gameMode === "spectator" || !inBolt(p, pl.body)) continue;
+    const ps = pl as { fireTicks?: number };
     ps.fireTicks = Math.max(ps.fireTicks ?? 0, 160);
-    ctx.player.damage(5, "lightning");
+    pl.damage(5, "lightning");
   }
+}
+
+// Vanilla LightningBolt.tick: entities whose box meets x/z +-3 and y -3..+9 around the bolt.
+export function inBolt(p: { x: number; y: number; z: number }, b: { pos: { x: number; y: number; z: number }; width: number; height: number }) {
+  const r = b.width / 2;
+  return b.pos.x + r > p.x - 3 && b.pos.x - r < p.x + 3 && b.pos.z + r > p.z - 3 && b.pos.z - r < p.z + 3 && b.pos.y + b.height > p.y - 3 && b.pos.y < p.y + 9;
 }
 
 export const LIGHTNING_BOLT: MobDef = {

@@ -90,8 +90,11 @@ export function potionImpact(ctx: GameCtx, x: number, y: number, z: number, poti
       o.data._fire = 0;
     }
     near.length = 0;
-    const p = ctx.player as unknown as PlayerFx;
-    if (ctx.player.body.pos.distanceTo(new THREE.Vector3(x, y, z)) < 4 && p.fireTicks) p.fireTicks = 0;
+    // A remote player's host copy only estimates its fire, so every player in range is told to put it out.
+    for (const pl of (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player]) {
+      const p = pl as unknown as PlayerFx;
+      if (pl.body.pos.distanceTo(new THREE.Vector3(x, y, z)) < 4) p.fireTicks = 0;
+    }
     return;
   }
   ctx.entities.near(x, y, z, 4.5, near);

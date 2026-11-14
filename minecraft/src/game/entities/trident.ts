@@ -6,6 +6,7 @@ import { findNear } from "../worldgen/structure-grid";
 import { advTrigger } from "../systems/advancements/bus";
 import { advLightning, markProjectile } from "../systems/advancements/hooks";
 import { projectileBreaks } from "./projectiles";
+import { teleportRandom } from "./hostile/enderman";
 import { pvpHook } from "../net/pvp-hook";
 
 const scratch: Entity[] = [];
@@ -117,6 +118,11 @@ function hitMob(e: Entity, ctx: GameCtx, t: Entity, stack: ItemStack): void {
   let dmg = Number(e.data.damage ?? 8);
   const imp = ench(stack, "impaling");
   if (imp > 0 && AQUATIC.has(t.type)) dmg += 2.5 * imp;
+  // Vanilla ThrownTrident: an enderman teleports away and the trident flies on; if it could not, the trident bounces.
+  if (t.type === "enderman") {
+    if (!teleportRandom(t, ctx, 64)) bounce(e, ctx);
+    return;
+  }
   const owner = e.data.owner === "player" ? "player" : typeof e.data.owner === "number" ? ctx.entities.get(e.data.owner) : undefined;
   markProjectile(t, e, ctx.time.tick);
   if (owner === "player") advTrigger({ t: "projectile_hit", projectile: "trident", target: t.type });

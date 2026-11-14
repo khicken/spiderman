@@ -32,7 +32,8 @@ import { setAdvancementSink } from "../systems/advancements";
 import { claimEffects, eatCredit, exhaust, foodDelta, grantEffect, healBy, hostDamage, newHealth, resetHealth, tickHealth, type Health, type HealthOwner } from "./host-health";
 import { cleanLook, localLook, onLocalLook, type Look } from "./skins";
 import type { Counts } from "./inv-guard";
-import { createHostPvp } from "./pvp";
+import { createHostPvp, remoteHeld } from "./pvp";
+import { fireAspectHit, remoteFire } from "./host-fire";
 import { setPvpHook } from "./pvp-hook";
 import { SHOT_TYPES, checkShot, newShotState, type ShotState } from "./shot-guard";
 
@@ -167,6 +168,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     body.pos = r.pos;
     const eye = new THREE.Vector3();
     const look = new THREE.Vector3();
+    const fire = remoteFire(() => tick, (ticks) => send(r, { t: "fire", ticks }));
     const p = {
       body,
       get yaw() {
@@ -211,6 +213,12 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       },
       get exhaustion() {
         return r.hp.exhaustion;
+      },
+      get fireTicks() {
+        return fire.get();
+      },
+      set fireTicks(v: number) {
+        fire.set(v);
       },
       air: 300,
       xpLevel: 0,
@@ -755,7 +763,9 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         withPlayer(r, () => {
           // The hitter has no local copy of the mob's hurt or death sound, so it must hear the host's.
           origin = null;
+          const hp = target.health;
           entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), source, "player");
+          if (source !== "trident") fireAspectHit(remoteHeld(r), target, target.dead || target.health < hp);
         });
         return;
       }
