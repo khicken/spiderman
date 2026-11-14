@@ -1,6 +1,6 @@
 import type { ItemSpec } from "./data";
 
-export const WOODS = ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "bamboo", "crimson", "warped"] as const;
+export const WOODS = ["oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "bamboo", "crimson", "warped", "pale_oak"] as const;
 export const DYES = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"] as const;
 export const COPPER_PREFIXES = ["", "exposed_", "weathered_", "oxidized_"] as const;
 
@@ -37,6 +37,7 @@ const materials: ItemSpec[] = [
   s("turtle_scute"),
   s("armadillo_scute"),
   s("honeycomb"),
+  s("resin_brick"),
   s("slime_ball"),
   s("clay_ball"),
   s("brick"),
@@ -182,7 +183,7 @@ export const TRIM_PATTERNS = [
   "silence", "raiser", "host", "flow", "bolt",
 ] as const;
 
-export const TRIM_MATERIALS = ["quartz", "iron_ingot", "netherite_ingot", "redstone", "copper_ingot", "gold_ingot", "emerald", "diamond", "lapis_lazuli", "amethyst_shard"] as const;
+export const TRIM_MATERIALS = ["quartz", "iron_ingot", "netherite_ingot", "redstone", "copper_ingot", "gold_ingot", "emerald", "diamond", "lapis_lazuli", "amethyst_shard", "resin_brick"] as const;
 
 export const PATTERN_NAMES: Record<string, string> = {
   stripe_bottom: "Base", stripe_top: "Chief", stripe_left: "Pale Dexter", stripe_right: "Pale Sinister", stripe_center: "Pale",
@@ -201,7 +202,7 @@ export const BANNER_PATTERNS = ["flower", "creeper", "skull", "mojang", "globe",
 
 export const MUSIC_DISCS = [
   "13", "cat", "blocks", "chirp", "far", "mall", "mellohi", "stal", "strad", "ward", "11", "wait", "otherside", "5",
-  "pigstep", "relic", "creator", "creator_music_box", "precipice",
+  "pigstep", "relic", "creator", "creator_music_box", "precipice", "tears",
 ] as const;
 
 const collectibles: ItemSpec[] = [

@@ -34,6 +34,7 @@ const TILL: Record<string, string[]> = {
   coarse_dirt: ["dirt", "dirt_path", "mud"], rooted_dirt: ["dirt", "dirt_path", "mud"], podzol: ["dirt_path"], mycelium: ["dirt_path"],
 };
 const STAGES = ["exposed_", "weathered_", "oxidized_"];
+const COPPER_CHEST = /^(waxed_)?(exposed_|weathered_|oxidized_)?copper_chest$/;
 const unlit = (n: string) => n.replace(/^lit_/, "");
 
 function copperStage(n: string): [string, number] | null {
@@ -49,6 +50,8 @@ export function freeSwap(a: string, b: string): boolean {
   if ((a.startsWith("potted_") && b === "flower_pot") || (a.endsWith("candle_cake") && b === "cake")) return true;
   if (a.endsWith("_concrete_powder") && b === a.slice(0, -7)) return true;
   if (b === `${a}_plant` || b === `${a}_stem`) return true;
+  // Pairing a copper chest can jump several oxidation stages (the pair takes the less oxidized one).
+  if (COPPER_CHEST.test(a) && COPPER_CHEST.test(b)) return true;
   if (a.startsWith("lit_") === b.startsWith("lit_") && (unlit(b) === `waxed_${unlit(a)}` || unlit(a) === `waxed_${unlit(b)}`)) return true;
   const ca = copperStage(a), cb = copperStage(b);
   return !!ca && !!cb && ca[0] === cb[0] && Math.abs(ca[1] - cb[1]) === 1;

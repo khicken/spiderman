@@ -61,6 +61,10 @@ export type Horizontal = 0 | 1 | 2 | 3;
 //  leaves:        bit 0 player placed (no decay)
 //  vault:         bits 0-1 facing (Horizontal), bit 2 active, bit 3 ominous
 //  trial spawner: bits 0-1 0 inactive, 1 active, 2 ejecting reward; bit 3 ominous
+//  creaking heart: bits 0-1 axis (0 y, 1 x, 2 z), bits 2-3 state (0 uprooted, 1 dormant, 2 awake)
+//  pale hanging moss: 0 tip, 1 middle piece
+//  resin clump:   Face of the one neighbor it is attached to (3 lying on the floor, 2 on the ceiling)
+//  pale moss carpet: bits 0-3 side walls covered, by Horizontal (bit 0 south ... bit 3 east); the bottom is always there
 export type Shape =
   | "air"
   | "cube"
@@ -113,7 +117,8 @@ export type SoundGroup =
   | "stone" | "wood" | "gravel" | "grass" | "sand" | "glass" | "wool" | "metal"
   | "snow" | "ladder" | "anvil" | "slime" | "honey" | "netherrack" | "nether_bricks"
   | "deepslate" | "copper" | "amethyst" | "mud" | "cherry_wood" | "bamboo_wood"
-  | "tuff" | "trial_spawner" | "heavy_core" | "vault" | "lantern" | "chain" | "plant";
+  | "tuff" | "trial_spawner" | "heavy_core" | "vault" | "lantern" | "chain" | "plant"
+  | "resin" | "resin_bricks" | "creaking_heart";
 
 // Texture keys use vanilla texture file names: "grass_block_top", "oak_log_top", "furnace_front".
 export interface BlockTextures {
@@ -415,10 +420,15 @@ export interface MobDef {
   createModel(): MobModel;
   // Runs each tick. Use ctx for world, physics, player, and entity calls.
   tick(e: Entity, ctx: GameCtx): void;
+  // Multiplayer clients: runs each tick on this mob's mirror to rebuild render-only state that the host recomputes
+  // every tick, from what clients already have (on ground, in water, motion, synced data), so it is never streamed.
+  mirror?(e: Entity): void;
   onDeath?(e: Entity, ctx: GameCtx): void;
   // Replaces mob damage for non-living entities (vanilla VehicleEntity): no health loss, hurt tint, hurt sound, knockback or death animation.
-  onHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
+  onHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player", direct?: Entity): void;
   onInteract?(e: Entity, ctx: GameCtx, held: ItemStack | null): boolean; // shear, milk, breed, ride
+  // True cancels the hit before any health loss (a creaking bound to its heart).
+  blockHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player"): boolean;
 }
 
 // ---------- Events ----------
@@ -495,6 +505,7 @@ export interface InventoryApi {
   // Container screen.
   open(kind: ContainerKind, at?: { x: number; y: number; z: number; entityId?: number }): void;
   close(): void;
+  openPos?(): { x: number; y: number; z: number } | undefined; // block of the open container screen, if any
   view(): ContainerView | null;
   clickSlot(index: number, click: ClickKind): void;
   chooseOption(id: string): void; // enchant row, trade, stonecutter recipe
@@ -651,7 +662,8 @@ export interface EntityApi {
   all(): Iterable<Entity>;
   near(x: number, y: number, z: number, r: number, out: Entity[]): Entity[];
   raycast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number): EntityHit | null;
-  damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
+  // direct: the projectile that hit, when there is one (vanilla DamageSource.getDirectEntity).
+  damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player", direct?: Entity): void;
   knockback(id: number, dx: number, dz: number, strength: number): void;
   interact(id: number, held: ItemStack | null): boolean;
   explode(x: number, y: number, z: number, power: number, fire?: boolean, kind?: "block" | "tnt"): void;
@@ -694,6 +706,7 @@ export interface RendererApi {
   setVisionFog?(far: number): void; // blindness / darkness fog end in blocks, 0 for none
   flash?(): void; // lightning sky flash
   addParticles(e: Extract<GameEvent, { type: "particles" }>): void;
+  onSound?(name: string, x?: number, y?: number, z?: number): void; // chest open and close sounds swing chest lids
   meshQueue(): number; // sections waiting
   chunkMeshed?(cx: number, cz: number): boolean; // chunk is ready and none of its sections wait for a mesh
   stats?(): RenderStats;

@@ -17,6 +17,7 @@ export const BI = {
   frozenOcean: id("frozen_ocean"), deepFrozen: id("deep_frozen_ocean"), forest: id("forest"), flowerForest: id("flower_forest"),
   birch: id("birch_forest"), ogBirch: id("old_growth_birch_forest"), darkForest: id("dark_forest"), jungle: id("jungle"),
   sparseJungle: id("sparse_jungle"), bamboo: id("bamboo_jungle"), sunflower: id("sunflower_plains"),
+  paleGarden: id("pale_garden"),
 };
 
 const S = (n: number, m = 0) => stateOf(n, m);
@@ -88,6 +89,7 @@ export function topBlockFor(sn: SurfaceNoise, seed: number, biome: number, x: nu
   if (biome === BI.wsGravelly) return n > 0.24 ? B.gravel : n > 0.12 ? B.stone : B.grass_block;
   if (biome === BI.wsHills && n > 0.18) return B.stone;
   if (biome === BI.wsSavanna) return n > 0.22 ? B.stone : n > 0.08 ? B.coarse_dirt : B.grass_block;
+  if (biome === BI.paleGarden && sn.patch.sample2(x * 0.7, z * 0.7) > 0.2) return B.pale_moss_block;
   return B.grass_block;
 }
 

@@ -325,6 +325,9 @@ export function createInventory(getCtx: () => GameCtx): InventoryApi & {
       openAt = undefined;
       api.version++;
     },
+    openPos() {
+      return menu ? openAt : undefined;
+    },
     view(): ContainerView | null {
       if (!menu) return null;
       const m = menu;

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { BlockState, Entity, GameCtx, MobDef } from "../../contracts";
+import type { BlockState, DamageSource, Entity, GameCtx, MobDef } from "../../contracts";
 import { idOf, metaOf } from "../../contracts";
 import { SOLID, blockDef } from "../../blocks/registry";
 import { moveBody, type MoveOpts } from "../../player/physics";
@@ -7,7 +7,7 @@ import { rig, wrap, type VPart } from "../rig";
 import { rider, mountPlayer, dismountPlayer } from "../riding";
 import { blockCube, blockStateOfItem } from "../block-cube";
 import { cartSkin } from "./art";
-import { dropContents } from "./boat";
+import { dropContents, drainDamage, hurtVehicle, wobble } from "./damage";
 
 const HALF_PI = Math.PI / 2;
 const EXITS = [
@@ -43,8 +43,15 @@ function cartModel(kind: Kind) {
     cube.scale.setScalar(0.75);
     cube.position.y = 0.3;
   }
+  // Vanilla MinecartRenderer rolls the cart about its length, around a point 0.375 up.
+  const roll = new THREE.Group();
+  roll.position.y = 0.375;
+  const body = new THREE.Group();
+  body.position.y = -0.375;
+  roll.add(body);
   const model = wrap(r, (a) => {
     tilt.rotation.x = (a.e.data._slope as number) ?? 0;
+    roll.rotation.z = wobble(a.e, a.pt);
     if (cube && kind === "tnt_minecart") {
       const fuse = (a.e.data.fuse as number) ?? -1;
       const flash = fuse >= 0 && Math.floor(fuse / 5) % 2 === 0 ? 0.8 : 0;
@@ -53,8 +60,9 @@ function cartModel(kind: Kind) {
   });
   const inner = model.root.children[0];
   model.root.add(tilt);
-  tilt.add(inner);
-  if (cube) tilt.add(cube);
+  tilt.add(roll);
+  body.add(inner);
+  if (cube) body.add(cube);
   return {
     root: model.root,
     animate: model.animate,
@@ -93,7 +101,12 @@ function offRail(e: Entity, ctx: GameCtx) {
     b.vel.x *= 0.5;
     b.vel.z *= 0.5;
   }
-  moveBody(ctx.world, b, opts);
+  const landed = moveBody(ctx.world, b, opts);
+  // Vanilla MinecartTNT.causeFallDamage: a fall of 3 or more blocks sets it off.
+  if (e.type === "tnt_minecart" && landed >= 3) {
+    explodeCart(e, ctx, landed / 10);
+    return;
+  }
   if (!b.onGround) {
     b.vel.x *= 0.95;
     b.vel.y *= 0.95;
@@ -211,6 +224,7 @@ function onRail(e: Entity, ctx: GameCtx, bx: number, by: number, bz: number, s: 
     else {
       ny = railY(shape, by, Math.min(1, Math.max(0, nx - bx)), Math.min(1, Math.max(0, nz - bz)));
       if (SOLID[idOf(ctx.world.getBlock(fx, Math.floor(ny + 0.1), fz))]) {
+        b.horizontalCollision = true;
         v.set(0, 0, 0);
         ny = railY(shape, by, b.pos.x - bx, b.pos.z - bz);
         b.pos.y = ny;
@@ -243,13 +257,13 @@ function tick(e: Entity, ctx: GameCtx) {
   e.data.silent = true;
   const b = e.body;
   b.stepHeight = 0;
-  if (e.health < e.maxHealth) e.health = Math.min(e.maxHealth, e.health + 0.1);
+  drainDamage(e);
   if (typeof e.data.fuse === "number") {
     const f = (e.data.fuse as number) - 1;
     e.data.fuse = f;
     if (e.age % 2 === 0) ctx.emit({ type: "particles", kind: "smoke", x: b.pos.x, y: b.pos.y + 1, z: b.pos.z, count: 1 });
     if (f <= 0) {
-      explodeCart(e, ctx);
+      explodeCart(e, ctx, Math.hypot(b.vel.x, b.vel.z));
       return;
     }
   }
@@ -260,15 +274,45 @@ function tick(e: Entity, ctx: GameCtx) {
     s = railAt(ctx, bx, by - 1, bz);
     if (s) by--;
   }
+  const speed2 = b.vel.x * b.vel.x + b.vel.z * b.vel.z;
+  b.horizontalCollision = false;
   if (s && b.vel.y <= 0.01) onRail(e, ctx, bx, by, bz, s);
   else offRail(e, ctx);
+  // MinecartTNT.tick: running into a wall at a horizontal speed squared of 0.01 or more sets it off. The speed is
+  // read before the move, since the collision here has already stopped the cart.
+  if (e.type === "tnt_minecart" && !e.data._remove && b.horizontalCollision && speed2 >= 0.01) explodeCart(e, ctx, Math.sqrt(speed2));
 }
 
-function explodeCart(e: Entity, ctx: GameCtx) {
+// Vanilla MinecartTNT.explode: power 4 + up to 1.5 * the speed (or the fall distance / 10), capped at 5.
+function explodeCart(e: Entity, ctx: GameCtx, boost: number) {
+  e.dead = true;
   e.data._remove = true;
   const p = e.body.pos;
-  const sp = Math.min(5, Math.hypot(e.body.vel.x, e.body.vel.z));
-  ctx.entities.explode(p.x, p.y, p.z, 4 + ctx.random() * 1.5 * sp, false, "tnt");
+  ctx.entities.explode(p.x, p.y, p.z, 4 + ctx.random() * 1.5 * Math.min(5, boost), false, "tnt");
+}
+
+// Vanilla AbstractMinecart.destroy drops the cart item and AbstractMinecartContainer.remove spills the contents.
+// MinecartTNT.destroy instead lights a short random fuse when fire or an explosion broke it, or it was moving.
+// MinecartTNT.hurtServer: a burning arrow sets it off at once, its power boosted by the arrow's speed.
+export function hurtCart(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player", direct?: Entity) {
+  if (e.type === "tnt_minecart" && !e.dead && !e.data._remove && direct && (direct.data.fire || ((direct.data._fire as number) ?? 0) > 0)) {
+    explodeCart(e, ctx, direct.body.vel.length());
+    return;
+  }
+  hurtVehicle(e, ctx, amount, source, attacker, (how) => {
+    if (how === "destroy" && e.type === "tnt_minecart") {
+      const v = e.body.vel;
+      if (source === "fire" || source === "lava" || source === "explosion" || v.x * v.x + v.z * v.z >= 0.01) {
+        if (typeof e.data.fuse !== "number") prime(e, ctx, Math.floor(ctx.random() * 20) + Math.floor(ctx.random() * 20));
+        return;
+      }
+    }
+    e.dead = true;
+    e.data._remove = true;
+    const p = e.body.pos;
+    if (how === "destroy" && ctx.rules.doEntityDrops !== false) ctx.entities.dropItem({ item: e.type, count: 1 }, p.x, p.y + 0.3, p.z);
+    dropContents(e, ctx);
+  });
 }
 
 function cartDef(kind: Kind): MobDef {
@@ -281,21 +325,10 @@ function cartDef(kind: Kind): MobDef {
     height: 0.7,
     maxHealth: 4,
     speed: 0,
-    sounds: { hurt: "block.metal.hit", death: "block.metal.break" },
     seat: -0.3,
     createModel: () => cartModel(kind),
     tick,
-    onDeath(e, ctx) {
-      if (kind === "tnt_minecart" && Math.hypot(e.body.vel.x, e.body.vel.z) > 0.1) {
-        explodeCart(e, ctx);
-        return;
-      }
-      e.data._remove = true;
-      if (ctx.player.gameMode === "creative") return;
-      const p = e.body.pos;
-      ctx.entities.dropItem({ item: kind, count: 1 }, p.x, p.y + 0.3, p.z);
-      dropContents(e, ctx);
-    },
+    onHurt: hurtCart,
     onInteract(e, ctx, held) {
       if (kind === "minecart") return mountPlayer(ctx, e);
       if (kind === "chest_minecart" || kind === "hopper_minecart") {

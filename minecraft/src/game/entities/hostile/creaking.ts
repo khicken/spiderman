@@ -1,10 +1,12 @@
 import * as THREE from "three";
-import type { Entity, GameCtx, MobDef, MobModel } from "../../contracts";
+import type { DamageSource, Entity, GameCtx, MobDef, MobModel } from "../../contracts";
+import { blockId, hasBlock } from "../../blocks/registry";
+import { crumble, heartHurt, keepsUnlinked, linkHolds, twitchTick, twitching, type HeartPos } from "../../systems/creaking-heart";
 import { applyPhysics, canSee, clearPath, idleLook, meleeAttack, playerTargetable } from "../ai";
-import { chase, discard, hurtAmount, idle, naturalSpawn, num, sound, updateTarget } from "./brain";
+import { chase, hurtAmount, idle, num, sound, updateTarget } from "./brain";
 import { skinOf } from "./looks-undead";
 import { type Pix, shade } from "./pix";
-import { attackTime, headLook, rig, setRot, wrap, type VPart } from "./rig";
+import { attackTime, headLook, rig, setRot, wrap, type AnimArgs, type VPart } from "./rig";
 
 const SPEED = 0.4;
 
@@ -73,6 +75,22 @@ function addEyes(head: THREE.Object3D): { dispose(): void } {
   };
 }
 
+const jit = (n: number) => {
+  const v = Math.sin(n * 12.9898) * 43758.5453;
+  return v - Math.floor(v) - 0.5;
+};
+
+// A fresh random pose every other tick reads as the jerky death twitch.
+function twitch(p: Record<string, THREE.Object3D>, a: AnimArgs): void {
+  const k = Math.floor(a.age / 2) * 17 + a.e.id * 101;
+  setRot(p.head, jit(k) * 0.9, jit(k + 1) * 1.2, jit(k + 2) * 0.7);
+  setRot(p.body, jit(k + 3) * 0.35, 0, jit(k + 4) * 0.35);
+  setRot(p.right_arm, jit(k + 5) * 1.6, 0, 0.3 + jit(k + 6) * 0.6);
+  setRot(p.left_arm, jit(k + 7) * 1.6, 0, -0.3 + jit(k + 8) * 0.6);
+  setRot(p.right_leg, jit(k + 9) * 0.6, 0, jit(k + 10) * 0.3);
+  setRot(p.left_leg, jit(k + 11) * 0.6, 0, jit(k + 12) * 0.3);
+}
+
 function creakingModel(): MobModel {
   const r = rig(skinOf("creaking", 64, 64, paintCreaking), PARTS);
   const eyes = addEyes(r.p.head);
@@ -91,6 +109,7 @@ function creakingModel(): MobModel {
     setRot(r.p.right_arm, -s * 0.8 * a.walk + lift, 0, 0.08 + sway);
     setRot(r.p.left_arm, s * 0.8 * a.walk + lift, 0, -0.08 - sway);
     setRot(r.p.body, 0.04 * a.walk, 0, 0);
+    if (twitching(a.e)) twitch(r.p, a);
   });
   const base = m.dispose;
   m.dispose = () => {
@@ -120,10 +139,21 @@ function watched(e: Entity, ctx: GameCtx): boolean {
 }
 
 function tick(e: Entity, ctx: GameCtx): void {
-  if (naturalSpawn(e) && ctx.time.dayTime % 24000 < 12500) {
-    discard(e);
+  if (!e.data.heart && !keepsUnlinked(e)) {
+    e.data._remove = true;
     return;
   }
+  if (twitching(e)) {
+    e.body.vel.x = 0;
+    e.body.vel.z = 0;
+    if (!twitchTick(ctx, e)) applyPhysics(e, ctx);
+    return;
+  }
+  if (!linkHolds(ctx, e)) {
+    crumble(ctx, e);
+    return;
+  }
+  if (num(e, "_blockCd") > 0) e.data._blockCd = num(e, "_blockCd") - 1;
   const hurt = hurtAmount(e);
   const frozen = watched(e, ctx);
   if (frozen !== !!e.data.frozen) {
@@ -146,19 +176,33 @@ function tick(e: Entity, ctx: GameCtx): void {
   if (num(e, "_swing") > 0) e.data._swing = num(e, "_swing") - 1;
 }
 
+// Vanilla Creaking.hurtServer: a heart-bound creaking never loses health; a player's hit makes the heart bleed resin.
+function blockHurt(e: Entity, ctx: GameCtx, _amount: number, source: DamageSource, attacker?: Entity | "player"): boolean {
+  const h = e.data.heart as HeartPos | undefined;
+  if (twitching(e)) return source !== "void";
+  if (!h || source === "void") return false;
+  if (!attacker || num(e, "_blockCd") > 0) return true;
+  e.data._blockCd = 8;
+  const p = e.body.pos;
+  if (hasBlock("pale_oak_wood")) ctx.emit({ type: "particles", kind: "block", x: p.x, y: p.y + 1.3, z: p.z, count: 10, state: blockId("pale_oak_wood") });
+  sound(ctx, e, "entity.creaking.sway");
+  if (attacker === "player") heartHurt(ctx, h, e);
+  return true;
+}
+
 export const CREAKING_DEF: MobDef = {
   type: "creaking",
   displayName: "Creaking",
   category: "hostile",
   width: 0.9,
   height: 2.7,
-  maxHealth: 20,
+  maxHealth: 1,
   speed: SPEED,
   attackDamage: 3,
   xp: [5, 5],
   drops: [],
   sounds: { ambient: "entity.creaking.ambient", hurt: "entity.creaking.hurt", death: "entity.creaking.death", step: "entity.creaking.step" },
-  spawn: { dims: ["overworld"], biomes: ["dark_forest"], light: "dark", group: [1, 1], weight: 5 },
   createModel: creakingModel,
   tick,
+  blockHurt,
 };

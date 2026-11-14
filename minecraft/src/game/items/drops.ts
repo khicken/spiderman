@@ -1,6 +1,7 @@
 import type { BlockDef, BlockState, DropEntry, ItemStack } from "../contracts";
 import { metaOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
+import { statuePoseData } from "../blocks/copper-age";
 import { enchLevel } from "./enchant";
 import { itemDef } from "./registry";
 
@@ -200,6 +201,10 @@ export function dropsFor(def: BlockDef, meta: number, tool: ItemStack | null, ra
   if (!toolOk(def, tool)) return [];
   if (SILK_ONLY.has(def.name) || def.name.endsWith("stained_glass") || def.name.endsWith("stained_glass_pane")) return silk ? selfItem(c) : [];
   if (SHEARS_ONLY.has(def.name)) return c.shears || silk ? selfItem(c) : [];
+  if (def.tags?.includes("copper_golem_statues")) {
+    const data = statuePoseData(meta);
+    return selfItem(c).map((st) => (data ? { ...st, data } : st));
+  }
   const rule = RULES[def.name];
   if (rule) {
     const r = rule(c);

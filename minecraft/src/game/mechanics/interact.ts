@@ -11,6 +11,7 @@ import { fireStateAt, igniteTnt } from "./fire";
 import { insertEye, lightPortal } from "./portal";
 import { applyBoneMeal, boneMealEffects } from "./bonemeal";
 import { canScrape, canWax, isWaxed, scrape, waxOff, waxOn } from "./copper";
+import { useStatue } from "./copper-statue";
 
 export type UseFn = NonNullable<BlockBehavior["use"]>;
 
@@ -224,12 +225,12 @@ export function bedStandSpot(ctx: GameCtx, x: number, y: number, z: number): [nu
 
 const COMPOST: [number, string[]][] = [
   [0.3, ["beetroot_seeds", "dried_kelp", "short_grass", "kelp", "melon_seeds", "pumpkin_seeds", "seagrass", "sweet_berries", "wheat_seeds",
-    "glow_berries", "moss_carpet", "pink_petals", "small_dripleaf", "hanging_roots", "mangrove_roots", "torchflower_seeds", "pitcher_pod", "mangrove_propagule"]],
+    "glow_berries", "moss_carpet", "pale_moss_carpet", "pale_hanging_moss", "pale_oak_leaves", "pale_oak_sapling", "pink_petals", "small_dripleaf", "hanging_roots", "mangrove_roots", "torchflower_seeds", "pitcher_pod", "mangrove_propagule"]],
   [0.5, ["dried_kelp_block", "tall_grass", "flowering_azalea_leaves", "cactus", "sugar_cane", "vine", "nether_sprouts", "weeping_vines",
     "twisting_vines", "melon_slice", "glow_lichen"]],
   [0.65, ["apple", "beetroot", "carrot", "cocoa_beans", "potato", "wheat", "fern", "large_fern", "lily_pad", "melon", "brown_mushroom",
     "red_mushroom", "pumpkin", "carved_pumpkin", "sea_pickle", "nether_wart", "crimson_fungus", "warped_fungus", "crimson_roots",
-    "warped_roots", "shroomlight", "spore_blossom", "azalea", "moss_block", "big_dripleaf", "mushroom_stem"]],
+    "warped_roots", "shroomlight", "spore_blossom", "azalea", "moss_block", "pale_moss_block", "closed_eyeblossom", "open_eyeblossom", "big_dripleaf", "mushroom_stem"]],
   [0.85, ["baked_potato", "bread", "cookie", "hay_block", "brown_mushroom_block", "red_mushroom_block", "nether_wart_block", "warped_wart_block", "flowering_azalea"]],
   [1, ["cake", "pumpkin_pie"]],
 ];
@@ -362,6 +363,7 @@ export function blockUseFor(name: string, shape: string, tags: string[]): UseFn 
   if (name === "cave_vines" || name === "cave_vines_plant") return useCaveVines;
   if (name === "end_portal_frame") return useFrame;
   if (name === "pumpkin") return usePumpkin;
+  if (tags.includes("copper_golem_statues")) return useStatue;
   if (containerKind(name)) return useContainer;
   return undefined;
 }

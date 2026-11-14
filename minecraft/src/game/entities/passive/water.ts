@@ -101,6 +101,11 @@ function squidModel(glow: boolean) {
   );
 }
 
+// Tentacles beat twice as fast while fleeing. The panic timer reaches clients as an animation key.
+function waveTentacles(e: Entity) {
+  e.data._tent = num(e, "_tent") + 0.12 * (num(e, "_panic") > 0 ? 2 : 1);
+}
+
 function squidDef(glow: boolean): MobDef {
   const name = glow ? "glow_squid" : "squid";
   return {
@@ -118,9 +123,10 @@ function squidDef(glow: boolean): MobDef {
       ? { dims: ["overworld"], light: "any", group: [2, 4], weight: 10 }
       : { dims: ["overworld"], biomes: [...OCEANS, "river"], light: "any", group: [1, 4], weight: 10 },
     createModel: () => squidModel(glow),
+    mirror: waveTentacles,
     tick(e, ctx) {
       e.data.ambientInterval = 120;
-      e.data._tent = num(e, "_tent") + 0.12 * (num(e, "_panic") > 0 ? 2 : 1);
+      waveTentacles(e);
       if (e.hurtTicks === 9) {
         const p = e.body.pos;
         sound(ctx, e, `entity.${name}.squirt`, 1);

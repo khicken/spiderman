@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Aabb, BlockState, Entity, GameCtx, RaycastHit } from "../contracts";
-import { AIR, idOf, stateOf } from "../contracts";
+import { AIR, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef, blockId, hasTag } from "../blocks/registry";
 import { computeDrops } from "../items/drops";
 import { itemDef } from "../items/registry";
@@ -14,7 +14,9 @@ import { addExhaustion, damageSlot } from "./survival";
 import type { PlayerState } from "./state";
 import { useItem } from "./use";
 import { statMined } from "../systems/features/stats";
+import { naturalHeartXp } from "../systems/creaking-heart";
 import { pvpHook } from "../net/pvp-hook";
+import { statuePoseData } from "../blocks/copper-age";
 
 const outline: Aabb[] = [];
 const pool: Aabb[] = [];
@@ -143,6 +145,8 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
       const below = w.getBlock(x, y - 1, z);
       if (below !== AIR && (blockDef(below).solid || idOf(below) === blockId("water"))) replace = stateOf(blockId("water"));
     }
+    // Read before setBlock, which drops the heart's block entity and its natural flag.
+    const xp = def.xp ?? naturalHeartXp(w, x, y, z, s);
     if (!w.setBlock(x, y, z, replace)) return;
     ctx.emit({ type: "sound", name: `block.${def.sound}.break`, x: x + 0.5, y: y + 0.5, z: z + 0.5, volume: SOUND_VOL, pitch: 0.8 });
     ctx.emit({ type: "particles", kind: "block", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 32, state: s });
@@ -151,8 +155,8 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
         for (const d of computeDrops(s, held, ctx.random)) {
           ctx.entities.dropItem(d, x + 0.5 + (ctx.random() - 0.5) * 0.5, y + 0.5 + (ctx.random() - 0.5) * 0.5 - 0.125, z + 0.5 + (ctx.random() - 0.5) * 0.5);
         }
-        if (def.xp && !silk) {
-          const [a, b] = def.xp;
+        if (xp && !silk) {
+          const [a, b] = xp;
           const n = a + Math.floor(ctx.random() * (b - a + 1));
           if (n > 0) ctx.entities.dropXp(n, x + 0.5, y + 0.5, z + 0.5);
         }
@@ -344,6 +348,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
   function pickBlock(ctx: GameCtx) {
     const inv = ctx.inventory;
     let item: string | null = null;
+    let data: Record<string, unknown> | undefined;
     if (p.targetEntity) {
       const e = ctx.entities.get(p.targetEntity.id);
       if (e && p.gameMode === "creative") {
@@ -353,10 +358,11 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     } else if (p.target) {
       const d = blockDef(p.target.state);
       item = d.item === null ? null : d.item ?? d.name;
+      if (d.tags?.includes("copper_golem_statues")) data = statuePoseData(metaOf(p.target.state));
     }
     if (!item) return;
     for (let i = 0; i < 9; i++)
-      if (inv.slots[i]?.item === item) {
+      if (inv.slots[i]?.item === item && (!data || inv.slots[i]?.data?.pose === data.pose)) {
         inv.selected = i;
         return;
       }
@@ -364,7 +370,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
       let slot = inv.selected;
       if (inv.slots[slot]) for (let i = 0; i < 9; i++) if (!inv.slots[i]) { slot = i; break; }
       inv.selected = slot;
-      inv.setSlot(slot, { item, count: 1 });
+      inv.setSlot(slot, data ? { item, count: 1, data } : { item, count: 1 });
       return;
     }
     for (let i = 9; i < 36; i++)

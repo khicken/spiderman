@@ -476,7 +476,7 @@ function frame(p: Px, inner: Ramp) {
 
 for (const [mob, [a, b]] of Object.entries(EGG_COLORS)) MISC_PAINTERS[`${mob}_spawn_egg`] = spawnEgg(hexOf(a), hexOf(b));
 
-const WINDOW_DOORS = new Set(["oak", "jungle", "acacia", "cherry", "mangrove", "warped", "crimson"]);
+const WINDOW_DOORS = new Set(["oak", "jungle", "acacia", "cherry", "mangrove", "warped", "crimson", "pale_oak"]);
 for (const [w, c] of Object.entries(WOOD)) {
   const pl = planks(c);
   const dark = rampOf(shade(c, 0.7), shade(c, 0.25));

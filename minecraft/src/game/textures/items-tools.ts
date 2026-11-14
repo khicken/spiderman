@@ -7,6 +7,7 @@ export const MAT: Record<string, Ramp> = {
   golden: ["#4a3200", "#b26411", "#e9b115", "#fcee4b", "#fffda5"],
   diamond: ["#0c3a33", "#16857a", "#2acfc0", "#5decdc", "#b8fff2"],
   netherite: ["#120e10", "#2e2729", "#433b3d", "#5d555a", "#7c7278"],
+  copper: ["#4a2210", "#8a4a2e", "#c06a48", "#e08a5a", "#f4b894"],
 };
 
 const SWORD = [

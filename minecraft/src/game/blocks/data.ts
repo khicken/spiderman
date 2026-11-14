@@ -2,12 +2,16 @@ import { COLORED_BLOCKS } from "./colored";
 import { COPPER_BLOCKS } from "./copper";
 import { FLUID_BLOCKS, NATURE_BLOCKS } from "./nature";
 import { NETHER_END_BLOCKS } from "./nether-end";
+import { PALE_GARDEN_BLOCKS } from "./pale-garden";
 import { PLANT_BLOCKS } from "./plants";
 import { REDSTONE_BLOCKS } from "./redstone";
 import type { BlockSpec } from "./spec";
 import { STONE_BLOCKS } from "./stone";
 import { UTILITY_BLOCKS } from "./utility";
+import { GHAST_BLOCKS } from "./ghast";
 import { WOOD_BLOCKS } from "./wood";
+import { COPPER_CHEST_BLOCKS } from "./copper-chest";
+import { COPPER_AGE_BLOCKS } from "./copper-age";
 
 export type { BlockSpec } from "./spec";
 
@@ -24,4 +28,8 @@ export const BLOCK_DATA: BlockSpec[] = [
   ...UTILITY_BLOCKS,
   ...REDSTONE_BLOCKS,
   ...NETHER_END_BLOCKS,
+  ...GHAST_BLOCKS,
+  ...PALE_GARDEN_BLOCKS,
+  ...COPPER_CHEST_BLOCKS,
+  ...COPPER_AGE_BLOCKS,
 ];

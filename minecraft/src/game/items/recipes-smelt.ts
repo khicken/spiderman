@@ -34,6 +34,10 @@ export const SMELT_RECIPES: SmeltRecipe[] = [
   ...r(["ancient_debris"], "netherite_scrap", 2, ORE),
   ...r([...GEAR_NUGGET("iron"), "chainmail_helmet", "chainmail_chestplate", "chainmail_leggings", "chainmail_boots"], "iron_nugget", 0.1, ORE),
   ...r(GEAR_NUGGET("golden"), "gold_nugget", 0.1, ORE),
+  ...r(GEAR_NUGGET("copper"), "copper_nugget", 0.1, ORE),
+  ...r(["copper_nautilus_armor"], "copper_nugget", 0.1, ORE),
+  ...r(["iron_nautilus_armor"], "iron_nugget", 0.1, ORE),
+  ...r(["golden_nautilus_armor"], "gold_nugget", 0.1, ORE),
   ...r(["sand", "red_sand"], "glass", 0.1),
   ...r(["cobblestone"], "stone", 0.1),
   ...r(["stone"], "smooth_stone", 0.1),
@@ -65,6 +69,7 @@ export const SMELT_RECIPES: SmeltRecipe[] = [
   ...r(["salmon"], "cooked_salmon", 0.35, FOOD),
   ...r(["potato"], "baked_potato", 0.35, FOOD),
   ...r(["kelp"], "dried_kelp", 0.1, FOOD),
+  ...r(["resin_clump"], "resin_brick", 0.1),
 ];
 
 const BY_INPUT = new Map(SMELT_RECIPES.map((x) => [x.input, x]));

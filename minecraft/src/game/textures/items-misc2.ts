@@ -8,7 +8,7 @@ const DISCS: Record<string, string> = {
   "13": "#e8d050", cat: "#5aa02a", blocks: "#e8602a", chirp: "#c82a2a", far: "#8ad04a", mall: "#6a5ad0",
   mellohi: "#d080d0", stal: "#3a3a3a", strad: "#f0f0f0", ward: "#2a6a3a", "11": "#2a2a2a", wait: "#4ab0d0",
   otherside: "#3a9a9a", "5": "#4a6a6a", pigstep: "#a83a3a", relic: "#4a8a8a", creator: "#e8a02a",
-  creator_music_box: "#a8703a", precipice: "#c89a6a",
+  creator_music_box: "#a8703a", precipice: "#c89a6a", tears: "#b8c8d8",
 };
 
 const TEMPLATE = [

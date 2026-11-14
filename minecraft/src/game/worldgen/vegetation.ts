@@ -4,6 +4,7 @@ import { BIOMES } from "./biomes";
 import { B } from "./ids";
 import { hash01, hash32, type Octaves } from "./noise";
 import type { ChunkCtx } from "./overworld";
+import { paleGroundPlant } from "./pale-garden";
 import { createRng, idTable, type Writer } from "./rng";
 import { BI, isBadlands, isOcean } from "./surface";
 
@@ -91,6 +92,7 @@ export function placeVegetation(ctx: ChunkCtx, w: Writer) {
         continue;
       }
       if (here !== 0) continue;
+      if (biome === BI.paleGarden && paleGroundPlant(blocks, at(lx, y, lz), ground, r, r2)) continue;
       if (GRASSY[ground]) {
         if (biome === BI.bamboo && r < 0.12 && ground !== B.dirt) {
           const h = 4 + Math.floor(r2 * 12);

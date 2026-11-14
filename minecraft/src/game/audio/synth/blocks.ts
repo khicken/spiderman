@@ -51,6 +51,9 @@ const MATS: Record<SoundGroup, Mat> = {
   slime: { kind: "squish", f: 420, dec: 1 },
   honey: { kind: "squish", f: 260, dec: 1.7 },
   mud: { kind: "squish", f: 170, dec: 1.2 },
+  resin: { kind: "squish", f: 340, dec: 0.8 },
+  resin_bricks: { kind: "stone", f: 1700, bright: 0.55, body: 0.7, dec: 0.9 },
+  creaking_heart: { kind: "knock", f: 180, dec: 1.4, bright: 0.4 },
 };
 
 export const SOUND_GROUPS = Object.keys(MATS) as SoundGroup[];

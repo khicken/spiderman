@@ -8,6 +8,7 @@ import {
 } from "./celestial";
 import type { FogRange, Rgb, Rgba } from "./celestial";
 import { createChunkMeshes } from "./chunks";
+import { createChestLids } from "./chest-lids";
 import { createClouds } from "./clouds";
 import { createOverlays } from "./overlays";
 import { createParticles } from "./particles";
@@ -31,7 +32,8 @@ type Submersion = "none" | "water" | "lava" | "powder_snow";
 const HORIZON_Y = 63;
 const _dir = new THREE.Vector3();
 
-export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): RendererApi {
+// chestView: the block of the chest the local player has open, which keeps its lid up however long it stays open.
+export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi, chestView?: () => { x: number; y: number; z: number } | undefined): RendererApi {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
   renderer.autoClear = false;
   renderer.info.autoReset = false;
@@ -64,6 +66,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
 
   const hc = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
   const chunks = createChunkMeshes(world, scene, mats, Math.max(2, Math.min(4, hc - 4)), renderer.getContext() as WebGL2RenderingContext);
+  const chestLids = createChestLids(world, scene, chunks, mats.cutout, chestView);
   const sky = createSky();
   const clouds = createClouds(scene);
   const particles = createParticles(scene, world, getAtlas, uniforms);
@@ -97,6 +100,13 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   let visionFar = 0;
   let submergedFor = 0;
   const waterFog = createWaterFog();
+  // Biome sky and fog colors ease over about a second, so biomes like the pale garden fade in and out.
+  const skyEase: Rgb = [-1, 0, 0], fogEase: Rgb = [-1, 0, 0];
+  const ease = (c: Rgb, hex: number, dt: number) => {
+    const k = c[0] < 0 ? 1 : 1 - Math.exp(-dt * 2);
+    for (let i = 0; i < 3; i++) c[i] += (((hex >> (16 - i * 8)) & 255) - c[i]) * k;
+    return (Math.round(c[0]) << 16) | (Math.round(c[1]) << 8) | Math.round(c[2]);
+  };
   let flickerT = 0;
   let time = 0;
   let width = 1, height = 1;
@@ -130,6 +140,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     dim = d;
     sky.setDim(d);
     particles.clear();
+    chestLids.clear();
     applyQuality();
   }
 
@@ -165,9 +176,9 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     fogRange(dim, blocks, range);
     let day = 1;
     if (dim === "overworld") {
-      skyColor(biome.skyColor, angle, r, th, flash, sky3);
+      skyColor(ease(skyEase, biome.skyColor, dt), angle, r, th, flash, sky3);
       camera.getWorldDirection(_dir);
-      overworldFog(biome.fogColor, sky3, angle, renderDistance, _dir.x, r, th, fog3);
+      overworldFog(ease(fogEase, biome.fogColor, dt), sky3, angle, renderDistance, _dir.x, r, th, fog3);
       sunriseColor(angle, sunrise);
       day = flash > 0 ? Math.max(daylight(angle, r, th), flash) : daylight(angle, r, th);
       skyLightTint(angle, r, th, tint3);
@@ -302,6 +313,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     updateAtmosphere(step);
     const t1 = performance.now();
     chunks.update(camera);
+    chestLids.update(step);
     const t2 = performance.now();
     animateTick(world, particles, camera.position.x, camera.position.y, camera.position.z, step, dim === "overworld" ? rain : 0, dim === "nether" ? netherSample : undefined);
     particles.update(step);
@@ -344,6 +356,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
 
   function dispose() {
     offPacks();
+    chestLids.clear();
     chunks.dispose();
     sky.dispose();
     clouds.dispose();
@@ -387,6 +400,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       visionFar = far;
     },
     addParticles: (e: Extract<GameEvent, { type: "particles" }>) => particles.addParticles(e),
+    onSound: (name: string, x?: number, y?: number, z?: number) => chestLids.sound(name, x, y, z),
     meshQueue: () => chunks.pending(),
     chunkMeshed: (cx: number, cz: number) => chunks.chunkMeshed(cx, cz),
     stats: () => Object.assign(stats, chunks.counts()),

@@ -527,7 +527,7 @@ export function createParticles(
     sprite(i, SPRITE.generic, 8, Anim.Rev);
   }
 
-  function flameAt(x: number, y: number, z: number, soul: boolean, scale: number) {
+  function flameAt(x: number, y: number, z: number, soul: boolean | "copper", scale: number) {
     if (skip()) return;
     const i = add(x, y, z, 0, 0, 0, false);
     if (i < 0) return;
@@ -536,7 +536,7 @@ export function createParticles(
     p.life[i] = Math.floor(8 / (rand() * 0.8 + 0.2)) + 4;
     p.drag[i] = 0.96;
     p.flags[i] = BRIGHT | SHRINK;
-    sprite(i, soul ? SPRITE.soulFlame : SPRITE.flame, 1, Anim.Fixed);
+    sprite(i, soul === "copper" ? SPRITE.copperFlame : soul ? SPRITE.soulFlame : SPRITE.flame, 1, Anim.Fixed);
   }
 
   function dustAt(x: number, y: number, z: number, hex: number) {

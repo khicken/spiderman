@@ -2,6 +2,7 @@ import { Face, idOf, metaOf, type BlockEntityData, type GameCtx, type ItemStack 
 import { itemDef, maxStack } from "../../items/registry";
 import { isFuel } from "../../items/recipes";
 import { CONDUCTOR, DX, DZ, HORIZONTAL, id, nameOf, notifyAt } from "./util";
+import { statueComparator } from "../copper-statue";
 
 export const SIZE: Record<string, number> = {
   chest: 27, trapped_chest: 27, barrel: 27, shulker_box: 27, furnace: 3, blast_furnace: 3, smoker: 3,
@@ -9,7 +10,8 @@ export const SIZE: Record<string, number> = {
 };
 const FURNACES = new Set(["furnace", "blast_furnace", "smoker"]);
 
-export const containerType = (name: string) => (name.endsWith("shulker_box") ? "shulker_box" : name.replace(/^lit_/, ""));
+export const containerType = (name: string) =>
+  name.endsWith("shulker_box") ? "shulker_box" : name.endsWith("copper_chest") ? "chest" : name.replace(/^lit_/, "");
 
 export function containerAt(ctx: GameCtx, x: number, y: number, z: number): BlockEntityData | undefined {
   const s = ctx.world.getBlock(x, y, z);
@@ -161,6 +163,7 @@ export function analogOutput(ctx: GameCtx, x: number, y: number, z: number): num
   if (i === RESPAWN_ANCHOR) return Math.floor((Math.min(4, metaOf(s)) / 4) * 15);
   if (name in CAULDRON_LEVEL) return CAULDRON_LEVEL[name] < 0 ? Math.min(3, metaOf(s) || 1) : CAULDRON_LEVEL[name];
   if (name === "end_portal_frame") return metaOf(s) & 4 ? 15 : 0;
+  if (name.endsWith("copper_golem_statue")) return statueComparator(s);
   if (name === "jukebox") return jukeboxSignal(ctx.world.getBlockEntity(x, y, z)?.items?.[0]?.item);
   const type = containerType(name);
   if (SIZE[type]) {
@@ -174,7 +177,7 @@ const DISCS: Record<string, number> = {
   music_disc_13: 1, music_disc_cat: 2, music_disc_blocks: 3, music_disc_chirp: 4, music_disc_far: 5, music_disc_mall: 6,
   music_disc_mellohi: 7, music_disc_stal: 8, music_disc_strad: 9, music_disc_ward: 10, music_disc_11: 11, music_disc_wait: 12,
   music_disc_pigstep: 13, music_disc_otherside: 14, music_disc_5: 15, music_disc_relic: 14, music_disc_creator: 12,
-  music_disc_creator_music_box: 11, music_disc_precipice: 13,
+  music_disc_creator_music_box: 11, music_disc_precipice: 13, music_disc_tears: 10,
 };
 const jukeboxSignal = (item?: string) => (item ? (DISCS[item] ?? (itemDef(item) ? 1 : 0)) : 0);
 

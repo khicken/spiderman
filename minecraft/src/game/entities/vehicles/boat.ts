@@ -8,6 +8,9 @@ import { rider, isRidden, mountPlayer, mountMob, dismountPlayer, dismountMob, mo
 import { mobDef } from "../registry";
 import { blockCube, blockStateOfItem } from "../block-cube";
 import { boatSkin } from "./art";
+import { dropContents, drainDamage, hurtVehicle, wobble } from "./damage";
+
+export { dropContents, wobble };
 
 const HALF_PI = Math.PI / 2;
 const DEG = Math.PI / 180;
@@ -98,15 +101,6 @@ function maskWater(part: THREE.Object3D) {
   });
 }
 
-// Vanilla BoatRenderer: rocks by sin(h) * h * damage / 10 degrees, h the hurt time left. Clients without the
-// damage counter fall back to a mid value.
-export function wobble(e: Entity, pt: number) {
-  const h = e.hurtTicks - pt;
-  if (h <= 0) return 0;
-  const d = Math.max(0, ((e.data._dmg as number) ?? 20) - pt);
-  return Math.sin(h) * h * (d / 10) * ((e.data._hurtDir as number) ?? 1) * DEG;
-}
-
 const opts: MoveOpts = {};
 
 function waterSurface(ctx: GameCtx, e: Entity) {
@@ -193,8 +187,7 @@ function tick(e: Entity, ctx: GameCtx) {
   e.data.silent = true;
   const b = e.body;
   b.stepHeight = 0;
-  const dmg = (e.data._dmg as number) ?? 0;
-  if (dmg > 0) e.data._dmg = Math.max(0, dmg - 1);
+  drainDamage(e);
   const surface = waterSurface(ctx, e);
   const inWater = surface > b.pos.y - 0.01;
   const under = surface > b.pos.y + b.height;
@@ -251,6 +244,8 @@ function tick(e: Entity, ctx: GameCtx) {
     e.data._rowL = 0;
     e.data._rowR = 0;
   }
+  // Which paddles move, the only part of rowing clients need: they turn the paddles themselves.
+  e.data._oars = (e.data._rowL ? 1 : 0) | (e.data._rowR ? 2 : 0);
   e.data._drot = rot;
   e.headYaw = e.yaw;
   moveBody(ctx.world, b, opts);
@@ -271,6 +266,7 @@ function boatDef(chest: boolean): MobDef {
     seat: -0.4125,
     createModel: () => boatModel(chest),
     tick,
+    mirror,
     onHurt: hurtBoat,
 
     onInteract(e, ctx) {
@@ -289,40 +285,22 @@ export function boatItem(e: Entity) {
   return w === "bamboo" ? (chest ? "bamboo_chest_raft" : "bamboo_raft") : chest ? `${w}_chest_boat` : `${w}_boat`;
 }
 
-// Damage that only living entities take (vanilla: boats do not fall, drown, starve or suffocate).
-const LIVING_ONLY = new Set<DamageSource>(["fall", "drown", "starve", "suffocate", "magic", "wither", "freeze", "fly_into_wall", "cramming", "sonic_boom", "thorns"]);
+// Multiplayer client mirror: paddles turn PI/8 a tick while the host says they row.
+function mirror(e: Entity) {
+  const oars = (e.data._oars as number) ?? 0;
+  e.data._rowL = oars & 1 ? ((e.data._rowL as number) ?? 0) + Math.PI / 8 : 0;
+  e.data._rowR = oars & 2 ? ((e.data._rowR as number) ?? 0) + Math.PI / 8 : 0;
+}
 
-// Vanilla VehicleEntity.hurtServer: a hit flips the rock direction, rocks for 10 ticks and adds amount * 10
-// to a damage counter that drains 1 per tick. Over 40, or any hit from a creative player, breaks the boat.
+// Vanilla Boat.destroy drops the boat item; ChestBoat.remove drops the chest contents even when discarded.
 export function hurtBoat(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player") {
-  if (e.dead || e.data._remove || LIVING_ONLY.has(source)) return;
-  if (source === "void") {
-    breakBoat(e, ctx, false);
-    return;
-  }
-  e.data._hurtDir = -((e.data._hurtDir as number) ?? 1);
-  e.hurtTicks = 10;
-  const dmg = ((e.data._dmg as number) ?? 0) + amount * 10;
-  e.data._dmg = dmg;
-  const creative = attacker === "player" && ctx.player.gameMode === "creative";
-  if (creative || dmg > 40) breakBoat(e, ctx, !creative && ctx.rules.doEntityDrops !== false);
-}
-
-// Vanilla VehicleEntity.destroy drops the boat item; ChestBoat.remove drops the chest contents even when discarded.
-function breakBoat(e: Entity, ctx: GameCtx, dropBoat: boolean) {
-  e.dead = true;
-  e.data._remove = true;
-  const p = e.body.pos;
-  if (dropBoat) ctx.entities.dropItem({ item: boatItem(e), count: 1 }, p.x, p.y + 0.3, p.z);
-  dropContents(e, ctx);
-}
-
-export function dropContents(e: Entity, ctx: GameCtx) {
-  const be = e.data.be as { items?: ({ item: string; count: number } | null)[] } | undefined;
-  if (!be?.items) return;
-  const p = e.body.pos;
-  for (const s of be.items) if (s) ctx.entities.dropItem(s, p.x, p.y + 0.3, p.z);
-  be.items = [];
+  hurtVehicle(e, ctx, amount, source, attacker, (how) => {
+    e.dead = true;
+    e.data._remove = true;
+    const p = e.body.pos;
+    if (how === "destroy" && ctx.rules.doEntityDrops !== false) ctx.entities.dropItem({ item: boatItem(e), count: 1 }, p.x, p.y + 0.3, p.z);
+    dropContents(e, ctx);
+  });
 }
 
 export const BOAT = boatDef(false);

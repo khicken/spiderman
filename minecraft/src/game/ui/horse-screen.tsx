@@ -18,7 +18,7 @@ const Y_OFFSET = 0.25;
 export function mountEmpty(view: ContainerView, index: number): EmptySlotKind | undefined {
   if (view.kind !== "horse") return undefined;
   const g = view.groups.find((x) => x.slots.some((s) => s.index === index));
-  return g?.name === "saddle" || g?.name === "horse_armor" || g?.name === "llama_armor" ? g.name : undefined;
+  return g?.name === "saddle" || g?.name === "horse_armor" || g?.name === "llama_armor" || g?.name === "nautilus_armor" ? g.name : undefined;
 }
 
 export function MountPreview({ view, panel, mouse }: { view: ContainerView; panel: { left: number; top: number }; mouse: RefObject<{ x: number; y: number }> }) {

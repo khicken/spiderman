@@ -2,6 +2,8 @@ import type { BlockState, GameCtx, WorldApi } from "../contracts";
 import { AIR, MAX_Y, SET_NOTIFY, idOf, stateOf } from "../contracts";
 import { blockDef } from "../blocks/registry";
 import { HX, HZ, idn, isAir, isReplaceable, nameOf, randInt, st, tag } from "./util";
+import { palePlan } from "../worldgen/pale-garden";
+import type { Rng } from "../worldgen/rng";
 
 interface Grow {
   ctx: GameCtx;
@@ -355,9 +357,25 @@ function hugeMushroom(g: Grow, x: number, y: number, z: number, red: boolean): b
   return true;
 }
 
+function paleOak(g: Grow, x: number, y: number, z: number): boolean {
+  const random = g.ctx.random;
+  const r: Rng = {
+    seed: () => r, next: () => random(), int: (n) => Math.floor(random() * n), range: (lo, hi) => lo + Math.floor(random() * (hi - lo + 1)),
+    chance: (p) => random() < p,
+  };
+  const { logs, leaves } = palePlan(r, x, y, z);
+  for (let i = 0; i < logs.length; i += 3) {
+    if (logs[i + 1] > MAX_Y || !canReplace(g.w.getBlock(logs[i], logs[i + 1], logs[i + 2]))) return false;
+  }
+  for (let dx = 0; dx < 2; dx++) for (let dz = 0; dz < 2; dz++) dirtBelow(g, x + dx, y, z + dz);
+  for (let i = 0; i < logs.length; i += 3) setLog(g, logs[i], logs[i + 1], logs[i + 2]);
+  for (let i = 0; i < leaves.length; i += 3) setLeaf(g, leaves[i], leaves[i + 1], leaves[i + 2]);
+  return true;
+}
+
 const LOG_FOR: Record<string, string> = {
   oak_sapling: "oak", spruce_sapling: "spruce", birch_sapling: "birch", jungle_sapling: "jungle", acacia_sapling: "acacia",
-  dark_oak_sapling: "dark_oak", cherry_sapling: "cherry", mangrove_propagule: "mangrove",
+  dark_oak_sapling: "dark_oak", cherry_sapling: "cherry", mangrove_propagule: "mangrove", pale_oak_sapling: "pale_oak",
 };
 
 function find2x2(w: WorldApi, x: number, y: number, z: number, id: number): [number, number] | null {
@@ -397,16 +415,16 @@ export function growTree(ctx: GameCtx, x: number, y: number, z: number): boolean
   const wood = LOG_FOR[name];
   if (!wood) return false;
   const g: Grow = { ctx, w, log: st(`${wood}_log`), leaves: st(`${wood}_leaves`) };
-  if (wood === "dark_oak" || wood === "spruce" || wood === "jungle") {
+  if (wood === "dark_oak" || wood === "pale_oak" || wood === "spruce" || wood === "jungle") {
     const at = find2x2(w, x, y, z, idOf(s));
     if (at) {
       const [ax, az] = at;
       for (let dx = 0; dx < 2; dx++) for (let dz = 0; dz < 2; dz++) w.setBlock(ax + dx, y, az + dz, AIR, 0);
-      const ok = wood === "dark_oak" ? darkOak(g, ax, y, az) : wood === "spruce" ? megaSpruce(g, ax, y, az) : megaJungle(g, ax, y, az);
+      const ok = wood === "dark_oak" ? darkOak(g, ax, y, az) : wood === "pale_oak" ? paleOak(g, ax, y, az) : wood === "spruce" ? megaSpruce(g, ax, y, az) : megaJungle(g, ax, y, az);
       if (!ok) for (let dx = 0; dx < 2; dx++) for (let dz = 0; dz < 2; dz++) w.setBlock(ax + dx, y, az + dz, s, 0);
       return ok;
     }
-    if (wood === "dark_oak") return false;
+    if (wood === "dark_oak" || wood === "pale_oak") return false;
   }
   w.setBlock(x, y, z, AIR, 0);
   let ok: boolean;

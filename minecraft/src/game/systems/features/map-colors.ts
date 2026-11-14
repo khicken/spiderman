@@ -15,13 +15,16 @@ export const SHADE = [180, 220, 255, 135];
 const C = { GRASS: 1, SAND: 2, WOOL: 3, FIRE: 4, ICE: 5, METAL: 6, PLANT: 7, SNOW: 8, CLAY: 9, DIRT: 10, STONE: 11, WATER: 12, WOOD: 13, QUARTZ: 14, ORANGE: 15, PODZOL: 34, NETHER: 35, T_WHITE: 36, DEEPSLATE: 59, GOLD: 30, DIAMOND: 31, LAPIS: 32, EMERALD: 33, BLACK: 29, BROWN: 26, RED: 28, YELLOW: 18, PURPLE: 24, CRIMSON_NYLIUM: 52, CRIMSON_STEM: 53, WARPED_NYLIUM: 55, WARPED_STEM: 56, WARPED_WART: 58, GLOW_LICHEN: 61 };
 const DYES = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"];
 const DYE_COLOR = [8, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29];
-const WOODS: Record<string, number> = { oak: C.WOOD, spruce: C.PODZOL, birch: C.SAND, jungle: C.DIRT, acacia: C.ORANGE, dark_oak: C.BROWN, mangrove: C.RED, cherry: C.T_WHITE, bamboo: C.YELLOW, crimson: C.CRIMSON_STEM, warped: C.WARPED_STEM };
+const WOODS: Record<string, number> = { oak: C.WOOD, spruce: C.PODZOL, birch: C.SAND, jungle: C.DIRT, acacia: C.ORANGE, dark_oak: C.BROWN, mangrove: C.RED, cherry: C.T_WHITE, bamboo: C.YELLOW, crimson: C.CRIMSON_STEM, warped: C.WARPED_STEM, pale_oak: C.QUARTZ };
 
 function byName(n: string, shape: string): number | undefined {
   if (n === "air" || n.endsWith("glass") || n.endsWith("glass_pane") || n === "barrier" || n === "light" || n === "structure_void") return 0;
   if (n === "water" || n === "bubble_column" || n.includes("kelp") || n.includes("seagrass")) return C.WATER;
   if (n === "lava" || n === "fire" || n === "soul_fire") return C.FIRE;
   if (n === "grass_block") return C.GRASS;
+  if (n === "pale_moss_block" || n === "pale_moss_carpet" || n === "pale_hanging_moss") return 22;
+  if (n === "resin_block" || n === "resin_clump" || n === "creaking_heart") return C.ORANGE;
+  if (n.includes("resin_brick")) return 37;
   if (n.endsWith("leaves") || n === "vine" || n === "lily_pad" || n === "cactus" || n === "sugar_cane" || n === "moss_block" || n === "moss_carpet" || n.includes("azalea")) return C.PLANT;
   for (let i = 0; i < 16; i++) {
     const d = DYES[i];

@@ -1,4 +1,6 @@
-import { bubbles, chirps, clicks, lowpass, R, say, seq, squelch, thud, tremolo, whoosh, type MobSounds } from "./mob-kit";
+import { bubbles, chirps, clicks, lowpass, noiseSweep, R, say, seq, squelch, thud, tremolo, whoosh, type MobSounds } from "./mob-kit";
+
+const armor = () => R(seq([[noiseSweep(0.25, 1800, 1200, 0.9, 0.15), 0], [clicks([4, 6], 0.25, 2000, 4500, 0.7), 0.05, 0.8], [bubbles(0.3, 5, 400, 900), 0.08, 0.5]]), 0.7);
 
 function nautilus(): MobSounds {
   const hum = lowpass(tremolo(say({ dur: 0.7, f: [180, 200, 170], vowels: ["o", "u", "o"], breath: 0.25, rough: 0.1, shift: 0.9 }), 6, 0.4), 1800);
@@ -10,6 +12,7 @@ function nautilus(): MobSounds {
     eat: R(seq([[clicks([4, 7], 0.35, 700, 1800, 0.3), 0], [bubbles(0.3, 4, 400, 900), 0.1, 0.5]]), 0.55),
     dash: R(seq([[whoosh(0.45, 250, 1100), 0], [bubbles(0.5, 12, 300, 1000), 0.05, 0.7]]), 0.8),
     dash_ready: R(chirps([1, 1], 0.1, 700, 950, 0.12), 0.35),
+    armor: armor(),
     saddle: R(seq([[thud(180, 0.05, 0.5), 0], [clicks([3, 5], 0.2, 1500, 3500, 0.4), 0.03, 0.6]]), 0.7),
   };
 }
@@ -23,6 +26,7 @@ function zombieNautilus(): MobSounds {
     flop: R(squelch(0.2, 200), 0.6),
     dash: R(seq([[say({ dur: 0.3, f: [150, 190, 120], vowels: ["a", "uh"], rough: 0.8, breath: 0.4, shift: 0.75 }), 0, 0.7], [whoosh(0.45, 200, 1000), 0, 0.7], [bubbles(0.5, 10, 250, 800), 0.05, 0.6]]), 0.85),
     dash_ready: R(say({ dur: 0.25, f: [110, 130], vowels: ["uh", "o"], rough: 0.6, breath: 0.3, shift: 0.75 }), 0.45),
+    armor: armor(),
     saddle: R(seq([[thud(160, 0.05, 0.6), 0], [clicks([3, 5], 0.2, 1200, 3000, 0.4), 0.03, 0.6]]), 0.7),
   };
 }

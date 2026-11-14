@@ -267,7 +267,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
     if (e.data.fire) t.data._fire = Math.max((t.data._fire as number) ?? 0, 100);
     markProjectile(t, e, ctx.time.tick);
     if (owner === "player") advTrigger({ t: "projectile_hit", projectile: e.type, target: t.type });
-    ctx.entities.damage(t.id, dmg, "arrow", owner);
+    ctx.entities.damage(t.id, dmg, "arrow", owner, e);
     if (punch > 0) ctx.entities.knockback(t.id, b.vel.x, b.vel.z, punch * 0.6);
     if (e.data.type === "spectral_arrow" || e.type === "spectral_arrow") t.effects.push({ id: "glowing", amplifier: 0, ticks: 200 });
     applyArrowEffects(e, t.effects, ctx, t);
@@ -318,10 +318,22 @@ export function tickThrown(e: Entity, ctx: GameCtx) {
   if (e.type === "ender_pearl" && e.data.owner === "player" && ctx.player.dead && ctx.rules.enderPearlsVanishOnDeath !== false) e.data._remove = true;
 }
 
+// Vanilla EnderMan.hurt: a projectile hit only makes it teleport (up to 64 tries) and does no damage.
+function dodges(t: Entity | undefined, ctx: GameCtx): boolean {
+  if (t?.type !== "enderman") return false;
+  teleportRandom(t, ctx, 64);
+  return true;
+}
+
+// Thrown items whose hit calls hurt; potions and bottles o' enchanting only break.
+const THROWN_HURT = new Set(["snowball", "egg", "ender_pearl"]);
+
 function impact(e: Entity, ctx: GameCtx, h: Hit) {
   const p = e.body.pos;
   const owner = ownerEntity(ctx, e.data.owner as Owner);
-  if (h.entity) {
+  if (h.entity && THROWN_HURT.has(e.type) && dodges(h.entity, ctx)) {
+    // The thrown item still breaks: eggs can hatch and a pearl still teleports its thrower.
+  } else if (h.entity) {
     const blaze = h.entity.type === "blaze" && e.type === "snowball";
     ctx.entities.damage(h.entity.id, blaze ? 3 : 0, e.type === "snowball" ? "generic" : "generic", owner);
   } else if (h.kind === "player") ctx.player.damage(0, "generic", owner && owner !== "player" ? owner : undefined);
@@ -372,8 +384,9 @@ export function tickWindCharge(e: Entity, ctx: GameCtx) {
   if (h) {
     advance(e, h.t);
     const owner = ownerEntity(ctx, e.data.owner as Owner);
-    if (h.entity) markProjectile(h.entity, e, ctx.time.tick);
-    if (h.entity) ctx.entities.damage(h.entity.id, 1, "generic", owner);
+    const t = dodges(h.entity, ctx) ? undefined : h.entity;
+    if (t) markProjectile(t, e, ctx.time.tick);
+    if (t) ctx.entities.damage(t.id, 1, "generic", owner);
     else if (h.kind === "player") ctx.player.damage(1, "generic", owner && owner !== "player" ? owner : undefined);
     const p = e.body.pos;
     if (h.kind === "block") backOff(e);
@@ -412,14 +425,17 @@ export function tickFireball(e: Entity, ctx: GameCtx) {
   if (h) {
     advance(e, h.t);
     e.data._remove = true;
-    if (h.entity) markProjectile(h.entity, e, ctx.time.tick);
+    // A large fireball still explodes; a small one just goes out.
+    const t = dodges(h.entity, ctx) ? undefined : h.entity;
+    if (h.entity && !t && small) return;
+    if (t) markProjectile(t, e, ctx.time.tick);
     if (h.kind === "block") projectileBreaks(ctx, e, h.bx!, h.by!, h.bz!);
     if (small) {
-      if (h.entity && !h.entity.data.fireImmune) {
-        const was = h.entity.data._fire, hp = h.entity.health;
-        h.entity.data._fire = Math.max((h.entity.data._fire as number) ?? 0, 100);
-        ctx.entities.damage(h.entity.id, 5, "fire", owner);
-        if (h.entity.health >= hp) h.entity.data._fire = was;
+      if (t && !t.data.fireImmune) {
+        const was = t.data._fire, hp = t.health;
+        t.data._fire = Math.max((t.data._fire as number) ?? 0, 100);
+        ctx.entities.damage(t.id, 5, "fire", owner);
+        if (t.health >= hp) t.data._fire = was;
       } else if (h.kind === "player") {
         const p = ctx.player as typeof ctx.player & { fireTicks?: number };
         const was = p.fireTicks ?? 0, hp = p.health;
@@ -430,7 +446,7 @@ export function tickFireball(e: Entity, ctx: GameCtx) {
       else if (h.kind === "block" && ctx.rules.mobGriefing) placeFire(ctx, h);
       return;
     }
-    if (h.entity) ctx.entities.damage(h.entity.id, 6, "mob", owner);
+    if (t) ctx.entities.damage(t.id, 6, "mob", owner);
     else if (h.kind === "player") ctx.player.damage(6, "mob", owner && owner !== "player" ? owner : undefined);
     const power = (e.data.power as number) ?? 1;
     if (owner && owner !== "player") mobExplode(ctx, owner, b.pos.x, b.pos.y, b.pos.z, power, true);

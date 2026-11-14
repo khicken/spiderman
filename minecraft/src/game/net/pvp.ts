@@ -226,7 +226,7 @@ interface HostFighter extends Fighter {
   remote: PvpRemote | null;
 }
 
-function remoteHeld(r: PvpRemote): ItemStack | null {
+export function remoteHeld(r: Pick<PvpRemote, "eq" | "inv">): ItemStack | null {
   const name = r.eq.held;
   if (!name) return null;
   const sel = r.inv.held();

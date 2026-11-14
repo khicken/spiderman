@@ -39,7 +39,7 @@ const DESERT = new Set([BI.desert]);
 const JUNGLE = new Set([BI.jungle, BI.bamboo]);
 const SNOWY = new Set([BI.snowyPlains, BI.snowyTaiga, BI.snowySlopes]);
 const SWAMP = new Set([BI.swamp]);
-const DARK = new Set([BI.darkForest]);
+const DARK = new Set([BI.darkForest, BI.paleGarden]);
 const TRAIL = new Set([BI.taiga, BI.snowyTaiga, BI.ogPine, BI.ogSpruce, BI.ogBirch, BI.jungle]);
 const DEEP = new Set([BI.deepOcean, BI.deepCold, BI.deepFrozen, BI.deepLukewarm]);
 

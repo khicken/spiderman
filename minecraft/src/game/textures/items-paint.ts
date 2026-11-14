@@ -113,7 +113,7 @@ export function T(p: Px, rows: readonly string[], pal: Pal = {}, seed = 1, dx = 
 
 export const WOOD: Record<string, string> = {
   oak: "#a2834f", spruce: "#735531", birch: "#c0af79", jungle: "#a0734d", acacia: "#a85a32", dark_oak: "#4c3223",
-  mangrove: "#773632", cherry: "#e2b0a8", bamboo: "#c9b356", crimson: "#6a344b", warped: "#2b6963",
+  mangrove: "#773632", cherry: "#e2b0a8", bamboo: "#c9b356", crimson: "#6a344b", warped: "#2b6963", pale_oak: "#ddd3cf",
 };
 
 export const COLORS = [

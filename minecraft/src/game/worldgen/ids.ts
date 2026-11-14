@@ -39,6 +39,7 @@ const NAMES = [
   "copper_block", "waxed_copper_block", "waxed_cut_copper", "waxed_oxidized_cut_copper", "waxed_copper_grate", "waxed_oxidized_copper_grate",
   "waxed_copper_bulb", "waxed_chiseled_copper", "polished_tuff_slab", "trial_spawner", "vault", "decorated_pot", "barrel",
   "suspicious_sand", "suspicious_gravel", "sandstone_wall", "ladder", "redstone_wire",
+  "pale_oak_log", "pale_oak_leaves", "pale_moss_block", "pale_moss_carpet", "pale_hanging_moss", "closed_eyeblossom", "creaking_heart",
 ] as const;
 
 export type BlockName = (typeof NAMES)[number];

@@ -12,6 +12,13 @@ import { loadChunk, saveChunk } from "./save";
 import { chunkKey, createStore, wrapChunk, type Chunk } from "./store";
 import { createTicker } from "./ticks";
 
+// Copper chests change id when they weather, get waxed or scraped, or pair, and keep their inventory through it.
+let copperChests: Uint8Array | null = null;
+function keepsBe(a: number, b: number) {
+  copperChests ??= Uint8Array.from(BLOCKS, (d) => (d?.tags?.includes("copper_chests") ? 1 : 0));
+  return copperChests[a] === 1 && copperChests[b] === 1;
+}
+
 export interface WorldOpts {
   seed: number;
   dim: Dim;
@@ -326,7 +333,7 @@ export function createWorld(opts: WorldOpts): World {
       while (h >= MIN_Y && LIGHT_FILTER[c.blocks[((h - MIN_Y) << 8) | col] & 0xfff] === 0) h--;
       c.skyTop[col] = h + 1;
     }
-    const lostBe = oid !== nid ? c.be.get(i) : undefined;
+    const lostBe = oid !== nid && !keepsBe(oid, nid) ? c.be.get(i) : undefined;
     if (lostBe) c.be.delete(i);
     store.markDirty(c, lx, y, lz);
     if (!(flags & SET_NO_LIGHT) && (LIGHT_FILTER[oid] !== LIGHT_FILTER[nid] || STATE_EMIT[old] !== STATE_EMIT[s])) {
