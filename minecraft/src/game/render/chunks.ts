@@ -218,7 +218,28 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
       if (neighborsLoaded(p.cx, p.cz)) apply(p, null);
       else if (ready.has(chunkKey(p.cx, p.cz))) starved.add(chunkKey(p.cx, p.cz));
     }
+    if (inp && hidden.length) hideBlocks(inp, p);
     return inp;
+  }
+
+  // Blocks drawn by a separate animated model (open chests) are left out of the section mesh.
+  const hidden: [number, number, number][] = [];
+  function hideBlocks(inp: MeshInput, p: Pending) {
+    const ox = p.cx * CHUNK, oy = MIN_Y + p.sy * CHUNK, oz = p.cz * CHUNK;
+    for (const [x, y, z] of hidden) {
+      const lx = x - ox, ly = y - oy, lz = z - oz;
+      if (lx < 0 || ly < 0 || lz < 0 || lx >= CHUNK || ly >= CHUNK || lz >= CHUNK) continue;
+      inp.blocks[((ly + 1) * 18 + lz + 1) * 18 + lx + 1] = 0;
+    }
+  }
+
+  const keyAt = (x: number, y: number, z: number) => sectionKey(Math.floor(x / CHUNK), Math.floor((y - MIN_Y) / CHUNK), Math.floor(z / CHUNK));
+
+  function sectionSettled(key: number) {
+    if (queue.has(key)) return false;
+    for (const p of inFlight.values()) if (p.key === key) return false;
+    for (const r of results) if (r.p.key === key) return false;
+    return true;
   }
 
   function freeWorker(): PoolWorker | null {
@@ -336,14 +357,22 @@ export function createChunkMeshes(world: WorldApi, scene: THREE.Scene, mats: Mat
     pending: () => queue.size() + inFlight.size + results.length,
     chunkMeshed(cx: number, cz: number) {
       if (!ready.has(chunkKey(cx, cz))) return false;
-      for (let sy = 0; sy < SECTIONS; sy++) {
-        const key = sectionKey(cx, sy, cz);
-        if (queue.has(key)) return false;
-        for (const p of inFlight.values()) if (p.key === key) return false;
-        for (const r of results) if (r.p.key === key) return false;
-      }
+      for (let sy = 0; sy < SECTIONS; sy++) if (!sectionSettled(sectionKey(cx, sy, cz))) return false;
       return true;
     },
+    // Hides (or shows again) one block in the chunk mesh, remeshing its section right away.
+    setHidden(x: number, y: number, z: number, hide: boolean) {
+      const i = hidden.findIndex((h) => h[0] === x && h[1] === y && h[2] === z);
+      if (hide === i >= 0) return;
+      if (hide) hidden.push([x, y, z]);
+      else hidden.splice(i, 1);
+      const cx = Math.floor(x / CHUNK), sy = Math.floor((y - MIN_Y) / CHUNK), cz = Math.floor(z / CHUNK);
+      if (sy < 0 || sy >= SECTIONS || !ready.has(chunkKey(cx, cz))) return;
+      bump(sectionKey(cx, sy, cz));
+      queue.push(cx, sy, cz, true);
+    },
+    // True once the section holding this block has no mesh job waiting.
+    settled: (x: number, y: number, z: number) => sectionSettled(keyAt(x, y, z)),
     sectionCount: () => sections.size,
     counts: () => ({
       pages: batches.opaque.pageCount() + batches.cutout.pageCount() + batches.translucent.pageCount(),

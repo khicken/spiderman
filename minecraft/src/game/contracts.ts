@@ -705,6 +705,7 @@ export interface RendererApi {
   setVisionFog?(far: number): void; // blindness / darkness fog end in blocks, 0 for none
   flash?(): void; // lightning sky flash
   addParticles(e: Extract<GameEvent, { type: "particles" }>): void;
+  onSound?(name: string, x?: number, y?: number, z?: number): void; // chest open and close sounds swing chest lids
   meshQueue(): number; // sections waiting
   chunkMeshed?(cx: number, cz: number): boolean; // chunk is ready and none of its sections wait for a mesh
   stats?(): RenderStats;

@@ -8,6 +8,8 @@ import { MISC_PAINTERS } from "./items-misc";
 import { MISC2_PAINTERS } from "./items-misc2";
 import { BLOCKISH_PAINTERS } from "./items-blockish";
 import { GHAST_PAINTERS } from "./items-ghast";
+import { COPPER_AGE_PAINTERS } from "./items-copper-age";
+import { NAUTILUS_PAINTERS } from "./items-nautilus";
 import { BOTTLE, LINGER, SPLASH, bottle } from "./items-shapes";
 import { activePacks, packTile, packVersion, type Img } from "../packs";
 import { resize } from "../packs/img";
@@ -21,6 +23,8 @@ const PAINTERS: Record<string, Painter> = {
   ...MISC2_PAINTERS,
   ...BLOCKISH_PAINTERS,
   ...GHAST_PAINTERS,
+  ...COPPER_AGE_PAINTERS,
+  ...NAUTILUS_PAINTERS,
 };
 
 export const ITEM_TEXTURE_KEYS: string[] = Object.keys(PAINTERS);

@@ -9,7 +9,7 @@ const PX = 1 / 16;
 const W = 64, H = 32;
 
 const BASE: Record<string, number> = {
-  leather: 0xa06540, chainmail: 0x9a9a9a, iron: 0xd8d8d8, golden: 0xf2cd3c, diamond: 0x4aedd9, netherite: 0x4a4042, turtle: 0x47a036,
+  leather: 0xa06540, chainmail: 0x9a9a9a, iron: 0xd8d8d8, golden: 0xf2cd3c, diamond: 0x4aedd9, netherite: 0x4a4042, turtle: 0x47a036, copper: 0xc06a48,
 };
 const TRIM: Record<string, number> = {
   iron_ingot: 0xc8c8c8, copper_ingot: 0xb4684d, gold_ingot: 0xdeb12d, lapis_lazuli: 0x416e97, emerald: 0x11a036, diamond: 0x6eecd2,
@@ -18,7 +18,7 @@ const TRIM: Record<string, number> = {
 
 export function armorMaterial(item: string): string | null {
   if (item === "turtle_helmet") return "turtle";
-  const m = item.match(/^(leather|chainmail|iron|golden|diamond|netherite)_(helmet|chestplate|leggings|boots)$/);
+  const m = item.match(/^(leather|chainmail|iron|golden|diamond|netherite|copper)_(helmet|chestplate|leggings|boots)$/);
   return m ? m[1] : null;
 }
 
@@ -277,14 +277,22 @@ export function createArmorLayer(parts: Record<string, THREE.Object3D>, basic: b
   };
 }
 
-// Vanilla Monster.populateDefaultEquipmentSlots on normal difficulty: 15% for armor, tier rolls up 9.5% at a time, 50% to stop after each piece.
+// Java 1.21.9 material odds (minecraft.wiki): leather 23.60%, copper 32.23%, gold 33.29%, chainmail 9.73%, iron 1.10%,
+// diamond 0.04%. A uniform base tier of 0-2 plus three independent bumps of p reproduces every figure to 0.02%.
+export const MOB_ARMOR_TIERS = ["leather", "copper", "golden", "chainmail", "iron", "diamond"] as const;
+export const MOB_ARMOR_BUMP = 0.1087;
+
+export function rollMobArmorTier(rand: () => number): number {
+  let tier = Math.min(2, Math.floor(rand() * 3));
+  for (let i = 0; i < 3; i++) if (rand() < MOB_ARMOR_BUMP) tier++;
+  return tier;
+}
+
+// Vanilla Monster.populateDefaultEquipmentSlots on normal difficulty: 15% for armor, 25% to stop after each piece.
 export function rollMobArmor(rand: () => number, difficulty: string): Equipment | null {
   const chance = difficulty === "hard" ? 0.25 : difficulty === "easy" ? 0.05 : 0.15;
   if (rand() >= chance) return null;
-  let tier = rand() < 0.095 ? 1 : 0;
-  if (rand() < 0.095) tier++;
-  if (rand() < 0.095) tier++;
-  const mat = ["leather", "golden", "chainmail", "iron", "diamond"][tier];
+  const mat = MOB_ARMOR_TIERS[rollMobArmorTier(rand)];
   const stop = difficulty === "hard" ? 0.1 : 0.25;
   const eq: Equipment = {};
   const order: [ArmorSlot, string][] = [["feet", "boots"], ["legs", "leggings"], ["chest", "chestplate"], ["head", "helmet"]];

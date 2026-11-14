@@ -16,7 +16,7 @@ import { END_PORTAL_BEHAVIOR, NETHER_PORTAL_BEHAVIOR } from "./portal";
 import { RANDOM_TICKS, farmlandToDirt, leavesRandomTick, saplingRandomTick } from "./growth";
 import { copperRandomTick, oxidizes } from "./copper";
 import { bedScheduledTick, blockUseFor, composterScheduledTick } from "./interact";
-import { CHEST_BEHAVIOR, placeChest } from "./chest";
+import { CHEST_BEHAVIOR, placeChest, useCopperChest } from "./chest";
 import { PALE_BEHAVIORS } from "./pale-garden";
 
 const AXIS = new Set([
@@ -62,10 +62,10 @@ function placeFor(b: BlockDef): PlaceFn | undefined {
     case "chest": return placeChest;
     case "hopper": return placeHopper;
   }
-  if (AXIS.has(n) || t.includes("logs")) return placeAxis;
+  if (AXIS.has(n) || t.includes("logs") || t.includes("chains")) return placeAxis;
   if (n === "observer") return placeObserver;
   if (FRONT6.has(n)) return placeFront6;
-  if (TOWARD_H.has(n)) return placeTowardH;
+  if (TOWARD_H.has(n) || t.includes("copper_golem_statues")) return placeTowardH;
   if (n.endsWith("shulker_box") || CLICKED_FACE.has(n)) return placeClickedFace;
   if (FRONT_CUBES.has(n) || n.endsWith("glazed_terracotta")) return placeFrontToPlayer;
   if (n === "cocoa") return placeCocoa;
@@ -174,7 +174,7 @@ function behaviorFor(b: BlockDef): BlockBehavior | null {
   if (b.shape === "bed") parts.push({ scheduledTick: bedScheduledTick });
   if (b.shape === "chest") parts.push(CHEST_BEHAVIOR);
   if (n === "composter") parts.push({ scheduledTick: composterScheduledTick });
-  const use = blockUseFor(n, b.shape, t);
+  const use = t.includes("copper_chests") ? useCopperChest : blockUseFor(n, b.shape, t);
   if (use) parts.push({ use });
   if (HAS_CUSTOM_BOXES_SET.has(n)) parts.push({ boxes: shapeBoxes });
   const pale = PALE_BEHAVIORS[n];

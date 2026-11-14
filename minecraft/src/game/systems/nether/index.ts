@@ -31,7 +31,7 @@ export function createNether(): SystemPart {
     load: (d) => loadPortals((d as { portals?: unknown } | undefined)?.portals),
     onEvent(ctx, e) {
       if (e.type === "open_container" && OPENED.has(e.kind) && e.x !== undefined) angerPiglins(ctx, true);
-      else if (e.type === "block_changed" && e.to === 0 && GUARDED.has(blockDef(e.from).name)) {
+      else if (e.type === "block_changed" && e.to === 0 && (GUARDED.has(blockDef(e.from).name) || blockDef(e.from).tags?.includes("copper_chests"))) {
         const p = ctx.player.body.pos;
         if ((p.x - e.x - 0.5) ** 2 + (p.y + 1.6 - e.y - 0.5) ** 2 + (p.z - e.z - 0.5) ** 2 < 36) angerPiglins(ctx, false);
       }

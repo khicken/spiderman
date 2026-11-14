@@ -40,11 +40,12 @@ test("eyeblossom sounds and pale behaviors resolve", async () => {
   assert.ok(BEHAVIORS.pale_hanging_moss.canSurvive && BEHAVIORS.pale_hanging_moss.place);
 });
 
-test("potted eyeblossoms: appended last, pot in and out, toggle by time of day", async () => {
+test("potted eyeblossoms: registered, pot in and out, toggle by time of day", async () => {
   const { blockId, blockDef } = await import("../src/game/blocks/registry");
   const { BEHAVIORS } = await import("../src/game/mechanics/index");
   const { MESH_EMIT, idOfName } = await import("../src/game/mesh/tables");
-  assert.deepEqual(BLOCKS.slice(-2).map((b) => b.name), ["potted_closed_eyeblossom", "potted_open_eyeblossom"]);
+  const potAt = BLOCKS.findIndex((b) => b.name === "potted_closed_eyeblossom");
+  assert.deepEqual(BLOCKS.slice(potAt, potAt + 2).map((b) => b.name), ["potted_closed_eyeblossom", "potted_open_eyeblossom"]);
   assert.equal(blockDef(blockId("potted_open_eyeblossom")).textures.front, "open_eyeblossom");
   assert.ok(MESH_EMIT[idOfName("potted_open_eyeblossom")] > 0);
   assert.equal(MESH_EMIT[idOfName("potted_closed_eyeblossom")], 0);

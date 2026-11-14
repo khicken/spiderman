@@ -21,6 +21,8 @@ import "./copper";
 import "./cracks";
 import "./ghast";
 import "./pale-garden";
+import "./copper-chest";
+import "./copper-age";
 
 export const BLOCK_TEXTURE_KEYS: string[] = ["missing", ...texKeys().sort()];
 

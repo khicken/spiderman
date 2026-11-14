@@ -224,6 +224,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     switch (e.type) {
       case "sound":
         audio.play(e.name, e.x, e.y, e.z, e.volume, e.pitch);
+        renderer?.onSound?.(e.name, e.x, e.y, e.z);
         return;
       case "particles":
         renderer?.addParticles(e);

@@ -79,6 +79,8 @@ export function enchantability(name: string): number {
   if (name === "book") return 1;
   for (const t of TOOL_TIERS) if (name.startsWith(`${t}_`) && TOOL_KINDS.some((k) => name === `${t}_${k}`)) return TIER[t].ench;
   for (const m of ARMOR_MATERIALS) if (name.startsWith(`${m}_`) && PIECES.some((p) => name === `${m}_${p}`)) return ARMOR[m].ench;
+  if (/^copper_(sword|shovel|pickaxe|axe|hoe)$/.test(name)) return 13;
+  if (/^copper_(helmet|chestplate|leggings|boots)$/.test(name)) return 8;
   if (name === "turtle_helmet") return 9;
   if (name === "mace") return 15;
   if (["bow", "crossbow", "trident", "fishing_rod"].includes(name)) return 1;
@@ -96,6 +98,7 @@ export function repairMaterial(name: string): string[] {
   if (name.startsWith("stone_")) return ["cobblestone", "cobbled_deepslate", "blackstone"];
   if (name.startsWith("iron_") || name.startsWith("chainmail_")) return ["iron_ingot"];
   if (name.startsWith("golden_")) return ["gold_ingot"];
+  if (/^copper_(sword|shovel|pickaxe|axe|hoe|helmet|chestplate|leggings|boots)$/.test(name)) return ["copper_ingot"];
   if (name.startsWith("diamond_")) return ["diamond"];
   if (name.startsWith("netherite_")) return ["netherite_ingot"];
   if (name.startsWith("leather_")) return ["leather"];

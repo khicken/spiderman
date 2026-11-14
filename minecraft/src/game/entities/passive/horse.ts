@@ -92,8 +92,8 @@ function paintSaddle(p: Pix) {
 }
 
 // The item lives in horseArmor; data.armor holds armor points for damage reduction.
-const ARMOR_POINTS: Record<string, number> = { leather_horse_armor: 3, iron_horse_armor: 5, golden_horse_armor: 7, diamond_horse_armor: 11 };
-const ARMOR_COLOR: Record<string, number> = { leather_horse_armor: 0xa06540, iron_horse_armor: 0xd8d8d8, golden_horse_armor: 0xf2cd3c, diamond_horse_armor: 0x4aedd9 };
+const ARMOR_POINTS: Record<string, number> = { leather_horse_armor: 3, copper_horse_armor: 4, iron_horse_armor: 5, golden_horse_armor: 7, diamond_horse_armor: 11 };
+const ARMOR_COLOR: Record<string, number> = { leather_horse_armor: 0xa06540, copper_horse_armor: 0xc06a48, iron_horse_armor: 0xd8d8d8, golden_horse_armor: 0xf2cd3c, diamond_horse_armor: 0x4aedd9 };
 
 // Horse armor in gray, tinted per material through the overlay's base color.
 function paintArmor(p: Pix) {

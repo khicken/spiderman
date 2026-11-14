@@ -4,7 +4,8 @@ import { hasRoom, mobPassengers, mountPlayer, openMount, rider } from "../riding
 import { useItem } from "../passive/common";
 import { swim } from "../passive/water";
 import {
-  dashCooldown, dashForward, nautilusModel, NAUTILUS_SEAT, registerNautilusMount, rideNautilus, swimToward, type NautilusPalette,
+  armorInteract, syncNautilusArmor, dashCooldown, dashForward, dropArmor, nautilusModel, NAUTILUS_SEAT, registerNautilusMount, rideNautilus, swimToward,
+  type NautilusPalette,
 } from "../passive/nautilus";
 import { hurtAmount, naturalSpawn, num, sound, targetInfo, updateTarget } from "./brain";
 import { OCEANS } from "./spawns";
@@ -20,6 +21,20 @@ const ZOMBIE_NAUTILUS_COLORS: NautilusPalette = {
   eye: 0x0e1a16,
   eyeGlint: 0x7ef2e0,
   rot: { hole: 0x23281e, bone: 0xcfd3b0, moss: [0x3d5236, 0x45603c, 0x36482f] },
+};
+
+// Vanilla coral zombie nautilus: the warm ocean look, overgrown with brain, tube, fire and horn coral.
+const CORAL_COLORS: NautilusPalette = {
+  shell: [0xc9b2a4, 0xbfa697, 0xd3bcae],
+  stripe: [0x8a4a6a, 0x7c4160, 0x985476],
+  rim: 0x4a2238,
+  inner: 0x24141c,
+  flesh: [0x7a8a6a, 0x6e7e60, 0x869676],
+  spot: 0xe86ca8,
+  tentacle: [0x8a9a78, 0x7e8e6c, 0x96a684],
+  eye: 0x101418,
+  eyeGlint: 0x7ef2e0,
+  rot: { hole: 0x2a1e24, bone: 0xe6dcc4, moss: [0xd65a96, 0x3a5ad6, 0xc8382c, 0xd8c43a] },
 };
 
 const ATTACK = 5;
@@ -48,11 +63,17 @@ export const ZOMBIE_NAUTILUS_DEF: MobDef = {
   sounds: { ambient: "entity.zombie_nautilus.ambient", hurt: "entity.zombie_nautilus.hurt", death: "entity.zombie_nautilus.death" },
   spawn: { dims: ["overworld"], biomes: OCEANS.filter((b) => !b.includes("frozen")), light: "dark", group: [1, 1], weight: 5 },
   seat: NAUTILUS_SEAT,
-  createModel: () => nautilusModel("zombie_nautilus", ZOMBIE_NAUTILUS_COLORS),
+  createModel: () => nautilusModel("zombie_nautilus", ZOMBIE_NAUTILUS_COLORS, { coral: CORAL_COLORS }),
   tick(e, ctx) {
     const b = e.body;
     e.data.amphibious = true;
-    if (naturalSpawn(e)) spawnRider(e, ctx);
+    syncNautilusArmor(e);
+    if (naturalSpawn(e)) {
+      const p = b.pos;
+      const biome = (ctx.world.getBiomeAt?.(p.x, p.y, p.z) ?? ctx.world.getBiome(p.x, p.z)).name;
+      if (biome === "warm_ocean") e.data.variant = "coral";
+      spawnRider(e, ctx);
+    }
     const ctl = rider(ctx, e);
     if (ctl) {
       clearPath(e);
@@ -89,8 +110,9 @@ export const ZOMBIE_NAUTILUS_DEF: MobDef = {
     }
     swim(e, ctx, b.inWater ? 0.012 : 0, 1 / 60, "entity.zombie_nautilus.flop", false);
   },
+  // The saddle drops from kill() in entities/index.ts.
   onDeath(e, ctx) {
-    if (e.data.saddle) ctx.entities.dropItem({ item: "saddle", count: 1 }, e.body.pos.x, e.body.pos.y + 0.5, e.body.pos.z);
+    dropArmor(e, ctx);
   },
   onInteract(e, ctx, held) {
     if (mobPassengers(ctx, e, crew).length > 0) {
@@ -98,6 +120,10 @@ export const ZOMBIE_NAUTILUS_DEF: MobDef = {
       return false;
     }
     if (ctx.player.sneaking && ctx.player.vehicle !== e.id && openMount(ctx, e)) return true;
+    if (armorInteract(e, ctx, held, "zombie_nautilus")) {
+      e.data.persistent = true;
+      return true;
+    }
     if (held?.item === "saddle" && !e.data.saddle) {
       e.data.saddle = true;
       e.data.persistent = true;

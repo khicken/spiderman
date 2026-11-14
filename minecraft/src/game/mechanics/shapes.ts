@@ -89,6 +89,7 @@ const CONDUIT = [box(5, 5, 5, 11, 11, 11)];
 const TURTLE_EGG = [box(3, 0, 3, 12, 7, 12)];
 const DRAGON_EGG = [box(1, 0, 1, 15, 16, 15)];
 const DECORATED_POT = [box(1, 0, 1, 15, 16, 15)];
+const STATUE = [box(3, 0, 3, 13, 14, 13)];
 const VINE_FACE = [box(0, 0, 15, 16, 16, 16), box(0, 0, 0, 1, 16, 16), box(0, 0, 0, 16, 16, 1), box(15, 0, 0, 16, 16, 16)];
 const VINE_UP = box(0, 15, 0, 16, 16, 16);
 const RESIN_FACE = faceBoxes([VINE_UP], CARPET, [VINE_FACE[0]]);
@@ -419,6 +420,7 @@ function customBoxes(s: BlockState, collision: boolean): Aabb[] {
   if (n === "sniffer_egg") return [box(1, 0, 2, 15, 16, 14)];
   if (n === "dragon_egg") return DRAGON_EGG;
   if (n === "decorated_pot") return DECORATED_POT;
+  if (d.tags?.includes("copper_golem_statues")) return STATUE;
   if (n === "sea_pickle") return PICKLES[m & 3];
   if (n === "grindstone") return GRINDSTONE;
   if (n === "bell") return BELL;

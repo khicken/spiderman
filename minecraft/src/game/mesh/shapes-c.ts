@@ -9,7 +9,7 @@ const SIDES = [0, 1, 4, 5];
 export const enum C {
   None, Hanging, WallHanging, Dripleaf, Cocoa, Pickle, Shrieker, Candle, Banner, WallBanner, Brewing, Conduit, Bell,
   Grindstone, Stonecutter, HeavyCore, Pot, SnifferEgg, TurtleEgg, Skull, WallSkull, PistonHead, Moving, Daylight, Hook,
-  Tripwire, Sensor, EndPortal, Gateway, DragonEgg, Fire, DriedGhast,
+  Tripwire, Sensor, EndPortal, Gateway, DragonEgg, Fire, DriedGhast, Statue,
 }
 
 export const CK = new Uint8Array(4096);
@@ -36,6 +36,7 @@ for (const d of BLOCKS) {
   else if (n.endsWith("_wall_banner")) k = C.WallBanner;
   else if (n.endsWith("_banner")) k = C.Banner;
   else if (t.includes("candles")) k = C.Candle;
+  else if (t.includes("copper_golem_statues")) k = C.Statue;
   else if (/_wall_(skull|head)$/.test(n)) k = C.WallSkull;
   else if (/_(skull|head)$/.test(n) && d.shape === "custom") k = C.Skull;
   CK[d.id] = k;
@@ -470,6 +471,46 @@ function driedGhast() {
   }
 }
 
+// Copper golem model with its front toward +z. Meta bits 0-1 facing, bits 2-3 pose: standing, sitting, running, star.
+// UVs follow the statue sprite in textures/copper-age.ts (face 4..12 x 0..5, plain metal 1..15 x 7..15).
+function statuePart(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, axis = 0, deg = 0, px = 8, py = 8, pz = 8) {
+  T.uvMask = 0;
+  for (let f = 0; f < 6; f++) uvRect(f, 1, 7, 15, 15);
+  if (axis) tiltA(axis, deg, px, py, pz);
+  else T.aAxis = 0;
+  box(x0, y0, z0, x1, y1, z1);
+}
+
+function statue() {
+  setFL(texUp());
+  T.ao = false;
+  T.rot = M.meta & 3;
+  const pose = (M.meta >> 2) & 3;
+  const dy = pose === 1 ? -5 : 0;
+  if (pose === 1) {
+    statuePart(4, 0, 8, 8, 4, 14);
+    statuePart(8, 0, 8, 12, 4, 14);
+  } else {
+    const axis = pose === 2 ? 1 : pose === 3 ? 3 : 0;
+    const deg = pose === 2 ? 30 : pose === 3 ? 20 : 0;
+    statuePart(4, 0, 6, 8, 5, 10, axis, -deg, 6, 5, 8);
+    statuePart(8, 0, 6, 12, 5, 10, axis, deg, 10, 5, 8);
+  }
+  statuePart(4, 5 + dy, 5, 12, 11 + dy, 11);
+  const armAxis = pose === 3 ? 3 : pose === 0 ? 0 : 1;
+  const [armL, armR] = pose === 1 ? [-40, -40] : pose === 2 ? [45, -45] : [-130, 130];
+  statuePart(1, 5 + dy, 6, 4, 11 + dy, 10, armAxis, armL, 2.5, 11 + dy, 8);
+  statuePart(12, 5 + dy, 6, 15, 11 + dy, 10, armAxis, armR, 13.5, 11 + dy, 8);
+  T.uvMask = 0;
+  for (let f = 0; f < 6; f++) uvRect(f, 1, 7, 15, 15);
+  uvRect(4, 4, 0, 12, 5);
+  T.aAxis = 0;
+  box(3, 11 + dy, 4, 13, 16 + dy, 12);
+  statuePart(7, 11 + dy, 12, 9, 15 + dy, 14);
+  statuePart(7, 16 + dy, 7, 9, 19 + dy, 9);
+  statuePart(6, 19 + dy, 6, 10, 23 + dy, 10);
+}
+
 export function meshShapeC(shape: number): boolean {
   if (shape !== SH.custom && shape !== SH.cross) return false;
   const k = CK[M.id];
@@ -525,6 +566,7 @@ export function meshShapeC(shape: number): boolean {
     case C.DragonEgg: dragonEgg(); break;
     case C.Fire: fire(); break;
     case C.DriedGhast: driedGhast(); break;
+    case C.Statue: statue(); break;
   }
   return true;
 }
