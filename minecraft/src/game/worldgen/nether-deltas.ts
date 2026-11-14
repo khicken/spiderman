@@ -1,4 +1,5 @@
 import { stateOf } from "../contracts";
+import { blockId } from "../blocks/registry";
 import { B } from "./ids";
 import { NB, type NetherGen } from "./nether-gen";
 import { blockAt, everyLayer, rockAt, scatter, tr } from "./nether-features";
@@ -139,6 +140,11 @@ function fossil(g: NetherGen, w: Writer, x: number, y: number, z: number) {
     const px = alongX ? x + a : x + b, pz = alongX ? z + b : z + a;
     w.setIf(px, y + h - sink, pz, s, FOSSIL_REPLACE);
   };
+  // Vanilla 1.21.6 nether fossils may carry a dried ghast lying beside the bones.
+  if (DRIED_GHAST && tr.next() < 0.5) {
+    const px = alongX ? x - 2 : x, pz = alongX ? z : z - 2;
+    if (blockAt(g, w, px, y, pz) === 0 && rockAt(g, px, y - 1, pz)) w.set(px, y, pz, S(DRIED_GHAST, tr.int(4)));
+  }
   if (kind === 2) {
     for (let a = 0; a < 3; a++)
       for (let h = 0; h < 3; h++)
@@ -160,6 +166,7 @@ function fossil(g: NetherGen, w: Writer, x: number, y: number, z: number) {
     }
   }
 }
+const DRIED_GHAST = blockId("dried_ghast");
 const FOSSIL_REPLACE = idTable(B.soul_sand, B.soul_soil, B.netherrack, B.basalt);
 FOSSIL_REPLACE[0] = 1;
 

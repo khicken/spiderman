@@ -17,8 +17,10 @@ import { BANNER_BEHAVIORS, clearBanners, frameBanners, tickBanners } from "./ban
 import { POT_BEHAVIOR, clearPots, framePots, tickPots } from "./pots";
 import { loadRecipes, recipeTrigger, saveRecipes, setRecipeCtx } from "./recipe-book";
 import { addSubtitle, updateSubtitles } from "./subtitles";
+import { DRIED_GHAST_BEHAVIOR } from "../../mechanics/dried-ghast";
 
 registerBehaviors({ ...BANNER_BEHAVIORS, ...HIVE_BEHAVIORS, ...FENCE_BEHAVIORS, ...MISC_BEHAVIORS, chiseled_bookshelf: BOOKSHELF_BEHAVIOR, decorated_pot: POT_BEHAVIOR });
+registerBehaviors({ dried_ghast: DRIED_GHAST_BEHAVIOR });
 
 const NOTE_RANGE = 16;
 

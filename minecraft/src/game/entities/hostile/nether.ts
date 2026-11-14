@@ -375,6 +375,11 @@ export const NETHER_MOBS: MobDef[] = [
     spawn: { dims: ["nether"], biomes: ["nether_wastes", "soul_sand_valley", "basalt_deltas"], light: "dark", group: [4, 4], weight: 50 },
     createModel: ghastModel,
     tick: ghastTick,
+    // Vanilla 1.21.6: a ghast killed by a fireball the player sent back drops Tears.
+    onDeath(e, ctx) {
+      const pr = e.data._advProj as { type: string; owner: unknown; tick: number } | undefined;
+      if (pr?.type === "fireball" && pr.owner === "player" && ctx.time.tick - pr.tick <= 1) ctx.entities.dropItem({ item: "music_disc_tears", count: 1 }, e.body.pos.x, e.body.pos.y + 1, e.body.pos.z);
+    },
   },
   {
     type: "blaze",

@@ -201,7 +201,7 @@ export const BANNER_PATTERNS = ["flower", "creeper", "skull", "mojang", "globe",
 
 export const MUSIC_DISCS = [
   "13", "cat", "blocks", "chirp", "far", "mall", "mellohi", "stal", "strad", "ward", "11", "wait", "otherside", "5",
-  "pigstep", "relic", "creator", "creator_music_box", "precipice",
+  "pigstep", "relic", "creator", "creator_music_box", "precipice", "tears",
 ] as const;
 
 const collectibles: ItemSpec[] = [

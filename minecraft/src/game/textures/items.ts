@@ -7,6 +7,7 @@ import { FOOD_PAINTERS } from "./items-food";
 import { MISC_PAINTERS } from "./items-misc";
 import { MISC2_PAINTERS } from "./items-misc2";
 import { BLOCKISH_PAINTERS } from "./items-blockish";
+import { GHAST_PAINTERS } from "./items-ghast";
 import { BOTTLE, LINGER, SPLASH, bottle } from "./items-shapes";
 import { activePacks, packTile, packVersion, type Img } from "../packs";
 import { resize } from "../packs/img";
@@ -19,6 +20,7 @@ const PAINTERS: Record<string, Painter> = {
   ...MISC_PAINTERS,
   ...MISC2_PAINTERS,
   ...BLOCKISH_PAINTERS,
+  ...GHAST_PAINTERS,
 };
 
 export const ITEM_TEXTURE_KEYS: string[] = Object.keys(PAINTERS);

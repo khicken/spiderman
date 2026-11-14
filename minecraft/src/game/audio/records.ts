@@ -39,6 +39,7 @@ const STYLES: Record<string, Style> = {
   creator: { bpm: 124, root: 57, scale: DORIAN, lead: "square", bass: "sawtooth", drums: 2, density: 0.7 },
   creator_music_box: { bpm: 124, root: 69, scale: DORIAN, lead: "sine", bass: "sine", drums: 0, density: 0.6 },
   precipice: { bpm: 98, root: 50, scale: MINOR, lead: "sawtooth", bass: "triangle", drums: 2, density: 0.55 },
+  tears: { bpm: 72, root: 50, scale: MINOR, lead: "sine", bass: "triangle", drums: 1, density: 0.35 },
 };
 
 interface Song {

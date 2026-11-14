@@ -1,4 +1,4 @@
-import { chirps, lowpass, R, say, seq, whoosh, type MobSounds } from "./mob-kit";
+import { bubbles, chirps, lowpass, R, say, seq, whoosh, type MobSounds } from "./mob-kit";
 
 // Soft, rounded coos: the ghast's breathy voice pitched warmer, without its wail.
 function happy(k: number): MobSounds {
@@ -16,4 +16,9 @@ function happy(k: number): MobSounds {
 
 export const HAPPY_GHAST_SOUNDS: Record<string, MobSounds> = {
   happy_ghast: happy(1),
+  // Played as entity.dried_ghast.*: a soft soak and a sleepy coo as the block rehydrates.
+  dried_ghast: {
+    transition: R(seq([[bubbles(0.5, 6, 300, 800), 0, 0.6], [lowpass(say({ dur: 0.5, f: [260, 300, 250], vowels: ["u", "o", "u"], breath: 0.4, shift: 1.2 }), 1800), 0.2, 0.5]]), 0.6),
+    place_in_water: R(bubbles(0.6, 10, 250, 900), 0.6),
+  },
 };
