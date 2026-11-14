@@ -13,16 +13,85 @@ const ORES: Record<string, Color[]> = {
   diamond: [0x0d6f6c, 0x1aaaa7, 0x4aedd9, 0xd5fff6],
 };
 
+const BLOB_SHAPES: (readonly (readonly [number, number])[])[] = [
+  ".XX|XX.",
+  "XX|XX",
+  "XX.|.XX",
+  ".X.|XXX",
+  "XX.|XXX",
+  ".XX|XXX|.X.",
+  "XXX|XX.",
+  "X..|XXX|.XX",
+  ".XX|XXX|XX.",
+  "XX.|XXX|.XX",
+  "X.|XX|.X",
+  "XXX|.XX",
+].map((p) => p.split("|").flatMap((row, y) => [...row].flatMap((ch, x) => (ch === "X" ? [[x, y] as const] : []))));
+
+// Vanilla-style ore blobs: irregular 4-7 pixel clumps, light top-left, dark bottom-right rim,
+// and a soft shadow cast onto the stone below and right.
+function oreBlobs(t: Tex, c: readonly Color[], seed: number, count: number, size: [number, number], shadow: number): void {
+  const r = makeRng(seed * 13 + 5);
+  const placed: [number, number][] = [];
+  for (let tries = 0; tries < count * 20 && placed.length < count; tries++) {
+    const cx = 1 + Math.floor(r() * 12);
+    const cy = 1 + Math.floor(r() * 12);
+    if (placed.some(([px, py]) => Math.abs(px - cx) < 4 && Math.abs(py - cy) < 4)) continue;
+    placed.push([cx, cy]);
+    const pool = BLOB_SHAPES.filter((sh) => sh.length >= size[0] && sh.length <= size[1]);
+    let shape = pool[Math.floor(r() * pool.length)];
+    if (r() < 0.5) shape = shape.map(([x, y]) => [2 - x, y] as const);
+    const list = shape.map(([x, y]) => [cx + x - 1, cy + y - 1] as [number, number]);
+    const cells = new Set(list.map(([x, y]) => `${x},${y}`));
+    const has = (x: number, y: number) => cells.has(`${x},${y}`);
+    for (const [x, y] of list)
+      for (const [sx, sy] of [[1, 0], [0, 1], [1, 1]] as const) if (!has(x + sx, y + sy)) t.shade(x + sx, y + sy, shadow);
+    for (const [x, y] of list) {
+      const top = !has(x, y - 1);
+      const left = !has(x - 1, y);
+      const bottom = !has(x, y + 1);
+      const right = !has(x + 1, y);
+      let k = 1;
+      if ((bottom && right) || (bottom && !top)) k = 0;
+      else if (top && left) k = 3;
+      else if (top || left) k = 2;
+      t.set(x, y, c[k]);
+    }
+  }
+}
+
+// [dark, mid, light, highlight], blob count, blob size range.
+const ORE_LOOK: Record<string, [number, [number, number]]> = {
+  coal: [7, [5, 7]],
+  iron: [6, [4, 6]],
+  gold: [6, [4, 6]],
+  redstone: [7, [4, 6]],
+  emerald: [4, [3, 5]],
+  lapis: [7, [4, 6]],
+  diamond: [5, [4, 6]],
+};
+const ORE_COLORS: Record<string, Color[]> = {
+  coal: [0x101010, 0x262626, 0x3a3a3a, 0x505050],
+  iron: [0x9b7a62, 0xc49c80, 0xd8af93, 0xeccbb2],
+  gold: [0xc07a0e, 0xe6a91b, 0xfcee4b, 0xfffcb4],
+  redstone: [0x8a0000, 0xc40000, 0xff0000, 0xff7a7a],
+  emerald: [0x007a2c, 0x17b553, 0x41f384, 0xb5ffd6],
+  lapis: [0x102a7e, 0x1c48a6, 0x345ec3, 0x7ea0f0],
+  diamond: [0x0f7e7a, 0x1fb7b1, 0x4aedd9, 0xd5fff6],
+};
+
 for (const [name, c] of Object.entries(ORES)) {
-  const n = name === "redstone" || name === "lapis" ? 7 : name === "copper" ? 7 : 5;
+  const look = ORE_LOOK[name];
   def(`${name}_ore`, (t, _r, s) => {
     t.copyFrom(texOf("stone"));
-    ore(t, c, s, n);
+    if (look) oreBlobs(t, ORE_COLORS[name], s, look[0], look[1], 0.78);
+    else ore(t, c, s, 7);
     if (name === "copper") speckle(t, makeRng(s), 0x5aa883, 0.02);
   });
   def(`deepslate_${name}_ore`, (t, _r, s) => {
     t.copyFrom(texOf("deepslate"));
-    ore(t, c, s, n, 0.6);
+    if (look) oreBlobs(t, ORE_COLORS[name], s, look[0], look[1], 0.72);
+    else ore(t, c, s, 7, 0.6);
     if (name === "copper") speckle(t, makeRng(s), 0x4e957a, 0.02);
   });
 }
@@ -46,40 +115,83 @@ function metal(t: Tex, c: readonly Color[], seed: number): Tex {
   return t;
 }
 
+// 1.14+ storage block: 1px bevel (light top/left, dark bottom/right), mostly flat inner face
+// that darkens toward the bottom-right. pal = [darkEdge, shade, base, light, lightEdge].
+function storage(t: Tex, pal: readonly Color[], seed: number): Tex {
+  const [dk, sh, base, li, le] = pal;
+  const r = makeRng(seed);
+  for (let y = 1; y < 15; y++)
+    for (let x = 1; x < 15; x++) {
+      const d = x + y + (r() - 0.5) * 3;
+      t.set(x, y, d > 23 ? sh : d < 6 ? li : base);
+    }
+  t.hline(0, 14, 0, le).vline(0, 0, 14, le);
+  t.hline(1, 15, 15, dk).vline(15, 1, 15, dk);
+  t.set(15, 0, base).set(0, 15, base);
+  return t;
+}
+
 def("iron_block", (t, _r, s) => {
-  metal(t, [0x8f8f8f, 0xc4c4c4, 0xd8d8d8, 0xe3e3e3, 0xffffff], s);
-  for (const y of [5, 10]) t.hline(2, 13, y, 0xbcbcbc).hline(2, 13, y + 1, 0xebebeb);
+  const pal = [0x9a9a9a, 0xc9c9c9, 0xdcdcdc, 0xececec, 0xffffff];
+  storage(t, pal, s);
+  // Two plates split by a faint seam, with rivet dots at the corners.
+  t.hline(1, 14, 7, 0xc4c4c4).hline(1, 14, 8, 0xe9e9e9);
+  for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13], [2, 10], [13, 10], [2, 5], [13, 5]] as const) t.set(x, y, 0xbcbcbc);
+  for (const [x, y] of [[3, 3], [4, 3], [3, 10]] as const) t.set(x, y, 0xf6f6f6);
 });
 def("gold_block", (t, _r, s) => {
-  metal(t, [0xa5640a, 0xe6a91b, 0xf7d23d, 0xfde55b, 0xfffcb5], s);
-  for (const y of [5, 10]) t.hline(2, 13, y, 0xd29a14).hline(2, 13, y + 1, 0xfef08a);
+  const pal = [0xc1700a, 0xf2c227, 0xfbdd45, 0xfff07a, 0xfffcb6];
+  storage(t, pal, s);
+  // Small shine marks top-left, deeper shading at the bottom-right corner.
+  for (const [x, y] of [[2, 2], [3, 2], [2, 3], [5, 3], [3, 6], [9, 3], [10, 3], [3, 9]] as const) t.set(x, y, 0xfffbd0);
+  for (const [x, y] of [[13, 13], [12, 14], [14, 12], [14, 14]] as const) t.set(x, y, 0xe7a31d);
 });
 def("diamond_block", (t, _r, s) => {
-  metal(t, [0x1b8a86, 0x40c9c2, 0x62dcd4, 0x8af0e8, 0xe0fffb], s);
-  for (let i = 3; i < 13; i++) {
-    t.set(i, i, 0x2fb5ad).set(15 - i, i, 0x2fb5ad);
-  }
-  t.set(4, 3, 0xffffff).set(3, 4, 0xffffff);
+  const pal = [0x1a8d88, 0x52d6cd, 0x75e6de, 0xa3f1ea, 0xe4fffc];
+  storage(t, pal, s);
+  // Faceted gem: concentric rhombus rings, lit on the top-left half and shaded bottom-right.
+  for (let y = 1; y < 15; y++)
+    for (let x = 1; x < 15; x++) {
+      const d = Math.abs(x - 7.5) + Math.abs(y - 7.5);
+      const lit = x + y < 15;
+      const ring = Math.floor(d);
+      if (ring === 6 || ring === 2) t.set(x, y, lit ? 0xc6f8f2 : 0x3fbdb5);
+      else if ((ring === 5 || ring === 1) && !lit) t.set(x, y, 0x5fd2c9);
+    }
+  for (const [x, y] of [[3, 3], [4, 3], [3, 4], [7, 2]] as const) t.set(x, y, 0xffffff);
 });
 def("emerald_block", (t, _r, s) => {
-  metal(t, [0x0b6a2b, 0x1fae4c, 0x2fc95c, 0x4fe37b, 0xb0ffcc], s);
-  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) if ((x + y) % 4 === 0) t.set(x, y, 0x17923d);
+  const pal = [0x0a6b2a, 0x1fa94a, 0x2fc75d, 0x4fe17c, 0xa6ffc6];
+  storage(t, pal, s);
+  // Rows of small diagonal gem facets.
+  for (let y = 2; y < 14; y++)
+    for (let x = 2; x < 14; x++) {
+      const u = (x + y) % 6;
+      const v = (x - y + 18) % 6;
+      if (u === 0 || v === 0) t.set(x, y, 0x17923d);
+      else if (u === 1 && v < 3) t.set(x, y, 0x7ff0a3);
+    }
+  for (const [x, y] of [[3, 3], [4, 3], [3, 4]] as const) t.set(x, y, 0xd8ffe6);
 });
 def("lapis_block", (t, r, s) => {
-  noiseFill(t, [0x1b3d91, 0x1f4aa6, 0x2753b8, 0x2d5dc8], s, { cells: 8, grain: 0.7 });
-  speckle(t, r, 0x6f94e8, 0.07);
-  speckle(t, r, 0xe3c34a, 0.015);
-  t.border(0x163278);
+  noiseFill(t, [0x1a3a8c, 0x1f4aa6, 0x2753b8, 0x2f61cc], s, { cells: 4, grain: 0.6, contrast: 1.3 });
+  speckle(t, r, 0x5f86e0, 0.08);
+  speckle(t, r, 0x163278, 0.06);
+  t.hline(0, 14, 0, 0x4a73d4).vline(0, 0, 14, 0x4a73d4);
+  t.hline(1, 15, 15, 0x122a6a).vline(15, 1, 15, 0x122a6a);
 });
 def("redstone_block", (t, r, s) => {
   noiseFill(t, [0x8f0d00, 0xa81300, 0xb81a06, 0xc8260f], s, { cells: 8, grain: 0.6 });
   for (let y = 1; y < 15; y += 3) for (let x = (y % 2) * 2 + 1; x < 15; x += 4) t.set(x, y, 0xe53a1c).set(x + 1, y, 0x6e0a00);
   speckle(t, r, 0xff5b3a, 0.03);
-  t.border(0x6e0a00);
+  t.hline(0, 14, 0, 0xd8331a).vline(0, 0, 14, 0xd8331a);
+  t.hline(1, 15, 15, 0x5e0800).vline(15, 1, 15, 0x5e0800);
 });
 def("coal_block", (t, r, s) => {
   noiseFill(t, [0x0e0e0e, 0x151515, 0x1c1c1c, 0x232323], s, { cells: 8, grain: 0.7 });
-  speckle(t, r, 0x3a3a3a, 0.06);
+  speckle(t, r, 0x363636, 0.07);
+  t.hline(0, 14, 0, 0x343434).vline(0, 0, 14, 0x343434);
+  t.hline(1, 15, 15, 0x080808).vline(15, 1, 15, 0x080808);
 });
 def("netherite_block", (t, _r, s) => {
   metal(t, [0x2b2627, 0x3a3536, 0x443e3f, 0x4d4646, 0x6b6262], s);

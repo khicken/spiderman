@@ -39,17 +39,17 @@ function paintWolf(p: Pix, v: string, mood: "wild" | "tame" | "angry") {
   const f = head.front;
   p.rect([f[0], f[1] + 4, 6, 2], c.belly);
   const eye = mood === "angry" ? 0xd01010 : 0x2a1e12;
+  p.px(f[0] + 1, f[1] + 2, eye);
+  p.px(f[0] + 4, f[1] + 2, eye);
   if (mood === "angry") {
-    p.px(f[0] + 1, f[1] + 2, 0xffffff);
-    p.px(f[0] + 4, f[1] + 2, 0xffffff);
     p.px(f[0] + 1, f[1] + 1, c.back[0]);
+    p.px(f[0] + 2, f[1] + 1, c.back[0]);
+    p.px(f[0] + 3, f[1] + 1, c.back[0]);
     p.px(f[0] + 4, f[1] + 1, c.back[0]);
-  } else {
-    p.px(f[0] + 1, f[1] + 2, mood === "tame" ? 0xffffff : 0xf0f0f0);
-    p.px(f[0] + 4, f[1] + 2, mood === "tame" ? 0xffffff : 0xf0f0f0);
+  } else if (mood === "tame") {
+    p.px(f[0], f[1] + 2, 0xffffff);
+    p.px(f[0] + 5, f[1] + 2, 0xffffff);
   }
-  p.px(f[0] + 2, f[1] + 2, eye);
-  p.px(f[0] + 3, f[1] + 2, eye);
   p.noise(head.top, c.back);
   const nose = p.fillCuboid(0, 10, 3, 3, 4, [c.belly]);
   p.noise(nose.top, c.base);

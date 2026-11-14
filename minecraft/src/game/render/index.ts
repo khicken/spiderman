@@ -196,7 +196,9 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       waterFog.color(biome.name, dt, fog3);
       range.near = -8;
       range.far = waterFog.far(biome.name, blocks);
-      overlays.setTint(tmp3[0] * 0.5, tmp3[1] * 0.5, tmp3[2] * 0.6, 0.12, 0.1);
+      // Vanilla draws misc/underwater.png at 10% alpha, shaded by the light at the eye, with no extra edge darkening.
+      const lit = dim === "overworld" ? 0.35 + 0.65 * day : 0.5;
+      overlays.setTint(tmp3[0] * lit, tmp3[1] * lit, tmp3[2] * lit, 0.1, 0);
     } else if (submersion === "lava") {
       fog3[0] = 0.6; fog3[1] = 0.1; fog3[2] = 0;
       range.near = 0.25; range.far = 1;

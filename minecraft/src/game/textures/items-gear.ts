@@ -146,24 +146,25 @@ const FLINT_STEEL = [
   "................",
 ];
 
-const SHEARS = [
-  "................",
-  "...........00...",
-  "..........0340..",
-  ".........03420..",
-  "......00.0320...",
-  ".....0340320.00.",
-  "......03420.030.",
-  ".......03200320.",
-  "......03333220..",
-  ".....0220.020...",
-  "....020...00....",
-  "...0#0..........",
-  "..0#0...........",
-  ".0#0#0..........",
-  ".0###0..........",
-  "..000...........",
-];
+// Shears: two blades opening toward the top right from a pivot, with ring handles at the bottom left.
+// Blade paths get a 1px highlight core with a 1px outline stamped around them.
+const SHEARS = (() => {
+  const g = Array.from({ length: 16 }, () => Array(16).fill("."));
+  const put = (x: number, y: number, c: string) => {
+    if (x >= 0 && y >= 0 && x < 16 && y < 16) g[y][x] = c;
+  };
+  const blades = [
+    [[9, 1], [9, 2], [8, 3], [8, 4], [8, 5], [7, 6], [7, 7]],
+    [[14, 4], [13, 4], [12, 5], [11, 5], [10, 6], [9, 6], [8, 7], [7, 8]],
+  ];
+  for (const b of blades) for (const [x, y] of b) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (g[y + dy]?.[x + dx] === ".") put(x + dx, y + dy, "0");
+  for (const b of blades) b.forEach(([x, y], i) => put(x, y, i < 2 ? "4" : "3"));
+  put(8, 6, "2"); put(9, 5, "2"); put(9, 3, "2"); put(9, 4, "2"); put(12, 4, "2");
+  for (const [ox, oy] of [[1, 9], [5, 12]])
+    for (const [x, y] of [[1, 0], [2, 0], [0, 1], [3, 1], [0, 2], [3, 2], [1, 3], [2, 3]]) put(ox + x, oy + y, "p");
+  put(4, 9, "p"); put(5, 9, "p"); put(6, 10, "p"); put(7, 11, "p"); put(6, 9, "0");
+  return g.map((r) => r.join(""));
+})();
 
 const DISC = [
   "................",
@@ -385,7 +386,7 @@ export const GEAR_PAINTERS: Record<string, Painter> = {
     T(p, ["", "", "", "", "", "", "", "............ttt.", "...........tTTtt", "............ss..", "............s..."], { t: "#14b485", T: "#2ed4a0", s: "#ff6500" });
   },
   flint_and_steel: (p) => T(p, FLINT_STEEL, { A: MAT.iron, B: ["#1c1c1c", "#383838", "#4d4d4d", "#666666", "#808080"] }, 55),
-  shears: (p) => T(p, SHEARS, { A: MAT.iron }, 56),
+  shears: (p) => T(p, SHEARS, { A: MAT.iron, p: "#4a4a4a" }, 56),
   compass: compass(MAT.iron, ["#262626", "#3a3a3a", "#4a4a4a", "#5a5a5a", "#6a6a6a"], "#e02a2a", "#d0d0d0"),
   recovery_compass: compass(["#0a2b2e", "#1e5a5e", "#2e8a8f", "#5ab8bc", "#9ae4e6"], ["#0a1a22", "#102a36", "#183a48", "#20485a", "#2a586a"], "#3ce8e0", "#9ae4e6"),
   clock,
