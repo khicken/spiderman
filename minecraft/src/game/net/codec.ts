@@ -51,8 +51,9 @@ export async function unpackChunk(msg: Uint8Array): Promise<ChunkData> {
   };
 }
 
-// Entity moves: [kind][u32 count] then per entity i32 id, f32 x y z yaw headYaw pitch, u8 flags (1 dead, 2 hurt, 4 ground).
+// Entity moves: [kind][f64 host clock ms][u32 count] then per entity i32 id, f32 x y z yaw headYaw pitch, u8 flags (1 dead, 2 hurt, 4 ground).
 const MOVE_BYTES = 4 + 6 * 4 + 1;
+const MOVE_HEAD = 1 + 8 + 4;
 
 export interface EntMove {
   id: number;
@@ -65,12 +66,13 @@ export interface EntMove {
   f: number;
 }
 
-export function packMoves(list: EntMove[]): Uint8Array {
-  const msg = new Uint8Array(5 + list.length * MOVE_BYTES);
+export function packMoves(list: EntMove[], at: number): Uint8Array {
+  const msg = new Uint8Array(MOVE_HEAD + list.length * MOVE_BYTES);
   const v = new DataView(msg.buffer);
   msg[0] = BIN.ents;
-  v.setUint32(1, list.length, true);
-  let o = 5;
+  v.setFloat64(1, at, true);
+  v.setUint32(9, list.length, true);
+  let o = MOVE_HEAD;
   for (const m of list) {
     v.setInt32(o, m.id, true);
     v.setFloat32(o + 4, m.x, true);
@@ -85,15 +87,18 @@ export function packMoves(list: EntMove[]): Uint8Array {
   return msg;
 }
 
-export function unpackMoves(msg: Uint8Array, out: EntMove[]): EntMove[] {
+// Fills `out` and returns the host clock the batch was sent at (NaN for a short or malformed packet, `out` empty).
+export function unpackMoves(msg: Uint8Array, out: EntMove[]): number {
   out.length = 0;
+  if (msg.length < MOVE_HEAD) return NaN;
   const v = new DataView(msg.buffer, msg.byteOffset, msg.byteLength);
-  const n = v.getUint32(1, true);
-  if (msg.length < 5 + n * MOVE_BYTES) return out;
-  let o = 5;
+  const at = v.getFloat64(1, true);
+  const n = v.getUint32(9, true);
+  if (!Number.isFinite(at) || msg.length < MOVE_HEAD + n * MOVE_BYTES) return NaN;
+  let o = MOVE_HEAD;
   for (let i = 0; i < n; i++) {
     out.push({ id: v.getInt32(o, true), x: v.getFloat32(o + 4, true), y: v.getFloat32(o + 8, true), z: v.getFloat32(o + 12, true), yaw: v.getFloat32(o + 16, true), headYaw: v.getFloat32(o + 20, true), pitch: v.getFloat32(o + 24, true), f: msg[o + 28] });
     o += MOVE_BYTES;
   }
-  return out;
+  return at;
 }

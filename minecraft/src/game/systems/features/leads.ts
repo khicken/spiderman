@@ -33,6 +33,7 @@ function sound(ctx: GameCtx, name: string, p: { x: number; y: number; z: number 
 function drop(ctx: GameCtx, e: Entity, item: boolean) {
   const knot = knotOf(e);
   e.data.leash = undefined;
+  e.data._leashP = undefined;
   if (item && ctx.player.gameMode !== "creative") ctx.entities.dropItem({ item: "lead", count: 1 }, e.body.pos.x, e.body.pos.y + 0.5, e.body.pos.z);
   if (knot && !anyOnKnot(ctx, knot)) sound(ctx, "entity.leash_knot.break", { x: knot[0] + 0.5, y: knot[1] + 0.5, z: knot[2] + 0.5 });
 }
@@ -55,6 +56,7 @@ export function leadInteract(ctx: GameCtx, e: Entity, held: ItemStack | null): b
   const k = knotOf(e);
   if (k) drop(ctx, e, false);
   e.data.leash = "player";
+  e.data._leashP = ctx.player;
   e.data.persistent = true;
   if (ctx.player.gameMode !== "creative" && !k) ctx.inventory.removeHeld(1);
   sound(ctx, "entity.leash_knot.place", e.body.pos);
@@ -66,7 +68,7 @@ const FENCE_BEHAVIOR: BlockBehavior = {
     const p = ctx.player.body.pos;
     ctx.entities.near(p.x, p.y, p.z, 7, near);
     let n = 0;
-    for (const e of near) if (e.data.leash === "player" && !e.dead) {
+    for (const e of near) if (e.data.leash === "player" && !e.dead && heldBy(ctx, e)) {
       e.data.leash = [x, y, z];
       n++;
     }
@@ -84,11 +86,32 @@ const FENCE_BEHAVIOR: BlockBehavior = {
 
 export const FENCE_BEHAVIORS: Record<string, BlockBehavior> = Object.fromEntries(BLOCKS.filter((b) => b.shape === "fence").map((b) => [b.name, FENCE_BEHAVIOR]));
 
+type NetCtx = GameCtx & { playersAll?: () => GameCtx["player"][]; netSelf?: number; netPlayerPos?: (id: number) => { x: number; y: number; z: number } | null };
+
+// Multiplayer: the host keeps the holding player in _leashP; clients get its net id as data.leashBy.
+function leashHolder(ctx: GameCtx, e: Entity): GameCtx["player"] | null {
+  const p = e.data._leashP as GameCtx["player"] | undefined;
+  if (!p || p === ctx.player) return ctx.player;
+  const all = (ctx as NetCtx).playersAll?.();
+  return all && !all.includes(p) ? null : p;
+}
+
+const heldBy = (ctx: GameCtx, e: Entity) => (e.data._leashP ?? ctx.player) === ctx.player && (typeof e.data.leashBy !== "number" || e.data.leashBy === (ctx as NetCtx).netSelf);
+
 function holderPos(ctx: GameCtx, e: Entity, out: THREE.Vector3): boolean {
   if (e.data.leash === "player") {
-    const p = ctx.player.body.pos;
+    const n = ctx as NetCtx;
+    const by = e.data.leashBy;
+    if (typeof by === "number" && n.netPlayerPos && by !== n.netSelf) {
+      const q = n.netPlayerPos(by);
+      if (q) out.set(q.x, q.y + 1.1, q.z);
+      return !!q;
+    }
+    const h = leashHolder(ctx, e);
+    if (!h) return false;
+    const p = h.body.pos;
     out.set(p.x, p.y + 1.1, p.z);
-    return !ctx.player.dead;
+    return !h.dead;
   }
   const id = holderOf(e);
   if (id !== undefined) {

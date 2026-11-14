@@ -342,6 +342,8 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
       ax = ctx.player.body.pos.x;
       az = ctx.player.body.pos.z;
       e.data._byPlayer = 100;
+      // Multiplayer host: ctx.player is whoever dealt the hit, so the mob's anger follows that player.
+      e.data._hitter = ctx.player;
     } else if (attacker) {
       ax = attacker.body.pos.x;
       az = attacker.body.pos.z;

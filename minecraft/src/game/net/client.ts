@@ -14,7 +14,8 @@ import { createAvatars } from "./avatars";
 import { createBlockPredictions } from "./predict";
 import { rejoinToken } from "./profile";
 import { unpackChunk, unpackMoves, type EntMove } from "./codec";
-import { entData } from "./host-sync";
+import { createMobInterps, isTeleport, type MobPose } from "./mob-interp";
+import { LINKED, decayAnim, entData, remapLinks } from "./host-sync";
 import type { GameInternals, Inventory, NetLink } from "./index";
 import { BIN, F, PROTOCOL, hostUse, type ClientMsg, type Equip, type HostMsg, type PlayerListEntry, type WelcomeMsg } from "./protocol";
 import { createTransport, type Transport } from "./transport";
@@ -129,8 +130,9 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
   const pending: Entity[] = [];
   const toLocal = new Map<number, Entity>();
   const toHost = new Map<number, number>();
-  const moveQ: EntMove[][] = [];
+  const mobs = createMobInterps();
   const scratch: EntMove[] = [];
+  const mobPose: MobPose = { x: 0, y: 0, z: 0, yaw: 0, headYaw: 0, pitch: 0 };
   let remoteView: ContainerView | null = null;
   let inv: Inventory | null = null;
   let list: PlayerListEntry[] = [];
@@ -200,6 +202,34 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     e.body.noClip = true;
     toLocal.set(s.id, e);
     toHost.set(e.id, s.id);
+    mirrorData(e, s.data ?? {});
+  }
+
+  // Host data onto a mirror: null drops a key, $hp is health, and links to other entities keep the
+  // host id in _hl so they resolve to local ids once that entity is mirrored.
+  function mirrorData(e: Entity, d: Record<string, unknown>) {
+    const hl = { ...((e.data._hl as Record<string, unknown> | undefined) ?? {}) };
+    for (const k in d) {
+      const v = d[k];
+      if (k === "$hp") {
+        if (typeof v === "number") e.health = v;
+        continue;
+      }
+      if (LINKED.has(k)) {
+        if (v === null) delete hl[k];
+        else hl[k] = v;
+      }
+      if (v === null) delete e.data[k];
+      else e.data[k] = v;
+    }
+    const keys = Object.keys(hl);
+    e.data._hl = keys.length ? hl : undefined;
+    if (!keys.length) return;
+    const links = remapLinks({ ...hl }, (id) => toLocal.get(id)?.id);
+    for (const k of keys) {
+      if (links[k] === null) delete e.data[k];
+      else e.data[k] = links[k];
+    }
   }
 
   function mirrorGone(id: number) {
@@ -208,29 +238,28 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
     e.data._remove = true;
     toLocal.delete(id);
     toHost.delete(e.id);
+    mobs.delete(id);
   }
 
   function clearMirrors() {
     for (const id of [...toLocal.keys()]) mirrorGone(id);
-    moveQ.length = 0;
+    mobs.clear();
   }
 
   function applyMoves() {
-    for (const e of toLocal.values()) {
+    const now = performance.now();
+    for (const [id, e] of toLocal) {
       e.data._px = e.body.pos.x;
       e.data._py = e.body.pos.y;
       e.data._pz = e.body.pos.z;
       e.data._pyaw = e.yaw;
       e.data._phy = e.headYaw;
       e.data._ppitch = e.pitch;
-    }
-    while (moveQ.length > 3) moveQ.shift();
-    const mv = moveQ.shift();
-    if (!mv) return;
-    for (const m of mv) {
-      const e = toLocal.get(m.id);
-      if (!e) continue;
-      if (Math.abs(e.body.pos.x - m.x) > 16 || Math.abs(e.body.pos.z - m.z) > 16) {
+      decayAnim(e.data);
+      const f = mobs.sample(id, now, mobPose);
+      if (f < 0) continue;
+      const m = mobPose;
+      if (isTeleport(e.body.pos, m)) {
         e.data._px = m.x;
         e.data._py = m.y;
         e.data._pz = m.z;
@@ -239,13 +268,15 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       e.yaw = m.yaw;
       e.headYaw = m.headYaw;
       e.pitch = m.pitch;
-      e.body.onGround = (m.f & 4) !== 0;
-      if (m.f & 1 && !e.dead) {
+      // Flags come from the newest packet, not the delayed pose: they are events (hit, death), and showing them
+      // 100 ms early beats buffering them alongside the pose.
+      e.body.onGround = (f & 4) !== 0;
+      if (f & 1 && !e.dead) {
         e.dead = true;
         e.data._death = 0;
       }
-      if (m.f & 2 && e.hurtTicks === 0) e.hurtTicks = 10;
-      if (m.f & 8 && e.data._fly === undefined) e.data._fly = 3;
+      if (f & 2 && e.hurtTicks === 0) e.hurtTicks = 10;
+      if (f & 8 && e.data._fly === undefined) e.data._fly = 3;
     }
   }
 
@@ -288,8 +319,10 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         for (const id of m.gone ?? []) mirrorGone(id);
         for (const [id, d] of m.data ?? []) {
           const e = toLocal.get(id);
-          if (e) Object.assign(e.data, d);
+          if (e && d && typeof d === "object") mirrorData(e, d);
         }
+        // A rider or lead can arrive before the entity it points at, and outlive it.
+        if (m.spawn?.length || m.gone?.length) for (const e of toLocal.values()) if (e.data._hl) mirrorData(e, {});
         return;
       case "players":
         avatars.set(m.list, welcome.you, g.dim, typeof m.at === "number" ? m.at : undefined);
@@ -416,7 +449,8 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         })
         .catch((e) => console.warn("net chunk:", e));
     } else if (data[0] === BIN.ents) {
-      moveQ.push(unpackMoves(data, scratch).slice());
+      const at = unpackMoves(data, scratch);
+      if (scratch.length) mobs.push(at, performance.now(), scratch);
     }
   };
 
@@ -484,6 +518,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       lookAt = performance.now();
       gi.ctx.behaviors = hostUses(gi.ctx.behaviors);
       setPvpHook(gi.ctx, clientPvpHook(() => avatars.list(), send));
+      Object.assign(gi.ctx, { netSelf: welcome.you, netPlayerPos: (id: number) => avatars.pos(id) });
       const rawRespawn = p.respawn.bind(p);
       p.respawn = () => {
         rawRespawn();
@@ -547,7 +582,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       raw = e;
       toLocal.clear();
       toHost.clear();
-      moveQ.length = 0;
+      mobs.clear();
       const host = (id: number) => toHost.get(id);
       return {
         ...e,
@@ -565,8 +600,9 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
           if (muting) return;
           send({ t: "dropxp", n, x, y, z });
         },
-        damage(id, amount, source) {
-          const h = host(id);
+        damage(id, amount, source, attacker) {
+          // Fire, lava, magma and the like run on the host too; forwarding them from each client would stack.
+          const h = attacker === "player" ? host(id) : undefined;
           if (h !== undefined) send({ t: "hit", id: h, amount, source });
         },
         knockback(id, dx, dz, s) {
@@ -676,6 +712,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       offLook();
       clearInterval(watch);
       if (g) setPvpHook(g.ctx, null);
+      if (g) delete (g.ctx as { netPlayerPos?: unknown }).netPlayerPos;
       avatars.dispose();
       setTimeout(() => t.leave(), 300);
     },

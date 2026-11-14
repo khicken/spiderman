@@ -180,6 +180,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         r.pitch = v;
       },
       inv: null as unknown as Inventory,
+      netId: r.num,
       eye: () => eye.set(r.pos.x, r.pos.y + ((r.f & F.sneak) ? 1.27 : 1.62), r.pos.z),
       lookDir: () => look.set(-Math.sin(r.yaw) * Math.cos(r.pitch), Math.sin(r.pitch), -Math.cos(r.yaw) * Math.cos(r.pitch)),
       get health() {
@@ -412,6 +413,15 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         for (const r of remotes.values()) if (r.num === e.data._net) return r.dim === d ? r.proxy : null;
         return null;
       }
+      // A mob angry at "player" stays on the player who hit it, not whoever is nearest.
+      const hit = e.data._hitter;
+      if (hit && (e.data._target === "player" || e.data._hurtBy === "player")) {
+        if (hit === g.player) {
+          if (d === g.dim && !g.player.dead && g.player.gameMode !== "spectator") return g.player;
+        } else {
+          for (const r of remotes.values()) if (r.proxy === hit && r.dim === d && !(r.f & F.dead) && r.proxy.gameMode !== "spectator" && r.proxy.gameMode !== "creative") return r.proxy;
+        }
+      }
       let best: PlayerApi | null = null;
       let bd = Infinity;
       if (d === g.dim && !g.player.dead && g.player.gameMode !== "spectator") {
@@ -508,6 +518,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
     if (r.inv.view()) withPlayer(r, () => r.inv.close());
     store(r);
     remotes.delete(peer);
+    for (const ents of [g.entities, ...[...dims.values()].map((st) => st.entities)]) for (const e of ents.all()) if (e.data._hitter === r.proxy) e.data._hitter = undefined;
     if (!quiet) say(`§e${r.name} left the game`);
     void saveMeta(meta).catch(() => {});
   }
@@ -553,8 +564,8 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
   const inReach = (r: Remote, x: number, y: number, z: number) => reachesBlock(r, x, y, z, 0.5 + Math.min(4, r.speed * 0.1));
 
   // Vanilla ServerPlayer.canInteractWithEntity: entity range plus a 1 block buffer, eye to hit box.
-  function canReach(r: Remote, e: Entity) {
-    const range = (r.proxy.gameMode === "creative" ? ENTITY_REACH + CREATIVE_ENTITY_BONUS : ENTITY_REACH) + 1;
+  function canReach(r: Remote, e: Entity, extra = 0) {
+    const range = (r.proxy.gameMode === "creative" ? ENTITY_REACH + CREATIVE_ENTITY_BONUS : ENTITY_REACH) + 1 + extra;
     return boxDistSq(r.pos.x, r.pos.y + (r.f & F.sneak ? EYE_SNEAK : EYE_STAND), r.pos.z, e.body) < range * range;
   }
 
@@ -731,9 +742,14 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         withPlayer(r, () => entsOf(r.dim)?.dropXp(Math.min(10000, m.n | 0), m.x, m.y, m.z));
         return;
       case "hit": {
+        // Clients forward only hits their own player deals (melee, sweep, riptide); all are in reach.
         const target = entsOf(r.dim)?.get(m.id);
-        if ((m.source === "player" || m.source === "mace") && (!target || !canReach(r, target))) return;
-        withPlayer(r, () => entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), m.source, "player"));
+        if (!target || !canReach(r, target) || limited(r, "hit")) return;
+        withPlayer(r, () => {
+          // The hitter has no local copy of the mob's hurt or death sound, so it must hear the host's.
+          origin = null;
+          entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), m.source, "player");
+        });
         return;
       }
       case "pvp":
@@ -744,9 +760,15 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (limited(r, "pvp")) return;
         pvp.sweepAround(r.num, { x: +m.x, y: +m.y, z: +m.z, w: +m.w, h: +m.h }, num(m.s, 0, 1) ?? 0);
         return;
-      case "kb":
-        entsOf(r.dim)?.knockback(m.id, +m.dx || 0, +m.dz || 0, Math.min(5, +m.s || 0));
+      case "kb": {
+        const target = entsOf(r.dim)?.get(m.id);
+        const dx = num(m.dx, -1e3, 1e3) ?? 0, dz = num(m.dz, -1e3, 1e3) ?? 0;
+        const len = Math.hypot(dx, dz);
+        // A mace smash knocks back mobs up to 3.5 blocks past the one it hit.
+        if (!target || !len || !canReach(r, target, 4) || limited(r, "kb")) return;
+        entsOf(r.dim)?.knockback(m.id, dx / len, dz / len, Math.min(2, Math.max(0, num(m.s, -1e3, 1e3) ?? 0)));
         return;
+      }
       case "interact": {
         const target = entsOf(r.dim)?.get(m.id);
         if (limited(r, "open") || !target || !canReach(r, target)) return;
@@ -1098,6 +1120,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       ctx.playerFor = picker(g.dim);
       (ctx as GameCtx & { playersAll?: () => PlayerApi[] }).playersAll = () => everyone(g.dim);
       setPvpHook(ctx, pvpHook);
+      (g.player as unknown as { netId: number }).netId = 0;
       const mainKeep: KeepCenter[] = [];
       for (const r of remotes.values()) if (r.dim === g.dim && r.center) mainKeep.push(r.center);
       g.world.keep(mainKeep);
@@ -1114,7 +1137,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         st.emptySince = 0;
         const focus = inDim[0];
         st.sub.player = focus.proxy;
-        st.sub.inventory = focus.inv;
+        st.sub.inventory = (focus.proxy as unknown as { inv: Inventory }).inv; // the wrapper that sends what is picked up
         st.sub.playerFor = picker(d);
         (st.sub as GameCtx & { playersAll?: () => PlayerApi[] }).playersAll = () => everyone(d);
         setPvpHook(st.sub, pvpHook);
