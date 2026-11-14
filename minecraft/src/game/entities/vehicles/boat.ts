@@ -98,8 +98,8 @@ function maskWater(part: THREE.Object3D) {
   });
 }
 
-// Vanilla BoatRenderer: rocks by sin(h) * h * damage / 10 degrees, h the hurt time left. Clients without the
-// damage counter fall back to a mid value.
+// Vanilla BoatRenderer: rocks by sin(h) * h * damage / 10 degrees, h the hurt time left. The damage counter and
+// rock direction reach clients as animation keys (net/host-sync.ts).
 export function wobble(e: Entity, pt: number) {
   const h = e.hurtTicks - pt;
   if (h <= 0) return 0;
@@ -251,6 +251,8 @@ function tick(e: Entity, ctx: GameCtx) {
     e.data._rowL = 0;
     e.data._rowR = 0;
   }
+  // Which paddles move, the only part of rowing clients need: they turn the paddles themselves.
+  e.data._oars = (e.data._rowL ? 1 : 0) | (e.data._rowR ? 2 : 0);
   e.data._drot = rot;
   e.headYaw = e.yaw;
   moveBody(ctx.world, b, opts);
@@ -271,6 +273,7 @@ function boatDef(chest: boolean): MobDef {
     seat: -0.4125,
     createModel: () => boatModel(chest),
     tick,
+    mirror,
     onHurt: hurtBoat,
 
     onInteract(e, ctx) {
@@ -287,6 +290,13 @@ export function boatItem(e: Entity) {
   const w = (e.data.wood as string) || "oak";
   const chest = e.type === "chest_boat";
   return w === "bamboo" ? (chest ? "bamboo_chest_raft" : "bamboo_raft") : chest ? `${w}_chest_boat` : `${w}_boat`;
+}
+
+// Multiplayer client mirror: paddles turn PI/8 a tick while the host says they row.
+function mirror(e: Entity) {
+  const oars = (e.data._oars as number) ?? 0;
+  e.data._rowL = oars & 1 ? ((e.data._rowL as number) ?? 0) + Math.PI / 8 : 0;
+  e.data._rowR = oars & 2 ? ((e.data._rowR as number) ?? 0) + Math.PI / 8 : 0;
 }
 
 // Damage that only living entities take (vanilla: boats do not fall, drown, starve or suffocate).

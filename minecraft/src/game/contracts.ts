@@ -415,6 +415,9 @@ export interface MobDef {
   createModel(): MobModel;
   // Runs each tick. Use ctx for world, physics, player, and entity calls.
   tick(e: Entity, ctx: GameCtx): void;
+  // Multiplayer clients: runs each tick on this mob's mirror to rebuild render-only state that the host recomputes
+  // every tick, from what clients already have (on ground, in water, motion, synced data), so it is never streamed.
+  mirror?(e: Entity): void;
   onDeath?(e: Entity, ctx: GameCtx): void;
   // Replaces mob damage for non-living entities (vanilla VehicleEntity): no health loss, hurt tint, hurt sound, knockback or death animation.
   onHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player"): void;

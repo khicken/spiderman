@@ -4,7 +4,9 @@ import type { EntSpawn, HostMsg } from "./protocol";
 
 const RANGE = 64;
 const DATA_EVERY = 10;
-const SKIP_KEYS = new Set(["pickupDelay", "fuse", "age", "noGravity", "owner", "shooter"]);
+// Besides keys clients never need: timers in DECAY below, and animation values that mirrors recompute each tick
+// themselves (MobDef.mirror), which would otherwise go out every data tick and jump the client's copy back.
+const SKIP_KEYS = new Set(["pickupDelay", "fuse", "age", "noGravity", "owner", "shooter", "swing", "roar", "boom", "emerge", "dig", "swell", "swellPrev", "squish", "squishPrev", "flap", "peekCur"]);
 
 export function entData(e: Entity): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -22,9 +24,9 @@ export function entData(e: Entity): Record<string, unknown> {
 
 // Render-only state the host keeps in "_" keys. Timers count down one per tick on the host, and the
 // client counts them down too, so a timer is sent once when it starts rather than every tick.
-const DECAY = ["_swing", "_fire", "fuse", "_eat", "_sit", "_lie", "_roll", "_sneeze", "_croak", "_tongue", "_rear", "_ram", "_stand", "_shake"];
+const DECAY = ["_swing", "_fire", "fuse", "_eat", "_sit", "_lie", "_roll", "_sneeze", "_croak", "_tongue", "_rear", "_ram", "_stand", "_shake", "_spin", "_dead", "_dmg", "swing", "roar", "boom", "emerge", "dig"];
 // Plain state, sent when it changes.
-const LATCH = ["_beg", "_dance", "_sleep", "_slope", "_bx", "_by", "_bz", "_swingLen"];
+const LATCH = ["_beg", "_dance", "_sleep", "_slope", "_bx", "_by", "_bz", "_swingLen", "_oars", "_hurtDir", "_sdir"];
 // How far the client may drift before a resend. Only burning or not shows, and lava holds fire at 300.
 const TOL: Record<string, number> = { _bx: 0.25, _by: 0.25, _bz: 0.25, _fire: 20 };
 export const ANIM_KEYS = [...DECAY, ...LATCH];

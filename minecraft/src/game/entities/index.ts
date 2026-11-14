@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { DamageSource, Entity, EntityApi, EntityHit, EntitySave, GameCtx, ItemStack, MobDef } from "../contracts";
-import { makeBody } from "../player/physics";
+import { makeBody, updateFluids } from "../player/physics";
 import { mobDef, isMob } from "./registry";
 import "./mob-list";
 import { isHanging } from "./decor/hanging";
@@ -527,6 +527,20 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     if (n > max - 1) damage(e.id, 6, "cramming");
   }
 
+  // A mirror is placed, not moved: its motion is the step since last tick, and its fluid flags are looked up,
+  // so models that read velocity or in-water render like on the host.
+  function mirrorBody(e: Entity, ctx: GameCtx) {
+    const b = e.body;
+    if (typeof e.data._px === "number") b.vel.set(b.pos.x - e.data._px, b.pos.y - (e.data._py as number), b.pos.z - (e.data._pz as number));
+    updateFluids(ctx.world, b, ctx.world.dim === "nether", false);
+    // Vehicles (boats, rafts, minecarts) flip _hurtDir on every hit. A flip restarts the rock, which the hurt
+    // flag alone misses for a hit landing while the last rock still runs.
+    if (e.data._hurtDir !== undefined) {
+      if (e.data._seenDir !== undefined && e.data._seenDir !== e.data._hurtDir) e.hurtTicks = 10;
+      e.data._seenDir = e.data._hurtDir;
+    }
+  }
+
   function walkAnim(e: Entity) {
     const dx = e.body.pos.x - (e.data._px as number);
     const dz = e.body.pos.z - (e.data._pz as number);
@@ -601,6 +615,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     },
     create: spawn,
     tickMirror() {
+      const ctx = getCtx();
       for (const e of list) {
         e.age++;
         if (e.hurtTicks > 0) e.hurtTicks--;
@@ -609,7 +624,10 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
           continue;
         }
         if (e.dead) e.data._death = ((e.data._death as number) ?? 0) + 1;
-        if (isMob(e.type)) walkAnim(e);
+        if (!isMob(e.type)) continue;
+        mirrorBody(e, ctx);
+        walkAnim(e);
+        mobDef(e.type)?.mirror?.(e);
       }
       purge();
       rebuildGrid();
