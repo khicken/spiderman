@@ -7,6 +7,7 @@ import { REDSTONE_BLOCKS } from "./redstone";
 import type { BlockSpec } from "./spec";
 import { STONE_BLOCKS } from "./stone";
 import { UTILITY_BLOCKS } from "./utility";
+import { GHAST_BLOCKS } from "./ghast";
 import { WOOD_BLOCKS } from "./wood";
 
 export type { BlockSpec } from "./spec";
@@ -24,4 +25,5 @@ export const BLOCK_DATA: BlockSpec[] = [
   ...UTILITY_BLOCKS,
   ...REDSTONE_BLOCKS,
   ...NETHER_END_BLOCKS,
+  ...GHAST_BLOCKS,
 ];

@@ -9,7 +9,7 @@ const SIDES = [0, 1, 4, 5];
 export const enum C {
   None, Hanging, WallHanging, Dripleaf, Cocoa, Pickle, Shrieker, Candle, Banner, WallBanner, Brewing, Conduit, Bell,
   Grindstone, Stonecutter, HeavyCore, Pot, SnifferEgg, TurtleEgg, Skull, WallSkull, PistonHead, Moving, Daylight, Hook,
-  Tripwire, Sensor, EndPortal, Gateway, DragonEgg, Fire,
+  Tripwire, Sensor, EndPortal, Gateway, DragonEgg, Fire, DriedGhast,
 }
 
 export const CK = new Uint8Array(4096);
@@ -24,6 +24,7 @@ const NAMED: Record<string, C> = {
   sticky_piston_head: C.PistonHead, moving_piston: C.Moving, daylight_detector: C.Daylight, inverted_daylight_detector: C.Daylight,
   tripwire_hook: C.Hook, tripwire: C.Tripwire, sculk_sensor: C.Sensor, calibrated_sculk_sensor: C.Sensor,
   end_portal: C.EndPortal, end_gateway: C.Gateway, dragon_egg: C.DragonEgg, fire: C.Fire, soul_fire: C.Fire,
+  dried_ghast: C.DriedGhast,
 };
 
 for (const d of BLOCKS) {
@@ -449,6 +450,26 @@ function fire() {
   }
 }
 
+// Per hydration stage: top, bottom, front, side layers.
+let DRIED: number[] | null = null;
+function driedGhast() {
+  if (!DRIED) DRIED = [0, 1, 2, 3].flatMap((h) => ["top", "bottom", "front", "side"].map((f) => layerOf(`dried_ghast_hydration_${h}_${f}`)));
+  const m = M.meta, o = ((m >> 2) & 3) * 4;
+  T.rot = ((m & 3) - 2) & 3;
+  FL[0] = FL[1] = FL[4] = DRIED[o + 3];
+  FL[2] = DRIED[o];
+  FL[3] = DRIED[o + 1];
+  FL[5] = DRIED[o + 2];
+  for (let f = 0; f < 6; f++) uvRect(f, 3, 3, 13, 13);
+  box(3, 0, 3, 13, 10, 13);
+  // Three dry tentacles curled on the ground behind the body.
+  setFL(DRIED[o + 1]);
+  for (const x of [4, 7.5, 11]) {
+    for (let f = 0; f < 6; f++) uvRect(f, x, 6, x + 1, 9);
+    box(x, 0, 13, x + 1, 1, 15.5);
+  }
+}
+
 export function meshShapeC(shape: number): boolean {
   if (shape !== SH.custom && shape !== SH.cross) return false;
   const k = CK[M.id];
@@ -503,6 +524,7 @@ export function meshShapeC(shape: number): boolean {
       break;
     case C.DragonEgg: dragonEgg(); break;
     case C.Fire: fire(); break;
+    case C.DriedGhast: driedGhast(); break;
   }
   return true;
 }

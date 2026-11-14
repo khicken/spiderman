@@ -7,11 +7,17 @@ import { rig, overlay, wrap, setRot, type VPart } from "../rig";
 import { skin, type Pix } from "./paint";
 import { DYE_RGB, holds, num, sound, useItem, type Dye } from "./common";
 import { flyDrag, flyToward, flyWander } from "./fly";
+import { HARNESSES, isHarness } from "../../items/data-ghast";
 
 // Vanilla HappyGhast (1.21.6): a 4x4x4 friendly ghast. The ghastling is its baby (grow < 0), 0.95 blocks wide.
 const BABY_SIZE = 0.95;
 const SEAT = 4;
 const FOOD = ["snowball"];
+// Vanilla #happy_ghast_tempt_items: snowballs and every harness.
+const TEMPT = [...FOOD, ...HARNESSES];
+// A harnessed happy ghast flies faster, idle and ridden alike.
+export const HARNESS_SPEED = 1.5;
+export const speedFactor = (e: Entity) => (typeof e.data.harness === "string" ? HARNESS_SPEED : 1);
 
 function tentacleLengths(): number[] {
   let s = 2207;
@@ -181,16 +187,16 @@ function rideTick(e: Entity, ctl: RideInput) {
     dy /= len;
     dz /= len;
   }
-  const acc = ctl.sprint ? 0.026 : 0.02;
+  const acc = (ctl.sprint ? 0.026 : 0.02) * speedFactor(e);
   b.vel.x += dx * acc;
   b.vel.y += dy * acc;
   b.vel.z += dz * acc;
   flyDrag(e);
 }
 
-function followSnowball(e: Entity, ctx: GameCtx) {
+function followTempt(e: Entity, ctx: GameCtx) {
   const pl = ctx.player;
-  if (pl.dead || pl.gameMode === "spectator" || !holds(ctx, FOOD)) return false;
+  if (pl.dead || pl.gameMode === "spectator" || !holds(ctx, isBaby(e) ? FOOD : TEMPT)) return false;
   const b = e.body, pp = pl.body.pos;
   const dx = pp.x - b.pos.x, dz = pp.z - b.pos.z;
   const d = Math.hypot(dx, dz);
@@ -198,7 +204,7 @@ function followSnowball(e: Entity, ctx: GameCtx) {
   lookAt(e, pp.x, pp.y + 1.62, pp.z);
   e.yaw = rotlerp(e.yaw, yawTo(dx, dz), 0.1);
   const stop = isBaby(e) ? 2.5 : 5;
-  if (d > stop) flyToward(e, pp.x, pp.y + 1.6 - b.height * 0.5, pp.z, 0.01, false);
+  if (d > stop) flyToward(e, pp.x, pp.y + 1.6 - b.height * 0.5, pp.z, 0.01 * speedFactor(e), false);
   e.data._fgoal = undefined;
   return true;
 }
@@ -238,10 +244,11 @@ export const HAPPY_GHAST_DEF: MobDef = {
       e.data._fgoal = undefined;
       return;
     }
-    if (!followSnowball(e, ctx)) {
+    if (!followTempt(e, ctx)) {
       const [hx, hy, hz] = home(e);
-      if (Math.hypot(b.pos.x - hx, b.pos.z - hz) > 32) flyToward(e, hx, hy, hz, 0.008);
-      else flyWander(e, ctx, 0.006, e.data.harness ? 6 : 12, 4, hx, hy, hz);
+      const k = speedFactor(e);
+      if (Math.hypot(b.pos.x - hx, b.pos.z - hz) > 32) flyToward(e, hx, hy, hz, 0.008 * k);
+      else flyWander(e, ctx, 0.006 * k, e.data.harness ? 6 : 12, 4, hx, hy, hz);
     }
     flyDrag(e);
   },
@@ -270,7 +277,7 @@ export const HAPPY_GHAST_DEF: MobDef = {
       return false;
     }
     if (baby) return false;
-    if (item && item.endsWith("_harness")) {
+    if (item && isHarness(item)) {
       if (e.data.harness) return false;
       e.data.harness = item.slice(0, -"_harness".length);
       e.data.persistent = true;

@@ -2,6 +2,7 @@ import type { GameCtx, ItemStack } from "../contracts";
 import { BLOCKS } from "../blocks/registry";
 import { keyFor, keyName } from "../ui/settings";
 import { ARMOR_MATERIALS, TOOL_TIERS } from "./data-gear";
+import { HARNESSES } from "./data-ghast";
 import { BANNER_PATTERNS, COPPER_PREFIXES, POTION_TYPES, POTTERY_SHERDS, SPAWN_EGGS, TRIM_PATTERNS, WOODS } from "./data-misc";
 import { FOOD_ITEMS, STEW_EFFECTS } from "./data-food";
 import { ENCHANTMENTS } from "./enchant";
@@ -91,7 +92,7 @@ const NATURAL = [
   "dandelion", "poppy", "blue_orchid", "allium", "azure_bluet", "red_tulip", "orange_tulip", "white_tulip", "pink_tulip", "oxeye_daisy", "cornflower",
   "lily_of_the_valley", "torchflower", "wither_rose", "pink_petals", "spore_blossom", "bamboo", "sugar_cane", "cactus", "crimson_roots", "warped_roots",
   "nether_sprouts", "weeping_vines", "twisting_vines", "vine", "tall_grass", "large_fern", "sunflower", "lilac", "rose_bush", "peony", "pitcher_plant",
-  "big_dripleaf", "small_dripleaf", "chorus_plant", "chorus_flower", "glow_lichen", "hanging_roots", "frogspawn", "turtle_egg", "sniffer_egg",
+  "big_dripleaf", "small_dripleaf", "chorus_plant", "chorus_flower", "glow_lichen", "hanging_roots", "frogspawn", "turtle_egg", "sniffer_egg", "dried_ghast",
   "wheat_seeds", "cocoa_beans", "pumpkin_seeds", "melon_seeds", "beetroot_seeds", "torchflower_seeds", "pitcher_pod", "glow_berries", "sweet_berries",
   "nether_wart", "lily_pad", "seagrass", "sea_pickle", "kelp", "dried_kelp_block",
   ...CORALS.map((c) => `${c}_coral_block`), ...CORALS.map((c) => `dead_${c}_coral_block`), ...CORALS.map((c) => `${c}_coral`), ...CORALS.map((c) => `dead_${c}_coral`),
@@ -125,7 +126,7 @@ const REDSTONE = [
   "iron_trapdoor", "tnt", "redstone_lamp", "bell", "big_dripleaf", "armor_stand", "redstone_ore",
 ];
 
-const DISCS = ["13", "cat", "blocks", "chirp", "creator", "creator_music_box", "far", "mall", "mellohi", "stal", "strad", "ward", "11", "wait", "otherside", "relic", "5", "pigstep", "precipice"];
+const DISCS = ["13", "cat", "blocks", "chirp", "creator", "creator_music_box", "far", "mall", "mellohi", "stal", "strad", "ward", "11", "wait", "otherside", "relic", "5", "pigstep", "precipice", "tears"];
 
 const TOOLS = [
   ...TOOL_TIERS.flatMap((t) => [`${t}_shovel`, `${t}_pickaxe`, `${t}_axe`, `${t}_hoe`]),
@@ -135,7 +136,7 @@ const TOOLS = [
   "wind_charge", "ender_pearl", "ender_eye", "elytra",
 ];
 const TOOLS_AFTER_ROCKETS = [
-  "saddle", "carrot_on_a_stick", "warped_fungus_on_a_stick",
+  "saddle", ...HARNESSES, "carrot_on_a_stick", "warped_fungus_on_a_stick",
   ...WOODS.filter((w) => w !== "crimson" && w !== "warped").flatMap((w) => (w === "bamboo" ? ["bamboo_raft", "bamboo_chest_raft"] : [`${w}_boat`, `${w}_chest_boat`])),
   "rail", "powered_rail", "detector_rail", "activator_rail", "minecart", "hopper_minecart", "chest_minecart", "furnace_minecart",
   "tnt_minecart", ...DISCS.map((d) => `music_disc_${d}`), "goat_horn",

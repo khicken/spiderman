@@ -25,6 +25,7 @@ export const DISCS: Record<string, Disc> = {
   music_disc_creator: { author: "Lena Raine", title: "Creator", seconds: 176 },
   music_disc_creator_music_box: { author: "Lena Raine", title: "Creator (Music Box)", seconds: 73 },
   music_disc_precipice: { author: "Aaron Cherof", title: "Precipice", seconds: 299 },
+  music_disc_tears: { author: "Amos Roddy", title: "Tears", seconds: 175 },
 };
 
 export const discLabel = (item: string) => {

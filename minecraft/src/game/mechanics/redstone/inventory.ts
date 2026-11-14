@@ -174,7 +174,7 @@ const DISCS: Record<string, number> = {
   music_disc_13: 1, music_disc_cat: 2, music_disc_blocks: 3, music_disc_chirp: 4, music_disc_far: 5, music_disc_mall: 6,
   music_disc_mellohi: 7, music_disc_stal: 8, music_disc_strad: 9, music_disc_ward: 10, music_disc_11: 11, music_disc_wait: 12,
   music_disc_pigstep: 13, music_disc_otherside: 14, music_disc_5: 15, music_disc_relic: 14, music_disc_creator: 12,
-  music_disc_creator_music_box: 11, music_disc_precipice: 13,
+  music_disc_creator_music_box: 11, music_disc_precipice: 13, music_disc_tears: 10,
 };
 const jukeboxSignal = (item?: string) => (item ? (DISCS[item] ?? (itemDef(item) ? 1 : 0)) : 0);
 
