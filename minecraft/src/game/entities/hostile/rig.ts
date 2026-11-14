@@ -110,7 +110,8 @@ export function zombieArms(r: Rig, a: AnimArgs, aggressive: boolean): void {
 
 export function attackTime(e: Entity, pt: number): number {
   const s = (e.data._swing as number) ?? 0;
-  return s > 0 ? Math.min(1, (10 - s + pt) / 10) : 0;
+  const len = (e.data._swingLen as number) || 10;
+  return s > 0 ? Math.min(1, (len - s + pt) / len) : 0;
 }
 
 export function wrap(r: Rig, anim: (a: AnimArgs) => void, opts: { scale?: number; glow?: boolean } = {}): MobModel {

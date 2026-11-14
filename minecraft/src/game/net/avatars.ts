@@ -100,6 +100,7 @@ export interface Avatars {
   frame(dt: number): void;
   hurt(id: number): void;
   look(id: number, l: Look): void;
+  pos(id: number): THREE.Vector3 | null;
   list(): { id: number; name: string; x: number; y: number; z: number; f: number; look: Look | null; cape: boolean }[];
   dispose(): void;
 }
@@ -195,6 +196,7 @@ export function createAvatars(getCtx: () => GameCtx): Avatars {
       const a = all.get(id);
       if (a) a.hurt = 0.5;
     },
+    pos: (id) => all.get(id)?.pos ?? null,
     list: () => [...all.values()].map((a) => ({ id: a.snap.id, name: a.snap.name, x: a.pos.x, y: a.pos.y, z: a.pos.z, f: a.snap.f, look: looks.get(a.snap.id) ?? null, cape: !!a.cape })),
     look(id, l) {
       looks.set(id, l);

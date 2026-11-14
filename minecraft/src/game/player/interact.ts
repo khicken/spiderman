@@ -271,9 +271,12 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
       for (const o of nearby) {
         if (o.id === id || o.dead || !(mobDef(o.type) || o.type === "armor_stand") || o.data.marker) continue;
         if (!bodiesTouch(e.body, o.body, 1, 0.25, 1) || o.body.pos.distanceToSquared(b.pos) >= 9) continue;
-        ctx.entities.knockback(o.id, -Math.sin(p.yaw), -Math.cos(p.yaw), 0.4);
+        // Hit before knockback: a host takes a client's knockback only for the mob it just hit.
         ctx.entities.damage(o.id, (sd + enchantDamageBonus(held, o.type)) * s, "player", "player");
+        ctx.entities.knockback(o.id, -Math.sin(p.yaw), -Math.cos(p.yaw), 0.4);
+        if (fire > 0) o.data._fire = Math.max(Number(o.data._fire ?? 0), fire * 80);
       }
+      pvpHook(ctx)?.sweep?.(e, s);
       ctx.emit({ type: "sound", name: "entity.player.attack.sweep", x: b.pos.x, y: b.pos.y, z: b.pos.z });
       ctx.emit({ type: "particles", kind: "sweep", x: b.pos.x - Math.sin(p.yaw), y: b.pos.y + b.height * 0.5, z: b.pos.z - Math.cos(p.yaw) });
     }

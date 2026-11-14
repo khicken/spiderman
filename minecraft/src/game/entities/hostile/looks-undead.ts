@@ -1,7 +1,7 @@
 import type { MobModel } from "../../contracts";
 import { HUMANOID, HUMANOID_OUTER, ILLAGER, SKELETON, paintHumanoid, paintSkeleton } from "./humanoid";
 import { Pix, shade } from "./pix";
-import { attackTime, headLook, humanoidLimbs, rig, setRot, wrap, zombieArms, type VPart } from "./rig";
+import { attackTime, bobArms, headLook, humanoidLimbs, rig, setRot, wrap, zombieArms, type VPart } from "./rig";
 import { attachHeld } from "./held";
 import { createArmorLayer, type Equipment } from "../armor-layer";
 import { forgetModel } from "../render";
@@ -94,34 +94,87 @@ export function paintZombieVillager(p: Pix): void {
 }
 
 export function paintSkeletonSkin(p: Pix): void {
-  paintSkeleton(p, [0xbcbcbc, 0xc8c8c8, 0xa9a9a9, 0xd4d4d4], 0x4a4a4a, 0x2c2c2c);
+  paintSkeleton(p, [0xbcbcbc, 0xc8c8c8, 0xb2b2b2, 0xd4d4d4], 0x4a4a4a, 0x262626);
+}
+
+// Ragged cloth for a stray or bogged outer layer. Each column hangs down a random length from the top of the face.
+function rag(p: Pix, r: [number, number, number, number], palette: number[], min: number, max: number): void {
+  for (let x = 0; x < r[2]; x++) {
+    const len = Math.min(r[3], min + Math.floor(p.rand() * (max - min + 1)));
+    p.noise([r[0] + x, r[1], 1, len], palette);
+  }
+}
+
+// Vanilla stray_overlay and bogged_overlay sit on a full size humanoid mesh, so they use their own UVs below the bones (v + 32).
+const OUTER_V = 32;
+
+function paintStrayOuter(p: Pix): void {
+  const cloth = [0x5d6e72, 0x687a7e, 0x52626a, 0x75878a, 0x4a5a60];
+  const head = p.cuboid(0, OUTER_V, 8, 8, 8);
+  p.noise(head.top, cloth);
+  for (const r of [head.right, head.left, head.back]) rag(p, r, cloth, 5, 8);
+  p.noise([head.front[0], head.front[1], 8, 2], cloth);
+  p.noise([head.front[0], head.front[1] + 2, 1, 4], cloth);
+  p.noise([head.front[0] + 7, head.front[1] + 2, 1, 4], cloth);
+  const body = p.cuboid(16, OUTER_V + 16, 8, 12, 4);
+  p.noise(body.top, cloth);
+  for (const r of [body.front, body.back, body.right, body.left]) rag(p, r, cloth, 7, 12);
+  for (let y = 1; y < 6; y++) p.px(body.front[0] + 3 + (y & 1), body.front[1] + y, 0x3f4d52);
+  const arm = p.cuboid(40, OUTER_V + 16, 4, 12, 4);
+  p.noise(arm.top, cloth);
+  for (const r of [arm.front, arm.back, arm.right, arm.left]) rag(p, r, cloth, 3, 7);
+  const leg = p.cuboid(0, OUTER_V + 16, 4, 12, 4);
+  for (const r of [leg.front, leg.back, leg.right, leg.left]) rag(p, r, cloth, 1, 6);
+}
+
+function paintBoggedOuter(p: Pix): void {
+  const moss = [0x4d6b2b, 0x5b7c33, 0x3f5a22, 0x6a8a3c, 0x34491c];
+  const head = p.cuboid(0, OUTER_V, 8, 8, 8);
+  p.noise(head.top, moss);
+  for (const r of [head.right, head.left, head.back]) rag(p, r, moss, 1, 5);
+  rag(p, [head.front[0], head.front[1], 8, 8], moss, 0, 2);
+  const body = p.cuboid(16, OUTER_V + 16, 8, 12, 4);
+  for (const r of [body.front, body.back, body.right, body.left]) rag(p, r, moss, 0, 5);
+  for (let i = 0; i < 10; i++) p.px(body.front[0] + Math.floor(p.rand() * 8), body.front[1] + 4 + Math.floor(p.rand() * 8), moss[Math.floor(p.rand() * 3)]);
+  const arm = p.cuboid(40, OUTER_V + 16, 4, 12, 4);
+  p.noise(arm.top, moss);
+  for (const r of [arm.front, arm.back, arm.right, arm.left]) rag(p, r, moss, 0, 4);
+  const leg = p.cuboid(0, OUTER_V + 16, 4, 12, 4);
+  for (const r of [leg.front, leg.back, leg.right, leg.left]) rag(p, r, moss, 0, 3);
 }
 
 export function paintStray(p: Pix): void {
-  paintSkeleton(p, [0xb6c2c2, 0xc3cfcf, 0xa3b0b0, 0xd0dada], 0x475757, 0x2a3636);
-  const head = p.cuboid(32, 0, 8, 8, 8);
-  p.noise(head.top, [0x6b7a7c, 0x5c6b6e]);
-  for (const r of [head.right, head.left, head.back]) p.noise([r[0], r[1], r[2], 3], [0x6b7a7c, 0x5c6b6e]);
-  p.noise([head.front[0], head.front[1], 8, 2], [0x6b7a7c, 0x5c6b6e]);
-  const body = p.cuboid(16, 16, 8, 12, 4);
-  for (const r of [body.front, body.back, body.right, body.left]) {
-    for (let y = 0; y < 10; y++) for (let x = 0; x < r[2]; x++) if (y < 7 || p.rand() < 0.6) p.px(r[0] + x, r[1] + y, p.rand() < 0.5 ? 0x8a9799 : 0x7a8789);
-  }
-  for (let y = 0; y < 5; y++) p.noise([40, 18 + y, 8, 1], [0x8a9799, 0x7a8789]);
+  paintSkeleton(p, [0xb2bfbf, 0xc0cccc, 0xa6b3b3, 0xcfd9d9], 0x475757, 0x263232);
+  paintStrayOuter(p);
 }
 
 export function paintBogged(p: Pix): void {
-  paintSkeleton(p, [0xa3a781, 0x959a72, 0xb0b38d, 0x878b65], 0x3e4a2e, 0x203018);
+  paintSkeleton(p, [0xa3a781, 0x959a72, 0xb0b38d, 0x878b65], 0x3e4a2e, 0x1c2a14);
   const body = p.cuboid(16, 16, 8, 12, 4);
-  for (let i = 0; i < 14; i++) p.px(body.front[0] + Math.floor(p.rand() * 24), body.front[1] + Math.floor(p.rand() * 12), 0x4f6b2c);
-  const head = p.cuboid(0, 0, 8, 8, 8);
-  p.noise(head.top, [0x6b7a3a, 0x5a6b30, 0x8a9a4a]);
+  for (let i = 0; i < 14; i++) {
+    const x = body.front[0] + Math.floor(p.rand() * 24), y = body.front[1] + Math.floor(p.rand() * 12);
+    if ((p.data[(y * p.w + x) * 4 + 3] ?? 0) > 0) p.px(x, y, 0x4f6b2c);
+  }
   p.map(50, 16, ["..rr..", ".rwrr.", "rrrrrw", "..ss..", "..ss.."], { r: 0xc8302a, w: 0xe6dada, s: 0xd8c8a8 });
   p.map(50, 22, ["......", ".bbbb.", "bbbbbb", "..ss..", "..ss.."], { b: 0x9a6f4a, s: 0xd8c8a8 });
+  paintBoggedOuter(p);
 }
 
 export function paintWitherSkeleton(p: Pix): void {
-  paintSkeleton(p, [0x2a2a2a, 0x333333, 0x222222, 0x3a3a3a], 0x0a0a0a, 0x0f0f0f);
+  paintSkeleton(p, [0x2a2a2a, 0x333333, 0x262626, 0x3a3a3a], 0x0e0e0e, 0x050505);
+}
+
+// Full size humanoid boxes, inflated 0.25, carried by the thin skeleton limbs (vanilla SkeletonClothingLayer).
+function withOuter(parts: VPart[]): VPart[] {
+  const add: Record<string, { box: [number, number, number, number, number, number]; uv: [number, number]; mirror?: boolean }> = {
+    head: { box: [-4, -8, -4, 8, 8, 8], uv: [0, OUTER_V] },
+    body: { box: [-4, 0, -2, 8, 12, 4], uv: [16, OUTER_V + 16] },
+    right_arm: { box: [-3, -2, -2, 4, 12, 4], uv: [40, OUTER_V + 16] },
+    left_arm: { box: [-1, -2, -2, 4, 12, 4], uv: [40, OUTER_V + 16], mirror: true },
+    right_leg: { box: [-1.9, 0, -2, 4, 12, 4], uv: [0, OUTER_V + 16] },
+    left_leg: { box: [-2.1, 0, -2, 4, 12, 4], uv: [0, OUTER_V + 16], mirror: true },
+  };
+  return parts.map((p) => (add[p.name] ? { ...p, extra: [...(p.extra ?? []), { ...add[p.name], inflate: 0.25 }] } : p));
 }
 
 const PIGLIN_EXTRA: VPart[] = [
@@ -193,12 +246,14 @@ export interface UndeadOpts {
 }
 
 export function undeadModel(o: UndeadOpts): MobModel {
-  const parts = o.parts === "skeleton" ? SKELETON : o.parts === "villager" ? villagerZombie : o.parts === "piglin" ? PIGLIN
+  const outer = o.key === "stray" || o.key === "bogged";
+  const parts = o.parts === "skeleton" ? (outer ? withOuter(SKELETON) : SKELETON) : o.parts === "villager" ? villagerZombie : o.parts === "piglin" ? PIGLIN
     : o.parts === "humanoid_outer" ? [...HUMANOID, ...HUMANOID_OUTER] : HUMANOID;
   const extra = o.key === "bogged" ? BOGGED_SHROOMS : [];
-  const h = o.parts === "skeleton" || o.parts === "villager" ? 32 : 64;
+  const h = (o.parts === "skeleton" && !outer) || o.parts === "villager" ? 32 : 64;
   const r = rig(skinOf(o.key, 64, o.parts === "villager" ? 64 : h, o.paint), [...parts, ...extra]);
-  const held = attachHeld(r, o.held);
+  // Vanilla SkeletonModel.translateToHand moves the hand one pixel in, to the middle of the thin arm.
+  const held = attachHeld(r, o.held, o.parts === "skeleton" ? 1 : 0);
   const armor = o.parts === "villager" || o.parts === "piglin" ? null : createArmorLayer(r.p, false);
   const model = wrap(r, (a) => {
     if (armor?.set((a.e.data.equipment as Equipment | undefined) ?? {})) forgetModel(model.root);
@@ -212,6 +267,14 @@ export function undeadModel(o: UndeadOpts): MobModel {
         setRot(r.p.right_arm, -Math.PI / 2 + a.pitch, -0.1 + a.yaw, 0);
         setRot(r.p.left_arm, -Math.PI / 2 + a.pitch, 0.1 + a.yaw + 0.4, 0);
       } else humanoidLimbs(r, a, true);
+      bobArms(r, a.age);
+    } else if (o.arms === "sword" && o.parts === "skeleton" && aggressive) {
+      // Vanilla SkeletonModel melee pose: both arms straight out, swinging with the attack.
+      const at = attackTime(a.e, a.pt);
+      const f = Math.sin(at * Math.PI), g = Math.sin((1 - (1 - at) * (1 - at)) * Math.PI);
+      setRot(r.p.right_arm, -Math.PI / 2 - (f * 1.2 - g * 0.4), -(0.1 - f * 0.6), 0);
+      setRot(r.p.left_arm, -Math.PI / 2 - (f * 1.2 - g * 0.4), 0.1 - f * 0.6, 0);
+      bobArms(r, a.age);
     } else if (o.arms === "sword" || o.arms === "piglin") {
       const at = attackTime(a.e, a.pt);
       if (at > 0) setRot(r.p.right_arm, -Math.sin(at * Math.PI) * 1.6 - (aggressive ? 0.6 : 0), 0, 0);

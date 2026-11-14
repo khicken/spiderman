@@ -131,6 +131,7 @@ function drownedThrow(e: Entity, ctx: GameCtx, t: NonNullable<ReturnType<typeof 
   if (p) shootVel(ctx, p.body.vel, dx, dy + h * 0.2, dz, 1.6, 14 - diffId(ctx) * 4);
   sound(ctx, e, "entity.drowned.shoot");
   e.data._swing = 10;
+  e.data._swingLen = 10;
   return true;
 }
 

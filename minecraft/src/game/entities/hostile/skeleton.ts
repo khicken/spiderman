@@ -2,9 +2,10 @@ import { equipMob } from "../armor-layer";
 import type { Entity, GameCtx, MobDef } from "../../contracts";
 import { applyPhysics, canSee, clearPath, idleLook, lookAt, meleeAttack, moveTo, skyDarken } from "../ai";
 import {
-  addEffect, avoid, burnInDaylight, chase, fleeSun, diffId, hurtAmount, idle, naturalSpawn, discard, num, shootArrow, sound, strafe,
+  addEffect, avoid, burnInDaylight, chase, fleeSun, diffId, hurtAmount, idle, naturalSpawn, discard, num, sound, strafe,
   targetInfo, updateTarget,
 } from "./brain";
+import { bowPower } from "../../player/ranged";
 import { paintBogged, paintSkeletonSkin, paintStray, paintWitherSkeleton, undeadModel } from "./looks-undead";
 import { MONSTER_BIOMES, SNOWY, SWAMPS } from "./spawns";
 
@@ -47,21 +48,15 @@ export function bowAttack(e: Entity, ctx: GameCtx, cfg: BowCfg, speed: number): 
     strafe(e, ctx, info.pos.x, info.pos.z, e.data._back ? -0.5 : 0.5, e.data._cw ? 0.5 : -0.5, speed);
   }
   lookAt(e, info.pos.x, info.pos.y + info.height * 0.85, info.pos.z);
+  // _draw is vanilla getTicksUsingItem: 1 on the tick after the bow goes up, so the shot comes a full 20 ticks later.
   const using = num(e, "_draw");
   if (using > 0) {
     if (!see && seeTime < -60) e.data._draw = 0;
-    else if (see) {
-      e.data._draw = using + 1;
-      if (using + 1 >= 20) {
-        e.data._draw = 0;
-        const power = Math.min(1, ((using + 1) / 20) ** 2 / 3 + ((using + 1) / 20) * 2 / 3);
-        const extra = cfg.arrow ? { potion: cfg.arrow.effect, effects: [{ id: cfg.arrow.effect, ticks: cfg.arrow.ticks, amplifier: 0 }] } : {};
-        const arrow = shootArrow(e, ctx, t, power, extra);
-        // Vanilla 1.21 AbstractArrow.setBaseDamageFromMob: 2 per unit of draw plus a triangle spread around 0.11 per difficulty level.
-        if (arrow) arrow.data.damage = power * 2 + diffId(ctx) * 0.11 + 0.57425 * (ctx.random() - ctx.random());
-        sound(ctx, e, cfg.sound + ".shoot", 1, 1 / (ctx.random() * 0.4 + 0.8));
-        e.data._atkCd = diffId(ctx) === 3 ? cfg.interval[0] : cfg.interval[1];
-      }
+    else if (see && using >= 20) {
+      e.data._draw = 0;
+      fireArrow(e, ctx, t, bowPower(using), cfg);
+      sound(ctx, e, cfg.sound + ".shoot", 1, 1 / (ctx.random() * 0.4 + 0.8));
+      e.data._atkCd = diffId(ctx) === 3 ? cfg.interval[0] : cfg.interval[1];
     } else e.data._draw = using + 1;
   } else {
     const cd = num(e, "_atkCd") - 1;
@@ -69,6 +64,32 @@ export function bowAttack(e: Entity, ctx: GameCtx, cfg: BowCfg, speed: number): 
     if (cd <= 0 && seeTime >= -60) e.data._draw = 1;
   }
   e.data.aggressive = num(e, "_draw") > 0;
+}
+
+// Vanilla AbstractSkeleton.performRangedAttack: the arrow leaves 0.1 below the 1.74 eye and aims at a third of the target's
+// height, lifted 0.2 per block of distance; Projectile.shoot (1.21) spreads each axis by triangle(0, 0.0172275 * divergence).
+export function fireArrow(e: Entity, ctx: GameCtx, t: "player" | number, power: number, cfg: Pick<BowCfg, "arrow">): Entity | null {
+  const i = targetInfo(ctx, t);
+  if (!i) return null;
+  const b = e.body;
+  const sy = b.pos.y + 1.64;
+  const dx = i.pos.x - b.pos.x;
+  const dz = i.pos.z - b.pos.z;
+  const dy = i.pos.y + i.height / 3 - sy + Math.hypot(dx, dz) * 0.2;
+  const diff = diffId(ctx);
+  // AbstractArrow.setBaseDamageFromMob: power * 2 + triangle(difficulty * 0.11, 0.57425).
+  const damage = power * 2 + diff * 0.11 + 0.57425 * (ctx.random() - ctx.random());
+  // Stray and bogged arrows carry a custom effect at full length, not a potion cut to an eighth.
+  const effects = cfg.arrow ? [{ id: cfg.arrow.effect, ticks: cfg.arrow.ticks, amplifier: 0 }] : undefined;
+  const a = ctx.entities.spawn("arrow", b.pos.x, sy, b.pos.z, { owner: e.id, damage, pickup: 0, effects });
+  if (!a) return null;
+  const n = Math.hypot(dx, dy, dz) || 1;
+  const spread = 0.0172275 * (14 - diff * 4);
+  const tri = () => spread * (ctx.random() - ctx.random());
+  const v = a.body.vel.set(dx / n + tri(), dy / n + tri(), dz / n + tri()).multiplyScalar(1.6);
+  a.yaw = Math.atan2(-v.x, -v.z);
+  a.pitch = Math.atan2(v.y, Math.hypot(v.x, v.z));
+  return a;
 }
 
 function skeletonTick(cfg: BowCfg & { burns: boolean; sword?: boolean; witherHit?: boolean }) {
@@ -175,7 +196,7 @@ export const SKELETONS: MobDef[] = [
     sounds: SOUNDS("entity.bogged"),
     spawn: { dims: ["overworld"], biomes: SWAMPS, light: "dark", group: [4, 4], weight: 50 },
     createModel: () => undeadModel({ key: "bogged", paint: paintBogged, parts: "skeleton", arms: "bow", held: "bow" }),
-    tick: skeletonTick({ type: "bogged", sound: "entity.bogged", interval: [50, 70], burns: true, arrow: { effect: "poison", ticks: 80 } }),
+    tick: skeletonTick({ type: "bogged", sound: "entity.bogged", interval: [50, 70], burns: true, arrow: { effect: "poison", ticks: 100 } }),
     onDeath: (e, ctx) => {
       equipmentDrop(e, ctx, "bow");
       tippedDrop(e, ctx, "poison");

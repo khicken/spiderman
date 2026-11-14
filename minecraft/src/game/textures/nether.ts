@@ -93,10 +93,14 @@ def("glowstone", (t, _r, s) => cells(t, [0x9a7040, 0xc0904e, 0xe0b060, 0xfcd890,
 def("shroomlight", (t, _r, s) => cells(t, [0xd85a1a, 0xf07a2a, 0xf89a3a, 0xfcc060, 0xffe08a], s, 0xb8401a));
 
 function soulFaces(t: Tex, r: Rng, dark: Color): void {
-  for (let k = 0; k < 3; k++) {
-    const x = 1 + Math.floor(r() * 11);
-    const y = 1 + Math.floor(r() * 10);
-    t.set(x, y, dark).set(x + 3, y, dark).rect(x + 1, y + 3, 2, 2, dark);
+  const spots: [number, number][] = [[1, 1], [9, 4], [3, 9], [10, 11]];
+  for (const [bx, by] of spots) {
+    const x = bx + Math.floor(r() * 2);
+    const y = by + Math.floor(r() * 2);
+    const rim = 0x6e5846;
+    t.hline(x - 1, x + 4, y - 1, rim);
+    t.rect(x, y, 1, 2, dark).rect(x + 3, y, 1, 2, dark);
+    t.hline(x + 1, x + 2, y + 3, dark).hline(x, x + 3, y + 4, dark);
   }
 }
 def("soul_sand", (t, r, s) => {

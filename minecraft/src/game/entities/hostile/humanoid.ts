@@ -90,7 +90,7 @@ export function paintSkeleton(p: Pix, bone: number[], dark: number, eye: number)
     "........",
     "........",
     ".ee..ee.",
-    "........",
+    ".ee..ee.",
     "...nn...",
     ".dddddd.",
     "..d.d.d.",

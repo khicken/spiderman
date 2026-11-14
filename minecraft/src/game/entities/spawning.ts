@@ -13,8 +13,8 @@ const CATS: SpawnCat[] = ["hostile", "passive", "ambient", "water", "water_ambie
 const CAPS: Record<SpawnCat, number> = { hostile: 70, passive: 10, ambient: 15, water: 5, water_ambient: 20, axolotls: 5, underground_water: 5 };
 const FISH = new Set(["cod", "salmon", "tropical_fish", "pufferfish"]);
 // Mobs that use vanilla's IN_WATER spawn placement.
-const IN_WATER = new Set(["drowned", "guardian", "elder_guardian"]);
-const SURFACE_WATER = new Set(["squid", "dolphin", "cod", "salmon", "pufferfish", "tropical_fish"]);
+const IN_WATER = new Set(["drowned", "guardian", "elder_guardian", "zombie_nautilus"]);
+const SURFACE_WATER = new Set(["squid", "dolphin", "nautilus", "cod", "salmon", "pufferfish", "tropical_fish"]);
 const FIRE_IMMUNE = new Set(["blaze", "ghast", "magma_cube", "strider", "zombified_piglin", "wither_skeleton", "zoglin"]);
 const NEVER_FLOOR = new Set(["bedrock", "barrier", "light", "beacon", "powder_snow", "glass", "tinted_glass"]);
 const BAT_FLOOR = new Set(["stone", "granite", "diorite", "andesite", "tuff", "deepslate"]);
@@ -64,13 +64,13 @@ const monsters = (zombie: number, villager: number, skeleton: number): Entry[] =
 const COMMON = monsters(95, 5, 100);
 const NO_CAVE_MOBS = new Set(["mushroom_fields", "deep_dark"]);
 const OCEAN_WATER: Record<string, { water: Entry[]; fish: Entry[] }> = {
-  ocean: { water: [["squid", 1, 1, 4], ["dolphin", 1, 1, 2]], fish: [["cod", 10, 3, 6]] },
-  deep_ocean: { water: [["squid", 1, 1, 4], ["dolphin", 1, 1, 2]], fish: [["cod", 10, 3, 6]] },
-  cold_ocean: { water: [["squid", 3, 1, 4]], fish: [["cod", 15, 3, 6], ["salmon", 15, 1, 5]] },
-  deep_cold_ocean: { water: [["squid", 3, 1, 4]], fish: [["cod", 15, 3, 6], ["salmon", 15, 1, 5]] },
-  lukewarm_ocean: { water: [["squid", 10, 1, 2], ["dolphin", 2, 1, 2]], fish: [["cod", 15, 3, 6], ["pufferfish", 5, 1, 3], ["tropical_fish", 25, 8, 8]] },
-  deep_lukewarm_ocean: { water: [["squid", 8, 1, 4], ["dolphin", 2, 1, 2]], fish: [["cod", 8, 3, 6], ["pufferfish", 5, 1, 3], ["tropical_fish", 25, 8, 8]] },
-  warm_ocean: { water: [["squid", 10, 4, 4], ["dolphin", 2, 1, 2]], fish: [["pufferfish", 15, 1, 3], ["tropical_fish", 25, 8, 8]] },
+  ocean: { water: [["nautilus", 2, 1, 2], ["squid", 1, 1, 4], ["dolphin", 1, 1, 2]], fish: [["cod", 10, 3, 6]] },
+  deep_ocean: { water: [["nautilus", 2, 1, 2], ["squid", 1, 1, 4], ["dolphin", 1, 1, 2]], fish: [["cod", 10, 3, 6]] },
+  cold_ocean: { water: [["nautilus", 2, 1, 2], ["squid", 3, 1, 4]], fish: [["cod", 15, 3, 6], ["salmon", 15, 1, 5]] },
+  deep_cold_ocean: { water: [["nautilus", 2, 1, 2], ["squid", 3, 1, 4]], fish: [["cod", 15, 3, 6], ["salmon", 15, 1, 5]] },
+  lukewarm_ocean: { water: [["nautilus", 2, 1, 2], ["squid", 10, 1, 2], ["dolphin", 2, 1, 2]], fish: [["cod", 15, 3, 6], ["pufferfish", 5, 1, 3], ["tropical_fish", 25, 8, 8]] },
+  deep_lukewarm_ocean: { water: [["nautilus", 2, 1, 2], ["squid", 8, 1, 4], ["dolphin", 2, 1, 2]], fish: [["cod", 8, 3, 6], ["pufferfish", 5, 1, 3], ["tropical_fish", 25, 8, 8]] },
+  warm_ocean: { water: [["nautilus", 2, 1, 2], ["squid", 10, 4, 4], ["dolphin", 2, 1, 2]], fish: [["pufferfish", 15, 1, 3], ["tropical_fish", 25, 8, 8]] },
   frozen_ocean: { water: [["squid", 1, 1, 4]], fish: [["salmon", 15, 1, 5]] },
   deep_frozen_ocean: { water: [["squid", 1, 1, 4]], fish: [["salmon", 15, 1, 5]] },
   river: { water: [["squid", 2, 1, 4]], fish: [["salmon", 5, 1, 5]] },
@@ -84,13 +84,15 @@ function overworldList(cat: SpawnCat, biome: string): Entry[] | null {
   switch (cat) {
     case "hostile":
       if (NO_CAVE_MOBS.has(biome)) return [];
-      if (biome === "desert") return [...monsters(19, 1, 100), ["husk", 80, 4, 4]];
+      if (biome === "desert") return [...monsters(19, 1, 100), ["husk", 80, 4, 4], ["parched", 10, 1, 2], ["camel_husk", 5, 1, 1]];
       if (biome === "snowy_plains" || biome === "ice_spikes") return [...monsters(95, 5, 20), ["stray", 80, 4, 4]];
       if (biome === "swamp" || biome === "mangrove_swamp") return [...COMMON, ["slime", 1, 1, 1], ["bogged", 50, 4, 4]];
       if (biome === "dripstone_caves") return [...COMMON, ["drowned", 95, 4, 4]];
       if (biome === "river") return [...COMMON, ["drowned", 100, 1, 1]];
       if (biome === "frozen_river") return [...COMMON, ["drowned", 1, 1, 1]];
-      if (biome.endsWith("ocean")) return [...COMMON, ["drowned", 5, 1, 1]];
+      if (biome.endsWith("ocean")) return [...COMMON, ["drowned", 5, 1, 1], ...(biome.includes("frozen") ? [] : [["zombie_nautilus", 5, 1, 1] as Entry])];
+      // No pale garden here, so the creaking spawns in the dark forest instead.
+      if (biome === "dark_forest") return [...COMMON, ["creaking", 5, 1, 1]];
       return COMMON;
     case "ambient":
       return NO_CAVE_MOBS.has(biome) ? [] : [["bat", 10, 8, 8]];
@@ -188,6 +190,8 @@ function waterSpawnOk(ctx: GameCtx, def: MobDef, x: number, y: number, z: number
       if (b === "river" || b === "frozen_river") return Math.floor(ctx.random() * 15) === 0;
       return Math.floor(ctx.random() * 40) === 0 && y < SEA_LEVEL - 5;
     }
+    case "zombie_nautilus":
+      return waterAt(ctx, x, y - 1, z) && darkEnough(ctx, x, y, z, darken) && y < SEA_LEVEL - 5;
     case "glow_squid":
       return y <= SEA_LEVEL - 33 && waterBlock(ctx, x, y, z) && w.getSkyLight(x, y, z) === 0 && w.getBlockLight(x, y, z) === 0;
     case "axolotl":
@@ -452,7 +456,12 @@ export function createSpawner() {
     },
     despawn(ctx: GameCtx, e: Entity, def: MobDef) {
       if (!despawns(e, def)) return;
-      const d2 = (ctx.player.body.pos.x - e.body.pos.x) ** 2 + (ctx.player.body.pos.y - e.body.pos.y) ** 2 + (ctx.player.body.pos.z - e.body.pos.z) ** 2;
+      // Nearest of all players: in multiplayer ctx.player is the one the mob ticks against, which can be farther.
+      let d2 = Infinity;
+      for (const pl of (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player]) {
+        d2 = Math.min(d2, (pl.body.pos.x - e.body.pos.x) ** 2 + (pl.body.pos.y - e.body.pos.y) ** 2 + (pl.body.pos.z - e.body.pos.z) ** 2);
+      }
+      if (d2 === Infinity) return;
       const far = despawnRange(spawnCat(def));
       if (d2 > far * far) {
         e.data._remove = true;

@@ -75,6 +75,7 @@ uniform sampler2DArray uAtlas;
 uniform float uDaylight;
 uniform float uFogNear;
 uniform float uFogFar;
+uniform float uFogLinear;
 uniform float uGamma;
 uniform float uNightVision;
 uniform vec3 uFogColor;
@@ -152,7 +153,8 @@ void main() {
 #ifdef HELD
   float fog = 0.0;
 #else
-  float fog = vFogDepth <= uFogNear ? 0.0 : smoothstep(uFogNear, max(uFogFar, uFogNear + 0.001), vFogDepth);
+  float fogT = clamp((vFogDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
+  float fog = vFogDepth <= uFogNear ? 0.0 : mix(fogT * fogT * (3.0 - 2.0 * fogT), fogT, uFogLinear);
 #endif
   vec3 fogCol = uFogColor;
   if (uSkyMix > 0.0 && vDir.y > 0.0 && fog > 0.0) {
@@ -173,6 +175,7 @@ export function createChunkUniforms(): ChunkUniforms {
     uFogColor: { value: new THREE.Color(0xc0d8ff) },
     uFogNear: { value: 64 },
     uFogFar: { value: 128 },
+    uFogLinear: { value: 0 },
     uTime: { value: 0 },
     uAtlas: { value: null },
     uSkyTint: { value: new THREE.Color(1, 1, 1) },

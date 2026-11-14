@@ -28,41 +28,26 @@ const SWORD = [
   "030.............",
 ];
 
-const PICKAXE = [
-  "................",
-  "...######.......",
-  "..##########....",
-  "...###...####...",
-  "..........####..",
-  "........a..###..",
-  ".......aca.###..",
-  "......aca...###.",
-  ".....aca....###.",
-  "....aca.....###.",
-  "...aca.......##.",
-  "..aca........##.",
-  ".aca............",
-  "aca.............",
-  ".a..............",
-  "................",
-];
-const PICKAXE_HANDLE_TOP = [
-  "................",
-  "................",
-  "................",
-  "................",
-  "..........a.....",
-  ".........aca....",
-  "................",
-];
+// Stamps a 3x3 brush along a path, giving a band with a 1px core and outline on both sides.
+function band(path: readonly (readonly [number, number])[]): string[] {
+  const g = Array.from({ length: 16 }, () => Array(16).fill("."));
+  for (const [x, y] of path)
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) if (x + dx >= 0 && x + dx < 16 && y + dy >= 0 && y + dy < 16) g[y + dy][x + dx] = "#";
+  return g.map((r) => r.join(""));
+}
+// Upper arm of the pickaxe head; the lower arm is its mirror across the handle axis.
+const PICK_ARM = [[2, 4], [3, 3], [4, 2], [5, 2], [6, 2], [7, 2], [8, 3], [9, 3], [10, 4], [11, 4]] as const;
+const PICKAXE = band([...PICK_ARM, ...PICK_ARM.map(([x, y]) => [15 - y, 15 - x] as const)]);
 
 const AXE = [
   "................",
-  ".....###........",
-  "....#####.##....",
-  "...##########...",
-  "...##########...",
-  "...#######.##...",
+  "....####........",
+  "...#######......",
+  "..#########.##..",
+  "..############..",
+  "..###########...",
+  "...######.......",
   "....####........",
   ".....##.........",
 ];
@@ -84,24 +69,7 @@ const SHOVEL = [
   "................",
   "................",
 ];
-const HOE = [
-  "................",
-  "....#########...",
-  "...##########...",
-  "....###....###..",
-  "...........###..",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-];
+const HOE = band([[3, 3], [4, 2], [5, 2], [6, 2], [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [12, 3]]);
 
 export function stick(p: Uint8ClampedArray, x: number, y: number, n: number, pal = {}) {
   const rows: string[] = Array.from({ length: 16 }, () => "................");
@@ -113,11 +81,15 @@ export function stick(p: Uint8ClampedArray, x: number, y: number, n: number, pal
   };
   for (let i = 0; i < n; i++) {
     const cx = x + i, cy = y - i;
-    put(cx, cy, i % 3 === 1 ? "d" : "c");
+    put(cx, cy, i % 4 === 2 ? "c" : "d");
+    put(cx + 1, cy, i % 4 === 0 ? "c" : "b");
     put(cx - 1, cy, "a");
-    put(cx + 1, cy, "a");
+    put(cx + 2, cy, "a");
   }
   put(x - 1, y + 1, "a");
+  put(x, y + 1, "a");
+  put(x + n, y - n, "a");
+  put(x + n + 1, y - n, "a");
   T(p, rows, pal);
 }
 
@@ -126,8 +98,7 @@ const tool = (shape: string, m: Ramp): Painter => (p) => {
   if (shape === "sword") return T(p, SWORD, pal, 3);
   if (shape === "pickaxe") {
     stick(p, 1, 14, 10);
-    T(p, PICKAXE.map((r) => r.replace(/[ac]/g, ".")), pal, 5);
-    return T(p, PICKAXE_HANDLE_TOP, pal);
+    return T(p, PICKAXE, pal, 5);
   }
   if (shape === "axe") {
     stick(p, 1, 14, 11);

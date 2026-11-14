@@ -290,6 +290,7 @@ export interface ChunkUniforms {
   uFogColor: { value: THREE.Color };
   uFogNear: { value: number };
   uFogFar: { value: number };
+  uFogLinear?: { value: number }; // 1 linear fog (underwater), 0 smoothstep
   uTime: { value: number }; // seconds, for water and lava animation
   uAtlas: { value: THREE.DataArrayTexture | null };
   uSkyTint: { value: THREE.Color }; // sky light color, red at sunset, dim in the nether
@@ -415,6 +416,8 @@ export interface MobDef {
   // Runs each tick. Use ctx for world, physics, player, and entity calls.
   tick(e: Entity, ctx: GameCtx): void;
   onDeath?(e: Entity, ctx: GameCtx): void;
+  // Replaces mob damage for non-living entities (vanilla VehicleEntity): no health loss, hurt tint, hurt sound, knockback or death animation.
+  onHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
   onInteract?(e: Entity, ctx: GameCtx, held: ItemStack | null): boolean; // shear, milk, breed, ride
 }
 

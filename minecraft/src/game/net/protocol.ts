@@ -100,6 +100,7 @@ export type ClientMsg =
   | { t: "hit"; id: number; amount: number; source: DamageSource }
   | { t: "kb"; id: number; dx: number; dz: number; s: number }
   | { t: "pvp"; id: number; s: number; crit: boolean } // melee swing at another player
+  | { t: "psweep"; id: number; s: number } // sword sweep around the mob (host id) the client hit
   | { t: "interact"; id: number; inv: unknown; seq?: number }
   | { t: "explode"; x: number; y: number; z: number; power: number; fire: boolean }
   | { t: "open"; kind: ContainerKind; at: { x: number; y: number; z: number; entityId?: number }; inv: unknown; seq?: number }
@@ -147,6 +148,7 @@ export type HostMsg =
   | { t: "advt"; trig: unknown }
   | { t: "tp"; x: number; y: number; z: number }
   | { t: "effect"; id: string; amp: number; ticks: number }
+  | { t: "fire"; ticks: number } // set on fire for at least this many ticks
   | { t: "wake" }
   | { t: "host" }
   | { t: "bye"; reason: string };
@@ -179,7 +181,8 @@ const HOST_USES = new Set([
   "flower_pot", "cauldron", "water_cauldron", "lava_cauldron", "powder_snow_cauldron", "composter", "decorated_pot", "lectern", "chiseled_bookshelf", "jukebox",
   "sweet_berry_bush", "cave_vines", "cave_vines_plant", "pumpkin",
 ]);
-export const hostUse = (block: string) => HOST_USES.has(block) || block.startsWith("potted_");
+// Fences: tying a lead changes host mobs.
+export const hostUse = (block: string) => HOST_USES.has(block) || block.startsWith("potted_") || block.endsWith("_fence");
 
 export const isDim = (v: unknown): v is Dim => typeof v === "string" && (DIMS as string[]).includes(v);
 export const int = (v: unknown, lo = -3e7, hi = 3e7): number | null => (Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi ? (v as number) : null);

@@ -60,6 +60,8 @@ export const EGG_COLORS: Record<string, [number, number]> = {
   wither: [0x141414, 0x4d72a0], wither_skeleton: [0x141414, 0x474d4d], wolf: [0xd7d3d3, 0xceaf96],
   zoglin: [0xc66e55, 0xe6e6e6], zombie: [0x00afaf, 0x799c65], zombie_horse: [0x315234, 0x97c284],
   zombie_villager: [0x563c33, 0x799c65], zombified_piglin: [0xea9393, 0x4c7129],
+  creaking: [0x5f5f5f, 0xfc7812], happy_ghast: [0xf9f9f9, 0x8fa8c4], copper_golem: [0xc66a43, 0x4fa38c],
+  nautilus: [0xe9dcc0, 0xb2552c], zombie_nautilus: [0x6f8f62, 0x3d5236], camel_husk: [0xa39478, 0x6e6250], parched: [0xd8c79c, 0x8a6e47],
 };
 
 const spawnEgg = (base: string, spot: string): Painter => (p) => {
@@ -112,8 +114,9 @@ const boxIn = (m: Ramp, detail?: (p: Px) => void) => (p: Px) => {
 const BOAT = Array.from({ length: 16 }, (_, y) =>
   Array.from({ length: 16 }, (_, x) => {
     const al = (x - 7.5 - (y - 7.5)) * Math.SQRT1_2, ac = (x - 7.5 + (y - 7.5)) * Math.SQRT1_2;
-    if ((al / 5.4) ** 2 + (ac / 1.6) ** 2 <= 1) return Math.abs(Math.abs(al) - 2) < 0.6 ? "#" : "%";
-    return (al / 7.6) ** 2 + (ac / 3.3) ** 2 <= 1 ? "#" : ".";
+    // Open hull seen from above-front: interior offset up-left, thicker side wall down-right, seat across the middle.
+    if ((al / 5.2) ** 2 + ((ac + 0.5) / 1.5) ** 2 <= 1) return Math.abs(al) < 0.75 ? "#" : "%";
+    return (al / 7.8) ** 2 + (ac / 3.0) ** 2 <= 1 ? "#" : ".";
   }).join(""),
 );
 const RAFT = [
@@ -122,15 +125,15 @@ const RAFT = [
   "................",
   "................",
   "................",
-  "................",
-  "................",
-  "................",
-  ".00000000000000.",
-  ".0############0.",
-  ".0#%#%#%#%#%#%0.",
-  ".0############0.",
-  ".00000000000000.",
-  "................",
+  "......000000000.",
+  ".....0#%#%#%#%0.",
+  ".....0#%#%#%#%0.",
+  "....0#%#%#%#%0..",
+  "....0#%#%#%#%0..",
+  "...0#%#%#%#%0...",
+  "...0#%#%#%#%0...",
+  "..0#%#%#%#%0....",
+  "..000000000.....",
   "................",
   "................",
 ];
@@ -203,14 +206,14 @@ const BED = [
   "................",
   "................",
   "................",
-  "................",
-  "..0000000000000.",
-  ".0pp0%%%%%%%%%%0",
-  ".0pp0%%%%%%%%%%0",
-  ".0000000000000%0",
-  ".0############00",
+  ".00555555555555.",
+  ".0ppp%%%%%%%%%5.",
+  ".0pqq%%%%%%%%%5.",
+  ".0%%%%%%%%%%%%5.",
+  ".0%%%%%%%%%%%%5.",
+  ".00000000000000.",
   ".0############0.",
-  ".0#00000000000#0",
+  ".00000000000000.",
   ".0#0........0#0.",
   ".000........000.",
   "................",
@@ -238,7 +241,7 @@ const planks = (w: string) => rampOf(w, shade(w, 0.3));
 
 export const MISC_PAINTERS: Record<string, Painter> = {
   minecart: cart(),
-  chest_minecart: cart(chestOn(4)),
+  chest_minecart: cart(chestOn(2)),
   furnace_minecart: cart(boxIn(["#2a2a2a", "#4e4e4e", "#6e6e6e", "#8a8a8a", "#a0a0a0"], (p) => {
     for (let x = 6; x < 10; x++) set(p, x, 6, "#1e1e1e");
     set(p, 7, 6, "#fc9a10");
@@ -480,10 +483,11 @@ for (const [w, c] of Object.entries(WOOD)) {
   const boat = w === "bamboo" ? `${w}_raft` : `${w}_boat`;
   const chestBoat = w === "bamboo" ? `${w}_chest_raft` : `${w}_chest_boat`;
   if (w !== "crimson" && w !== "warped") {
-    MISC_PAINTERS[boat] = (p) => T(p, w === "bamboo" ? RAFT : BOAT, { A: pl, B: dark }, 234);
+    const hull = rampOf(shade(c, 0.55), shade(c, 0.22));
+    MISC_PAINTERS[boat] = (p) => T(p, w === "bamboo" ? RAFT : BOAT, { A: pl, B: w === "bamboo" ? dark : hull }, 234);
     MISC_PAINTERS[chestBoat] = (p) => {
       MISC_PAINTERS[boat](p);
-      chestOn(w === "bamboo" ? 5 : 4)(p);
+      chestOn(w === "bamboo" ? 3 : 4)(p);
     };
   }
   MISC_PAINTERS[`${w}_sign`] = (p) => T(p, SIGN, { A: pl, B: dark, t: shade(c, 0.55) }, 235);
@@ -498,6 +502,6 @@ for (const [s, c] of Object.entries(COPPER_STAGE)) {
   MISC_PAINTERS[`waxed_${s}copper_door`] = paint;
 }
 for (const c of COLORS) {
-  MISC_PAINTERS[`${c}_bed`] = (p) => T(p, BED, { A: rampOf("#a2742e", "#3a2408"), B: rampOf(WOOL[c], shade(WOOL[c], 0.3)), p: "#f0f0f0" }, 239);
+  MISC_PAINTERS[`${c}_bed`] = (p) => T(p, BED, { A: rampOf("#a2742e", "#3a2408"), B: rampOf(WOOL[c], shade(WOOL[c], 0.3)), p: "#f4f4f4", q: "#c6c6c6" }, 239);
   MISC_PAINTERS[`${c}_banner`] = (p) => T(p, BANNER, { A: rampOf("#a2742e", "#3a2408"), B: rampOf(WOOL[c], shade(WOOL[c], 0.3)) }, 240);
 }

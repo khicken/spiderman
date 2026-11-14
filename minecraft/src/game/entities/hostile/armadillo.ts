@@ -6,7 +6,7 @@ import { Pix } from "./pix";
 import { headLook, rig, setRot, wrap, type VPart } from "./rig";
 import { SAVANNA_BADLANDS } from "./spawns";
 
-const UNDEAD = new Set(["zombie", "husk", "drowned", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "phantom", "zombified_piglin"]);
+const UNDEAD = new Set(["zombie", "husk", "drowned", "camel_husk", "parched", "zombie_nautilus", "giant", "zombie_villager", "skeleton", "stray", "bogged", "wither_skeleton", "phantom", "zombified_piglin"]);
 
 const ARMADILLO: VPart[] = [
   { name: "body", pivot: [0, 18, 0], box: [-4, -5, -6, 8, 7, 12], uv: [0, 20] },
