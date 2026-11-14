@@ -1,10 +1,11 @@
 import type { BlockState, Entity, GameCtx, ItemStack } from "../contracts";
 import { AIR, SET_NO_DROP, SET_NOTIFY, metaOf } from "../contracts";
 import { COPPER_STAGES } from "../blocks/names";
+import { STATUE_POSES, statuePoseOfItem } from "../blocks/copper-age";
 import { damageHeld, isReplaceable, nameOf, sound, st, withMeta } from "./util";
 
 // Meta: bits 0-1 facing (Horizontal), bits 2-3 pose in vanilla cycle order.
-export const STATUE_POSES = ["standing", "sitting", "running", "star"] as const;
+export { STATUE_POSES };
 
 export const isStatue = (s: BlockState) => nameOf(s).endsWith("copper_golem_statue");
 export const statuePose = (s: BlockState) => (metaOf(s) >> 2) & 3;
@@ -17,6 +18,11 @@ export function statueStage(s: BlockState): { stage: number; waxed: boolean } {
   const bare = waxed ? n.slice(6) : n;
   const stage = COPPER_STAGES.findIndex((p) => p !== "" && bare.startsWith(p));
   return { stage: stage < 0 ? 0 : stage, waxed };
+}
+
+// A placed statue item restores the pose its block had when broken.
+export function withItemPose(s: BlockState, item: ItemStack): BlockState {
+  return isStatue(s) ? withMeta(s, (metaOf(s) & 3) | (statuePoseOfItem(item.data) << 2)) : s;
 }
 
 export const statueComparator = (s: BlockState) => statuePose(s) + 1;

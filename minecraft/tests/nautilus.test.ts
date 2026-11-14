@@ -122,6 +122,19 @@ test("summoned body_armor_item becomes worn nautilus armor on the first tick", (
   assert.equal(e.data.toughness, 2);
 });
 
+test("a NoAI summoned nautilus shows its body_armor_item before it ever ticks", () => {
+  const w = world();
+  for (const type of ["nautilus", "zombie_nautilus"]) {
+    const e = w.ents.spawn(type, 0, 64, 0, { tame: true, noAI: true, armor: "diamond_nautilus_armor" })!;
+    e.body.inWater = true;
+    const m = mobDef(type)!.createModel();
+    m.animate(e, 0, 0, 0);
+    assert.equal(e.data.nautilusArmor, "diamond_nautilus_armor");
+    assert.equal(e.data.armor, 11);
+    m.dispose();
+  }
+});
+
 test("two fed tamed nautiluses breed a tamed baby that cannot wear armor", () => {
   const w = world();
   const a = tamed(w);

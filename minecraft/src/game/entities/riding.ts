@@ -204,7 +204,7 @@ export function seatTick(e: Entity, ctx: GameCtx): boolean {
 export interface MountInv {
   canOpen(e: Entity): boolean; // AbstractHorse.openCustomInventoryScreen needs a tamed mount
   saddle?: boolean;
-  armor?: "horse_armor" | "llama_armor";
+  armor?: "horse_armor" | "llama_armor" | "nautilus_armor";
   isArmor?(item: string): boolean;
   getArmor?(e: Entity): ItemStack | null;
   setArmor?(e: Entity, s: ItemStack | null, ctx: GameCtx): void;

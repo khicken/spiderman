@@ -16,6 +16,7 @@ import { advTrigger } from "../systems/advancements/bus";
 import { advEntityUse } from "../systems/advancements/hooks";
 import { tickBrush } from "../systems/features/archaeology";
 import { useEmptyMap } from "../systems/features/maps";
+import { withItemPose } from "../mechanics/copper-statue";
 
 export type Hand = "main" | "off";
 const FACE_DIR: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -156,6 +157,7 @@ export function placeBlock(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemSta
     const def0 = stateOf(id);
     st = beh?.place ? beh.place(ctx, x, y, z, info, def0) : defaultPlace(placed, info, def0);
     if (st === null) return false;
+    if (stack.data?.pose !== undefined) st = withItemPose(st, stack);
   }
   const surv = ctx.behaviors[blockDef(st).name]?.canSurvive;
   if (surv && !surv(ctx, x, y, z, st)) return false;

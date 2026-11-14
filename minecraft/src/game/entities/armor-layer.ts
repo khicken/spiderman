@@ -277,14 +277,22 @@ export function createArmorLayer(parts: Record<string, THREE.Object3D>, basic: b
   };
 }
 
-// Vanilla Monster.populateDefaultEquipmentSlots on normal difficulty: 15% for armor, tier rolls up 9.5% at a time, 50% to stop after each piece.
+// Java 1.21.9 material odds (minecraft.wiki): leather 23.60%, copper 32.23%, gold 33.29%, chainmail 9.73%, iron 1.10%,
+// diamond 0.04%. A uniform base tier of 0-2 plus three independent bumps of p reproduces every figure to 0.02%.
+export const MOB_ARMOR_TIERS = ["leather", "copper", "golden", "chainmail", "iron", "diamond"] as const;
+export const MOB_ARMOR_BUMP = 0.1087;
+
+export function rollMobArmorTier(rand: () => number): number {
+  let tier = Math.min(2, Math.floor(rand() * 3));
+  for (let i = 0; i < 3; i++) if (rand() < MOB_ARMOR_BUMP) tier++;
+  return tier;
+}
+
+// Vanilla Monster.populateDefaultEquipmentSlots on normal difficulty: 15% for armor, 25% to stop after each piece.
 export function rollMobArmor(rand: () => number, difficulty: string): Equipment | null {
   const chance = difficulty === "hard" ? 0.25 : difficulty === "easy" ? 0.05 : 0.15;
   if (rand() >= chance) return null;
-  let tier = rand() < 0.095 ? 1 : 0;
-  if (rand() < 0.095) tier++;
-  if (rand() < 0.095) tier++;
-  const mat = ["leather", "golden", "chainmail", "iron", "diamond"][tier];
+  const mat = MOB_ARMOR_TIERS[rollMobArmorTier(rand)];
   const stop = difficulty === "hard" ? 0.1 : 0.25;
   const eq: Equipment = {};
   const order: [ArmorSlot, string][] = [["feet", "boots"], ["legs", "leggings"], ["chest", "chestplate"], ["head", "helmet"]];

@@ -8,11 +8,16 @@ const light = new Uint8Array(PAD * PAD * PAD).fill(0xf0);
 const biomes = new Uint8Array(PAD * PAD);
 
 export function blockGeometry(state: BlockState): MeshBuffers {
+  return cellsGeometry([[0, 0, 0, state]], 0.5);
+}
+
+// Meshes a few blocks together so shapes that look at neighbors (a double chest) join up.
+// Cells are section-local 0..15; positions come back in that space minus shift.
+export function cellsGeometry(cells: [number, number, number, BlockState][], shift = 0): MeshBuffers {
   biomes.fill(biomeId("plains"));
-  const at = padIndex(0, 0, 0);
-  blocks[at] = state;
+  for (const [x, y, z, s] of cells) blocks[padIndex(x, y, z)] = s;
   meshInto({ cx: 0, sy: 4, cz: 0, blocks, light, biomes });
-  blocks[at] = 0;
+  for (const [x, y, z] of cells) blocks[padIndex(x, y, z)] = 0;
   let n = 0;
   for (const b of BUFS) n += b.n;
   const pos = new Float32Array(n * 3);
@@ -22,7 +27,7 @@ export function blockGeometry(state: BlockState): MeshBuffers {
   const lay = new Uint16Array(n * 2);
   let o = 0;
   for (const b of BUFS) {
-    for (let i = 0; i < b.n * 3; i++) pos[o * 3 + i] = b.pos[i] - 0.5;
+    for (let i = 0; i < b.n * 3; i++) pos[o * 3 + i] = b.pos[i] - shift;
     uv.set(b.uv.subarray(0, b.n * 4), o * 4);
     lt.set(b.light.subarray(0, b.n * 2), o * 2);
     col.set(b.col.subarray(0, b.n * 4), o * 4);

@@ -21,9 +21,10 @@ export const SPRITE = {
   glyph: 62, // 26 frames, one per letter
   glitter: 88, // 8 frames, 0 smallest
   petal: 96,
+  copperFlame: 97,
 } as const;
 export const GLYPHS = 26;
-export const SPRITE_LAYERS = 97;
+export const SPRITE_LAYERS = 98;
 
 type Px = Uint8Array;
 
@@ -213,6 +214,19 @@ export function paintParticleSheet(): Uint8Array {
     "  cbc  ",
   ], { c: [60, 200, 230], b: [20, 140, 200], w: [210, 255, 255] });
 
+  rows(p, SPRITE.copperFlame, [
+    "   c   ",
+    "  cc   ",
+    "  cbc  ",
+    " cbcc  ",
+    " cbwbc ",
+    "cbbwwbc",
+    "cbwwwbc",
+    "cbwwwbc",
+    " cbwbc ",
+    "  cbc  ",
+  ], { c: [110, 200, 70], b: [50, 150, 60], w: [220, 255, 200] });
+
   // Sweep: a crescent that widens and fades over 8 frames.
   for (let k = 0; k < 8; k++) {
     const l = SPRITE.sweep + k;
@@ -261,6 +275,7 @@ export const PARTICLE_PATHS: [number, string][] = [
   [SPRITE.happy, "particle/glint"],
   [SPRITE.lava, "particle/lava"],
   [SPRITE.soulFlame, "particle/soul_fire_flame"],
+  [SPRITE.copperFlame, "particle/copper_fire_flame"],
   ...Array.from({ length: 8 }, (_, k) => [SPRITE.sweep + k, `particle/sweep_${k}`] as [number, string]),
   ...Array.from({ length: GLYPHS }, (_, k) => [SPRITE.glyph + k, `particle/sga_${String.fromCharCode(97 + k)}`] as [number, string]),
   ...Array.from({ length: 8 }, (_, k) => [SPRITE.glitter + k, `particle/glitter_${k}`] as [number, string]),

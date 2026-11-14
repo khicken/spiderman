@@ -8,7 +8,10 @@ import { itemDef } from "../src/game/items/registry";
 import { enchantability, repairMaterial } from "../src/game/items/data-gear";
 import { matchCrafting, smeltResult } from "../src/game/items/recipes";
 import { canScrape, canWax, isWaxed, oxidizes } from "../src/game/mechanics/copper";
-import { golemToStatue, statuePose, useStatue } from "../src/game/mechanics/copper-statue";
+import { golemToStatue, statuePose, useStatue, withItemPose } from "../src/game/mechanics/copper-statue";
+import { computeDrops } from "../src/game/items/drops";
+import { BUILD_BEHAVIORS } from "../src/game/mechanics/golem-build";
+import { H_FACE } from "../src/game/mechanics/util";
 import { BEHAVIORS } from "../src/game/mechanics";
 import { analogOutput } from "../src/game/mechanics/redstone";
 
@@ -21,7 +24,10 @@ function fakeCtx(blocks: Record<string, number> = {}) {
       getBlock: (x: number, y: number, z: number) => at.get(`${x},${y},${z}`) ?? 0,
       setBlock(x: number, y: number, z: number, s: number) {
         at.set(`${x},${y},${z}`, s);
+        return true;
       },
+      getBlockEntity: () => undefined,
+      setBlockEntity: () => {},
     },
     entities: {
       spawn(type: string, x: number, y: number, z: number, data?: Record<string, unknown>) {
@@ -140,4 +146,29 @@ test("copper recipes: nuggets, torch, lantern, chain and smelting gear back to a
   assert.equal(chain?.result.item, "copper_chain");
   assert.equal(smeltResult("copper_chestplate", "furnace")?.result.item, "copper_nugget");
   assert.equal(smeltResult("copper_sword", "blast_furnace")?.result.item, "copper_nugget");
+});
+
+test("a broken statue drops an item carrying its pose, and placing it restores the pose", () => {
+  const pick: ItemStack = { item: "iron_pickaxe", count: 1 };
+  const [running] = computeDrops(S("exposed_copper_golem_statue", 1 | (2 << 2)), pick, () => 0.5);
+  assert.deepEqual(running, { item: "exposed_copper_golem_statue", count: 1, data: { pose: "running" } });
+  const [standing] = computeDrops(S("copper_golem_statue", 3), pick, () => 0.5);
+  assert.equal(standing.data, undefined, "standing items stay plain so they stack");
+  const placed = withItemPose(S("exposed_copper_golem_statue", 2), running);
+  assert.equal(statuePose(placed), 2);
+  assert.equal(metaOf(placed) & 3, 2, "facing from placement kept");
+  assert.equal(statuePose(withItemPose(S("copper_golem_statue", 1), standing)), 0);
+});
+
+test("copper golem builds with the copper block beside or above the pumpkin", () => {
+  const pumpkin = stateOf(blockId("carved_pumpkin"), H_FACE[3]);
+  for (const [bx, by, bz] of [[1, 0, 0], [0, 0, -1], [0, 1, 0]]) {
+    const { ctx, at, spawned } = fakeCtx({ [`${bx},${by},${bz}`]: S("exposed_copper"), "0,0,0": pumpkin });
+    BUILD_BEHAVIORS.carved_pumpkin.onPlaced!(ctx, 0, 0, 0, pumpkin);
+    const chest = at.get(`${bx},${by},${bz}`)!;
+    assert.equal(idOf(chest), blockId("exposed_copper_chest"), `${bx},${by},${bz}`);
+    assert.equal(metaOf(chest) & 7, H_FACE[3], "chest faces like the pumpkin");
+    assert.equal(at.get("0,0,0"), 0);
+    assert.deepEqual([spawned[0].type, spawned[0].x, spawned[0].y, spawned[0].z], ["copper_golem", 0.5, 0, 0.5]);
+  }
 });

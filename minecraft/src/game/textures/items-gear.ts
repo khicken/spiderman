@@ -472,7 +472,7 @@ for (const m of ["leather", "chainmail", "iron", "golden", "diamond", "netherite
   GEAR_PAINTERS[`${m}_leggings`] = armor(LEGS, m);
   GEAR_PAINTERS[`${m}_boots`] = armor(BOOTS, m);
 }
-for (const m of ["leather", "iron", "golden", "diamond"]) GEAR_PAINTERS[`${m}_horse_armor`] = (p) => T(p, HORSE, { A: ARMOR_MAT[m], B: rampOf("#8a3a2a") }, 64);
+for (const m of ["leather", "copper", "iron", "golden", "diamond"]) GEAR_PAINTERS[`${m}_horse_armor`] = (p) => T(p, HORSE, { A: ARMOR_MAT[m], B: rampOf("#8a3a2a") }, 64);
 GEAR_PAINTERS.clock_00 = GEAR_PAINTERS.clock;
 GEAR_PAINTERS.compass_00 = GEAR_PAINTERS.compass;
 GEAR_PAINTERS.recovery_compass_00 = GEAR_PAINTERS.recovery_compass;

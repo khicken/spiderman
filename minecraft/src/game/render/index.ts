@@ -8,6 +8,7 @@ import {
 } from "./celestial";
 import type { FogRange, Rgb, Rgba } from "./celestial";
 import { createChunkMeshes } from "./chunks";
+import { createChestLids } from "./chest-lids";
 import { createClouds } from "./clouds";
 import { createOverlays } from "./overlays";
 import { createParticles } from "./particles";
@@ -64,6 +65,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
 
   const hc = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
   const chunks = createChunkMeshes(world, scene, mats, Math.max(2, Math.min(4, hc - 4)), renderer.getContext() as WebGL2RenderingContext);
+  const chestLids = createChestLids(world, scene, chunks, mats.cutout);
   const sky = createSky();
   const clouds = createClouds(scene);
   const particles = createParticles(scene, world, getAtlas, uniforms);
@@ -130,6 +132,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     dim = d;
     sky.setDim(d);
     particles.clear();
+    chestLids.clear();
     applyQuality();
   }
 
@@ -302,6 +305,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     updateAtmosphere(step);
     const t1 = performance.now();
     chunks.update(camera);
+    chestLids.update(step);
     const t2 = performance.now();
     animateTick(world, particles, camera.position.x, camera.position.y, camera.position.z, step, dim === "overworld" ? rain : 0, dim === "nether" ? netherSample : undefined);
     particles.update(step);
@@ -344,6 +348,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
 
   function dispose() {
     offPacks();
+    chestLids.clear();
     chunks.dispose();
     sky.dispose();
     clouds.dispose();
@@ -387,6 +392,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
       visionFar = far;
     },
     addParticles: (e: Extract<GameEvent, { type: "particles" }>) => particles.addParticles(e),
+    onSound: (name: string, x?: number, y?: number, z?: number) => chestLids.sound(name, x, y, z),
     meshQueue: () => chunks.pending(),
     chunkMeshed: (cx: number, cz: number) => chunks.chunkMeshed(cx, cz),
     stats: () => Object.assign(stats, chunks.counts()),

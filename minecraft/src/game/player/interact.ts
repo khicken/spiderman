@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Aabb, BlockState, Entity, GameCtx, RaycastHit } from "../contracts";
-import { AIR, idOf, stateOf } from "../contracts";
+import { AIR, idOf, metaOf, stateOf } from "../contracts";
 import { blockDef, blockId, hasTag } from "../blocks/registry";
 import { computeDrops } from "../items/drops";
 import { itemDef } from "../items/registry";
@@ -15,6 +15,7 @@ import type { PlayerState } from "./state";
 import { useItem } from "./use";
 import { statMined } from "../systems/features/stats";
 import { pvpHook } from "../net/pvp-hook";
+import { statuePoseData } from "../blocks/copper-age";
 
 const outline: Aabb[] = [];
 const pool: Aabb[] = [];
@@ -344,6 +345,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
   function pickBlock(ctx: GameCtx) {
     const inv = ctx.inventory;
     let item: string | null = null;
+    let data: Record<string, unknown> | undefined;
     if (p.targetEntity) {
       const e = ctx.entities.get(p.targetEntity.id);
       if (e && p.gameMode === "creative") {
@@ -353,10 +355,11 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
     } else if (p.target) {
       const d = blockDef(p.target.state);
       item = d.item === null ? null : d.item ?? d.name;
+      if (d.tags?.includes("copper_golem_statues")) data = statuePoseData(metaOf(p.target.state));
     }
     if (!item) return;
     for (let i = 0; i < 9; i++)
-      if (inv.slots[i]?.item === item) {
+      if (inv.slots[i]?.item === item && (!data || inv.slots[i]?.data?.pose === data.pose)) {
         inv.selected = i;
         return;
       }
@@ -364,7 +367,7 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
       let slot = inv.selected;
       if (inv.slots[slot]) for (let i = 0; i < 9; i++) if (!inv.slots[i]) { slot = i; break; }
       inv.selected = slot;
-      inv.setSlot(slot, { item, count: 1 });
+      inv.setSlot(slot, data ? { item, count: 1, data } : { item, count: 1 });
       return;
     }
     for (let i = 9; i < 36; i++)

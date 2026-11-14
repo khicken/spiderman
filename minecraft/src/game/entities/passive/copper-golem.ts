@@ -43,18 +43,21 @@ function stageOf(e: Entity) {
 function paintGolem(p: Pix, stage: number) {
   const C = PALETTES[stage];
   const dark = shade(C[0], 0.6);
-  const head = p.fillCuboid(0, 0, 8, 5, 10, C);
+  const head = p.fillCuboid(0, 0, 10, 5, 8, C);
   const f = head.front;
-  p.rect([f[0] + 1, f[1] + 2, 2, 1], 0x1e1410);
-  p.rect([f[0] + 5, f[1] + 2, 2, 1], 0x1e1410);
-  p.rect([f[0], f[1] + 4, 8, 1], dark);
-  p.fillCuboid(40, 0, 2, 3, 2, C.map((c) => shade(c, 0.9)));
-  p.fillCuboid(40, 8, 2, 4, 2, C.map((c) => shade(c, 0.8)));
+  p.rect([f[0] + 1, f[1] + 1, 3, 2], 0x1e1410);
+  p.rect([f[0] + 6, f[1] + 1, 3, 2], 0x1e1410);
+  p.px(f[0] + 1, f[1] + 1, 0xf4e0c0);
+  p.px(f[0] + 6, f[1] + 1, 0xf4e0c0);
+  p.rect([f[0], f[1] + 4, 10, 1], dark);
+  const nose = p.fillCuboid(40, 0, 2, 4, 2, C.map((c) => shade(c, 1.08)));
+  p.rect([nose.front[0], nose.front[1] + 3, 2, 1], dark);
+  p.fillCuboid(40, 8, 2, 3, 2, C.map((c) => shade(c, 0.8)));
   const knob = p.fillCuboid(48, 0, 4, 4, 4, C.map((c) => shade(c, 1.1)));
   p.rect([knob.top[0] + 1, knob.top[1] + 1, 2, 2], shade(C[1], 1.25));
   const body = p.fillCuboid(0, 16, 8, 6, 6, C);
   p.rect([body.front[0] + 3, body.front[1] + 1, 2, 2], dark);
-  p.fillCuboid(32, 16, 3, 8, 4, C.map((c) => shade(c, 0.95)));
+  p.fillCuboid(32, 16, 3, 6, 4, C.map((c) => shade(c, 0.92)));
   p.fillCuboid(0, 32, 4, 5, 4, C.map((c) => shade(c, 0.85)));
   if (stage >= 2) {
     for (const r of [head.top, head.front, body.front]) {
@@ -75,12 +78,12 @@ function golemModel() {
   const leg = (name: string, x: number): VPart => ({ name, pivot: [x, 19, 0], box: [-2, 0, -2, 4, 5, 4], uv: [0, 32] });
   const parts: VPart[] = [
     { name: "body", pivot: [0, 19, 0], box: [-4, -6, -3, 8, 6, 6], uv: [0, 16] },
-    { name: "head", pivot: [0, 13, 0], box: [-4, -5, -5, 8, 5, 10], uv: [0, 0] },
-    { name: "nose", parent: "head", pivot: [0, 0, 0], box: [-1, -3, -7, 2, 3, 2], uv: [40, 0] },
-    { name: "rod", parent: "head", pivot: [0, 0, 0], box: [-1, -9, -1, 2, 4, 2], uv: [40, 8] },
-    { name: "knob", parent: "head", pivot: [0, 0, 0], box: [-2, -13, -2, 4, 4, 4], uv: [48, 0] },
-    { name: "right_arm", pivot: [-4, 13, 0], box: [-3, 0, -2, 3, 8, 4], uv: [32, 16] },
-    { name: "left_arm", pivot: [4, 13, 0], box: [0, 0, -2, 3, 8, 4], uv: [32, 16], mirror: true },
+    { name: "head", pivot: [0, 13, 0], box: [-5, -5, -4, 10, 5, 8], uv: [0, 0] },
+    { name: "nose", parent: "head", pivot: [0, 0, 0], box: [-1, -3, -6, 2, 4, 2], uv: [40, 0] },
+    { name: "rod", parent: "head", pivot: [0, 0, 0], box: [-1, -8, -1, 2, 3, 2], uv: [40, 8] },
+    { name: "knob", parent: "head", pivot: [0, 0, 0], box: [-2, -12, -2, 4, 4, 4], uv: [48, 0] },
+    { name: "right_arm", pivot: [-4, 13, 0], box: [-3, 0, -2, 3, 6, 4], uv: [32, 16] },
+    { name: "left_arm", pivot: [4, 13, 0], box: [0, 0, -2, 3, 6, 4], uv: [32, 16], mirror: true },
     leg("right_leg", -2),
     leg("left_leg", 2),
   ];
@@ -91,7 +94,7 @@ function golemModel() {
   const held = new THREE.Mesh(spriteGeo("stick"), mat);
   held.visible = false;
   held.scale.setScalar(0.5);
-  held.position.set(0, 9 / 16, 8 / 16);
+  held.position.set(0, 10 / 16, 6 / 16);
   r.root.add(held);
   let shown = "";
   const model = wrap(

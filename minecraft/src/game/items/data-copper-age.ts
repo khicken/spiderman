@@ -24,4 +24,5 @@ export const COPPER_AGE_ITEMS: ItemSpec[] = [
     durability: base * 11,
     tags: [`${slot}_armor`],
   })),
+  { name: "copper_horse_armor", maxStack: 1 },
 ];

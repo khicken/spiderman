@@ -215,6 +215,8 @@ export function nautilusModel(kind: string, colors: NautilusPalette, variants: R
         const droop = wet ? Math.sin(ph) * 0.22 - (i < 3 ? 0.08 : -0.12) : -0.55;
         setRot(r.p[`t${i}`], droop, spread + (wet ? Math.cos(ph) * 0.12 : 0), 0);
       }
+      // A NoAI mob never ticks, so a summoned body_armor_item would stay a raw string without this.
+      syncNautilusArmor(e);
       const mat = NAUTILUS_ARMOR[(e.data.nautilusArmor as string) ?? ""]?.mat ?? "";
       plate.root.visible = mat !== "";
       if (mat && mat !== worn) retexture(plate.material, skinTexture(`nautilus_armor_${mat}`, () => armorSkin(mat)));
@@ -230,11 +232,11 @@ export const NAUTILUS_SEAT = TOP - 0.6;
 export function registerNautilusMount(type: string, canOpen: (e: Entity) => boolean) {
   // The player seat sits 0.6 under the shell top; seated mobs get that 0.6 taken off in riding.ts.
   registerSeats(type, { seats: 1, at: (_v, _i, _n, p) => [p ? TOP : NAUTILUS_SEAT, 0] });
-  // The body armor slot reuses the horse screen's armor slot.
+  // The horse screen's body armor slot, shown with the nautilus armor outline.
   registerMountInv(type, {
     canOpen: (e) => canOpen(e) && !isBaby(e),
     saddle: true,
-    armor: "horse_armor",
+    armor: "nautilus_armor",
     isArmor: (item) => !!NAUTILUS_ARMOR[item],
     getArmor: (e) => (e.data.nautilusArmor ? { item: e.data.nautilusArmor as string, count: 1 } : null),
     setArmor(e, s, ctx) {

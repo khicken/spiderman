@@ -24,6 +24,7 @@ const IRON_GOLEM: [number, number, (n: string) => boolean][] = [[0, -1, IRON], [
 const WITHER_BODY: [number, number, (n: string) => boolean][] = [[0, 0, SKULL], [0, -1, SOUL], [-1, -1, SOUL], [1, -1, SOUL], [0, -2, SOUL], [-1, 0, SKULL], [1, 0, SKULL]];
 const IRON_EMPTY: [number, number][] = [[-1, -2], [1, -2]];
 const COPPER_STAGE: Record<string, number> = { copper_block: 0, exposed_copper: 1, weathered_copper: 2, oxidized_copper: 3 };
+const COPPER_BODY: Cell[] = [[0, -1, 0], [0, 1, 0], [0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0]];
 const copperStage = (n: string) => COPPER_STAGE[n.replace(/^waxed_/, "")];
 
 const name = (ctx: GameCtx, x: number, y: number, z: number) => blockDef(ctx.world.getBlock(x, y, z)).name;
@@ -73,14 +74,18 @@ function headPlaced(ctx: GameCtx, x: number, y: number, z: number) {
     if (ctx.entities.spawn("iron_golem", x + 0.5, y - 2, z + 0.5, { playerCreated: true, persistent: true }) && playerNear(ctx, x + 0.5, y - 2, z + 0.5, 5)) advTrigger({ t: "summoned", type: "iron_golem" });
     return;
   }
-  const cs = copperStage(name(ctx, x, y - 1, z));
-  if (cs !== undefined) {
+  // Vanilla's copper golem BlockPattern matches in any orientation: the copper block may sit below, above or beside the head.
+  for (const [dx, dy, dz] of COPPER_BODY) {
+    const bx = x + dx, by = y + dy, bz = z + dz;
+    const cs = copperStage(name(ctx, bx, by, bz));
+    if (cs === undefined) continue;
     const h = FACE_H[metaOf(ctx.world.getBlock(x, y, z)) & 7] ?? 0;
-    clear(ctx, [[x, y, z], [x, y - 1, z]]);
+    clear(ctx, [[x, y, z], [bx, by, bz]]);
     // Vanilla: a waxed copper block still gives an unwaxed golem and chest.
     const chest = idn(`${COPPER_STAGES[cs]}copper_chest`);
-    if (chest >= 0) placeChestFacing(ctx, x, y - 1, z, chest, h);
+    if (chest >= 0) placeChestFacing(ctx, bx, by, bz, chest, h);
     ctx.entities.spawn("copper_golem", x + 0.5, y, z + 0.5, { persistent: true, oxidation: cs });
+    return;
   }
 }
 

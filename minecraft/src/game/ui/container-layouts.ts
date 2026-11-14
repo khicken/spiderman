@@ -84,7 +84,7 @@ function horseRest(groups: { name?: string; slots: SlotView[] }[]): Pt[] {
   const out: Pt[] = [];
   for (const g of groups) {
     if (g.name === "saddle") out.push([8, 18]);
-    else if (g.name === "horse_armor" || g.name === "llama_armor") out.push([8, 36]);
+    else if (g.name === "horse_armor" || g.name === "llama_armor" || g.name === "nautilus_armor") out.push([8, 36]);
     else if (g.name === "chest") out.push(...grid(80, 18, g.slots.length / 3, 3));
   }
   return out;

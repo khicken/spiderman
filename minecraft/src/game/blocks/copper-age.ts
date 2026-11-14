@@ -1,6 +1,19 @@
 import { COPPER_STAGES } from "./names";
 import { b, NO_ITEM, tex, type BlockSpec, type Props } from "./spec";
 
+// Statue meta bits 2-3, in vanilla copper_golem_pose cycle order.
+export const STATUE_POSES = ["standing", "sitting", "running", "star"] as const;
+
+// Vanilla copies copper_golem_pose onto the dropped item. Standing is left off so default statues still stack.
+export function statuePoseData(meta: number): { pose: string } | undefined {
+  const p = (meta >> 2) & 3;
+  return p ? { pose: STATUE_POSES[p] } : undefined;
+}
+
+export function statuePoseOfItem(data: Record<string, unknown> | undefined): number {
+  return Math.max(0, STATUE_POSES.indexOf(data?.pose as (typeof STATUE_POSES)[number]));
+}
+
 const THIN: Props = { opaque: false, layer: "cutout" };
 const tagsFor = (waxed: boolean, extra: string[]) => [waxed ? "waxed_copper" : "oxidizable", ...extra];
 

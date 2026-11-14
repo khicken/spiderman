@@ -34,7 +34,7 @@ export const SMELT_RECIPES: SmeltRecipe[] = [
   ...r(["ancient_debris"], "netherite_scrap", 2, ORE),
   ...r([...GEAR_NUGGET("iron"), "chainmail_helmet", "chainmail_chestplate", "chainmail_leggings", "chainmail_boots"], "iron_nugget", 0.1, ORE),
   ...r(GEAR_NUGGET("golden"), "gold_nugget", 0.1, ORE),
-  ...r(GEAR_NUGGET("copper").filter((n) => !n.endsWith("horse_armor")), "copper_nugget", 0.1, ORE),
+  ...r(GEAR_NUGGET("copper"), "copper_nugget", 0.1, ORE),
   ...r(["copper_nautilus_armor"], "copper_nugget", 0.1, ORE),
   ...r(["iron_nautilus_armor"], "iron_nugget", 0.1, ORE),
   ...r(["golden_nautilus_armor"], "gold_nugget", 0.1, ORE),

@@ -145,7 +145,7 @@ const TOOLS_AFTER_ROCKETS = [
 const COMBAT = [
   ...TOOL_TIERS.map((t) => `${t}_sword`), ...TOOL_TIERS.map((t) => `${t}_axe`), "trident", "mace", "shield",
   ...ARMOR_MATERIALS.flatMap((m) => [`${m}_helmet`, `${m}_chestplate`, `${m}_leggings`, `${m}_boots`]),
-  "turtle_helmet", "leather_horse_armor", "iron_horse_armor", "golden_horse_armor", "diamond_horse_armor", "wolf_armor",
+  "turtle_helmet", "leather_horse_armor", "copper_horse_armor", "iron_horse_armor", "golden_horse_armor", "diamond_horse_armor", "wolf_armor",
   "copper_nautilus_armor", "iron_nautilus_armor", "golden_nautilus_armor", "diamond_nautilus_armor", "netherite_nautilus_armor",
   "totem_of_undying", "tnt", "end_crystal", "snowball", "egg", "wind_charge", "bow", "crossbow",
   "copper_sword", "copper_axe", "copper_helmet", "copper_chestplate", "copper_leggings", "copper_boots",

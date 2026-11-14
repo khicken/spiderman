@@ -19,7 +19,7 @@ export const LOOT: Record<string, Table> = {
   simple_dungeon: [
     P(1, 3, [
       ["saddle", 20], ["golden_apple", 15], ["enchanted_golden_apple", 2], ["music_disc_otherside", 2], ["music_disc_13", 15],
-      ["music_disc_cat", 15], ["name_tag", 20], ["golden_horse_armor", 10], ["iron_horse_armor", 15], ["diamond_horse_armor", 5], ["book", 10, 1, 1, "ench"],
+      ["music_disc_cat", 15], ["name_tag", 20], ["golden_horse_armor", 10], ["iron_horse_armor", 15], ["copper_horse_armor", 15], ["diamond_horse_armor", 5], ["book", 10, 1, 1, "ench"],
     ]),
     P(1, 4, [
       ["iron_ingot", 10, 1, 4], ["gold_ingot", 5, 1, 4], ["bread", 20], ["wheat", 20, 1, 4], ["bucket", 10], ["redstone", 15, 1, 4],
@@ -60,7 +60,7 @@ export const LOOT: Record<string, Table> = {
     P(3, 8, [
       ["diamond", 3, 1, 3], ["iron_ingot", 10, 1, 5], ["gold_ingot", 5, 1, 3], ["bread", 15, 1, 3], ["apple", 15, 1, 3], ["iron_pickaxe", 5],
       ["iron_sword", 5], ["iron_chestplate", 5], ["iron_helmet", 5], ["iron_leggings", 5], ["iron_boots", 5], ["obsidian", 5, 3, 7],
-      ["oak_sapling", 5, 3, 7], ["saddle", 3], ["iron_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1],
+      ["oak_sapling", 5, 3, 7], ["saddle", 3], ["iron_horse_armor", 1], ["copper_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1],
     ]),
   ],
   village_toolsmith: [
@@ -86,7 +86,7 @@ export const LOOT: Record<string, Table> = {
   desert_pyramid: [
     P(2, 4, [
       ["diamond", 5, 1, 3], ["iron_ingot", 15, 1, 5], ["gold_ingot", 15, 2, 7], ["emerald", 15, 1, 3], ["bone", 25, 4, 6], ["spider_eye", 25, 1, 3],
-      ["rotten_flesh", 25, 3, 7], ["saddle", 20], ["iron_horse_armor", 15], ["golden_horse_armor", 10], ["diamond_horse_armor", 5],
+      ["rotten_flesh", 25, 3, 7], ["saddle", 20], ["iron_horse_armor", 15], ["copper_horse_armor", 15], ["golden_horse_armor", 10], ["diamond_horse_armor", 5],
       ["book", 20, 1, 1, "ench"], ["golden_apple", 20], ["enchanted_golden_apple", 2], ["empty", 15],
     ]),
     P(4, 4, [["bone", 10, 1, 8], ["gunpowder", 10, 1, 8], ["rotten_flesh", 10, 1, 8], ["string", 10, 1, 8], ["sand", 10, 1, 8]]),
@@ -95,7 +95,7 @@ export const LOOT: Record<string, Table> = {
   jungle_temple: [
     P(2, 6, [
       ["diamond", 3, 1, 3], ["iron_ingot", 10, 1, 5], ["gold_ingot", 15, 2, 7], ["bamboo", 15, 1, 3], ["emerald", 2, 1, 3], ["bone", 20, 4, 6],
-      ["rotten_flesh", 16, 3, 7], ["saddle", 3], ["iron_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1], ["book", 1, 1, 1, "lvl:30-30"],
+      ["rotten_flesh", 16, 3, 7], ["saddle", 3], ["iron_horse_armor", 1], ["copper_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1], ["book", 1, 1, 1, "lvl:30-30"],
     ]),
     P(1, 1, [["empty", 2], ["wild_armor_trim_smithing_template", 1, 2, 2]]),
   ],
@@ -157,7 +157,7 @@ export const LOOT: Record<string, Table> = {
     P(2, 3, [
       ["ender_pearl", 10], ["diamond", 3, 1, 3], ["iron_ingot", 10, 1, 5], ["gold_ingot", 5, 1, 3], ["redstone", 5, 4, 9], ["bread", 15, 1, 3],
       ["apple", 15, 1, 3], ["iron_pickaxe", 5], ["iron_sword", 5], ["iron_chestplate", 5], ["iron_helmet", 5], ["iron_leggings", 5],
-      ["iron_boots", 5], ["golden_apple", 1], ["saddle", 1], ["iron_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1],
+      ["iron_boots", 5], ["golden_apple", 1], ["saddle", 1], ["iron_horse_armor", 1], ["copper_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1],
       ["music_disc_otherside", 1], ["book", 1, 1, 1, "lvl:30-30"],
     ]),
     P(1, 1, [["empty", 9], ["eye_armor_trim_smithing_template", 1]]),
@@ -208,7 +208,7 @@ export const LOOT: Record<string, Table> = {
   nether_bridge: [
     P(2, 4, [
       ["diamond", 5, 1, 3], ["iron_ingot", 5, 1, 5], ["gold_ingot", 15, 1, 3], ["golden_sword", 5], ["golden_chestplate", 5], ["flint_and_steel", 5],
-      ["nether_wart", 5, 3, 7], ["saddle", 10], ["golden_horse_armor", 8], ["iron_horse_armor", 5], ["diamond_horse_armor", 3], ["obsidian", 2, 2, 4],
+      ["nether_wart", 5, 3, 7], ["saddle", 10], ["golden_horse_armor", 8], ["iron_horse_armor", 5], ["copper_horse_armor", 5], ["diamond_horse_armor", 3], ["obsidian", 2, 2, 4],
     ]),
     P(1, 1, [["empty", 14], ["rib_armor_trim_smithing_template", 1]]),
   ],
@@ -271,7 +271,7 @@ export const LOOT: Record<string, Table> = {
   end_city_treasure: [
     P(2, 6, [
       ["diamond", 5, 2, 7], ["iron_ingot", 10, 4, 8], ["gold_ingot", 15, 2, 7], ["emerald", 2, 2, 6], ["beetroot_seeds", 5, 1, 10], ["saddle", 3],
-      ["iron_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1], ["diamond_sword", 3, 1, 1, "lvl:20-39"],
+      ["iron_horse_armor", 1], ["copper_horse_armor", 1], ["golden_horse_armor", 1], ["diamond_horse_armor", 1], ["diamond_sword", 3, 1, 1, "lvl:20-39"],
       ["diamond_boots", 3, 1, 1, "lvl:20-39"], ["diamond_chestplate", 3, 1, 1, "lvl:20-39"], ["diamond_leggings", 3, 1, 1, "lvl:20-39"],
       ["diamond_helmet", 3, 1, 1, "lvl:20-39"], ["diamond_pickaxe", 3, 1, 1, "lvl:20-39"], ["diamond_shovel", 3, 1, 1, "lvl:20-39"],
       ["iron_sword", 3, 1, 1, "lvl:20-39"], ["iron_boots", 3, 1, 1, "lvl:20-39"], ["iron_chestplate", 3, 1, 1, "lvl:20-39"],

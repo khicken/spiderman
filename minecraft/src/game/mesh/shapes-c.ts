@@ -478,16 +478,16 @@ function statue() {
   statuePart(4, 5 + dy, 5, 12, 11 + dy, 11);
   const armAxis = pose === 3 ? 3 : pose === 0 ? 0 : 1;
   const [armL, armR] = pose === 1 ? [-40, -40] : pose === 2 ? [45, -45] : [-130, 130];
-  statuePart(1, 3 + dy, 6, 4, 11 + dy, 10, armAxis, armL, 2.5, 11 + dy, 8);
-  statuePart(12, 3 + dy, 6, 15, 11 + dy, 10, armAxis, armR, 13.5, 11 + dy, 8);
+  statuePart(1, 5 + dy, 6, 4, 11 + dy, 10, armAxis, armL, 2.5, 11 + dy, 8);
+  statuePart(12, 5 + dy, 6, 15, 11 + dy, 10, armAxis, armR, 13.5, 11 + dy, 8);
   T.uvMask = 0;
   for (let f = 0; f < 6; f++) uvRect(f, 1, 7, 15, 15);
   uvRect(4, 4, 0, 12, 5);
   T.aAxis = 0;
-  box(4, 11 + dy, 3, 12, 16 + dy, 13);
-  statuePart(7, 11 + dy, 13, 9, 14 + dy, 15);
-  statuePart(7, 16 + dy, 7, 9, 20 + dy, 9);
-  statuePart(6, 20 + dy, 6, 10, 24 + dy, 10);
+  box(3, 11 + dy, 4, 13, 16 + dy, 12);
+  statuePart(7, 11 + dy, 12, 9, 15 + dy, 14);
+  statuePart(7, 16 + dy, 7, 9, 19 + dy, 9);
+  statuePart(6, 19 + dy, 6, 10, 23 + dy, 10);
 }
 
 export function meshShapeC(shape: number): boolean {

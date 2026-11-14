@@ -6,7 +6,7 @@ import { warmEnoughToRain } from "../entities/light";
 
 // Vanilla Block.animateTick particles, sampled like ClientLevel.doAnimateTick.
 const enum K {
-  None, Torch, WallTorch, SoulTorch, SoulWallTorch, RedTorch, RedWallTorch, Furnace, BlastFurnace, Smoker, Fire, Lava, Water, Candle, Table, Portal, Brewing,
+  None, Torch, WallTorch, SoulTorch, SoulWallTorch, CopperTorch, CopperWallTorch, RedTorch, RedWallTorch, Furnace, BlastFurnace, Smoker, Fire, Lava, Water, Candle, Table, Portal, Brewing,
   EndRod, Leaves, Cherry, EnderChest, SporeBlossom, Hive, CryingObsidian,
 }
 
@@ -29,6 +29,7 @@ function table(): Uint8Array {
   const k = new Uint8Array(4096);
   const by: Record<string, K> = {
     torch: K.Torch, wall_torch: K.WallTorch, soul_torch: K.SoulTorch, soul_wall_torch: K.SoulWallTorch,
+    copper_torch: K.CopperTorch, copper_wall_torch: K.CopperWallTorch,
     redstone_torch: K.RedTorch, redstone_wall_torch: K.RedWallTorch, lit_furnace: K.Furnace, lit_blast_furnace: K.BlastFurnace,
     lit_smoker: K.Smoker, fire: K.Fire, soul_fire: K.Fire, lava: K.Lava, water: K.Water, enchanting_table: K.Table,
     nether_portal: K.Portal, brewing_stand: K.Brewing, end_rod: K.EndRod, cherry_leaves: K.Cherry, ender_chest: K.EnderChest,
@@ -58,15 +59,17 @@ export function animateBlock(world: WorldApi, fx: Particles, x: number, y: numbe
   switch (kind) {
     case K.Torch:
     case K.SoulTorch:
+    case K.CopperTorch:
       fx.smokeAt(x + 0.5, y + 0.7, z + 0.5, 0, 0, 0, 1);
-      fx.flameAt(x + 0.5, y + 0.7, z + 0.5, kind === K.SoulTorch, 1);
+      fx.flameAt(x + 0.5, y + 0.7, z + 0.5, kind === K.CopperTorch ? "copper" : kind === K.SoulTorch, 1);
       return;
     case K.WallTorch:
-    case K.SoulWallTorch: {
+    case K.SoulWallTorch:
+    case K.CopperWallTorch: {
       const f = (m - 1) & 3;
       const px = x + 0.5 - 0.27 * HX[f], py = y + 0.92, pz = z + 0.5 - 0.27 * HZ[f];
       fx.smokeAt(px, py, pz, 0, 0, 0, 1);
-      fx.flameAt(px, py, pz, kind === K.SoulWallTorch, 1);
+      fx.flameAt(px, py, pz, kind === K.CopperWallTorch ? "copper" : kind === K.SoulWallTorch, 1);
       return;
     }
     case K.RedTorch:
