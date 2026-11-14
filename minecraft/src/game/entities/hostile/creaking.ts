@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { DamageSource, Entity, GameCtx, MobDef, MobModel } from "../../contracts";
 import { blockId, hasBlock } from "../../blocks/registry";
-import { crumble, heartHurt, linkHolds, twitchTick, twitching, type HeartPos } from "../../systems/creaking-heart";
+import { crumble, heartHurt, keepsUnlinked, linkHolds, twitchTick, twitching, type HeartPos } from "../../systems/creaking-heart";
 import { applyPhysics, canSee, clearPath, idleLook, meleeAttack, playerTargetable } from "../ai";
 import { chase, hurtAmount, idle, num, sound, updateTarget } from "./brain";
 import { skinOf } from "./looks-undead";
@@ -139,6 +139,10 @@ function watched(e: Entity, ctx: GameCtx): boolean {
 }
 
 function tick(e: Entity, ctx: GameCtx): void {
+  if (!e.data.heart && !keepsUnlinked(e)) {
+    e.data._remove = true;
+    return;
+  }
   if (twitching(e)) {
     e.body.vel.x = 0;
     e.body.vel.z = 0;

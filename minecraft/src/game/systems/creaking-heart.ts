@@ -99,6 +99,11 @@ export function naturalHeartXp(w: GameCtx["world"], x: number, y: number, z: num
   return isHeart(s) && w.getBlockEntity(x, y, z)?.data?.natural ? HEART_XP : undefined;
 }
 
+// Creakings a player made (spawn egg, /summon, spawner) are unlinked by design; this marks them so a creaking
+// that lost its heart (older saves) can still be told apart and discarded.
+export const unlinkedData = (type: string): Record<string, unknown> => (type === "creaking" ? { unlinked: true } : {});
+export const keepsUnlinked = (e: Entity) => !!e.data.unlinked;
+
 export function linkHolds(ctx: GameCtx, e: Entity): boolean {
   const h = e.data.heart as HeartPos | undefined;
   if (!h) return true;

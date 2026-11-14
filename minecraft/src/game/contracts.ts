@@ -505,6 +505,7 @@ export interface InventoryApi {
   // Container screen.
   open(kind: ContainerKind, at?: { x: number; y: number; z: number; entityId?: number }): void;
   close(): void;
+  openPos?(): { x: number; y: number; z: number } | undefined; // block of the open container screen, if any
   view(): ContainerView | null;
   clickSlot(index: number, click: ClickKind): void;
   chooseOption(id: string): void; // enchant row, trade, stonecutter recipe

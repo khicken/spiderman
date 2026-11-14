@@ -136,7 +136,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     world = taken?.world ?? createWorld({ seed: meta.seed, dim: d, worldId: meta.id, behaviors: BEHAVIORS, getCtx: () => net?.ctxFor?.(d) ?? ctx, remote: net?.remoteWorld?.(d) });
     ctx.world = world;
     world.spawn = worldSpawn;
-    renderer = createRenderer(canvas, world);
+    renderer = createRenderer(canvas, world, () => inventory.openPos?.());
     ctx.renderer = renderer;
     renderer.resize(window.innerWidth, window.innerHeight);
     applySettings();

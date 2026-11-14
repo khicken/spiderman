@@ -181,7 +181,7 @@ function inAir(e: Entity, ctx: GameCtx) {
 
 function becomeStatue(e: Entity, ctx: GameCtx) {
   dropHeld(e, ctx);
-  releaseChest(e);
+  releaseChest(e, ctx);
   if (golemToStatue(ctx, e)) return;
   e.data.statue = true;
   e.data.oxTimer = undefined;
@@ -220,8 +220,24 @@ interface SortState {
   scanAt: number;
 }
 
-const inUse = new Map<string, number>();
+// Chests a golem is heading to or examining, by dimension and position. An entry whose golem is gone (unloaded
+// without releasing) or that has not been refreshed for STALE ticks no longer reserves the chest.
+const inUse = new Map<string, { id: number; tick: number }>();
+const STALE = 400;
 const key = (p: Pos) => `${p[0]},${p[1]},${p[2]}`;
+const useKey = (ctx: GameCtx, p: Pos) => `${ctx.world.dim}:${key(p)}`;
+
+function reservedBy(ctx: GameCtx, p: Pos): number | undefined {
+  const k = useKey(ctx, p);
+  const r = inUse.get(k);
+  if (!r) return undefined;
+  const owner = ctx.entities.get(r.id);
+  if (!owner || owner.dead || owner.data.statue || ctx.time.tick - r.tick > STALE) {
+    inUse.delete(k);
+    return undefined;
+  }
+  return r.id;
+}
 
 function sortState(e: Entity): SortState {
   let s = e.data.sort as SortState | undefined;
@@ -229,9 +245,13 @@ function sortState(e: Entity): SortState {
   return s;
 }
 
-function releaseChest(e: Entity) {
+function releaseChest(e: Entity, ctx: GameCtx) {
   const s = e.data.sort as SortState | undefined;
-  if (s?.target && inUse.get(key(s.target)) === e.id) inUse.delete(key(s.target));
+  if (s?.target) {
+    const k = useKey(ctx, s.target);
+    if (inUse.get(k)?.id === e.id) inUse.delete(k);
+    if (s.open) chestSound(ctx, s.target, false);
+  }
   if (s) {
     s.target = undefined;
     s.open = false;
@@ -251,24 +271,30 @@ function halves(ctx: GameCtx, x: number, y: number, z: number): Pos[] {
   return metaOf(s) & 8 ? [[x, y, z], other] : [other, [x, y, z]];
 }
 
+// Chests hold their items in block entities, so only the block entity lists of nearby chunks need a look.
 function findChest(e: Entity, ctx: GameCtx, want: (name: string) => boolean, visited: string[]): Pos | undefined {
+  const w = ctx.world;
+  if (!w.blockEntitiesIn) return undefined;
   const p = e.body.pos;
   const bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
   let best: Pos | undefined;
   let bd = Infinity;
-  for (let y = by - RANGE_V; y <= by + RANGE_V; y++)
-    for (let x = bx - RANGE_H; x <= bx + RANGE_H; x++)
-      for (let z = bz - RANGE_H; z <= bz + RANGE_H; z++) {
-        const s = ctx.world.getBlock(x, y, z);
-        if (s === 0 || !want(blockDef(s).name)) continue;
+  for (let cx = (bx - RANGE_H) >> 4; cx <= (bx + RANGE_H) >> 4; cx++)
+    for (let cz = (bz - RANGE_H) >> 4; cz <= (bz + RANGE_H) >> 4; cz++) {
+      const list = w.blockEntitiesIn(cx, cz);
+      if (!list) continue;
+      for (const be of list) {
+        const { x, y, z } = be;
+        if (Math.abs(x - bx) > RANGE_H || Math.abs(z - bz) > RANGE_H || Math.abs(y - by) > RANGE_V) continue;
         const d = (x + 0.5 - p.x) ** 2 + (y - p.y) ** 2 + (z + 0.5 - p.z) ** 2;
-        if (d >= bd) continue;
+        if (d >= bd || !want(blockDef(w.getBlock(x, y, z)).name)) continue;
         const k = halves(ctx, x, y, z)[0];
-        const owner = inUse.get(key(k));
+        const owner = reservedBy(ctx, k);
         if (visited.includes(key(k)) || (owner !== undefined && owner !== e.id)) continue;
         bd = d;
         best = k;
       }
+    }
   return best;
 }
 
@@ -339,8 +365,8 @@ function chestSound(ctx: GameCtx, t: Pos, open: boolean) {
   ctx.emit({ type: "sound", name: open ? "block.chest.open" : "block.chest.close", x: t[0] + 0.5, y: t[1] + 0.5, z: t[2] + 0.5, volume: 0.5 });
 }
 
-function failed(e: Entity, s: SortState, t: Pos) {
-  releaseChest(e);
+function failed(e: Entity, ctx: GameCtx, s: SortState, t: Pos) {
+  releaseChest(e, ctx);
   s.visited.push(key(t));
   if (s.visited.length >= MEMORY) {
     s.visited.length = 0;
@@ -357,7 +383,7 @@ export function sortTick(e: Entity, ctx: GameCtx): boolean {
   }
   const holding = e.data.item as ItemStack | undefined;
   const want = holding ? isDest : isSource;
-  if (s.target && !want(blockDef(ctx.world.getBlock(...s.target)).name)) releaseChest(e);
+  if (s.target && !want(blockDef(ctx.world.getBlock(...s.target)).name)) releaseChest(e, ctx);
   if (!s.target) {
     if (e.age < s.scanAt) return false;
     s.scanAt = e.age + 20;
@@ -372,9 +398,13 @@ export function sortTick(e: Entity, ctx: GameCtx): boolean {
     s.target = t;
     s.timer = 0;
     s.open = false;
-    inUse.set(key(t), e.id);
   }
   const t = s.target;
+  if ((reservedBy(ctx, t) ?? e.id) !== e.id) {
+    releaseChest(e, ctx);
+    return false;
+  }
+  inUse.set(useKey(ctx, t), { id: e.id, tick: ctx.time.tick });
   if (!s.open) {
     if (reached(e, ctx, t)) {
       clearPath(e);
@@ -382,7 +412,7 @@ export function sortTick(e: Entity, ctx: GameCtx): boolean {
       s.timer = 0;
       chestSound(ctx, t, true);
     } else {
-      if (++s.timer > 400 || (!moveTo(e, ctx, t[0] + 0.5, t[1], t[2] + 0.5, num(e, "_speed", SPEED)) && s.timer > 40)) failed(e, s, t);
+      if (++s.timer > 400 || (!moveTo(e, ctx, t[0] + 0.5, t[1], t[2] + 0.5, num(e, "_speed", SPEED)) && s.timer > 40)) failed(e, ctx, s, t);
       return true;
     }
   }
@@ -391,22 +421,23 @@ export function sortTick(e: Entity, ctx: GameCtx): boolean {
   e.body.vel.z = 0;
   if (++s.timer < EXAMINE) return true;
   chestSound(ctx, t, false);
+  s.open = false;
   if (holding) {
     const rest = deposit(ctx, t, holding);
     e.data.item = rest;
     if (!rest) {
       sound(ctx, e, "entity.copper_golem.item_drop", 0.8);
       s.visited.length = 0;
-      releaseChest(e);
-    } else failed(e, s, t);
+      releaseChest(e, ctx);
+    } else failed(e, ctx, s, t);
   } else {
     const got = take(ctx, t);
     if (got) {
       e.data.item = got;
       sound(ctx, e, "entity.copper_golem.item_get", 0.8);
       s.visited.length = 0;
-      releaseChest(e);
-    } else failed(e, s, t);
+      releaseChest(e, ctx);
+    } else failed(e, ctx, s, t);
   }
   return true;
 }
@@ -418,7 +449,7 @@ function tick(e: Entity, ctx: GameCtx) {
   const spin = num(e, "_spin");
   if (spin > 0) e.data._spin = spin - 1;
   if (e.data.statue || e.dead) {
-    releaseChest(e);
+    releaseChest(e, ctx);
     clearPath(e);
     e.body.vel.x = 0;
     e.body.vel.z = 0;
@@ -446,13 +477,13 @@ export const COPPER_GOLEM_DEF: MobDef = {
   tick,
   onDeath(e, ctx) {
     dropHeld(e, ctx);
-    releaseChest(e);
+    releaseChest(e, ctx);
   },
   onInteract(e, ctx, held) {
     if (!held) {
       if (!e.data.item) return false;
       dropHeld(e, ctx);
-      releaseChest(e);
+      releaseChest(e, ctx);
       return true;
     }
     if (held.item === "honeycomb") {

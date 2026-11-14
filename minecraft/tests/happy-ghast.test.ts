@@ -5,7 +5,7 @@ import * as THREE from "three";
 import type { Entity, GameCtx, ItemStack } from "../src/game/contracts";
 import { metaOf, stateOf } from "../src/game/contracts";
 import { blockId } from "../src/game/blocks/registry";
-import { canHoldWater } from "../src/game/blocks/waterlog";
+import { WATER_SOURCE, canHoldWater } from "../src/game/blocks/waterlog";
 import { itemDef } from "../src/game/items/registry";
 import { matchCrafting } from "../src/game/items/recipes";
 import { HARNESSES } from "../src/game/items/data-ghast";
@@ -137,7 +137,7 @@ test("dried ghast is waterloggable and rehydrates in water, then hatches a ghast
   }
   assert.equal(w.spawns.length, 0);
   DRIED_GHAST_BEHAVIOR.scheduledTick!(w.ctx, 0, 0, 0, w.at.get("0,0,0")!);
-  assert.equal(w.at.get("0,0,0"), 0);
+  assert.equal(w.at.get("0,0,0"), WATER_SOURCE, "hatching leaves the water it was in");
   assert.equal(w.spawns.length, 1);
   assert.equal(w.spawns[0].type, "happy_ghast");
   assert.equal(w.spawns[0].data?.grow, GHASTLING_GROW);

@@ -86,7 +86,15 @@ export const useCopperChest: NonNullable<BlockBehavior["use"]> = (ctx, x, y, z) 
   return true;
 };
 
+// A golem finds chests through block entities, so a placed chest gets an empty one right away.
+const HAS_ITEMS = (name: string) => name === "chest" || name === "trapped_chest" || COPPER_CHEST.test(name);
+
 export const CHEST_BEHAVIOR: BlockBehavior = {
+  onPlaced(ctx, x, y, z, s) {
+    const name = blockDef(s).name;
+    if (!HAS_ITEMS(name) || ctx.world.getBlockEntity(x, y, z)) return;
+    ctx.world.setBlockEntity({ x, y, z, type: name === "trapped_chest" ? name : "chest", items: new Array(27).fill(null) }, x, y, z);
+  },
   neighborChanged(ctx, x, y, z, s) {
     if (metaOf(s) & 8 && chestPartnerH(ctx.world, x, y, z, s) < 0) ctx.world.setBlock(x, y, z, stateOf(idOf(s), metaOf(s) & 7), SET_NOTIFY);
   },

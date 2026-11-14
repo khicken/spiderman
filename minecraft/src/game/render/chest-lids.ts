@@ -18,12 +18,15 @@ const E = 1e-4;
 const SPEED = 2; // openness per second (0.1 per tick)
 const INSIDE = 0.45; // shade for the open faces inside the base and under the lid
 const SETTLE_MS = 2000;
+// A viewer that never sent a close (a golem that died or unloaded mid-check) stops holding the lid open after this.
+const STUCK_MS = 5000;
 
 type Cell = [number, number, number, BlockState];
 
 interface Lid {
   cells: Cell[];
   viewers: number;
+  heard: number; // time of the last open event
   open: number;
   released: number; // time the cells went back to the chunk mesh, 0 while hidden
   root: THREE.Group;
@@ -32,7 +35,7 @@ interface Lid {
   light: number;
 }
 
-export function createChestLids(world: WorldApi, scene: THREE.Scene, chunks: ChunkMeshes, material: THREE.Material) {
+export function createChestLids(world: WorldApi, scene: THREE.Scene, chunks: ChunkMeshes, material: THREE.Material, localView?: () => { x: number; y: number; z: number } | undefined) {
   const lids = new Map<string, Lid>();
   const keyOf = (c: Cell) => `${c[0]},${c[1]},${c[2]}`;
 
@@ -71,7 +74,7 @@ export function createChestLids(world: WorldApi, scene: THREE.Scene, chunks: Chu
     root.add(hinge);
     scene.add(root);
     hide(cells, true);
-    return { cells, viewers, open, released: 0, root, hinge, geos, light: -1 };
+    return { cells, viewers, heard: performance.now(), open, released: 0, root, hinge, geos, light: -1 };
   }
 
   function drop(key: string, l: Lid) {
@@ -94,10 +97,16 @@ export function createChestLids(world: WorldApi, scene: THREE.Scene, chunks: Chu
     }
     if (!l) lids.set(key, (l = build(cells, 0, 0)));
     l.viewers++;
+    l.heard = performance.now();
     if (l.released) {
       l.released = 0;
       hide(l.cells, true);
     }
+  }
+
+  function viewedLocally(l: Lid) {
+    const at = localView?.();
+    return !!at && l.cells.some(([x, y, z]) => x === at.x && y === at.y && z === at.z);
   }
 
   function update(dt: number) {
@@ -109,11 +118,14 @@ export function createChestLids(world: WorldApi, scene: THREE.Scene, chunks: Chu
       }
       if (cur.length !== l.cells.length || cur.some((c, i) => keyOf(c) !== keyOf(l.cells[i]) || c[3] !== l.cells[i][3])) {
         // Re-paired, re-oxidized or waxed while open: rebuild from the blocks as they are now.
-        const { viewers, open } = l;
+        const { viewers, open, heard } = l;
         drop(key, l);
-        lids.set(keyOf(cur[0]), build(cur, viewers, open));
+        const nl = build(cur, viewers, open);
+        nl.heard = heard;
+        lids.set(keyOf(cur[0]), nl);
         continue;
       }
+      if (l.viewers > 0 && performance.now() - l.heard > STUCK_MS && !viewedLocally(l)) l.viewers = 0;
       l.open = Math.max(0, Math.min(1, l.open + (l.viewers > 0 ? 1 : -1) * SPEED * dt));
       if (l.viewers === 0 && l.open === 0) {
         if (!l.released) {

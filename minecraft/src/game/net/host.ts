@@ -8,12 +8,12 @@ import { SLEEP_RULE } from "../mechanics/interact";
 import { applyBoneMeal, boneMealEffects } from "../mechanics/bonemeal";
 import { completeEndPortal, lightPortal } from "../mechanics/portal";
 import { finishBrush } from "../systems/features/archaeology";
-import { HEART_XP, isHeart } from "../systems/creaking-heart";
+import { isHeart, naturalHeartXp } from "../systems/creaking-heart";
 import { itemDef } from "../items/registry";
 import { makeBody } from "../player/physics";
 import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, STEW_EFFECTS } from "../player/stats";
 import { IMPLICIT_WATER } from "../blocks/waterlog";
-import { isPartner, moveOk, staleSessions, validToken, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
+import { freeSwap, isPartner, moveOk, staleSessions, validToken, partnerOf, placeCost, portalExit, portalNear, takeArrival, withOffHand, type Arrival, type Pair } from "./host-rules";
 import { mobDef } from "../entities/registry";
 import { createGuard, type Guard, type RateKind } from "./host-guard";
 import { boxDistSq } from "../entities/geom";
@@ -660,10 +660,14 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
           r.guard.strike(performance.now(), 2);
           return correct(r, w, m.x, m.y, m.z);
         }
+        // Only a naturally generated heart gives XP, and the block entity saying so is gone after setBlock.
+        const heartXp = naturalHeartXp(w, m.x, m.y, m.z, was)?.[1] ?? 0;
         withPlayer(r, (c) => c.world.setBlock(m.x, m.y, m.z, m.s as BlockState, m.f | 0));
         if (w.getBlock(m.x, m.y, m.z) !== m.s) correct(r, w, m.x, m.y, m.z);
         else if (ateCake(was, m.s)) eatCredit(r.hp, 2, 0.4);
-        else if (!arrival && idOf(was) !== 0 && idOf(was) !== idOf(m.s)) r.guard.broke(was, r.eq.held, m.x, m.y, m.z, tick, BLOCKS[idOf(was)]?.xp?.[1] ?? (isHeart(was) ? HEART_XP[1] : 0));
+        else if (!arrival && idOf(was) !== 0 && idOf(was) !== idOf(m.s) && !freeSwap(BLOCKS[idOf(was)]?.name ?? "air", BLOCKS[idOf(m.s)]?.name ?? "air")) {
+          r.guard.broke(was, r.eq.held, m.x, m.y, m.z, tick, BLOCKS[idOf(was)]?.xp?.[1] ?? heartXp);
+        }
         return;
       }
       case "act": {
@@ -709,6 +713,8 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (m.be !== null && (typeof m.be !== "object" || JSON.stringify(m.be).length > MAX_BE_JSON)) return;
         // Brushing loot lives in the block entity, so only the host writes it.
         if (m.be?.type === "brushable" || w.getBlockEntity(m.x, m.y, m.z)?.type === "brushable") return;
+        // A creaking heart's block entity marks it natural, which decides its XP, so only the host writes it.
+        if (m.be?.type === "creaking_heart" || isHeart(w.getBlock(m.x, m.y, m.z))) return;
         if (limited(r, "set") || !r.guard.blockEntity(w.getBlockEntity(m.x, m.y, m.z), m.be, exempt(r))) {
           r.guard.strike(performance.now(), 5);
           send(r, { t: "blocks", dim: r.dim, list: [], be: [{ x: m.x, y: m.y, z: m.z, be: w.getBlockEntity(m.x, m.y, m.z) ?? null }] });

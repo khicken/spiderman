@@ -1,6 +1,6 @@
 import type { Aabb, BlockBehavior, BlockState, GameCtx } from "../contracts";
 import { idOf, metaOf, stateOf } from "../contracts";
-import { isWaterlogged } from "../blocks/waterlog";
+import { WATER_SOURCE, isWaterlogged } from "../blocks/waterlog";
 import { lookH, oppH } from "./util";
 
 // Vanilla DriedGhastBlock: one hydration step per 5000 ticks in water, so a ghastling after 20000 ticks (about 17 minutes).
@@ -23,7 +23,8 @@ export function driedGhastTick(ctx: GameCtx, x: number, y: number, z: number, s:
       ctx.world.setBlock(x, y, z, withHydration(s, h + 1));
       sound(ctx, "entity.dried_ghast.transition", x, y, z);
     } else {
-      ctx.world.setBlock(x, y, z, 0);
+      // Only reached while waterlogged, so the water stays where the block was.
+      ctx.world.setBlock(x, y, z, WATER_SOURCE);
       ctx.entities.spawn("happy_ghast", x + 0.5, y, z + 0.5, { grow: GHASTLING_GROW, persistent: true });
       sound(ctx, "entity.happy_ghast.ambient", x, y, z);
       ctx.emit({ type: "particles", kind: "happy", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 8 });

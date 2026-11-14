@@ -1,6 +1,7 @@
 import type { Effect, GameCtx, GameMode, ItemStack, Rules } from "../contracts";
 import { hasItem, itemDef } from "../items/registry";
 import { MAX_Y, MIN_Y, SET_NOTIFY, idOf, metaOf } from "../contracts";
+import { unlinkedData } from "../systems/creaking-heart";
 import { findNear, STRUCTS } from "../worldgen/structure-grid";
 import { biomeAtXZ } from "../worldgen";
 import { BIOMES } from "../worldgen/biomes";
@@ -487,7 +488,7 @@ const COMMANDS: Cmd[] = [
       } catch (err) {
         return fail((err as Error).message);
       }
-      const e = ctx.entities.spawn(type, x, y, z, data);
+      const e = ctx.entities.spawn(type, x, y, z, { ...unlinkedData(type), ...data });
       if (!e) return fail(type === "player" ? "Unable to summon entity" : `Can't find element 'minecraft:${raw}' of type 'minecraft:entity_type'`);
       return [`Summoned new ${nameOf(e)}`];
     },

@@ -32,7 +32,8 @@ type Submersion = "none" | "water" | "lava" | "powder_snow";
 const HORIZON_Y = 63;
 const _dir = new THREE.Vector3();
 
-export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): RendererApi {
+// chestView: the block of the chest the local player has open, which keeps its lid up however long it stays open.
+export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi, chestView?: () => { x: number; y: number; z: number } | undefined): RendererApi {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
   renderer.autoClear = false;
   renderer.info.autoReset = false;
@@ -65,7 +66,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
 
   const hc = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
   const chunks = createChunkMeshes(world, scene, mats, Math.max(2, Math.min(4, hc - 4)), renderer.getContext() as WebGL2RenderingContext);
-  const chestLids = createChestLids(world, scene, chunks, mats.cutout);
+  const chestLids = createChestLids(world, scene, chunks, mats.cutout, chestView);
   const sky = createSky();
   const clouds = createClouds(scene);
   const particles = createParticles(scene, world, getAtlas, uniforms);

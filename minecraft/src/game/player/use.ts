@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Aabb, BlockDef, BlockState, Entity, GameCtx, ItemStack, PlaceInfo, RaycastHit } from "../contracts";
 import { AIR, Face, MAX_Y, MIN_Y, idOf, metaOf, stateOf } from "../contracts";
+import { unlinkedData } from "../systems/creaking-heart";
 import { blockByName, blockDef, blockId, hasBlock } from "../blocks/registry";
 import { IMPLICIT_WATER, canHoldWater } from "../blocks/waterlog";
 import { itemDef } from "../items/registry";
@@ -201,7 +202,8 @@ function useOn(p: PlayerState, ctx: GameCtx, h: Hand, stack: ItemStack, hit: Ray
   if (p.gameMode === "adventure") return false;
   if (name.endsWith("_spawn_egg")) {
     adjacent(hit, cell);
-    const e = ctx.entities.spawn(name.slice(0, -"_spawn_egg".length), cell[0] + 0.5, cell[1], cell[2] + 0.5);
+    const type = name.slice(0, -"_spawn_egg".length);
+    const e = ctx.entities.spawn(type, cell[0] + 0.5, cell[1], cell[2] + 0.5, unlinkedData(type));
     if (e) e.yaw = p.yaw + Math.PI;
     consume(p, ctx, h);
     return true;

@@ -8,7 +8,7 @@ import { AIR, idOf, metaOf, stateOf } from "../src/game/contracts";
 import { blockDef, blockId } from "../src/game/blocks/registry";
 import { createEntities } from "../src/game/entities";
 import { mobDef } from "../src/game/entities/registry";
-import { AWAKE, createCreakingHeart, DORMANT, heartHurt, heartState, heartStateOf, naturalHeartXp, tickHeart, trySpawn, TWITCH_TICKS, UPROOTED } from "../src/game/systems/creaking-heart";
+import { AWAKE, createCreakingHeart, DORMANT, heartHurt, heartState, heartStateOf, naturalHeartXp, tickHeart, trySpawn, TWITCH_TICKS, unlinkedData, UPROOTED } from "../src/game/systems/creaking-heart";
 
 const HEART = blockId("creaking_heart");
 const LOG = blockId("pale_oak_log");
@@ -252,4 +252,17 @@ test("an unlinked creaking has 1 health and dies in one hit", () => {
   assert.equal(mobDef("creaking")!.spawn, undefined, "no natural spawning");
   s.entities.damage(c.id, 1, "player", "player");
   assert.equal(c.dead, true);
+});
+
+test("a creaking with no heart from an old save is discarded, one from a spawn egg or /summon stays", () => {
+  const s = setup();
+  const def = mobDef("creaking")!;
+  const old = s.entities.spawn("creaking", 2.5, 64, 2.5)!;
+  def.tick(old, s.ctx);
+  assert.equal(old.data._remove, true);
+  const egg = s.entities.spawn("creaking", 3.5, 64, 2.5, unlinkedData("creaking"))!;
+  (s.ctx.player as { gameMode: string }).gameMode = "spectator";
+  def.tick(egg, s.ctx);
+  assert.ok(!egg.data._remove);
+  assert.equal(egg.maxHealth, 1);
 });

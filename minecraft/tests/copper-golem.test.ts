@@ -10,6 +10,7 @@ import { copperRandomTick } from "../src/game/mechanics/copper";
 import { BUILD_BEHAVIORS } from "../src/game/mechanics/golem-build";
 import { H_FACE } from "../src/game/mechanics/util";
 import { COPPER_CHEST_RECIPES } from "../src/game/items/recipes-copper-chest";
+import { freeSwap, placeCost } from "../src/game/net/host-rules";
 
 function fakeWorld() {
   const stone = blockId("stone");
@@ -17,8 +18,10 @@ function fakeWorld() {
   const bes = new Map<string, BlockEntityData>();
   const k = (x: number, y: number, z: number) => `${x},${y},${z}`;
   return {
+    dim: "overworld",
     blocks,
     bes,
+    blockEntitiesIn: (cx: number, cz: number) => [...bes.values()].filter((be) => be.x >> 4 === cx && be.z >> 4 === cz),
     getBlock: (x: number, y: number, z: number) => blocks.get(k(x, y, z)) ?? (y < 0 ? stone : 0),
     setBlock(x: number, y: number, z: number, s: number) {
       const old = blocks.get(k(x, y, z)) ?? 0;
@@ -174,4 +177,39 @@ test("copper chest recipes", () => {
   const ring = COPPER_CHEST_RECIPES.find((r) => r.result.item === "copper_chest");
   assert.ok(ring && ring.type === "shaped" && ring.cells.filter((c) => c === "copper_ingot").length === 8 && ring.cells[4] === "chest");
   assert.ok(COPPER_CHEST_RECIPES.some((r) => r.result.item === "waxed_oxidized_copper_chest"));
+});
+
+test("a chest reserved by a golem that is gone does not block another golem", () => {
+  const { ctx, world } = fakeCtx();
+  chest(world, "copper_chest", 1, 0, 0, [{ item: "cobblestone", count: 20 }]);
+  chest(world, "chest", -1, 0, 0, [{ item: "cobblestone", count: 1 }]);
+  const gone = golem(0.5, 0, 0.5);
+  (gone as { id: number }).id = 8;
+  run(gone, ctx, 1);
+  assert.ok((gone.data.sort as { target?: unknown }).target, "first golem reserved the chest");
+  const e = golem(0.5, 0, 0.5);
+  run(e, ctx, 70);
+  assert.deepEqual(e.data.item, { item: "cobblestone", count: 16 });
+});
+
+test("a golem that dies while checking a chest closes its lid", () => {
+  const { ctx, world } = fakeCtx();
+  const sounds: string[] = [];
+  (ctx as { emit: unknown }).emit = (ev: { type: string; name?: string }) => {
+    if (ev.type === "sound" && ev.name?.startsWith("block.chest")) sounds.push(ev.name);
+  };
+  chest(world, "copper_chest", 1, 0, 0, [{ item: "cobblestone", count: 20 }]);
+  const e = golem(0.5, 0, 0.5);
+  for (let i = 0; i < 70 && !sounds.length; i++) run(e, ctx, 1);
+  assert.deepEqual(sounds, ["block.chest.open"]);
+  COPPER_GOLEM_DEF.onDeath!(e, ctx);
+  assert.deepEqual(sounds, ["block.chest.open", "block.chest.close"]);
+});
+
+test("copper chest weathering, waxing and pairing are free swaps for the host", () => {
+  assert.ok(freeSwap("copper_chest", "exposed_copper_chest"));
+  assert.ok(freeSwap("oxidized_copper_chest", "copper_chest"), "pairing takes the less oxidized stage");
+  assert.ok(freeSwap("weathered_copper_chest", "waxed_weathered_copper_chest"));
+  assert.equal(placeCost(stateOf(blockId("oxidized_copper_chest")), stateOf(blockId("copper_chest"))), null);
+  assert.ok(!freeSwap("chest", "copper_chest"));
 });

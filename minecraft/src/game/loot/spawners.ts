@@ -1,5 +1,6 @@
 import type { BlockEntityData, GameCtx, ItemStack } from "../contracts";
 import { idOf, metaOf, stateOf } from "../contracts";
+import { unlinkedData } from "../systems/creaking-heart";
 import { SOLID } from "../blocks/registry";
 import { lineClear } from "../entities/combat";
 import type { SystemPart } from "../systems";
@@ -87,7 +88,7 @@ function spawnAround(ctx: GameCtx, be: BlockEntityData, mob: string, range: numb
     if (!free(ctx, x, y, z, flying)) continue;
     if (los && !spawnerSees(ctx, be, x + 0.5, y + 0.5, z + 0.5)) continue;
     if (tries === 1 && DARK.has(mob) && ctx.world.getBlockLight(x, y, z) > 11) continue;
-    const e = ctx.entities.spawn(mob, x + 0.5, y, z + 0.5, { persistent: false, ...extra });
+    const e = ctx.entities.spawn(mob, x + 0.5, y, z + 0.5, { persistent: false, ...unlinkedData(mob), ...extra });
     if (!e) return -1;
     ctx.emit({ type: "particles", kind: "flame", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 12 });
     return e.id;
