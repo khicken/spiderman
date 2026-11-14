@@ -8,6 +8,7 @@ import { SLEEP_RULE } from "../mechanics/interact";
 import { applyBoneMeal, boneMealEffects } from "../mechanics/bonemeal";
 import { completeEndPortal, lightPortal } from "../mechanics/portal";
 import { finishBrush } from "../systems/features/archaeology";
+import { HEART_XP, isHeart } from "../systems/creaking-heart";
 import { itemDef } from "../items/registry";
 import { makeBody } from "../player/physics";
 import { BLOCK_REACH, CREATIVE_ENTITY_BONUS, CREATIVE_REACH_BONUS, ENTITY_REACH, EYE_SNEAK, EYE_STAND, POTIONS, STEW_EFFECTS } from "../player/stats";
@@ -662,7 +663,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         withPlayer(r, (c) => c.world.setBlock(m.x, m.y, m.z, m.s as BlockState, m.f | 0));
         if (w.getBlock(m.x, m.y, m.z) !== m.s) correct(r, w, m.x, m.y, m.z);
         else if (ateCake(was, m.s)) eatCredit(r.hp, 2, 0.4);
-        else if (!arrival && idOf(was) !== 0 && idOf(was) !== idOf(m.s)) r.guard.broke(was, r.eq.held, m.x, m.y, m.z, tick, BLOCKS[idOf(was)]?.xp?.[1] ?? 0);
+        else if (!arrival && idOf(was) !== 0 && idOf(was) !== idOf(m.s)) r.guard.broke(was, r.eq.held, m.x, m.y, m.z, tick, BLOCKS[idOf(was)]?.xp?.[1] ?? (isHeart(was) ? HEART_XP[1] : 0));
         return;
       }
       case "act": {

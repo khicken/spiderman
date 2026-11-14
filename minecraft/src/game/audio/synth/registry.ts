@@ -8,6 +8,8 @@ import { PLAYER_SFX } from "./sfx-player";
 import { EXTRA_ALIASES, EXTRA_SFX } from "./sfx-extra";
 import { WORLD_SFX } from "./sfx-world";
 import { NETHER_SFX } from "./sfx-nether";
+import { PALE_SFX } from "./sfx-pale";
+import { CREAKING_HEART_SFX } from "./sfx-creaking";
 import type { Recipe } from "./voice";
 
 export interface Resolved {
@@ -15,7 +17,7 @@ export interface Resolved {
   recipe: Recipe;
 }
 
-const SFX: Record<string, Recipe> = { ...PLAYER_SFX, ...WORLD_SFX, ...NOTE_SFX, ...EXTRA_SFX, ...NETHER_SFX };
+const SFX: Record<string, Recipe> = { ...PLAYER_SFX, ...WORLD_SFX, ...NOTE_SFX, ...EXTRA_SFX, ...NETHER_SFX, ...CREAKING_HEART_SFX, ...PALE_SFX };
 
 const ALIASES: Record<string, string> = {
   "item.elytra.flying": "item.trident.throw",
@@ -62,6 +64,7 @@ const BLOCK_KEYWORDS: [string, SoundGroup][] = [
   ["moss", "grass"], ["snow", "snow"], ["slime", "slime"], ["honey", "honey"], ["mud", "mud"], ["deepslate", "deepslate"],
   ["tuff", "tuff"], ["netherrack", "netherrack"], ["nether_brick", "nether_bricks"], ["amethyst", "amethyst"],
   ["anvil", "anvil"], ["crop", "plant"], ["sapling", "plant"], ["flower", "plant"], ["vine", "plant"], ["fungus", "plant"],
+  ["resin_brick", "resin_bricks"], ["resin", "resin"], ["creaking_heart", "creaking_heart"],
 ];
 
 const blockCache = new Map<string, Recipe>();

@@ -9,6 +9,7 @@ const FAMILIES: [string, string, Kind[]][] = [
   ["mossy_cobblestone", "mossy_cobblestone", ["s", "t", "w"]],
   ["smooth_stone", "smooth_stone", ["s"]],
   ["stone_bricks", "stone_brick", ["s", "t", "w"]],
+  ["resin_bricks", "resin_brick", ["s", "t", "w"]],
   ["mossy_stone_bricks", "mossy_stone_brick", ["s", "t", "w"]],
   ["granite", "granite", ["s", "t", "w"]],
   ["polished_granite", "polished_granite", ["s", "t"]],
@@ -86,6 +87,7 @@ const CUTS: [string, string, number][] = [
   ["quartz_block", "chiseled_quartz_block", 1],
   ["quartz_block", "quartz_bricks", 1],
   ["basalt", "polished_basalt", 1],
+  ["resin_bricks", "chiseled_resin_bricks", 1],
 ];
 for (const p of COPPER_PREFIXES) {
   for (const w of ["", "waxed_"]) {

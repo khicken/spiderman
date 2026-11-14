@@ -22,6 +22,7 @@ const W: Record<string, Wood> = {
   bamboo: { planks: [0xa58f37, 0xbba145, 0xc9b04d, 0xd5bd5a, 0xe0c867], bark: [0x4e5a14, 0x627019, 0x75851f, 0x869826, 0x98a92f], log: "block", door: 8 },
   crimson: { planks: [0x4f2236, 0x5f2a42, 0x6a344b, 0x753a54, 0x7f425d], bark: [0x3b1424, 0x521a2e, 0x6b2236, 0x8f2b3f, 0xc23b54], log: "stem", door: 9 },
   warped: { planks: [0x1d4c4a, 0x26605d, 0x2b6963, 0x317872, 0x3a8a83], bark: [0x2a2537, 0x3a3348, 0x4a3f59, 0x167a6e, 0x1fb39e], log: "stem", door: 10 },
+  pale_oak: { planks: [0xa49a96, 0xc8beba, 0xd8cfcb, 0xe3dad7, 0xefe8e5], bark: [0x2e2826, 0x3d3532, 0x4c4440, 0x5c534e, 0x6c625d], log: "log", leaves: [0x5f6659, 0x737a6d, 0x8a9184, 0x9ca395, 0xaeb4a6], sapling: [0x4c4440, 0x737a6d, 0x8a9184, 0xaeb4a6], door: 11 },
 };
 
 export const PLANKS: Record<string, Color[]> = Object.fromEntries(Object.entries(W).map(([k, v]) => [k, v.planks]));
@@ -167,6 +168,7 @@ function door(t: Tex, w: Wood, seed: number, top: boolean): void {
     [[3, 2, 10, 2], [3, 6, 10, 2]],
     [[4, 3, 8, 4]],
     [[4, 3, 3, 3], [9, 3, 3, 3], [4, 8, 3, 3], [9, 8, 3, 3]],
+    [[3, 2, 3, 4], [7, 2, 2, 4], [10, 2, 3, 4], [3, 8, 10, 2]],
   ];
   for (const [x, y, hw, hh] of holes[w.door]) {
     t.rect(x, y, hw, hh, 0, 0);

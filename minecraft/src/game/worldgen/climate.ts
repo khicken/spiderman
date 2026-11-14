@@ -37,7 +37,7 @@ const PLATEAU: Row[] = [
 const PLATEAU_VARIANT: Row[] = [
   ["ice_spikes", null, null, null, null],
   ["cherry_grove", null, "meadow", "meadow", "old_growth_pine_taiga"],
-  ["cherry_grove", "cherry_grove", "forest", "birch_forest", null],
+  ["cherry_grove", "cherry_grove", "forest", "birch_forest", "pale_garden"],
   [null, null, null, null, null],
   ["eroded_badlands", "eroded_badlands", null, null, null],
 ];

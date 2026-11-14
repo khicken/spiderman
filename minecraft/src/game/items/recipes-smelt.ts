@@ -65,6 +65,7 @@ export const SMELT_RECIPES: SmeltRecipe[] = [
   ...r(["salmon"], "cooked_salmon", 0.35, FOOD),
   ...r(["potato"], "baked_potato", 0.35, FOOD),
   ...r(["kelp"], "dried_kelp", 0.1, FOOD),
+  ...r(["resin_clump"], "resin_brick", 0.1),
 ];
 
 const BY_INPUT = new Map(SMELT_RECIPES.map((x) => [x.input, x]));

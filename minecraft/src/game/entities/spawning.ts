@@ -81,6 +81,7 @@ const OCEAN_WATER: Record<string, { water: Entry[]; fish: Entry[] }> = {
 
 // Null means the list comes from each MobDef's spawn field.
 function overworldList(cat: SpawnCat, biome: string): Entry[] | null {
+  if (biome === "pale_garden") return [];
   switch (cat) {
     case "hostile":
       if (NO_CAVE_MOBS.has(biome)) return [];
@@ -91,8 +92,6 @@ function overworldList(cat: SpawnCat, biome: string): Entry[] | null {
       if (biome === "river") return [...COMMON, ["drowned", 100, 1, 1]];
       if (biome === "frozen_river") return [...COMMON, ["drowned", 1, 1, 1]];
       if (biome.endsWith("ocean")) return [...COMMON, ["drowned", 5, 1, 1], ...(biome.includes("frozen") ? [] : [["zombie_nautilus", 5, 1, 1] as Entry])];
-      // No pale garden here, so the creaking spawns in the dark forest instead.
-      if (biome === "dark_forest") return [...COMMON, ["creaking", 5, 1, 1]];
       return COMMON;
     case "ambient":
       return NO_CAVE_MOBS.has(biome) ? [] : [["bat", 10, 8, 8]];

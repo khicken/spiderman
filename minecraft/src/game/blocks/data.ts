@@ -2,6 +2,7 @@ import { COLORED_BLOCKS } from "./colored";
 import { COPPER_BLOCKS } from "./copper";
 import { FLUID_BLOCKS, NATURE_BLOCKS } from "./nature";
 import { NETHER_END_BLOCKS } from "./nether-end";
+import { PALE_GARDEN_BLOCKS } from "./pale-garden";
 import { PLANT_BLOCKS } from "./plants";
 import { REDSTONE_BLOCKS } from "./redstone";
 import type { BlockSpec } from "./spec";
@@ -26,4 +27,5 @@ export const BLOCK_DATA: BlockSpec[] = [
   ...REDSTONE_BLOCKS,
   ...NETHER_END_BLOCKS,
   ...GHAST_BLOCKS,
+  ...PALE_GARDEN_BLOCKS,
 ];

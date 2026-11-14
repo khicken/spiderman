@@ -67,6 +67,7 @@ const SPECS: Spec[] = [
   ["small_end_islands", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
   ["end_midlands", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
   ["end_barrens", "end", 0.5, 0.5, 0x8eb971, 0x71a74d, 0x3f76e4, 0x000000, "none"],
+  ["pale_garden", "overworld", 0.7, 0.8, 0x778272, 0x878d76, 0x76889d, 0xb9b9b9, "rain"],
 ];
 
 const NETHER_FOG: Record<string, number> = {
@@ -76,6 +77,8 @@ const NETHER_FOG: Record<string, number> = {
   soul_sand_valley: 0x1b4745,
   basalt_deltas: 0x685f70,
 };
+
+const OVERWORLD_FOG: Record<string, number> = { pale_garden: 0x817770 };
 
 const titleCase = (n: string) => n.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 
@@ -90,7 +93,7 @@ export const BIOMES: BiomeDef[] = SPECS.map(([name, dim, temperature, downfall, 
   foliageColor,
   waterColor,
   skyColor,
-  fogColor: dim === "nether" ? NETHER_FOG[name] : dim === "end" ? 0x0a080c : 0xc0d8ff,
+  fogColor: dim === "nether" ? NETHER_FOG[name] : dim === "end" ? 0x0a080c : OVERWORLD_FOG[name] ?? 0xc0d8ff,
   precipitation,
 }));
 

@@ -97,6 +97,13 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
   let visionFar = 0;
   let submergedFor = 0;
   const waterFog = createWaterFog();
+  // Biome sky and fog colors ease over about a second, so biomes like the pale garden fade in and out.
+  const skyEase: Rgb = [-1, 0, 0], fogEase: Rgb = [-1, 0, 0];
+  const ease = (c: Rgb, hex: number, dt: number) => {
+    const k = c[0] < 0 ? 1 : 1 - Math.exp(-dt * 2);
+    for (let i = 0; i < 3; i++) c[i] += (((hex >> (16 - i * 8)) & 255) - c[i]) * k;
+    return (Math.round(c[0]) << 16) | (Math.round(c[1]) << 8) | Math.round(c[2]);
+  };
   let flickerT = 0;
   let time = 0;
   let width = 1, height = 1;
@@ -165,9 +172,9 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     fogRange(dim, blocks, range);
     let day = 1;
     if (dim === "overworld") {
-      skyColor(biome.skyColor, angle, r, th, flash, sky3);
+      skyColor(ease(skyEase, biome.skyColor, dt), angle, r, th, flash, sky3);
       camera.getWorldDirection(_dir);
-      overworldFog(biome.fogColor, sky3, angle, renderDistance, _dir.x, r, th, fog3);
+      overworldFog(ease(fogEase, biome.fogColor, dt), sky3, angle, renderDistance, _dir.x, r, th, fog3);
       sunriseColor(angle, sunrise);
       day = flash > 0 ? Math.max(daylight(angle, r, th), flash) : daylight(angle, r, th);
       skyLightTint(angle, r, th, tint3);

@@ -29,6 +29,8 @@ export const CREATIVE_TABS = [
 const COLOR_ORDER = ["white", "light_gray", "gray", "black", "brown", "red", "orange", "yellow", "lime", "green", "cyan", "light_blue", "blue", "purple", "magenta", "pink"];
 const colors = (kind: string) => COLOR_ORDER.map((c) => `${c}_${kind}`);
 
+const WOOD_ORDER = WOODS.filter((w) => w !== "pale_oak").flatMap((w) => (w === "dark_oak" ? [w, "pale_oak"] : [w]));
+
 const woodSet = (w: string): string[] => {
   if (w === "bamboo") {
     return ["bamboo_block", "stripped_bamboo_block", "bamboo_planks", "bamboo_mosaic", "bamboo_stairs", "bamboo_mosaic_stairs", "bamboo_slab", "bamboo_mosaic_slab",
@@ -44,7 +46,7 @@ const copperSet = (wax: string) =>
   COPPER_PREFIXES.flatMap((p) => [`${wax}${p ? `${p}copper` : "copper_block"}`, ...["chiseled_copper", "copper_grate", "cut_copper", "cut_copper_stairs", "cut_copper_slab", "copper_door", "copper_trapdoor", "copper_bulb"].map((n) => `${wax}${p}${n}`)]);
 
 const BUILDING = [
-  ...WOODS.flatMap(woodSet),
+  ...WOOD_ORDER.flatMap(woodSet),
   "stone", "stone_stairs", "stone_slab", "stone_pressure_plate", "stone_button", "cobblestone", ...stairsSlabWall("cobblestone"),
   "mossy_cobblestone", ...stairsSlabWall("mossy_cobblestone"), "smooth_stone", "smooth_stone_slab",
   "stone_bricks", "cracked_stone_bricks", ...stairsSlabWall("stone_brick"), "chiseled_stone_bricks", "mossy_stone_bricks", ...stairsSlabWall("mossy_stone_brick"),
@@ -54,6 +56,7 @@ const BUILDING = [
   "reinforced_deepslate",
   "tuff", ...stairsSlabWall("tuff"), "chiseled_tuff", "polished_tuff", ...stairsSlabWall("polished_tuff"), "tuff_bricks", ...stairsSlabWall("tuff_brick"), "chiseled_tuff_bricks",
   "bricks", ...stairsSlabWall("brick"), "packed_mud", "mud_bricks", ...stairsSlabWall("mud_brick"),
+  "resin_block", "resin_bricks", ...stairsSlabWall("resin_brick"), "chiseled_resin_bricks",
   ...["", "red_"].flatMap((r) => [`${r}sandstone`, `chiseled_${r}sandstone`, ...stairsSlabWall(`${r}sandstone`), `cut_${r}sandstone`, `cut_${r}sandstone_slab`,
     `smooth_${r}sandstone`, ...stairsSlabWall(`smooth_${r}sandstone`, false)]),
   "prismarine", ...stairsSlabWall("prismarine"), "prismarine_bricks", ...stairsSlabWall("prismarine_brick", false), "dark_prismarine", ...stairsSlabWall("dark_prismarine", false),
@@ -74,25 +77,25 @@ const COLORED = [
   ...colors("bed"), "candle", ...colors("candle"), ...colors("banner"),
 ];
 
-const LOGS = WOODS.filter((w) => w !== "bamboo").map((w) => (w === "crimson" || w === "warped" ? `${w}_stem` : `${w}_log`));
+const LOGS = WOOD_ORDER.filter((w) => w !== "bamboo").map((w) => (w === "crimson" || w === "warped" ? `${w}_stem` : `${w}_log`));
 const CORALS = ["tube", "brain", "bubble", "fire", "horn"];
 const NATURAL = [
   "grass_block", "podzol", "mycelium", "dirt_path", "dirt", "coarse_dirt", "rooted_dirt", "farmland", "mud", "clay", "gravel", "sand", "sandstone", "red_sand",
-  "red_sandstone", "ice", "packed_ice", "blue_ice", "snow_block", "snow", "moss_block", "moss_carpet", "stone", "deepslate", "granite", "diorite", "andesite",
+  "red_sandstone", "ice", "packed_ice", "blue_ice", "snow_block", "snow", "moss_block", "moss_carpet", "pale_moss_block", "pale_moss_carpet", "pale_hanging_moss", "stone", "deepslate", "granite", "diorite", "andesite",
   "calcite", "tuff", "dripstone_block", "pointed_dripstone", "prismarine", "magma_block", "obsidian", "crying_obsidian", "netherrack", "crimson_nylium",
   "warped_nylium", "soul_sand", "soul_soil", "bone_block", "blackstone", "gilded_blackstone", "basalt", "smooth_basalt", "end_stone",
   ...["coal", "iron", "copper", "gold", "redstone", "emerald", "lapis", "diamond"].flatMap((o) => [`${o}_ore`, `deepslate_${o}_ore`]),
   "nether_gold_ore", "nether_quartz_ore", "ancient_debris", "raw_iron_block", "raw_copper_block", "raw_gold_block", "glowstone", "amethyst_block",
   "budding_amethyst", "small_amethyst_bud", "medium_amethyst_bud", "large_amethyst_bud", "amethyst_cluster",
-  ...LOGS.slice(0, 7), "mangrove_roots", "muddy_mangrove_roots", LOGS[7], "mushroom_stem", ...LOGS.slice(8),
-  ...WOODS.filter((w) => w !== "bamboo" && w !== "crimson" && w !== "warped").map((w) => `${w}_leaves`), "azalea_leaves", "flowering_azalea_leaves",
+  ...LOGS.slice(0, 8), "mangrove_roots", "muddy_mangrove_roots", LOGS[8], "mushroom_stem", ...LOGS.slice(9), "creaking_heart",
+  ...WOOD_ORDER.filter((w) => w !== "bamboo" && w !== "crimson" && w !== "warped").map((w) => `${w}_leaves`), "azalea_leaves", "flowering_azalea_leaves",
   "brown_mushroom_block", "red_mushroom_block", "nether_wart_block", "warped_wart_block", "shroomlight",
-  "oak_sapling", "spruce_sapling", "birch_sapling", "jungle_sapling", "acacia_sapling", "dark_oak_sapling", "mangrove_propagule", "cherry_sapling",
+  "oak_sapling", "spruce_sapling", "birch_sapling", "jungle_sapling", "acacia_sapling", "dark_oak_sapling", "pale_oak_sapling", "mangrove_propagule", "cherry_sapling",
   "azalea", "flowering_azalea", "brown_mushroom", "red_mushroom", "crimson_fungus", "warped_fungus", "short_grass", "fern", "dead_bush",
   "dandelion", "poppy", "blue_orchid", "allium", "azure_bluet", "red_tulip", "orange_tulip", "white_tulip", "pink_tulip", "oxeye_daisy", "cornflower",
-  "lily_of_the_valley", "torchflower", "wither_rose", "pink_petals", "spore_blossom", "bamboo", "sugar_cane", "cactus", "crimson_roots", "warped_roots",
+  "lily_of_the_valley", "torchflower", "closed_eyeblossom", "open_eyeblossom", "wither_rose", "pink_petals", "spore_blossom", "bamboo", "sugar_cane", "cactus", "crimson_roots", "warped_roots",
   "nether_sprouts", "weeping_vines", "twisting_vines", "vine", "tall_grass", "large_fern", "sunflower", "lilac", "rose_bush", "peony", "pitcher_plant",
-  "big_dripleaf", "small_dripleaf", "chorus_plant", "chorus_flower", "glow_lichen", "hanging_roots", "frogspawn", "turtle_egg", "sniffer_egg", "dried_ghast",
+  "big_dripleaf", "small_dripleaf", "chorus_plant", "chorus_flower", "glow_lichen", "hanging_roots", "resin_clump", "frogspawn", "turtle_egg", "sniffer_egg", "dried_ghast",
   "wheat_seeds", "cocoa_beans", "pumpkin_seeds", "melon_seeds", "beetroot_seeds", "torchflower_seeds", "pitcher_pod", "glow_berries", "sweet_berries",
   "nether_wart", "lily_pad", "seagrass", "sea_pickle", "kelp", "dried_kelp_block",
   ...CORALS.map((c) => `${c}_coral_block`), ...CORALS.map((c) => `dead_${c}_coral_block`), ...CORALS.map((c) => `${c}_coral`), ...CORALS.map((c) => `dead_${c}_coral`),
@@ -109,7 +112,7 @@ const FUNCTIONAL = [
   "enchanting_table", "end_crystal", "brewing_stand", "cauldron", "bell", "beacon", "conduit", "lodestone", "ladder", "scaffolding",
   "bee_nest", "beehive", "suspicious_sand", "suspicious_gravel", "lightning_rod", "flower_pot", "decorated_pot", "armor_stand",
   "item_frame", "glow_item_frame", "painting", "bookshelf", "chiseled_bookshelf", "lectern", "tinted_glass",
-  ...WOODS.flatMap((w) => [`${w}_sign`, `${w}_hanging_sign`]),
+  ...WOOD_ORDER.flatMap((w) => [`${w}_sign`, `${w}_hanging_sign`]),
   "chest", "barrel", "ender_chest", "shulker_box", ...colors("shulker_box"), "respawn_anchor", "infested_stone", "infested_cobblestone", "infested_stone_bricks",
   "infested_mossy_stone_bricks", "infested_cracked_stone_bricks", "infested_chiseled_stone_bricks", "infested_deepslate",
   "end_portal_frame", "vault", "skeleton_skull", "wither_skeleton_skull", "player_head", "zombie_head", "creeper_head", "piglin_head", "dragon_head", "dragon_egg",
@@ -137,7 +140,7 @@ const TOOLS = [
 ];
 const TOOLS_AFTER_ROCKETS = [
   "saddle", ...HARNESSES, "carrot_on_a_stick", "warped_fungus_on_a_stick",
-  ...WOODS.filter((w) => w !== "crimson" && w !== "warped").flatMap((w) => (w === "bamboo" ? ["bamboo_raft", "bamboo_chest_raft"] : [`${w}_boat`, `${w}_chest_boat`])),
+  ...WOOD_ORDER.filter((w) => w !== "crimson" && w !== "warped").flatMap((w) => (w === "bamboo" ? ["bamboo_raft", "bamboo_chest_raft"] : [`${w}_boat`, `${w}_chest_boat`])),
   "rail", "powered_rail", "detector_rail", "activator_rail", "minecart", "hopper_minecart", "chest_minecart", "furnace_minecart",
   "tnt_minecart", ...DISCS.map((d) => `music_disc_${d}`), "goat_horn",
 ];
@@ -155,7 +158,7 @@ const INGREDIENTS = [
   "flint", "wheat", "bone", "string", "feather", "snowball", "egg", "leather", "rabbit_hide", "honeycomb", "ink_sac", "glow_ink_sac",
   "turtle_scute", "armadillo_scute", "slime_ball", "clay_ball", "prismarine_shard", "prismarine_crystals", "nautilus_shell",
   "heart_of_the_sea", "fire_charge", "blaze_rod", "breeze_rod", "heavy_core", "nether_star", "ender_pearl", "ender_eye", "shulker_shell",
-  "popped_chorus_fruit", "disc_fragment_5", ...colors("dye"), "bowl", "sugar", "brick", "nether_brick",
+  "popped_chorus_fruit", "disc_fragment_5", ...colors("dye"), "bowl", "sugar", "brick", "nether_brick", "resin_clump", "resin_brick",
   "paper", "book", "firework_star", "glass_bottle", "nether_wart", "redstone", "glowstone_dust", "gunpowder", "dragon_breath",
   "fermented_spider_eye", "blaze_powder", "rabbit_foot", "glistering_melon_slice", "spider_eye", "pufferfish", "magma_cream",
   "golden_carrot", "ghast_tear", "turtle_helmet", "phantom_membrane",

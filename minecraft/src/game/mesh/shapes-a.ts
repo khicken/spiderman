@@ -8,6 +8,19 @@ const nbH = (h: number) => M.blocks[M.pi + HDX[h] + HDZ[h] * PZ];
 const above = () => M.blocks[M.pi + PY];
 const shapeOf = (s: number) => SHAPE[s & 0xfff];
 const LILY = idOfName("lily_pad");
+const PALE_CARPET = idOfName("pale_moss_carpet");
+
+function paleCarpetSides() {
+  const l = FL[4];
+  T.double = true;
+  T.ao = false;
+  for (let h = 0; h < 4; h++) {
+    if (!((M.meta >> h) & 1)) continue;
+    T.rot = (h - 2) & 3;
+    planeZ(0.4, 0, 16, 0, 16, l);
+  }
+  T.rot = 0;
+}
 
 function stairShape(f: number, top: number): number {
   const isStair = (s: number) => shapeOf(s) === SH.stairs && ((s >>> 12) & 4) === top;
@@ -334,6 +347,7 @@ export function meshShapeA(shape: number): boolean {
         T.ao = false;
         planeY(0.25, 0, 0, 16, 16, FL[2]);
       } else box(0, 0, 0, 16, 1, 16);
+      if (M.id === PALE_CARPET && M.meta & 15) paleCarpetSides();
       return true;
     case SH.snow_layer:
       setFLBlock(M.id, 0, TEX);

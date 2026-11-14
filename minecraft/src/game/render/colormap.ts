@@ -3,7 +3,7 @@ import { activePacks, packImage, type Img } from "../packs";
 import { resize } from "../packs/img";
 
 const ORIGINAL = BIOMES.map((b) => [b.grassColor, b.foliageColor] as const);
-const FIXED = /badlands|swamp|cherry/;
+const FIXED = /badlands|swamp|cherry|pale_garden/;
 
 function sample(map: Img, temp: number, downfall: number): number {
   const t = Math.max(0, Math.min(1, temp));

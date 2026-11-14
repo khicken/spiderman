@@ -11,7 +11,7 @@ const NO_HOLD = new Uint8Array(4096);
 const NO_HOLD_NAMES = new Set([
   "ladder", "sugar_cane", "bubble_column", "nether_portal", "end_portal", "end_gateway", "structure_void", "kelp", "kelp_plant",
   "seagrass", "tall_seagrass", "tall_seagrass_upper", "sea_pickle", "glow_lichen", "sculk_vein", "hanging_roots", "small_dripleaf",
-  "small_dripleaf_upper", "big_dripleaf_stem", "mangrove_propagule", "frogspawn", "lily_pad", "scaffolding", "light",
+  "small_dripleaf_upper", "big_dripleaf_stem", "mangrove_propagule", "frogspawn", "lily_pad", "scaffolding", "light", "resin_clump",
 ]);
 for (const b of BLOCKS) {
   const t = b.tags ?? [];

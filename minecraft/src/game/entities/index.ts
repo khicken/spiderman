@@ -306,6 +306,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     }
     if (e.data.invulnerable && source !== "void") return;
     if (e.data.arrowImmune && source === "arrow") return;
+    if (def.blockHurt?.(e, ctx, amount, source, attacker)) return;
     if (def.onHurt) {
       def.onHurt(e, ctx, amount, source, attacker, direct);
       return;

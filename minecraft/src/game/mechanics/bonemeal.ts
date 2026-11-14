@@ -5,6 +5,7 @@ import { dropStack, isAir, isName, isSolid, nameOf, randInt, sound, st, tag, wit
 import { canSurviveAt } from "./support";
 import { advanceSapling, cropMaxAge, setCropAge, stemFruit } from "./growth";
 import { growTree } from "./trees";
+import { paleCarpetBonemeal } from "./pale-garden";
 
 const between = (ctx: GameCtx, a: number, b: number) => a + randInt(ctx, b - a + 1);
 
@@ -184,6 +185,7 @@ function boneMeal(ctx: GameCtx, x: number, y: number, z: number, s: BlockState):
     grassBonemeal(ctx, x, y, z);
     return true;
   }
+  if (n === "pale_moss_carpet") return paleCarpetBonemeal(ctx, x, y, z, s);
   if (n === "moss_block") {
     if (!isAir(w.getBlock(x, y + 1, z))) return false;
     mossBonemeal(ctx, x, y, z);

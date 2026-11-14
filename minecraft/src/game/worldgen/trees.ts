@@ -9,11 +9,12 @@ import {
   mangroveTree, megaJungle, megaSpruce, OAK, oakTree, pineTree, SPRUCE, spruceTree, useTree,
 } from "./tree-shapes";
 import { B } from "./ids";
+import { paleOak } from "./pale-garden";
 
 type Kind =
   | "oak" | "fancy" | "birch" | "tall_birch" | "spruce" | "pine" | "mega_spruce" | "mega_pine" | "jungle" | "mega_jungle"
   | "jungle_bush" | "acacia" | "dark_oak" | "red_mushroom" | "brown_mushroom" | "swamp_oak" | "mangrove" | "cherry" | "oak_bush"
-  | "spruce_bush" | "azalea" | "bee_oak" | "bee_birch";
+  | "spruce_bush" | "azalea" | "bee_oak" | "bee_birch" | "pale_oak" | "pale_oak_creaking";
 
 interface Spec {
   count: number;
@@ -51,6 +52,7 @@ const TREES = new Map<number, Spec>([
   [BI.wooded, { count: 5, kinds: [["oak", 1]] }],
   [BI.mushroom, { count: 1, kinds: [["red_mushroom", 0.5], ["brown_mushroom", 0.5]] }],
   [BI.stonyPeaks, { count: 0, kinds: [] }],
+  [BI.paleGarden, { count: 16, grid: true, kinds: [["pale_oak_creaking", 0.1], ["pale_oak", 0.9]] }],
 ]);
 
 const REACH = 8;
@@ -66,7 +68,7 @@ function pick(spec: Spec, roll: number): Kind {
   return spec.kinds[spec.kinds.length - 1][0];
 }
 
-function grow(kind: Kind, x: number, y: number, z: number, r: Rng, ground: number) {
+function grow(kind: Kind, x: number, y: number, z: number, r: Rng, ground: number, w: Writer) {
   switch (kind) {
     case "oak": return oakTree(x, y, z, OAK, 4 + r.int(3));
     case "bee_oak": oakTree(x, y, z, OAK, 4 + r.int(3)); return beeNest(x, y + 2, z);
@@ -91,6 +93,8 @@ function grow(kind: Kind, x: number, y: number, z: number, r: Rng, ground: numbe
     case "oak_bush": return bush(x, y, z, JUNGLE);
     case "spruce_bush": return bush(x, y, z, SPRUCE);
     case "azalea": return azaleaTree(x, y, z);
+    case "pale_oak": return paleOak(w, r, x, y, z, false);
+    case "pale_oak_creaking": return paleOak(w, r, x, y, z, true);
   }
 }
 
@@ -138,7 +142,7 @@ export function placeTrees(ctx: ChunkCtx, w: Writer) {
         if (top === B.snow_block && biome !== BI.grove) continue;
         tr.seed(tseed);
         useTree(w, tr);
-        grow(kind, x, gy + 1, z, tr, gy);
+        grow(kind, x, gy + 1, z, tr, gy, w);
       }
     }
   }

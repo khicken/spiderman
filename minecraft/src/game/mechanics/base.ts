@@ -17,6 +17,7 @@ import { RANDOM_TICKS, farmlandToDirt, leavesRandomTick, saplingRandomTick } fro
 import { copperRandomTick, oxidizes } from "./copper";
 import { bedScheduledTick, blockUseFor, composterScheduledTick } from "./interact";
 import { CHEST_BEHAVIOR, placeChest } from "./chest";
+import { PALE_BEHAVIORS } from "./pale-garden";
 
 const AXIS = new Set([
   "basalt", "polished_basalt", "quartz_pillar", "purpur_pillar", "hay_block", "bone_block", "deepslate", "infested_deepslate",
@@ -176,6 +177,13 @@ function behaviorFor(b: BlockDef): BlockBehavior | null {
   const use = blockUseFor(n, b.shape, t);
   if (use) parts.push({ use });
   if (HAS_CUSTOM_BOXES_SET.has(n)) parts.push({ boxes: shapeBoxes });
+  const pale = PALE_BEHAVIORS[n];
+  if (pale) {
+    // Its place wins over the generic one; its hooks run after support has had the chance to break the block.
+    const { place, ...rest } = pale;
+    if (place) parts.unshift({ place });
+    parts.push(rest);
+  }
   return parts.length ? compose(parts) : null;
 }
 

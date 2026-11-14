@@ -20,6 +20,7 @@ import "./sculk";
 import "./copper";
 import "./cracks";
 import "./ghast";
+import "./pale-garden";
 
 export const BLOCK_TEXTURE_KEYS: string[] = ["missing", ...texKeys().sort()];
 

@@ -14,6 +14,7 @@ import { addExhaustion, damageSlot } from "./survival";
 import type { PlayerState } from "./state";
 import { useItem } from "./use";
 import { statMined } from "../systems/features/stats";
+import { naturalHeartXp } from "../systems/creaking-heart";
 import { pvpHook } from "../net/pvp-hook";
 
 const outline: Aabb[] = [];
@@ -143,6 +144,8 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
       const below = w.getBlock(x, y - 1, z);
       if (below !== AIR && (blockDef(below).solid || idOf(below) === blockId("water"))) replace = stateOf(blockId("water"));
     }
+    // Read before setBlock, which drops the heart's block entity and its natural flag.
+    const xp = def.xp ?? naturalHeartXp(w, x, y, z, s);
     if (!w.setBlock(x, y, z, replace)) return;
     ctx.emit({ type: "sound", name: `block.${def.sound}.break`, x: x + 0.5, y: y + 0.5, z: z + 0.5, volume: SOUND_VOL, pitch: 0.8 });
     ctx.emit({ type: "particles", kind: "block", x: x + 0.5, y: y + 0.5, z: z + 0.5, count: 32, state: s });
@@ -151,8 +154,8 @@ export function createInteraction(p: PlayerState, input: InputApi): Interaction 
         for (const d of computeDrops(s, held, ctx.random)) {
           ctx.entities.dropItem(d, x + 0.5 + (ctx.random() - 0.5) * 0.5, y + 0.5 + (ctx.random() - 0.5) * 0.5 - 0.125, z + 0.5 + (ctx.random() - 0.5) * 0.5);
         }
-        if (def.xp && !silk) {
-          const [a, b] = def.xp;
+        if (xp && !silk) {
+          const [a, b] = xp;
           const n = a + Math.floor(ctx.random() * (b - a + 1));
           if (n > 0) ctx.entities.dropXp(n, x + 0.5, y + 0.5, z + 0.5);
         }

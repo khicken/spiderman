@@ -11,7 +11,8 @@ export const WOOD_TYPES = [
   "crimson",
   "warped",
 ] as const;
-export type WoodType = (typeof WOOD_TYPES)[number];
+// pale_oak blocks live in pale-garden.ts at the end of the id order, not in WOOD_TYPES.
+export type WoodType = (typeof WOOD_TYPES)[number] | "pale_oak";
 
 export const COLORS = [
   "white",

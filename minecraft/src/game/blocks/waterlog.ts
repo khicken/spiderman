@@ -19,6 +19,7 @@ const NAMES = new Set([
   "weathered_copper_grate", "oxidized_copper_grate", "waxed_copper_grate", "waxed_exposed_copper_grate",
   "waxed_weathered_copper_grate", "waxed_oxidized_copper_grate", "rail", "powered_rail", "detector_rail", "activator_rail",
   "dried_ghast",
+  "resin_clump",
 ]);
 const SHAPES = new Set(["slab", "stairs", "fence", "wall", "pane", "trapdoor", "sign", "rail", "ladder", "chain", "lantern", "chest"]);
 for (const d of BLOCKS) {
