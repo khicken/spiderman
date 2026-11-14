@@ -194,7 +194,7 @@ export function createViews(getCtx: () => GameCtx) {
     v.update = (en, pt, x, y, z) => {
       v.group.position.set(x, y, z);
       const yaw = lerpAngle((en.data._pyaw as number) ?? en.yaw, en.yaw, pt);
-      const death = en.dead ? Math.min(1, Math.sqrt(Math.max(0, ((((en.data._death as number) ?? 0) + pt - 1) / 20) * 1.6))) : 0;
+      const death = en.dead && !def.onHurt ? Math.min(1, Math.sqrt(Math.max(0, ((((en.data._death as number) ?? 0) + pt - 1) / 20) * 1.6))) : 0;
       inner.rotation.set(0, yaw + Math.PI, death * (Math.PI / 2));
       // Baby zombies scale their own model from data.baby; only grow-based babies shrink here.
       v.baby = isBaby(en);
@@ -210,7 +210,7 @@ export function createViews(getCtx: () => GameCtx) {
       if (skinMat) syncPackSkin(en.type, model.root, skinMat, en);
       en.headYaw = hy;
       en.pitch = pitch;
-      shadeModel(model, getCtx(), en);
+      shadeModel(model, getCtx(), en, !def.onHurt);
       const flash = (en.data.flash as number) ?? 0;
       if (flash > 0) model.root.traverse((o) => {
         const m = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;

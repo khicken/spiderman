@@ -1,17 +1,17 @@
 import * as THREE from "three";
-import type { Entity, GameCtx, MobDef } from "../../contracts";
+import type { DamageSource, Entity, GameCtx, MobDef } from "../../contracts";
 import { blockDef } from "../../blocks/registry";
-import { blockBelow, moveBody, type MoveOpts } from "../../player/physics";
-import { isWater } from "../ai";
+import { fluidState } from "../../blocks/waterlog";
+import { blockBelow, fluidHeight, isWaterId, moveBody, type MoveOpts } from "../../player/physics";
 import { rig, wrap, setRot, type VPart } from "../rig";
-import { rider, mountPlayer, mountMob, registerSeats, hasRoom, isAnimal } from "../riding";
+import { rider, isRidden, mountPlayer, mountMob, dismountPlayer, dismountMob, mobPassengers, registerSeats, hasRoom, isAnimal } from "../riding";
 import { mobDef } from "../registry";
 import { blockCube, blockStateOfItem } from "../block-cube";
 import { boatSkin } from "./art";
 
 const HALF_PI = Math.PI / 2;
 const DEG = Math.PI / 180;
-const WATER_TOP = 8 / 9;
+const GRAVITY = 0.04;
 
 function boatParts(raft: boolean): VPart[] {
   const paddle = (name: string, z: number, ry: number): VPart => ({ name, pivot: [3, raft ? -4 : -5, z], box: [-1, 0, -5, 2, 2, 18], uv: [62, name === "left_paddle" ? 0 : 20], rot: [0, ry, Math.PI / 16] });
@@ -25,6 +25,7 @@ function boatParts(raft: boolean): VPart[] {
     ];
   return [
     { name: "bottom", pivot: [0, 3, 1], box: [-14, -9, -3, 28, 16, 3], uv: [0, 0], rot: [HALF_PI, 0, 0] },
+    { name: "water_patch", pivot: [0, -3, 1], box: [-14, -9, -3, 28, 16, 3], uv: [0, 0], rot: [HALF_PI, 0, 0] },
     { name: "back", pivot: [-15, 4, 4], box: [-13, -7, -1, 18, 6, 2], uv: [0, 19], rot: [0, Math.PI * 1.5, 0] },
     { name: "front", pivot: [15, 4, 0], box: [-8, -7, -1, 16, 6, 2], uv: [0, 27], rot: [0, HALF_PI, 0] },
     { name: "right", pivot: [0, 4, -9], box: [-14, -7, -1, 28, 6, 2], uv: [0, 35], rot: [0, Math.PI, 0] },
@@ -58,6 +59,7 @@ function boatModel(chest: boolean) {
         const raft = w === "bamboo";
         const r = rig(boatSkin(w), boatParts(raft), 6);
         r.root.rotation.y = -HALF_PI;
+        if (r.p.water_patch) maskWater(r.p.water_patch);
         if (chest && !mats.length) {
           const c = blockCube(blockStateOfItem("chest"));
           mats = c.materials.map((m) => m.clone());
@@ -71,8 +73,7 @@ function boatModel(chest: boolean) {
           const tr = (a.e.data._rowR as number) ?? 0;
           setRot(r.p.left_paddle, ...paddleRot(tl, false));
           setRot(r.p.right_paddle, ...paddleRot(tr, true));
-          const hurt = (a.e.data._wobble as number) ?? 0;
-          r.root.rotation.x = hurt > 0 ? Math.sin(hurt) * hurt * 0.02 : 0;
+          r.root.rotation.x = wobble(a.e, a.pt);
         });
         holder.add(built.root);
       }
@@ -85,6 +86,27 @@ function boatModel(chest: boolean) {
   };
 }
 
+// Vanilla BoatModel water_patch: a depth-only box filling the hull, drawn after opaque blocks and before
+// translucent water (render order 10), so the water surface does not show inside the boat.
+const MASK = new THREE.MeshBasicMaterial({ colorWrite: false, transparent: true, depthWrite: true });
+MASK.userData.mask = true;
+function maskWater(part: THREE.Object3D) {
+  part.traverse((o) => {
+    if (!(o as THREE.Mesh).isMesh) return;
+    (o as THREE.Mesh).material = MASK;
+    o.renderOrder = 9;
+  });
+}
+
+// Vanilla BoatRenderer: rocks by sin(h) * h * damage / 10 degrees, h the hurt time left. Clients without the
+// damage counter fall back to a mid value.
+export function wobble(e: Entity, pt: number) {
+  const h = e.hurtTicks - pt;
+  if (h <= 0) return 0;
+  const d = Math.max(0, ((e.data._dmg as number) ?? 20) - pt);
+  return Math.sin(h) * h * (d / 10) * ((e.data._hurtDir as number) ?? 1) * DEG;
+}
+
 const opts: MoveOpts = {};
 
 function waterSurface(ctx: GameCtx, e: Entity) {
@@ -94,11 +116,14 @@ function waterSurface(ctx: GameCtx, e: Entity) {
   const y0 = Math.floor(b.pos.y) - 1, y1 = Math.floor(b.pos.y + b.height + 0.5);
   for (const [ox, oz] of [[-hw, -hw], [hw, -hw], [-hw, hw], [hw, hw], [0, 0]]) {
     const x = Math.floor(b.pos.x + ox), z = Math.floor(b.pos.z + oz);
-    for (let y = y1; y >= y0; y--)
-      if (isWater(ctx.world.getBlock(x, y, z))) {
-        best = Math.max(best, y + (isWater(ctx.world.getBlock(x, y + 1, z)) ? 1 : WATER_TOP));
+    for (let y = y1; y >= y0; y--) {
+      // Vanilla checkInWater reads the fluid state, so kelp, seagrass and waterlogged blocks count, and flowing water is lower.
+      const s = fluidState(ctx.world, x, y, z);
+      if (isWaterId(s & 0xfff)) {
+        best = Math.max(best, y + fluidHeight(ctx.world, x, y, z, s));
         break;
       }
+    }
   }
   return best;
 }
@@ -112,10 +137,15 @@ function boatSeat(seats: number) {
   return {
     seats,
     at(v: Entity, i: number, n: number, p: Entity | null): [number, number] {
-      let fwd = 0;
-      if (n > 1) fwd = i === 0 ? 0.2 : -0.6;
-      if (p && isAnimal(p)) fwd += 0.2;
-      return [p ? 0.1 : -0.45, fwd];
+      // Vanilla getSinglePassengerXOffset: 0.15 on a chest boat.
+      let fwd = v.type === "chest_boat" ? 0.15 : 0;
+      if (n > 1) {
+        fwd = i === 0 ? 0.2 : -0.6;
+        if (p && isAnimal(p)) fwd += 0.2;
+      }
+      // Passenger attachment: height / 3 on a boat, 8/9 of the height on a raft; the player sits 0.6 lower.
+      const y = v.data.wood === "bamboo" ? 0.5 : 0.1875;
+      return [p ? y : y - 0.6, fwd];
     },
   };
 }
@@ -126,7 +156,7 @@ const touching: Entity[] = [];
 
 // Vanilla Boat.tick: when no player steers, mobs narrower than the boat that touch it climb in.
 function pickUp(e: Entity, ctx: GameCtx) {
-  if (rider(ctx, e) || !hasRoom(ctx, e)) return;
+  if (isRidden(ctx, e) || !hasRoom(ctx, e)) return;
   const b = e.body;
   ctx.entities.near(b.pos.x, b.pos.y, b.pos.z, 2.5, touching);
   for (const o of touching) {
@@ -163,26 +193,40 @@ function tick(e: Entity, ctx: GameCtx) {
   e.data.silent = true;
   const b = e.body;
   b.stepHeight = 0;
-  if (e.health < e.maxHealth) e.health = Math.min(e.maxHealth, e.health + 0.1);
-  if (e.hurtTicks > 0) e.data._wobble = e.hurtTicks;
+  const dmg = (e.data._dmg as number) ?? 0;
+  if (dmg > 0) e.data._dmg = Math.max(0, dmg - 1);
   const surface = waterSurface(ctx, e);
   const inWater = surface > b.pos.y - 0.01;
   const under = surface > b.pos.y + b.height;
+  const wasAir = e.data._air === true;
+  e.data._air = !inWater && !b.onGround;
+  // Vanilla Boat.tick: 60 ticks under water throws the passengers out.
+  const sunk = under ? ((e.data._sunk as number) ?? 0) + 1 : 0;
+  e.data._sunk = sunk;
+  if (sunk >= 60) {
+    if (isRidden(ctx, e)) dismountPlayer(ctx);
+    for (const m of mobPassengers(ctx, e, [])) dismountMob(m);
+  }
+  // Vanilla Boat.floatBoat.
   let inv: number;
-  if (under) {
-    b.vel.y += 0.01;
+  if (wasAir && inWater && !under) {
+    // Landing from a fall snaps onto the surface instead of plunging.
+    b.pos.y = surface - b.height + 0.101;
+    b.vel.y = 0;
+    inv = 1;
+  } else if (under) {
+    // Fully under water the lift is too small to beat gravity, so the boat sinks slowly (vanilla UNDER_WATER).
+    b.vel.y = (b.vel.y - GRAVITY + 0.01 * (GRAVITY / 0.65)) * 0.75;
     inv = 0.45;
   } else if (inWater) {
-    const target = surface - 0.1;
-    const buoy = (target - b.pos.y) / b.height;
-    b.vel.y += -0.04 + buoy * 0.12;
-    b.vel.y *= 0.75;
+    const d = (surface - b.pos.y) / b.height;
+    b.vel.y = (b.vel.y - GRAVITY + d * (GRAVITY / 0.65)) * 0.75;
     inv = 0.9;
   } else if (b.onGround) {
-    b.vel.y -= 0.04;
+    b.vel.y -= GRAVITY;
     inv = landFriction(ctx, e);
   } else {
-    b.vel.y -= 0.04;
+    b.vel.y -= GRAVITY;
     inv = 0.9;
   }
   b.vel.x *= inv;
@@ -224,19 +268,11 @@ function boatDef(chest: boolean): MobDef {
     height: 0.5625,
     maxHealth: 4,
     speed: 0,
-    sounds: { hurt: "block.wood.hit", death: "block.wood.break" },
-    seat: -0.45,
+    seat: -0.4125,
     createModel: () => boatModel(chest),
     tick,
-    onDeath(e, ctx) {
-      e.data._remove = true;
-      if (ctx.player.gameMode === "creative") return;
-      const w = (e.data.wood as string) || "oak";
-      const item = w === "bamboo" ? (chest ? "bamboo_chest_raft" : "bamboo_raft") : chest ? `${w}_chest_boat` : `${w}_boat`;
-      const p = e.body.pos;
-      ctx.entities.dropItem({ item, count: 1 }, p.x, p.y + 0.3, p.z);
-      dropContents(e, ctx);
-    },
+    onHurt: hurtBoat,
+
     onInteract(e, ctx) {
       if (chest && ctx.player.sneaking) {
         ctx.inventory.open("chest", { x: e.body.pos.x, y: e.body.pos.y, z: e.body.pos.z, entityId: e.id });
@@ -245,6 +281,40 @@ function boatDef(chest: boolean): MobDef {
       return hasRoom(ctx, e) && mountPlayer(ctx, e);
     },
   };
+}
+
+export function boatItem(e: Entity) {
+  const w = (e.data.wood as string) || "oak";
+  const chest = e.type === "chest_boat";
+  return w === "bamboo" ? (chest ? "bamboo_chest_raft" : "bamboo_raft") : chest ? `${w}_chest_boat` : `${w}_boat`;
+}
+
+// Damage that only living entities take (vanilla: boats do not fall, drown, starve or suffocate).
+const LIVING_ONLY = new Set<DamageSource>(["fall", "drown", "starve", "suffocate", "magic", "wither", "freeze", "fly_into_wall", "cramming", "sonic_boom", "thorns"]);
+
+// Vanilla VehicleEntity.hurtServer: a hit flips the rock direction, rocks for 10 ticks and adds amount * 10
+// to a damage counter that drains 1 per tick. Over 40, or any hit from a creative player, breaks the boat.
+export function hurtBoat(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player") {
+  if (e.dead || e.data._remove || LIVING_ONLY.has(source)) return;
+  if (source === "void") {
+    breakBoat(e, ctx, false);
+    return;
+  }
+  e.data._hurtDir = -((e.data._hurtDir as number) ?? 1);
+  e.hurtTicks = 10;
+  const dmg = ((e.data._dmg as number) ?? 0) + amount * 10;
+  e.data._dmg = dmg;
+  const creative = attacker === "player" && ctx.player.gameMode === "creative";
+  if (creative || dmg > 40) breakBoat(e, ctx, !creative && ctx.rules.doEntityDrops !== false);
+}
+
+// Vanilla VehicleEntity.destroy drops the boat item; ChestBoat.remove drops the chest contents even when discarded.
+function breakBoat(e: Entity, ctx: GameCtx, dropBoat: boolean) {
+  e.dead = true;
+  e.data._remove = true;
+  const p = e.body.pos;
+  if (dropBoat) ctx.entities.dropItem({ item: boatItem(e), count: 1 }, p.x, p.y + 0.3, p.z);
+  dropContents(e, ctx);
 }
 
 export function dropContents(e: Entity, ctx: GameCtx) {

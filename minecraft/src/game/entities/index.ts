@@ -306,6 +306,10 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     }
     if (e.data.invulnerable && source !== "void") return;
     if (e.data.arrowImmune && source === "arrow") return;
+    if (def.onHurt) {
+      def.onHurt(e, ctx, amount, source, attacker);
+      return;
+    }
     if ((source === "fire" || source === "lava") && (e.data.fireImmune || e.effects.some((f) => f.id === "fire_resistance"))) return;
     if (source === "drown" && e.data.waterBreathing) return;
     const inv = (e.data._inv as number) ?? 0;
@@ -391,7 +395,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
 
   function knockback(id: number, dx: number, dz: number, strength: number) {
     const e = byId.get(id);
-    if (!e || e.dead) return;
+    if (!e || e.dead || mobDef(e.type)?.onHurt) return;
     knockBody(e.body, dx, dz, strength, (e.data.kbResist as number) ?? 0);
   }
 

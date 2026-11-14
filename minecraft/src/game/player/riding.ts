@@ -30,6 +30,14 @@ export function entityScreenValid(p: PlayerApi, e: Entity | undefined) {
   return dx * dx + dy * dy + dz * dz < r * r;
 }
 
+// Vanilla Boat.getDismountLocationForPassenger: a side spot needs a floor, so over open water or a drop the
+// rider stands on top of the boat instead.
+function hasFloor(ctx: GameCtx) {
+  box.maxY = box.minY;
+  box.minY -= 0.5;
+  return !noCollision(ctx.world, box);
+}
+
 export function createRiding() {
   let chargeTicks = 0;
   let charge = 0;
@@ -53,7 +61,7 @@ export function createRiding() {
       for (const [sx, sz] of SIDES) {
         const len = Math.hypot(sx, sz);
         b.pos.set(v.body.pos.x + (sx / len) * r, Math.floor(v.body.pos.y) + dy, v.body.pos.z + (sz / len) * r);
-        if (noCollision(ctx.world, bodyBox(b, box))) {
+        if (noCollision(ctx.world, bodyBox(b, box)) && (!BOATS.has(v.type) || hasFloor(ctx))) {
           p.teleport(b.pos.x, b.pos.y, b.pos.z);
           return;
         }
