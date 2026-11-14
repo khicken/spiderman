@@ -452,7 +452,12 @@ export function createSpawner() {
     },
     despawn(ctx: GameCtx, e: Entity, def: MobDef) {
       if (!despawns(e, def)) return;
-      const d2 = (ctx.player.body.pos.x - e.body.pos.x) ** 2 + (ctx.player.body.pos.y - e.body.pos.y) ** 2 + (ctx.player.body.pos.z - e.body.pos.z) ** 2;
+      // Nearest of all players: in multiplayer ctx.player is the one the mob ticks against, which can be farther.
+      let d2 = Infinity;
+      for (const pl of (ctx as GameCtx & { playersAll?: () => GameCtx["player"][] }).playersAll?.() ?? [ctx.player]) {
+        d2 = Math.min(d2, (pl.body.pos.x - e.body.pos.x) ** 2 + (pl.body.pos.y - e.body.pos.y) ** 2 + (pl.body.pos.z - e.body.pos.z) ** 2);
+      }
+      if (d2 === Infinity) return;
       const far = despawnRange(spawnCat(def));
       if (d2 > far * far) {
         e.data._remove = true;

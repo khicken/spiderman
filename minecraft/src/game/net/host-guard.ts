@@ -12,6 +12,8 @@ export const RATES = {
   open: [4, 12],
   skin: [0.2, 3],
   pvp: [20, 40],
+  hit: [30, 60], // a sweep hits several mobs at once
+  kb: [30, 60],
   cheap: [0.1, 4], // cheap items gained in ways the host does not model
 } as const satisfies Record<string, readonly [perSecond: number, burst: number]>;
 export type RateKind = keyof typeof RATES;

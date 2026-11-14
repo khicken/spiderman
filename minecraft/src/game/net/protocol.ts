@@ -179,7 +179,8 @@ const HOST_USES = new Set([
   "flower_pot", "cauldron", "water_cauldron", "lava_cauldron", "powder_snow_cauldron", "composter", "decorated_pot", "lectern", "chiseled_bookshelf", "jukebox",
   "sweet_berry_bush", "cave_vines", "cave_vines_plant", "pumpkin",
 ]);
-export const hostUse = (block: string) => HOST_USES.has(block) || block.startsWith("potted_");
+// Fences: tying a lead changes host mobs.
+export const hostUse = (block: string) => HOST_USES.has(block) || block.startsWith("potted_") || block.endsWith("_fence");
 
 export const isDim = (v: unknown): v is Dim => typeof v === "string" && (DIMS as string[]).includes(v);
 export const int = (v: unknown, lo = -3e7, hi = 3e7): number | null => (Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi ? (v as number) : null);

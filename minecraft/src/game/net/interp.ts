@@ -4,7 +4,7 @@ export const INTERP_DELAY_MS = 100;
 export const EXTRAPOLATE_MS = 100;
 const MAX_SAMPLES = 32;
 // A jump this far is a teleport: snap instead of sliding across the world.
-const SNAP_DIST = 8;
+export const SNAP_DIST = 8;
 // The clock offset follows the fastest arrival, and creeps back up slowly so a clock drift cannot strand it.
 const OFFSET_CREEP = 0.002;
 
@@ -14,6 +14,8 @@ export interface Pose {
   z: number;
   yaw: number;
   pitch: number;
+  // Mobs turn the head apart from the body; written to `out` only when the sample carried one.
+  headYaw?: number;
 }
 
 interface Sample extends Pose {
@@ -49,7 +51,7 @@ export function createInterp(delay = INTERP_DELAY_MS, extrapolate = EXTRAPOLATE_
       let i = buf.length;
       while (i > 0 && buf[i - 1].t > sentAt) i--;
       if (i > 0 && buf[i - 1].t === sentAt) return;
-      buf.splice(i, 0, { t: sentAt, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
+      buf.splice(i, 0, { t: sentAt, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, headYaw: p.headYaw });
       if (buf.length > MAX_SAMPLES) buf.shift();
     },
     sample(now, out) {
@@ -59,6 +61,7 @@ export function createInterp(delay = INTERP_DELAY_MS, extrapolate = EXTRAPOLATE_
       const a = buf[0];
       if (buf.length === 1 || rt <= a.t) {
         Object.assign(out, { x: a.x, y: a.y, z: a.z, yaw: a.yaw, pitch: a.pitch });
+        if (a.headYaw !== undefined) out.headYaw = a.headYaw;
         return true;
       }
       const b = buf[1];
@@ -71,6 +74,7 @@ export function createInterp(delay = INTERP_DELAY_MS, extrapolate = EXTRAPOLATE_
       out.z = a.z + (b.z - a.z) * f;
       out.yaw = a.yaw + wrap(b.yaw - a.yaw) * Math.min(1, f);
       out.pitch = a.pitch + (b.pitch - a.pitch) * Math.min(1, f);
+      if (a.headYaw !== undefined && b.headYaw !== undefined) out.headYaw = a.headYaw + wrap(b.headYaw - a.headYaw) * Math.min(1, f);
       return true;
     },
   };
