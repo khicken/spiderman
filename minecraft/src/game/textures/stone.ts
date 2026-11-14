@@ -71,7 +71,17 @@ def("granite", (t, _r, s) => speckled(t, GRANITE, s, 0.12));
 def("polished_granite", (t, _r, s) => polished(t, [0x7d5546, ...GRANITE.slice(1, 4), 0xa9806f], s));
 def("diorite", (t, _r, s) => speckled(t, DIORITE, s, 0.14));
 def("polished_diorite", (t, _r, s) => polished(t, DIORITE, s));
-def("andesite", (t, _r, s) => speckled(t, ANDESITE, s, 0.1));
+// Andesite: higher-contrast pebbly gray than stone, with small light and dark clumps.
+def("andesite", (t, r, s) => {
+  noiseFill(t, [0x6e6e70, 0x7e7e80, 0x8a8a8c, 0x989899], s, { cells: 8, grain: 0.5, contrast: 1.6 });
+  for (let k = 0; k < 16; k++) {
+    const x = Math.floor(r() * S);
+    const y = Math.floor(r() * S);
+    const c = k % 2 ? 0xafafb1 : 0x5f5f61;
+    t.set(x, y, c).set(x + 1, y, c);
+    if (r() < 0.5) t.set(x, y + 1, c);
+  }
+});
 def("polished_andesite", (t, _r, s) => polished(t, ANDESITE, s));
 
 def("deepslate", (t, _r, s) => streaks(t, DEEPSLATE.slice(0, 5), s, true));

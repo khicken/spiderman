@@ -112,13 +112,13 @@ export function paintSpider(p: Pix, body: number[], eye: number, stripes = false
   p.map(face[0], face[1], [
     "........",
     "........",
-    "..e..e..",
-    ".EE..EE.",
-    ".EE..EE.",
+    ".e.ee.e.",
     "........",
-    "..f..f..",
-    "..f..f..",
-  ], { e: eye, E: shade(eye, 0.75), f: shade(body[0], 1.6) });
+    ".EE..EE.",
+    ".EE..EE.",
+    "..e..e..",
+    "........",
+  ], { e: eye, E: shade(eye, 0.75) });
 }
 
 export function spiderModel(key: "spider" | "cave_spider"): MobModel {
@@ -173,7 +173,7 @@ export function paintEnderman(p: Pix): void {
     "........",
     "........",
     "........",
-    "MmMMmMmM",
+    "mMm..mMm",
     "........",
     "........",
     "........",
@@ -209,7 +209,10 @@ export function slimePaint(p: Pix, magma: boolean): void {
       const f = p.cuboid(u, v, 8, 1, 8);
       const red = i === 4 || i === 5;
       for (const r of [f.top, f.bottom]) p.noise(r, [0x3a1a10, 0x4a2414, 0x2a120a]);
-      for (const r of [f.right, f.front, f.left, f.back]) p.noise(r, red ? [0xd84a10, 0xf07a20, 0xb83a0a] : [0x3a1a10, 0x52281a, 0x2a120a, 0x6a3a1a]);
+      for (const r of [f.right, f.front, f.left, f.back]) {
+        p.noise(r, red ? [0xd84a10, 0xf07a20, 0xb83a0a] : [0x3a1a10, 0x52281a, 0x2a120a, 0x4a1e10]);
+        if (!red) for (let x = 0; x < r[2]; x++) if (p.rand() < 0.22) p.px(r[0] + x, r[1], p.rand() < 0.5 ? 0xe85a10 : 0xc83a0c);
+      }
     }
     p.fillCuboid(0, 16, 4, 4, 4, [0xf0a020, 0xf8c840, 0xe08010]);
     const eyes = p.cuboid(24, 10, 8, 1, 8).front;

@@ -65,12 +65,15 @@ export function tridentGeometry(): THREE.BufferGeometry {
   return tridentGeo;
 }
 
+const _inset = new THREE.Matrix4();
+
 export interface Held {
   update(e: Entity): void;
 }
 
 // Item in the right hand, placed like the player's third-person item. e.data.held overrides the default item; "" hides it.
-export function attachHeld(r: Rig, item?: string): Held | null {
+// inset moves the hand toward the body in model pixels, for thin arms.
+export function attachHeld(r: Rig, item?: string, inset = 0): Held | null {
   const arm = r.p.right_arm;
   if (!arm) return null;
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -93,6 +96,7 @@ export function attachHeld(r: Rig, item?: string): Held | null {
         if (want) {
           mesh.geometry = spriteGeo(want);
           handItemMatrix(mesh.matrix, want === "trident" ? "trident_in_hand" : want, "flat", 1);
+          if (inset) mesh.matrix.premultiply(_inset.makeTranslation(-inset / 16, 0, 0));
         }
       }
     },

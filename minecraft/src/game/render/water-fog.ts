@@ -12,7 +12,10 @@ const WATER_FOG: Record<string, number> = {
 };
 
 const target: Rgb = [0, 0, 0];
+const surface: Rgb = [0, 0, 0];
 
+// Underwater fog, tuned to be easier to see through than vanilla. Vanilla timing is kept (water vision builds over 30 s),
+// but the fog starts further out and its color is the lit water color rather than vanilla's near black, then neon, blue.
 export function createWaterFog() {
   const col: Rgb = [0.02, 0.02, 0.2];
   let ticks = 0;
@@ -29,21 +32,27 @@ export function createWaterFog() {
       const g = ticks < 100 ? 0 : Math.min(1, (ticks - 100) / 500);
       return f * 0.6 + g * 0.4;
     },
-    // Fog color fades over 5 s to the new biome's color, then brightens with water vision.
-    color(biome: string, dt: number, out: Rgb): Rgb {
+    // biome fog color (fades over 5 s like vanilla) mixed into the biome's surface water color, scaled by daylight.
+    color(biome: string, waterColor: number, day: number, dt: number, out: Rgb): Rgb {
       hexToRgb(WATER_FOG[biome] ?? 0x050533, target);
       const k = fresh ? 1 : Math.min(1, dt / 5);
       fresh = false;
       for (let i = 0; i < 3; i++) col[i] += (target[i] - col[i]) * k;
+      hexToRgb(waterColor, surface);
       const v = this.vision();
-      const y = Math.min(1 / Math.max(col[0], 1e-4), 1 / Math.max(col[1], 1e-4), 1 / Math.max(col[2], 1e-4));
-      for (let i = 0; i < 3; i++) out[i] = col[i] * (1 - v) + col[i] * y * v;
+      const lit = (0.5 + 0.25 * v) * (0.3 + 0.7 * day);
+      for (let i = 0; i < 3; i++) out[i] = col[i] * 0.4 + surface[i] * lit * 0.85;
       return out;
     },
+    // Vanilla ends at 96 * max(0.25, vision); this starts at 48 blocks so the first seconds are not murky.
     far(biome: string, renderBlocks: number) {
-      let end = 96 * Math.max(0.25, this.vision());
+      let end = 96 * Math.max(0.5, this.vision());
       if (biome === "swamp" || biome === "mangrove_swamp") end *= 0.85;
       return Math.min(end, renderBlocks);
+    },
+    // Light boost while submerged, fed to the night vision path so deep floors are not black.
+    light() {
+      return 0.3 + 0.2 * this.vision();
     },
   };
 }

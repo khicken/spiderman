@@ -177,24 +177,84 @@ def("powder_snow", (t, r, s) => {
   speckle(t, r, 0xc9dfe8, 0.08);
 });
 
+// Translucent ice: soft light-blue body, long white diagonal streaks, alpha that drifts per pixel.
+const ICE = [0x91b7fd, 0x9bbefd, 0xa5c4fe, 0xb1ccfe, 0xc3d8ff];
 function iceBase(t: Tex, seed: number, c: readonly Color[], a: number): void {
   const r = makeRng(seed);
-  noiseFill(t, c, seed, { cells: 2, grain: 0.15, contrast: 1 });
-  for (let k = 0; k < 4; k++) {
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const n = fbm(seed, x, y, 4, 2) * 0.8 + r() * 0.2;
+      const k = Math.max(0, Math.min(c.length - 2, Math.floor((n - 0.2) * (c.length - 1) * 1.4)));
+      t.set(x, y, c[k], a < 255 ? Math.round(a - 18 + n * 30) : 255);
+    }
+  // Long streaks run lower-left to upper-right; a faint companion line makes them 2px soft.
+  const hi = c[c.length - 1];
+  for (let k = 0; k < 3; k++) {
+    const x0 = Math.floor(r() * S);
+    const y0 = 4 + Math.floor(r() * 12);
+    const len = 4 + Math.floor(r() * 6);
+    for (let i = 0; i < len; i++) {
+      const x = (x0 + i) % S;
+      const y = y0 - i;
+      if (y < 0) break;
+      t.set(x, y, mix(hi, 0xffffff, 0.35), a < 255 ? Math.min(255, a + 25) : 255);
+      if (i > 0 && i < len - 1) t.set((x + 1) % S, y, hi, a < 255 ? a + 5 : 255);
+    }
+  }
+}
+def("ice", (t, _r, s) => iceBase(t, s, ICE, 170));
+
+// Packed ice: opaque, paler, fine blocky crystal noise with short bright shards.
+def("packed_ice", (t, r, s) => {
+  const c = [0x8db4fa, 0x97bbfa, 0xa0c1fb, 0xaac7fb, 0xb5cefc];
+  noiseFill(t, c.slice(0, 4), s, { cells: 8, grain: 0.6, contrast: 1.3 });
+  for (let k = 0; k < 14; k++) {
     const x = Math.floor(r() * S);
     const y = Math.floor(r() * S);
-    const len = 3 + Math.floor(r() * 5);
-    for (let i = 0; i < len; i++) t.set(x + i, y - i, c[c.length - 1]);
+    t.set(x, y, c[4]);
+    if (r() < 0.5) t.set(x + 1, y, c[3]);
+    else t.set(x, y + 1, c[3]);
   }
-  if (a < 255) for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) t.setAlpha(x, y, a);
+  speckle(t, r, 0x86aef4, 0.05);
+});
+
+// Blue ice: deeper saturated blue, mottled light flecks, faint darker crack lines.
+def("blue_ice", (t, r, s) => {
+  const c = [0x74a8fd, 0x7cadfd, 0x85b3fe, 0x8fbafe, 0x9cc3ff, 0xa9ccff];
+  noiseFill(t, c.slice(0, 5), s, { cells: 4, grain: 0.5, contrast: 1.4 });
+  speckle(t, r, c[5], 0.08);
+  for (let k = 0; k < 4; k++) {
+    let x = Math.floor(r() * S);
+    let y = Math.floor(r() * S);
+    for (let i = 0; i < 5 + Math.floor(r() * 4); i++) {
+      t.set(x, y, 0x6c9ff4);
+      if (r() < 0.6) x += r() < 0.5 ? 1 : -1;
+      else y += r() < 0.5 ? 1 : -1;
+    }
+  }
+});
+
+// Frosted ice: ice plus white frost cracks that branch more each stage.
+function frost(t: Tex, r: Rng, n: number): void {
+  for (let k = 0; k < n; k++) {
+    let x = Math.floor(r() * S);
+    let y = Math.floor(r() * S);
+    let dx = r() < 0.5 ? 1 : -1;
+    let dy = r() < 0.5 ? 1 : -1;
+    for (let i = 0; i < 4 + Math.floor(r() * 5); i++) {
+      t.set(x, y, 0xeef5ff, 225);
+      if (r() < 0.25) dx = -dx;
+      if (r() < 0.25) dy = -dy;
+      if (r() < 0.5) x += dx;
+      else y += dy;
+      if (x < 0 || y < 0 || x >= S || y >= S) break;
+    }
+  }
 }
-def("ice", (t, _r, s) => iceBase(t, s, [0x7ea7f5, 0x8bb2f8, 0x96baf9, 0xa7c6fb, 0xc4daff], 190));
-def("packed_ice", (t, _r, s) => iceBase(t, s, [0x7da5f0, 0x8cb2f4, 0x97baf6, 0xa4c3f8, 0xbcd4fb], 255));
-def("blue_ice", (t, _r, s) => iceBase(t, s, [0x6fa1f6, 0x74a8fd, 0x7fb0fd, 0x8fbcfe, 0xb1d1ff], 255));
 for (let i = 0; i < 4; i++)
   def(`frosted_ice_${i}`, (t, r, s) => {
-    iceBase(t, s, [0x7ea7f5, 0x8bb2f8, 0x96baf9, 0xa7c6fb, 0xc4daff], 190);
-    cracks(t, r, 0xe8f2ff, i * 3, 5);
+    iceBase(t, s, ICE, 170);
+    frost(t, r, 1 + i * 2);
   });
 
 const WATER = [0x9a9a9a, 0xa8a8a8, 0xb4b4b4, 0xc0c0c0, 0xd2d2d2];

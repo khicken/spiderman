@@ -132,14 +132,20 @@ def("daylight_detector_side", (t, _r, s) => {
 
 const TNT_RED = [0x8a1a0a, 0xb02a14, 0xd8381c, 0xe85a3a];
 def("tnt_side", (t, r) => {
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) t.set(x, y, TNT_RED[1 + Math.floor(r() * 2.5)]);
-  for (let x = 0; x < S; x += 4) t.vline(x, 0, 15, TNT_RED[0]);
+  for (let y = 0; y < S; y++)
+    for (let x = 0; x < S; x++) {
+      const k = x % 4;
+      const tone = k === 0 ? 0 : k === 1 ? 3 : k === 3 ? 1 : 2;
+      t.set(x, y, TNT_RED[r() < 0.15 ? Math.max(0, tone - 1) : tone]);
+    }
   t.rect(0, 5, 16, 6, 0xe8e8e8).hline(0, 15, 5, 0xffffff).hline(0, 15, 10, 0xb8b8b8);
   t.ascii(["XXX.X..X.XXX", ".X..XX.X..X.", ".X..X.XX..X.", ".X..X..X..X."], { X: 0x1a1a1a }, 2, 6);
 });
 def("tnt_top", (t, r) => {
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) t.set(x, y, TNT_RED[1 + Math.floor(r() * 2.5)]);
-  t.border(TNT_RED[0]).rect(6, 6, 4, 4, 0x3a3a3a).rect(7, 7, 2, 2, 0xd8d8d8);
+  for (let i = 0; i < S; i += 4) t.hline(0, 15, i, TNT_RED[0]).vline(i, 0, 15, TNT_RED[0]);
+  for (let y = 1; y < S; y += 4) for (let x = 1; x < S; x += 4) t.set(x, y, TNT_RED[3]);
+  t.rect(6, 6, 4, 4, 0x3a3a3a).rect(7, 7, 2, 2, 0xd8d8d8);
 });
 def("tnt_bottom", (t, r) => {
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) t.set(x, y, TNT_RED[Math.floor(r() * 2.5)]);

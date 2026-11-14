@@ -132,7 +132,7 @@ function paintCow(p: Pix, base: number[], spot: number[], key: string) {
   p.px(f[0] + 5, f[1] + 6, 0x3b3b3b);
   p.fillCuboid(22, 0, 1, 3, 1, [0xd8d0bc, 0xc9c0aa]);
   const body = p.fillCuboid(18, 4, 12, 18, 10, base);
-  patches(p, [18, 4, 64 - 18, 28], spot, 9, 3);
+  patches(p, [18, 4, 64 - 18, 28], spot, 7, 4.5);
   void body;
   p.fillCuboid(52, 0, 4, 6, 1, [0xe4a29f, 0xd99592]);
   const leg = p.fillCuboid(0, 16, 4, 12, 4, base);

@@ -43,7 +43,7 @@ function paintVillager(p: Pix, prof: Prof) {
   const head = p.fillCuboid(0, 0, 8, 10, 8, SKIN);
   const f = head.front;
   p.rect([f[0] + 1, f[1] + 3, 6, 1], 0x4d3424);
-  eyes(p, f[0] + 1, f[1] + 4, 4, 0xffffff, 0x2a8a3a, false);
+  eyes(p, f[0] + 1, f[1] + 4, 4, 0xffffff, 0x2a8a3a);
   p.rect([f[0] + 2, f[1] + 8, 4, 1], 0x8a5a48);
   p.noise(head.top, [0x4d3424, 0x553a28]);
   p.fillCuboid(24, 0, 2, 4, 2, [0xa8775f, 0x9e6e57]);

@@ -17,13 +17,17 @@ export const DYE_COLOR: Record<string, Color> = Object.fromEntries(DYES.map((d, 
 export const WOOL_COLOR: Record<string, Color> = Object.fromEntries(DYES.map((d, i) => [d, WOOL[i]]));
 
 function wool(t: Tex, base: Color, seed: number): void {
-  const c = shades(base, 5, lum(base) < 0.15 ? 0.5 : 0.2);
+  const c = shades(lum(base) > 0.85 ? scale(base, 0.93) : base, 5, lum(base) < 0.15 ? 0.45 : 0.16);
   const r = makeRng(seed);
+  // Knit look: 4px columns of diagonal stitches, alternating lean, so the face reads as woven V rows.
+  const stitch = [1, 0, 0, -1];
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      const n = fbm(seed, x, y, 8, 2);
-      const weave = (x + y * 2) % 5 === 0 ? -1 : (x * 3 + y) % 7 === 0 ? 1 : 0;
-      const v = Math.round(n * 2.4 + 0.8 + weave + (r() - 0.5) * 1.4);
+      const col = x >> 2;
+      const lean = col % 2 === 0 ? x : -x;
+      const phase = (((y + lean + col * 2) % 4) + 4) % 4;
+      const n = fbm(seed, x, y, 4, 2);
+      const v = Math.round(2 + stitch[phase] + (n - 0.5) * 1.6 + (r() - 0.5) * 0.9);
       t.set(x, y, c[Math.max(0, Math.min(4, v))]);
     }
 }
