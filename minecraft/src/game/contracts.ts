@@ -61,6 +61,8 @@ export type Horizontal = 0 | 1 | 2 | 3;
 //  leaves:        bit 0 player placed (no decay)
 //  vault:         bits 0-1 facing (Horizontal), bit 2 active, bit 3 ominous
 //  trial spawner: bits 0-1 0 inactive, 1 active, 2 ejecting reward; bit 3 ominous
+//  creaking heart: bits 0-1 axis (0 y, 1 x, 2 z), bits 2-3 state (0 uprooted, 1 dormant, 2 awake)
+//  pale hanging moss: 0 tip, 1 middle piece
 export type Shape =
   | "air"
   | "cube"
@@ -113,7 +115,8 @@ export type SoundGroup =
   | "stone" | "wood" | "gravel" | "grass" | "sand" | "glass" | "wool" | "metal"
   | "snow" | "ladder" | "anvil" | "slime" | "honey" | "netherrack" | "nether_bricks"
   | "deepslate" | "copper" | "amethyst" | "mud" | "cherry_wood" | "bamboo_wood"
-  | "tuff" | "trial_spawner" | "heavy_core" | "vault" | "lantern" | "chain" | "plant";
+  | "tuff" | "trial_spawner" | "heavy_core" | "vault" | "lantern" | "chain" | "plant"
+  | "resin" | "resin_bricks" | "creaking_heart";
 
 // Texture keys use vanilla texture file names: "grass_block_top", "oak_log_top", "furnace_front".
 export interface BlockTextures {
@@ -419,6 +422,8 @@ export interface MobDef {
   // Replaces mob damage for non-living entities (vanilla VehicleEntity): no health loss, hurt tint, hurt sound, knockback or death animation.
   onHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
   onInteract?(e: Entity, ctx: GameCtx, held: ItemStack | null): boolean; // shear, milk, breed, ride
+  // True cancels the hit before any health loss (a creaking bound to its heart).
+  blockHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player"): boolean;
 }
 
 // ---------- Events ----------

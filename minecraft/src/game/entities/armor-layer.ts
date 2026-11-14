@@ -13,7 +13,7 @@ const BASE: Record<string, number> = {
 };
 const TRIM: Record<string, number> = {
   iron_ingot: 0xc8c8c8, copper_ingot: 0xb4684d, gold_ingot: 0xdeb12d, lapis_lazuli: 0x416e97, emerald: 0x11a036, diamond: 0x6eecd2,
-  netherite_ingot: 0x625859, redstone: 0x971607, amethyst_shard: 0x9a5cc6, quartz: 0xe3d4c4,
+  netherite_ingot: 0x625859, redstone: 0x971607, amethyst_shard: 0x9a5cc6, quartz: 0xe3d4c4, resin_brick: 0xe8711e,
 };
 
 export function armorMaterial(item: string): string | null {

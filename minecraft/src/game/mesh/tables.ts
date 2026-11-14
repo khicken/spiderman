@@ -1,5 +1,5 @@
 import type { BlockDef, BlockTextures, Shape } from "../contracts";
-import { BLOCKS } from "../blocks/registry";
+import { BLOCKS, STATE_EMIT } from "../blocks/registry";
 import { textureLayer } from "../textures/index";
 
 const SHAPE_NAMES: Shape[] = [
@@ -140,12 +140,19 @@ function trialKey(cf: number, meta: number): string {
   return `trial_spawner_${cf === 2 ? "top" : "side"}_${st ? "active" : "inactive"}${om}`;
 }
 
+const HEART_STATE = ["", "_dormant", "_awake", ""];
+const heartKey = (cf: number, meta: number) => `creaking_heart${cf === 2 || cf === 3 ? "_top" : ""}${HEART_STATE[(meta >> 2) & 3]}`;
+
 function fillTex(d: BlockDef) {
   const t = d.textures;
   const facing = d.shape === "cube" && !!t.front;
   const pillar = d.shape === "cube" && !t.front && (!!t.end || PILLAR_NAMES.test(d.name));
   for (let meta = 0; meta < 16; meta++) {
     for (let wf = 0; wf < 6; wf++) {
+      if (d.name === "creaking_heart") {
+        TEX[(d.id * 16 + meta) * 6 + wf] = layerOf(heartKey(axisToCanonical(meta & 3, wf), meta));
+        continue;
+      }
       let cf = wf;
       if (facing && (meta & 7) < 6) cf = facingToCanonical(meta & 7, wf);
       else if (pillar && meta < 3) cf = axisToCanonical(meta, wf);
@@ -157,6 +164,7 @@ function fillTex(d: BlockDef) {
       if ((d.name === "beehive" || d.name === "bee_nest") && meta & 8 && cf === 5) key = `${d.name}_front_honey`;
       if (d.name === "vault") key = vaultKey(facingToCanonical(H_FACE[meta & 3], wf), meta);
       if (d.name === "trial_spawner") key = trialKey(cf, meta);
+      if (d.name === "pale_hanging_moss" && meta === 1) key = "pale_hanging_moss";
       TEX[(d.id * 16 + meta) * 6 + wf] = layerOf(key);
     }
   }
@@ -185,6 +193,16 @@ for (const d of BLOCKS) {
   if (d.name.includes("wall_")) k |= K.WallMount;
   KIND[id] = k;
   fillTex(d);
+}
+
+// Light the mesher bakes into a block's own faces: glowing textures that give no world light only raise this.
+export const MESH_EMIT = Uint8Array.from(STATE_EMIT);
+for (const d of BLOCKS) {
+  for (let m = 0; m < 16; m++) {
+    const s = d.id | (m << 12);
+    if (d.name === "open_eyeblossom") MESH_EMIT[s] = Math.max(MESH_EMIT[s], 10);
+    if (d.name === "creaking_heart" && ((m >> 2) & 3) === 2) MESH_EMIT[s] = Math.max(MESH_EMIT[s], 12);
+  }
 }
 
 export const GRASS_OVERLAY = hasLayer("grass_block_side_overlay") ? layerOf("grass_block_side_overlay") : NONE;

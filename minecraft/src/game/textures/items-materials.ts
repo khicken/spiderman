@@ -356,6 +356,7 @@ export const MATERIAL_PAINTERS: Record<string, Painter> = {
   netherite_ingot: ingot(NETH),
   brick: (p) => T(p, BRICK, { A: rampOf("#a4523a", "#3a140a") }),
   nether_brick: (p) => T(p, BRICK, { A: rampOf("#4a2026", "#160608") }),
+  resin_brick: (p) => T(p, BRICK, { A: rampOf("#f08a34", "#5a2208") }),
   raw_iron: raw(rampOf("#c8a88a", "#3e2e22"), "#e8d4c0"),
   raw_gold: raw(MAT.golden, "#fffda5"),
   raw_copper: raw(COPPER, "#5ec29a"),

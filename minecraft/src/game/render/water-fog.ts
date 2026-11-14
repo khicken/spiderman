@@ -9,6 +9,7 @@ const WATER_FOG: Record<string, number> = {
   swamp: 0x232317,
   mangrove_swamp: 0x4d7a60,
   cherry_grove: 0x5db7ef,
+  pale_garden: 0x556980,
 };
 
 const target: Rgb = [0, 0, 0];

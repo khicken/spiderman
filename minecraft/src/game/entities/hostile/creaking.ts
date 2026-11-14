@@ -1,7 +1,9 @@
 import * as THREE from "three";
-import type { Entity, GameCtx, MobDef, MobModel } from "../../contracts";
+import type { DamageSource, Entity, GameCtx, MobDef, MobModel } from "../../contracts";
+import { blockId, hasBlock } from "../../blocks/registry";
+import { crumble, heartHurt, linkHolds, type HeartPos } from "../../systems/creaking-heart";
 import { applyPhysics, canSee, clearPath, idleLook, meleeAttack, playerTargetable } from "../ai";
-import { chase, discard, hurtAmount, idle, naturalSpawn, num, sound, updateTarget } from "./brain";
+import { chase, hurtAmount, idle, num, sound, updateTarget } from "./brain";
 import { skinOf } from "./looks-undead";
 import { type Pix, shade } from "./pix";
 import { attackTime, headLook, rig, setRot, wrap, type VPart } from "./rig";
@@ -120,10 +122,11 @@ function watched(e: Entity, ctx: GameCtx): boolean {
 }
 
 function tick(e: Entity, ctx: GameCtx): void {
-  if (naturalSpawn(e) && ctx.time.dayTime % 24000 < 12500) {
-    discard(e);
+  if (!linkHolds(ctx, e)) {
+    crumble(ctx, e);
     return;
   }
+  if (num(e, "_blockCd") > 0) e.data._blockCd = num(e, "_blockCd") - 1;
   const hurt = hurtAmount(e);
   const frozen = watched(e, ctx);
   if (frozen !== !!e.data.frozen) {
@@ -146,19 +149,32 @@ function tick(e: Entity, ctx: GameCtx): void {
   if (num(e, "_swing") > 0) e.data._swing = num(e, "_swing") - 1;
 }
 
+// Vanilla Creaking.hurtServer: a heart-bound creaking never loses health; a player's hit makes the heart bleed resin.
+function blockHurt(e: Entity, ctx: GameCtx, _amount: number, source: DamageSource, attacker?: Entity | "player"): boolean {
+  const h = e.data.heart as HeartPos | undefined;
+  if (!h || source === "void") return false;
+  if (!attacker || num(e, "_blockCd") > 0) return true;
+  e.data._blockCd = 8;
+  const p = e.body.pos;
+  if (hasBlock("pale_oak_wood")) ctx.emit({ type: "particles", kind: "block", x: p.x, y: p.y + 1.3, z: p.z, count: 10, state: blockId("pale_oak_wood") });
+  sound(ctx, e, "entity.creaking.sway");
+  if (attacker === "player") heartHurt(ctx, h, e);
+  return true;
+}
+
 export const CREAKING_DEF: MobDef = {
   type: "creaking",
   displayName: "Creaking",
   category: "hostile",
   width: 0.9,
   height: 2.7,
-  maxHealth: 20,
+  maxHealth: 1,
   speed: SPEED,
   attackDamage: 3,
   xp: [5, 5],
   drops: [],
   sounds: { ambient: "entity.creaking.ambient", hurt: "entity.creaking.hurt", death: "entity.creaking.death", step: "entity.creaking.step" },
-  spawn: { dims: ["overworld"], biomes: ["dark_forest"], light: "dark", group: [1, 1], weight: 5 },
   createModel: creakingModel,
   tick,
+  blockHurt,
 };

@@ -8,6 +8,7 @@ import { MISC_RECIPES } from "./recipes-misc";
 import { smeltRecipe, smeltTicks, SMELT_RECIPES, type SmeltKind } from "./recipes-smelt";
 import { STONE_RECIPES, STONECUT_EDGES } from "./recipes-stone";
 import { WOOD_RECIPES } from "./recipes-wood";
+import { PALE_RECIPES } from "./recipes-pale";
 import { copyStack, maxDurability } from "./stack";
 
 export type { SmeltKind } from "./recipes-smelt";
@@ -27,7 +28,7 @@ const templates: CraftRecipe[] = [
   }),
 ];
 
-export const CRAFT_RECIPES: CraftRecipe[] = [...WOOD_RECIPES, ...STONE_RECIPES, ...MISC_RECIPES, ...templates];
+export const CRAFT_RECIPES: CraftRecipe[] = [...WOOD_RECIPES, ...STONE_RECIPES, ...MISC_RECIPES, ...templates, ...PALE_RECIPES];
 
 const ALTS = new Map<string, Set<string>>();
 function ingSet(ing: Ing): Set<string> {

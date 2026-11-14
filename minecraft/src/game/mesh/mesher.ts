@@ -10,7 +10,7 @@ import { meshShapeB } from "./shapes-b";
 import { blendTints, tintOf } from "./tint";
 import { FULL, GRASS_OVERLAY, GRASS_SNOW, K, KIND, LAYER, NONE, SH, SHAPE, TEX, TINT } from "./tables";
 import { hasCustomMesh, meshCustom } from "./shapes-c";
-import { STATE_EMIT } from "../blocks/registry";
+import { MESH_EMIT } from "./tables";
 import { BUFS, emitQuad, finish, Q, QA, QB, QP, QS, QUV } from "./writer";
 
 const FV = [
@@ -132,7 +132,7 @@ export function meshInto(input: MeshInput) {
         M.state = s;
         M.id = id;
         M.meta = s >>> 12;
-        M.emit = STATE_EMIT[s];
+        M.emit = MESH_EMIT[s];
         M.tint = TINT[id] ? tintOf(id, M.meta, z * 16 + x) : 0xffffff;
         M.buf = BUFS[LAYER[id]];
         if (shape === SH.cube) {

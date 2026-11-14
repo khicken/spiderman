@@ -50,7 +50,7 @@ function familyOf(name: string, shape: string, tags: string[]): Sup {
   if (shape === "pressure_plate") return Sup.Plate;
   if (shape === "repeater" || shape === "comparator" || shape === "redstone_wire") return Sup.Diode;
   if (name === "cave_vines" || name === "cave_vines_plant" || name === "weeping_vines" || name === "weeping_vines_plant" ||
-    name === "hanging_roots" || name === "spore_blossom") return Sup.HangDown;
+    name === "hanging_roots" || name === "spore_blossom" || name === "pale_hanging_moss") return Sup.HangDown;
   if (name === "twisting_vines" || name === "twisting_vines_plant") return Sup.GrowUp;
   if (shape === "lantern") return Sup.Lantern;
   if (name === "fire") return Sup.Fire;

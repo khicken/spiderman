@@ -6,7 +6,7 @@ const NETHER = (w: WoodType) => w === "crimson" || w === "warped";
 
 const sound = (w: WoodType): SoundGroup => (w === "cherry" ? "cherry_wood" : w === "bamboo" ? "bamboo_wood" : "wood");
 
-const leafTint = (w: WoodType): Tint => (w === "birch" ? "birch" : w === "spruce" ? "spruce" : w === "cherry" ? null : "foliage");
+const leafTint = (w: WoodType): Tint => (w === "birch" ? "birch" : w === "spruce" ? "spruce" : w === "cherry" || w === "pale_oak" ? null : "foliage");
 
 const sapling = (w: WoodType) => (w === "mangrove" ? "mangrove_propagule" : `${w}_sapling`);
 
@@ -51,7 +51,7 @@ function sapl(w: WoodType): BlockSpec[] {
   return [b(sapling(w), { ...PLANT, tags: ["saplings"] })];
 }
 
-function woodType(w: WoodType): BlockSpec[] {
+export function woodType(w: WoodType): BlockSpec[] {
   const s = sound(w);
   const fl = !NETHER(w);
   const log: Props = { hardness: 2, blastResistance: 2, tool: "axe", sound: s, flammable: fl };

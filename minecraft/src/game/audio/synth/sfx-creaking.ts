@@ -1,5 +1,6 @@
 import { addGrain, addGrains, addTone, alloc, rand } from "./dsp";
 import { R, seq, step, thud, type Gen, type MobSounds } from "./mob-kit";
+import type { Recipe } from "./voice";
 
 // Stick-slip friction: a train of short resonant ticks whose rate drifts, which the ear hears as a wooden creak.
 function creak(dur: number, rate0: number, rate1: number, res: number, amp = 1): Gen {
@@ -39,5 +40,15 @@ export const CREAKING_SOUNDS: Record<string, MobSounds> = {
     freeze: R(seq([[creak(0.3, 90, 25, 600), 0], [snap(600), 0.28, 0.6]]), 0.6),
     unfreeze: R(seq([[snap(650), 0, 0.5], [creak(0.35, 25, 85, 560), 0.04]]), 0.6),
     step: R(seq([[step("mid"), 0], [creak(0.12, 60, 80, 700, 0.5), 0.02, 0.5]]), 0.6, 4, 0.12),
+    sway: R(seq([[creak(0.5, 35, 90, 480), 0], [creak(0.4, 90, 30, 560, 0.7), 0.45]]), 0.7),
+    twitch: R(seq([[snap(800), 0], [creak(0.2, 120, 60, 700), 0.02, 0.8], [snap(600), 0.25, 0.6], [creak(0.25, 110, 40, 620), 0.27, 0.7]]), 0.75),
+    spawn: R(seq([[thud(70, 0.12, 0.6), 0], [creak(0.9, 20, 70, 380), 0.05]]), 0.8, 2),
   },
+};
+
+// The heart is a hollow trunk: lower resonance and slower, heavier friction than the creaking itself.
+export const CREAKING_HEART_SFX: Record<string, Recipe> = {
+  "block.creaking_heart.hurt": R(seq([[thud(110, 0.1, 0.5), 0], [creak(0.6, 70, 25, 300), 0.03]]), 0.8),
+  "block.creaking_heart.spawn": R(seq([[creak(1.2, 15, 55, 260), 0], [thud(80, 0.15, 0.5), 1.1, 0.8]]), 0.85, 2),
+  "block.creaking_heart.idle": R(creak(1.4, 18, 34, 240, 0.8), 0.45),
 };

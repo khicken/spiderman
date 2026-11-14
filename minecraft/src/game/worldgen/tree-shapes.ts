@@ -6,13 +6,14 @@ const S = stateOf;
 export const SOFT = idTable(
   B.short_grass, B.fern, B.tall_grass, B.tall_grass_upper, B.large_fern, B.large_fern_upper, B.snow, B.dead_bush, B.vine,
   B.dandelion, B.poppy, B.sweet_berry_bush, B.glow_lichen, B.pink_petals, B.moss_carpet, B.sugar_cane, B.brown_mushroom, B.red_mushroom,
+  B.pale_moss_carpet, B.pale_hanging_moss, B.closed_eyeblossom,
 );
 SOFT[0] = 1;
 const LOG_OK = new Uint8Array(SOFT);
-for (const id of [B.oak_leaves, B.birch_leaves, B.spruce_leaves, B.jungle_leaves, B.acacia_leaves, B.dark_oak_leaves, B.mangrove_leaves, B.cherry_leaves, B.azalea_leaves, B.flowering_azalea_leaves, B.water, B.mangrove_roots, B.mangrove_propagule]) if (id) LOG_OK[id] = 1;
+for (const id of [B.oak_leaves, B.birch_leaves, B.spruce_leaves, B.jungle_leaves, B.acacia_leaves, B.dark_oak_leaves, B.mangrove_leaves, B.cherry_leaves, B.azalea_leaves, B.flowering_azalea_leaves, B.pale_oak_leaves, B.water, B.mangrove_roots, B.mangrove_propagule]) if (id) LOG_OK[id] = 1;
 const ROOT_OK = new Uint8Array(LOG_OK);
 for (const id of [B.mud, B.grass_block, B.dirt]) ROOT_OK[id] = 1;
-export const GROUND = idTable(B.grass_block, B.dirt, B.podzol, B.coarse_dirt, B.mud, B.rooted_dirt, B.moss_block, B.mycelium, B.snow_block);
+export const GROUND = idTable(B.grass_block, B.dirt, B.podzol, B.coarse_dirt, B.mud, B.rooted_dirt, B.moss_block, B.mycelium, B.snow_block, B.pale_moss_block);
 
 export interface Wood {
   log: number;

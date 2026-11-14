@@ -46,7 +46,7 @@ export const OVERWORLD_BIOMES = [
   "mangrove_swamp", "taiga", "snowy_taiga", "old_growth_pine_taiga", "old_growth_spruce_taiga", "snowy_plains", "ice_spikes", "jungle",
   "sparse_jungle", "bamboo_jungle", "badlands", "eroded_badlands", "wooded_badlands", "desert", "windswept_hills", "windswept_gravelly_hills",
   "windswept_forest", "meadow", "grove", "snowy_slopes", "frozen_peaks", "jagged_peaks", "stony_peaks", "cherry_grove", "dripstone_caves",
-  "lush_caves", "deep_dark",
+  "lush_caves", "deep_dark", "pale_garden",
 ];
 
 export const POTION_EFFECTS = [
