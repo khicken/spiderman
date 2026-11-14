@@ -267,7 +267,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
     if (e.data.fire) t.data._fire = Math.max((t.data._fire as number) ?? 0, 100);
     markProjectile(t, e, ctx.time.tick);
     if (owner === "player") advTrigger({ t: "projectile_hit", projectile: e.type, target: t.type });
-    ctx.entities.damage(t.id, dmg, "arrow", owner);
+    ctx.entities.damage(t.id, dmg, "arrow", owner, e);
     if (punch > 0) ctx.entities.knockback(t.id, b.vel.x, b.vel.z, punch * 0.6);
     if (e.data.type === "spectral_arrow" || e.type === "spectral_arrow") t.effects.push({ id: "glowing", amplifier: 0, ticks: 200 });
     applyArrowEffects(e, t.effects, ctx, t);

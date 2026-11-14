@@ -417,7 +417,7 @@ export interface MobDef {
   tick(e: Entity, ctx: GameCtx): void;
   onDeath?(e: Entity, ctx: GameCtx): void;
   // Replaces mob damage for non-living entities (vanilla VehicleEntity): no health loss, hurt tint, hurt sound, knockback or death animation.
-  onHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
+  onHurt?(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player", direct?: Entity): void;
   onInteract?(e: Entity, ctx: GameCtx, held: ItemStack | null): boolean; // shear, milk, breed, ride
 }
 
@@ -651,7 +651,8 @@ export interface EntityApi {
   all(): Iterable<Entity>;
   near(x: number, y: number, z: number, r: number, out: Entity[]): Entity[];
   raycast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number): EntityHit | null;
-  damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player"): void;
+  // direct: the projectile that hit, when there is one (vanilla DamageSource.getDirectEntity).
+  damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player", direct?: Entity): void;
   knockback(id: number, dx: number, dz: number, strength: number): void;
   interact(id: number, held: ItemStack | null): boolean;
   explode(x: number, y: number, z: number, power: number, fire?: boolean, kind?: "block" | "tnt"): void;

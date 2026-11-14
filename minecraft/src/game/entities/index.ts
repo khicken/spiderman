@@ -289,7 +289,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     return amount * (1 - (eff / 25) * breach);
   }
 
-  function damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player") {
+  function damage(id: number, amount: number, source: DamageSource, attacker?: Entity | "player", direct?: Entity) {
     const e = byId.get(id);
     if (!e || e.dead) return;
     const ctx = getCtx();
@@ -307,7 +307,7 @@ export function createEntities(getCtx: () => GameCtx): MirrorEntities {
     if (e.data.invulnerable && source !== "void") return;
     if (e.data.arrowImmune && source === "arrow") return;
     if (def.onHurt) {
-      def.onHurt(e, ctx, amount, source, attacker);
+      def.onHurt(e, ctx, amount, source, attacker, direct);
       return;
     }
     if ((source === "fire" || source === "lava") && (e.data.fireImmune || e.effects.some((f) => f.id === "fire_resistance"))) return;

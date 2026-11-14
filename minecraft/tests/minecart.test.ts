@@ -2,16 +2,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Aabb, DamageSource, Entity, GameCtx, ItemStack, MobDef } from "../src/game/contracts";
+import { stateOf } from "../src/game/contracts";
 import { blockId } from "../src/game/blocks/registry";
 import { makeBody } from "../src/game/player/physics";
 import { MINECARTS, hurtCart } from "../src/game/entities/vehicles/minecart";
 import { wobble } from "../src/game/entities/vehicles/damage";
 
 const STONE = blockId("stone");
+// East-west rail (shape 1).
+const RAIL = stateOf(blockId("rail"), 1);
 
-// Flat stone floor below y 60, no rails.
+// Stone floor below y 60, a two-high stone wall from x 3 on, and an east-west rail along z 5 up to the wall.
 function floor() {
-  const getBlock = (_x: number, y: number) => (y < 60 ? STONE : 0);
+  const getBlock = (x: number, y: number, z: number) => (y < 60 || (x >= 3 && y < 62) ? STONE : y === 60 && z === 5 ? RAIL : 0);
   return {
     getBlock,
     isLoaded: () => true,
@@ -20,7 +23,7 @@ function floor() {
       for (let x = Math.floor(box.minX); x <= Math.floor(box.maxX); x++)
         for (let y = Math.floor(box.minY) - 1; y <= Math.floor(box.maxY); y++)
           for (let z = Math.floor(box.minZ); z <= Math.floor(box.maxZ); z++)
-            if (getBlock(x, y) === STONE) out.push({ minX: x, minY: y, minZ: z, maxX: x + 1, maxY: y + 1, maxZ: z + 1 });
+            if (getBlock(x, y, z) === STONE) out.push({ minX: x, minY: y, minZ: z, maxX: x + 1, maxY: y + 1, maxZ: z + 1 });
       return out;
     },
   };
@@ -161,4 +164,56 @@ test("a void hit discards the cart with no item", () => {
   hurtCart(e, ctx, 4, "void");
   assert.equal(e.dead, true);
   assert.equal(drops.length, 0);
+});
+
+function arrow(fire: boolean) {
+  const body = makeBody(0.5, 0.5, 0);
+  body.vel.set(2, 0, 0);
+  return { id: 2, type: "arrow", body, data: fire ? { fire: true } : {} } as unknown as Entity;
+}
+
+test("a flaming arrow sets a TNT cart off at once, boosted by the arrow's speed", () => {
+  const { ctx, e, booms, drops } = setup("tnt_minecart");
+  hurtCart(e, ctx, 2, "arrow", "player", arrow(true));
+  assert.equal(e.data._remove, true);
+  assert.deepEqual(booms, [4 + 0.5 * 1.5 * 2]);
+  assert.equal(drops.length, 0);
+});
+
+test("a plain arrow only wobbles a TNT cart, and a flaming arrow only wobbles other carts", () => {
+  const t = setup("tnt_minecart");
+  hurtCart(t.e, t.ctx, 2, "arrow", "player", arrow(false));
+  assert.equal(t.e.data._remove, undefined);
+  assert.equal(t.booms.length, 0);
+  assert.equal(t.e.hurtTicks, 10);
+  const m = setup("minecart");
+  hurtCart(m.e, m.ctx, 2, "arrow", "player", arrow(true));
+  assert.equal(m.e.data._remove, undefined);
+  assert.equal(m.booms.length, 0);
+});
+
+test("a TNT cart that runs into a wall at speed explodes, on rails or off", () => {
+  for (const z of [0.5, 5.5]) {
+    const { ctx, e, def, booms } = setup("tnt_minecart");
+    e.body.pos.set(2.3, 60, z);
+    e.body.vel.x = 0.3;
+    for (let t = 0; t < 20 && !e.data._remove; t++) def.tick(e, ctx);
+    assert.equal(e.data._remove, true, `z ${z}`);
+    assert.equal(booms.length, 1, `z ${z}`);
+  }
+});
+
+test("a slow TNT cart or a plain cart stops at the wall without exploding", () => {
+  const t = setup("tnt_minecart");
+  t.e.body.pos.set(2.4, 60, 0.5);
+  t.e.body.vel.x = 0.05;
+  for (let i = 0; i < 20; i++) t.def.tick(t.e, t.ctx);
+  assert.equal(t.e.data._remove, undefined);
+  assert.equal(t.booms.length, 0);
+  const m = setup("minecart");
+  m.e.body.pos.set(1.5, 60, 5.5);
+  m.e.body.vel.x = 0.3;
+  for (let i = 0; i < 20; i++) m.def.tick(m.e, m.ctx);
+  assert.equal(m.e.data._remove, undefined);
+  assert.equal(m.booms.length, 0);
 });

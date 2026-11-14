@@ -224,6 +224,7 @@ function onRail(e: Entity, ctx: GameCtx, bx: number, by: number, bz: number, s: 
     else {
       ny = railY(shape, by, Math.min(1, Math.max(0, nx - bx)), Math.min(1, Math.max(0, nz - bz)));
       if (SOLID[idOf(ctx.world.getBlock(fx, Math.floor(ny + 0.1), fz))]) {
+        b.horizontalCollision = true;
         v.set(0, 0, 0);
         ny = railY(shape, by, b.pos.x - bx, b.pos.z - bz);
         b.pos.y = ny;
@@ -273,8 +274,13 @@ function tick(e: Entity, ctx: GameCtx) {
     s = railAt(ctx, bx, by - 1, bz);
     if (s) by--;
   }
+  const speed2 = b.vel.x * b.vel.x + b.vel.z * b.vel.z;
+  b.horizontalCollision = false;
   if (s && b.vel.y <= 0.01) onRail(e, ctx, bx, by, bz, s);
   else offRail(e, ctx);
+  // MinecartTNT.tick: running into a wall at a horizontal speed squared of 0.01 or more sets it off. The speed is
+  // read before the move, since the collision here has already stopped the cart.
+  if (e.type === "tnt_minecart" && !e.data._remove && b.horizontalCollision && speed2 >= 0.01) explodeCart(e, ctx, Math.sqrt(speed2));
 }
 
 // Vanilla MinecartTNT.explode: power 4 + up to 1.5 * the speed (or the fall distance / 10), capped at 5.
@@ -287,7 +293,12 @@ function explodeCart(e: Entity, ctx: GameCtx, boost: number) {
 
 // Vanilla AbstractMinecart.destroy drops the cart item and AbstractMinecartContainer.remove spills the contents.
 // MinecartTNT.destroy instead lights a short random fuse when fire or an explosion broke it, or it was moving.
-export function hurtCart(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player") {
+// MinecartTNT.hurtServer: a burning arrow sets it off at once, its power boosted by the arrow's speed.
+export function hurtCart(e: Entity, ctx: GameCtx, amount: number, source: DamageSource, attacker?: Entity | "player", direct?: Entity) {
+  if (e.type === "tnt_minecart" && !e.dead && !e.data._remove && direct && (direct.data.fire || ((direct.data._fire as number) ?? 0) > 0)) {
+    explodeCart(e, ctx, direct.body.vel.length());
+    return;
+  }
   hurtVehicle(e, ctx, amount, source, attacker, (how) => {
     if (how === "destroy" && e.type === "tnt_minecart") {
       const v = e.body.vel;
