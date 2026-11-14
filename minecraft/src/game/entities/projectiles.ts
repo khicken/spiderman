@@ -234,7 +234,7 @@ function arrowHitsMob(e: Entity, ctx: GameCtx, h: Hit) {
       e.data.owner = undefined;
       return;
     }
-    applyArrowEffects(e, h.pl.effects, ctx, "player", h.pl);
+    // The PvP hook applies the arrow's effects itself, and only when the hit landed.
   } else if (h.kind === "player") {
     const pf = ctx.player as typeof ctx.player & { fireTicks?: number };
     if (e.data.fire) pf.fireTicks = Math.max(pf.fireTicks ?? 0, 100);

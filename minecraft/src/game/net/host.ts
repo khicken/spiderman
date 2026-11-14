@@ -73,6 +73,7 @@ interface Remote {
   owner: HealthOwner;
   guard: Guard;
   shot: ShotState;
+  lastHit: { id: number; tick: number; mace: boolean } | null; // the mob this player last hit, for its knockback
 }
 
 type Meta = WorldMeta & { players?: Record<string, PlayerRecord> };
@@ -90,6 +91,10 @@ const MAX_REQS = (2 * MAX_RD + 3) ** 2;
 // Mobs a survival player can make without a spawn egg: golems, the wither, infested blocks, portals, oozing, mob buckets.
 const SURVIVAL_MOBS = new Set(["iron_golem", "snow_golem", "wither", "silverfish", "zombified_piglin", "slime", "cod", "salmon", "pufferfish", "tropical_fish", "axolotl", "tadpole"]);
 const MAX_BE_JSON = 64 * 1024;
+// Damage sources a client's own melee, sweep, mace smash or riptide can report. Others skip armor or invulnerability.
+const HIT_SOURCES = new Set<DamageSource>(["player", "mace", "trident"]);
+// Ticks after a hit in which its knockback may arrive.
+const KB_WINDOW = 5;
 const CAKE = new Set(["cake", "candle_cake"]);
 // A cake bite: a cake or candle cake turned into a cake with more bites, or eaten up.
 function ateCake(was: BlockState, now: BlockState) {
@@ -417,7 +422,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       const hit = e.data._hitter;
       if (hit && (e.data._target === "player" || e.data._hurtBy === "player")) {
         if (hit === g.player) {
-          if (d === g.dim && !g.player.dead && g.player.gameMode !== "spectator") return g.player;
+          if (d === g.dim && !g.player.dead && g.player.gameMode !== "spectator" && g.player.gameMode !== "creative") return g.player;
         } else {
           for (const r of remotes.values()) if (r.proxy === hit && r.dim === d && !(r.f & F.dead) && r.proxy.gameMode !== "spectator" && r.proxy.gameMode !== "creative") return r.proxy;
         }
@@ -478,7 +483,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       peer, num: nextNum++, name, skin: 0, look: null, dim: record.dim, pos, speed: 0, pair: null, yaw: 0, pitch: 0, f: 0, sw: 0,
       eq: { held: null, off: null, armor: [null, null, null, null] }, center: null, reqs: new Map(), tracker: createTracker(),
       inv: createInventory(() => active ?? g.ctx), proxy: null!, record, viewJson: "", lastMove: performance.now(), token: validToken(m.tok) ? m.tok : null, moveTick: tick, joinedAt: performance.now(), arrive: null, respawnTick: -1e9,
-      hp: newHealth(), owner: null!, shot: newShotState(), guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
+      hp: newHealth(), owner: null!, shot: newShotState(), lastHit: null, guard: createGuard(record.inventory, Number((record.player as { xpTotal?: number } | undefined)?.xpTotal) || 0),
     };
     r.owner = {
       get hp() {
@@ -745,10 +750,12 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         // Clients forward only hits their own player deals (melee, sweep, riptide); all are in reach.
         const target = entsOf(r.dim)?.get(m.id);
         if (!target || !canReach(r, target) || limited(r, "hit")) return;
+        const source: DamageSource = HIT_SOURCES.has(m.source) ? m.source : "player";
+        r.lastHit = { id: m.id, tick, mace: source === "mace" };
         withPlayer(r, () => {
           // The hitter has no local copy of the mob's hurt or death sound, so it must hear the host's.
           origin = null;
-          entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), m.source, "player");
+          entsOf(r.dim)?.damage(m.id, Math.min(200, Math.max(0, +m.amount || 0)), source, "player");
         });
         return;
       }
@@ -756,15 +763,21 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         if (limited(r, "pvp") || int(m.id, 0, 1e6) === null) return;
         pvp.melee(r.num, m.id, { s: num(m.s, 0, 1) ?? 0, crit: m.crit === true });
         return;
-      case "psweep":
-        if (limited(r, "pvp")) return;
-        pvp.sweepAround(r.num, { x: +m.x, y: +m.y, z: +m.z, w: +m.w, h: +m.h }, num(m.s, 0, 1) ?? 0);
+      case "psweep": {
+        // The sweep box is the host's own copy of the mob the client hit, so a client cannot place it.
+        const mob = int(m.id, 0, 2147483647) === null ? undefined : entsOf(r.dim)?.get(m.id);
+        if (limited(r, "pvp") || !mob || mob.dead || !(mobDef(mob.type) || mob.type === "armor_stand") || !canReach(r, mob)) return;
+        const b = mob.body;
+        pvp.sweepAround(r.num, { x: b.pos.x, y: b.pos.y, z: b.pos.z, w: b.width, h: b.height }, num(m.s, 0, 1) ?? 0);
         return;
+      }
       case "kb": {
         const target = entsOf(r.dim)?.get(m.id);
         const dx = num(m.dx, -1e3, 1e3) ?? 0, dz = num(m.dz, -1e3, 1e3) ?? 0;
         const len = Math.hypot(dx, dz);
-        // A mace smash knocks back mobs up to 3.5 blocks past the one it hit.
+        // Knockback follows the client's own hit on that mob; a mace smash also knocks back mobs up to 3.5 blocks past it.
+        const h = r.lastHit;
+        if (!h || tick - h.tick > KB_WINDOW || (h.id !== m.id && !h.mace)) return;
         if (!target || !len || !canReach(r, target, 4) || limited(r, "kb")) return;
         entsOf(r.dim)?.knockback(m.id, dx / len, dz / len, Math.min(2, Math.max(0, num(m.s, -1e3, 1e3) ?? 0)));
         return;

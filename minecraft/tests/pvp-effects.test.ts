@@ -142,6 +142,21 @@ test("tipped and spectral arrows apply their effects to the player they hit", ()
   assert.ok(sent.some(([n, m]) => n === 2 && m.t === "fire" && m.ticks === 100), "a flaming arrow sets the target on fire");
 });
 
+test("a Harming arrow hurts once, and an arrow that does not land applies nothing", () => {
+  const { pvp, by, sent, ctx, step } = hostRig([{ num: 1, z: 0 }, { num: 2, z: -2 }]);
+  const hook = pvp.hook() as Required<PvpHook>;
+  const shooterCtx = { ...ctx, player: by(1).proxy } as GameCtx;
+  const harming = () => ({ type: "arrow", data: { effects: [{ id: "instant_damage", amplifier: 0, ticks: 1 }] } }) as unknown as Entity;
+  hook.shot(shooterCtx, by(2).proxy, 2, "arrow", { x: 0, y: 65, z: -1 }, undefined, harming());
+  const after = by(2).hp.health;
+  assert.ok(after < 20 - 2, "the arrow and its Harming both hurt");
+  step(1);
+  const poison = { type: "arrow", data: { effects: [{ id: "poison", amplifier: 0, ticks: 100 }] } } as unknown as Entity;
+  hook.shot(shooterCtx, by(2).proxy, 1, "arrow", { x: 0, y: 65, z: -1 }, undefined, poison);
+  assert.equal(by(2).hp.health, after, "a weaker hit inside the invulnerability frames does nothing");
+  assert.ok(!sent.some(([n, m]) => n === 2 && m.t === "effect" && m.id === "poison"), "and applies no effects");
+});
+
 test("strength and weakness come from what the host granted, not the client's claim", () => {
   const { pvp, by, step } = hostRig([{ num: 1, z: 0 }, { num: 2, z: -2 }]);
   by(1).hp.effects = [["strength", 4]];
@@ -204,7 +219,7 @@ function localRig(o: { target: Entity; others: Entity[]; hook?: PvpHook }) {
 
 test("a sword sweep on a mob hits the mob beside it and reports the sweep for players", () => {
   const sweeps: unknown[] = [];
-  const hook: PvpHook = { pick: () => null, attack() {}, sweep: (box, s) => sweeps.push({ box, s }) };
+  const hook: PvpHook = { pick: () => null, attack() {}, sweep: (mob, s) => sweeps.push({ mob: mob.id, s }) };
   const hits = localRig({ target: mob(1, "zombie", 0, -2), others: [mob(2, "zombie", 1, -2), mob(3, "zombie", 0, -4)], hook });
   assert.deepEqual(hits.map(([id]) => id).sort(), [1, 2], "the target and the mob beside it, not the one 4 blocks away");
   assert.equal(sweeps.length, 1);

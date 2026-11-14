@@ -213,3 +213,14 @@ test("mob hits and knockback are rate limited, and fences go to the host for lea
   assert.ok(hostUse("oak_fence") && hostUse("nether_brick_fence"));
   assert.equal(hostUse("oak_fence_gate"), false);
 });
+
+test("a mob's swing length reaches the client with its swing and does not count down", () => {
+  const sent = new Map<string, Sent>();
+  const out: Record<string, unknown> = {};
+  assert.ok(animDelta({ _swing: 6, _swingLen: 6 }, sent, 0, out));
+  assert.deepEqual(out, { _swing: 6, _swingLen: 6 });
+  const client: Record<string, unknown> = { ...out };
+  decayAnim(client);
+  assert.equal(client._swingLen, 6);
+  assert.ok(!animDelta({ _swing: 5, _swingLen: 6 }, sent, 1, {}), "nothing to resend a tick later");
+});

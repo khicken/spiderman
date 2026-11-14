@@ -100,7 +100,7 @@ export type ClientMsg =
   | { t: "hit"; id: number; amount: number; source: DamageSource }
   | { t: "kb"; id: number; dx: number; dz: number; s: number }
   | { t: "pvp"; id: number; s: number; crit: boolean } // melee swing at another player
-  | { t: "psweep"; x: number; y: number; z: number; w: number; h: number; s: number } // sword sweep around a mob the client hit
+  | { t: "psweep"; id: number; s: number } // sword sweep around the mob (host id) the client hit
   | { t: "interact"; id: number; inv: unknown; seq?: number }
   | { t: "explode"; x: number; y: number; z: number; power: number; fire: boolean }
   | { t: "open"; kind: ContainerKind; at: { x: number; y: number; z: number; entityId?: number }; inv: unknown; seq?: number }

@@ -233,12 +233,12 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
   }
 
   function mirrorGone(id: number) {
+    mobs.delete(id);
     const e = toLocal.get(id);
     if (!e) return;
     e.data._remove = true;
     toLocal.delete(id);
     toHost.delete(e.id);
-    mobs.delete(id);
   }
 
   function clearMirrors() {
@@ -450,7 +450,11 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
         .catch((e) => console.warn("net chunk:", e));
     } else if (data[0] === BIN.ents) {
       const at = unpackMoves(data, scratch);
-      if (scratch.length) mobs.push(at, performance.now(), scratch);
+      // Moves for an entity not mirrored yet would start an interp track nothing ever deletes.
+      let n = 0;
+      for (const s of scratch) if (toLocal.has(s.id)) scratch[n++] = s;
+      scratch.length = n;
+      if (n) mobs.push(at, performance.now(), scratch);
     }
   };
 
@@ -517,7 +521,7 @@ function createClient(t: Transport, hostId: string, welcome: WelcomeMsg, name: s
       send({ t: "skin", look: localLook() });
       lookAt = performance.now();
       gi.ctx.behaviors = hostUses(gi.ctx.behaviors);
-      setPvpHook(gi.ctx, clientPvpHook(() => avatars.list(), send));
+      setPvpHook(gi.ctx, clientPvpHook(() => avatars.list(), send, (id) => toHost.get(id)));
       Object.assign(gi.ctx, { netSelf: welcome.you, netPlayerPos: (id: number) => avatars.pos(id) });
       const rawRespawn = p.respawn.bind(p);
       p.respawn = () => {

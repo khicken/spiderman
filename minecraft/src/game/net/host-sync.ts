@@ -24,7 +24,7 @@ export function entData(e: Entity): Record<string, unknown> {
 // client counts them down too, so a timer is sent once when it starts rather than every tick.
 const DECAY = ["_swing", "_fire", "fuse", "_eat", "_sit", "_lie", "_roll", "_sneeze", "_croak", "_tongue", "_rear", "_ram", "_stand", "_shake"];
 // Plain state, sent when it changes.
-const LATCH = ["_beg", "_dance", "_sleep", "_slope", "_bx", "_by", "_bz"];
+const LATCH = ["_beg", "_dance", "_sleep", "_slope", "_bx", "_by", "_bz", "_swingLen"];
 // How far the client may drift before a resend. Only burning or not shows, and lava holds fire at 300.
 const TOL: Record<string, number> = { _bx: 0.25, _by: 0.25, _bz: 0.25, _fire: 20 };
 export const ANIM_KEYS = [...DECAY, ...LATCH];
@@ -106,6 +106,7 @@ export function createTracker(): EntityTracker {
   const near: Entity[] = [];
   const moves: EntMove[] = [];
   const live = new Set<number>();
+  const anim: Record<string, unknown> = {};
   return {
     sync(ents, x, y, z, tick, json, bin) {
       ents.near(x, y, z, RANGE, near);
@@ -137,8 +138,10 @@ export function createTracker(): EntityTracker {
               k.data = d;
             }
           }
-          const a: Record<string, unknown> = {};
-          if (animDelta(e.data, k.anim, tick, a)) out = Object.assign(out ?? {}, a);
+          if (animDelta(e.data, k.anim, tick, anim)) {
+            out = Object.assign(out ?? {}, anim);
+            for (const key in anim) delete anim[key];
+          }
           // Health for boss bars and health-shaped models; drops wait for the data tick, heals and deaths go now.
           if (e.health !== k.hp && (dataTick || e.dead || e.health > k.hp)) {
             k.hp = e.health;

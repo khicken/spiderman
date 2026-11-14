@@ -242,3 +242,19 @@ test("arrows stick in blocks; pickup follows the pickup mode", () => {
   assert.equal(stuck(2, "survival"), false, "infinity / creative arrows: creative only");
   assert.equal(stuck(2, "creative"), true);
 });
+
+test("a tipped PvP arrow leaves its effects to the PvP hook, so they apply once", () => {
+  const s = scene();
+  s.player.body.pos.set(50, 64, 50);
+  const added: string[] = [];
+  const other = { body: body(0.5, 64, -3, 0.6, 1.8), yaw: 0, blocking: false, effects: [], addEffect: (id: string) => added.push(id) };
+  const shots: unknown[] = [];
+  (s.ctx as GameCtx & { pvp?: unknown }).pvp = {
+    targets: () => [other],
+    shot: (_c: GameCtx, _t: unknown, _n: number, _s: string, _f: unknown, _p: unknown, arrow: unknown) => shots.push(arrow),
+  };
+  const a = arrowAt(s, 0.5, 65, -1.5, [0, 0, -1.6], { owner: "player", damage: 2, effects: [{ id: "instant_damage", amplifier: 0, ticks: 1 }] });
+  tickArrow(a, s.ctx);
+  assert.deepEqual(shots, [a], "the hook gets the arrow");
+  assert.deepEqual(added, [], "the projectile code adds no effects of its own");
+});

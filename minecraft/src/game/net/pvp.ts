@@ -184,11 +184,14 @@ export function pickPlayer(eye: THREE.Vector3, dir: THREE.Vector3, maxDist: numb
   return best;
 }
 
-export function clientPvpHook(others: () => Iterable<{ id: number; x: number; y: number; z: number; f?: number }>, send: (m: ClientMsg) => void): PvpHook {
+export function clientPvpHook(others: () => Iterable<{ id: number; x: number; y: number; z: number; f?: number }>, send: (m: ClientMsg) => void, hostId: (localId: number) => number | undefined): PvpHook {
   return {
     pick: (eye, dir, max) => pickPlayer(eye, dir, max, others()),
     attack: (id, c) => send({ t: "pvp", id, s: c.s, crit: c.crit }),
-    sweep: (box, s) => send({ t: "psweep", x: box.x, y: box.y, z: box.z, w: box.w, h: box.h, s }),
+    sweep(mob, s) {
+      const id = hostId(mob.id);
+      if (id !== undefined) send({ t: "psweep", id, s });
+    },
   };
 }
 
@@ -464,7 +467,7 @@ export function createHostPvp(d: HostPvpDeps) {
     return {
       pick: (eye, dir, max) => pickPlayer(eye, dir, max, d.others()),
       attack: (id, c) => void melee(0, id, c),
-      sweep: (box, s) => void sweepAround(0, box, s),
+      sweep: (mob, s) => void sweepAround(0, { x: mob.body.pos.x, y: mob.body.pos.y, z: mob.body.pos.z, w: mob.body.width, h: mob.body.height }, s),
       targets(ctx) {
         if (!pvpOn(g.ctx.rules)) return [];
         const shooter = fighterOf(ctx.player);
