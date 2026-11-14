@@ -193,12 +193,12 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     }
     if (submersion === "water") {
       hexToRgb(biome.waterColor, tmp3);
-      waterFog.color(biome.name, dt, fog3);
-      range.near = -8;
-      range.far = waterFog.far(biome.name, blocks);
-      // Vanilla draws misc/underwater.png at 10% alpha, shaded by the light at the eye, with no extra edge darkening.
       const lit = dim === "overworld" ? 0.35 + 0.65 * day : 0.5;
-      overlays.setTint(tmp3[0] * lit, tmp3[1] * lit, tmp3[2] * lit, 0.1, 0);
+      waterFog.color(biome.name, biome.waterColor, lit, dt, fog3);
+      range.near = 0;
+      range.far = waterFog.far(biome.name, blocks);
+      // A light tint only (vanilla draws misc/underwater.png at 10% alpha), with no edge darkening.
+      overlays.setTint(tmp3[0] * lit, tmp3[1] * lit, tmp3[2] * lit, 0.06, 0);
     } else if (submersion === "lava") {
       fog3[0] = 0.6; fog3[1] = 0.1; fog3[2] = 0;
       range.near = 0.25; range.far = 1;
@@ -238,7 +238,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: WorldApi): Rend
     fog.near = Math.max(0, range.near);
     fog.far = range.far;
     uniforms.uDaylight.value = dim === "overworld" ? (day - 0.2) / 0.8 : day;
-    if (uniforms.uNightVision) uniforms.uNightVision.value = fx.nightVision;
+    if (uniforms.uNightVision) uniforms.uNightVision.value = submersion === "water" ? Math.max(fx.nightVision, waterFog.light()) : fx.nightVision;
+    if (uniforms.uFogLinear) uniforms.uFogLinear.value = submersion === "water" ? 1 : 0;
     uniforms.uDimLight?.value.set(dim === "nether" ? 0.1 : 0, dim === "end" ? 1 : 0);
     uniforms.uSkyTint.value.setRGB(tint3[0], tint3[1], tint3[2], THREE.SRGBColorSpace);
     uniforms.uGamma.value = gamma;
