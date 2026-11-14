@@ -8,7 +8,7 @@ import { AIR, idOf, metaOf, stateOf } from "../src/game/contracts";
 import { blockDef, blockId } from "../src/game/blocks/registry";
 import { createEntities } from "../src/game/entities";
 import { mobDef } from "../src/game/entities/registry";
-import { AWAKE, createCreakingHeart, DORMANT, heartState, heartStateOf, tickHeart, trySpawn, UPROOTED } from "../src/game/systems/creaking-heart";
+import { AWAKE, createCreakingHeart, DORMANT, heartHurt, heartState, heartStateOf, naturalHeartXp, tickHeart, trySpawn, TWITCH_TICKS, UPROOTED } from "../src/game/systems/creaking-heart";
 
 const HEART = blockId("creaking_heart");
 const LOG = blockId("pale_oak_log");
@@ -36,6 +36,7 @@ function setup(dayTime = NIGHT) {
     },
     blockEntitiesIn: (cx: number, cz: number) => [...bes.values()].filter((b) => b.x >> 4 === cx && b.z >> 4 === cz),
     isLoaded: () => true,
+    collide: () => [],
   };
   const ctx = {
     world,
@@ -45,6 +46,7 @@ function setup(dayTime = NIGHT) {
     emit: (e: GameEvent) => events.push(e),
     player: { body: { pos: new THREE.Vector3(4, 64, 4) }, gameMode: "survival", dead: false },
     inventory: { held: () => null, slots: [] },
+    behaviors: {},
   } as unknown as GameCtx;
   const entities = createEntities(() => ctx);
   (ctx as { entities: unknown }).entities = entities;
@@ -130,16 +132,84 @@ test("a resin-less trunk drops resin items instead", () => {
   assert.ok([...s.entities.all()].some((e) => e.type === "item" && (e.data.stack as { item: string }).item === "resin_clump"));
 });
 
-test("breaking the heart crumbles its creaking at once", () => {
+test("breaking the heart makes its creaking twitch, then crumble", () => {
   const s = setup();
   const c = spawnLinked(s);
+  const def = mobDef("creaking")!;
   const from = s.world.getBlock(0, 66, 0);
   s.world.setBlock(0, 66, 0, AIR);
   s.events.length = 0;
   createCreakingHeart().onEvent!(s.ctx, { type: "block_changed", x: 0, y: 66, z: 0, from, to: AIR });
-  assert.equal(c.data._remove, true);
+  assert.equal(c.data._twitch, TWITCH_TICKS);
+  assert.ok(!c.data._remove, "twitches first");
   assert.ok(sounds(s.events).includes("entity.creaking.twitch"));
+  const x = c.body.pos.x, z = c.body.pos.z;
+  for (let i = 1; i < TWITCH_TICKS; i++) {
+    c.body.vel.x = 0.3;
+    def.tick(c, s.ctx);
+    s.entities.damage(c.id, 7, "player", "player");
+    assert.ok(!c.data._remove && !c.dead && c.health === 1, `still twitching at ${i}`);
+  }
+  assert.equal(c.body.pos.x, x);
+  assert.equal(c.body.pos.z, z);
+  assert.ok(!sounds(s.events).includes("block.creaking_heart.hurt"), "hits while twitching do nothing");
+  s.events.length = 0;
+  def.tick(c, s.ctx);
+  assert.equal(c.data._remove, true);
+  assert.ok(sounds(s.events).includes("entity.creaking.death"));
+  assert.ok(s.events.some((e) => e.type === "particles" && e.kind === "block"), "crumble particles");
   assert.ok(![...s.entities.all()].some((e) => e.type === "xp_orb" || e.type === "item"), "no drops or xp");
+});
+
+test("resin clumps store the face of the log they hang on, in all six directions", () => {
+  const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  const RESIN = blockId("resin_clump");
+  for (let i = 0; i < 6; i++) {
+    const s = setup();
+    for (let x = -2; x <= 2; x++) for (let y = 62; y <= 72; y++) for (let z = -2; z <= 2; z++) {
+      if (x === 0 && z === 0 && y >= 65 && y <= 67) continue;
+      s.world.setBlock(x, y, z, stateOf(STONE));
+    }
+    const [dx, dy, dz] = DIRS[i];
+    const log = dy < 0 ? [0, 65, 0] : [0, 67, 0];
+    const cell = [log[0] + dx, log[1] + dy, log[2] + dz];
+    s.world.setBlock(cell[0], cell[1], cell[2], AIR);
+    const from = { body: { pos: new THREE.Vector3(3, 64, 3), height: 2 } } as unknown as Entity;
+    heartHurt(s.ctx, { x: 0, y: 66, z: 0 }, from);
+    const st = s.world.getBlock(cell[0], cell[1], cell[2]);
+    assert.equal(idOf(st), RESIN, `clump placed for dir ${i}`);
+    const face = metaOf(st);
+    const [fx, fy, fz] = DIRS[face];
+    assert.equal(blockDef(s.world.getBlock(cell[0] + fx, cell[1] + fy, cell[2] + fz)).name, "pale_oak_log", `dir ${i} meta ${face} points at the log`);
+    assert.equal(face, i ^ 1, "opposite of the direction it grew in");
+  }
+});
+
+test("a remote survival player near the heart lets it spawn", () => {
+  const s = setup();
+  const host = s.ctx.player as unknown as { body: { pos: THREE.Vector3 }; gameMode: string };
+  host.body.pos.set(1000, 64, 1000);
+  const remote = { body: { pos: new THREE.Vector3(6, 64, 2) }, gameMode: "survival", dead: false };
+  (s.ctx as unknown as { playersAll: () => unknown[] }).playersAll = () => [s.ctx.player, remote];
+  s.world.setBlock(0, 66, 0, stateOf(HEART, AWAKE << 2));
+  s.ctx.time.tick = 100 - (66 * 13) % 100;
+  createCreakingHeart().tick!(s.ctx);
+  assert.ok([...s.entities.all()].some((e) => e.type === "creaking"), "heart near the remote player ticked and spawned");
+
+  const n = setup();
+  (n.ctx.player as unknown as { body: { pos: THREE.Vector3 } }).body.pos.set(1000, 64, 1000);
+  remote.gameMode = "creative";
+  (n.ctx as unknown as { playersAll: () => unknown[] }).playersAll = () => [n.ctx.player, remote];
+  assert.equal(trySpawn(n.ctx, n.be), null, "a creative remote player does not count");
+});
+
+test("only a natural heart drops 20-24 xp", () => {
+  const s = setup();
+  assert.deepEqual(naturalHeartXp(s.world as unknown as GameCtx["world"], 0, 66, 0, s.world.getBlock(0, 66, 0)), [20, 24]);
+  s.world.setBlock(5, 66, 5, stateOf(HEART));
+  createCreakingHeart().onEvent!(s.ctx, { type: "block_changed", x: 5, y: 66, z: 5, from: AIR, to: stateOf(HEART) });
+  assert.equal(naturalHeartXp(s.world as unknown as GameCtx["world"], 5, 66, 5, s.world.getBlock(5, 66, 5)), undefined, "placed heart");
+  assert.equal(naturalHeartXp(s.world as unknown as GameCtx["world"], 0, 64, 0, s.world.getBlock(0, 64, 0)), undefined, "not a heart");
 });
 
 test("daybreak and distance crumble a linked creaking", () => {
@@ -148,13 +218,13 @@ test("daybreak and distance crumble a linked creaking", () => {
   const def = mobDef("creaking")!;
   s.ctx.time.dayTime = DAY;
   def.tick(c, s.ctx);
-  assert.equal(c.data._remove, true);
+  assert.equal(c.data._twitch, TWITCH_TICKS, "starts twitching");
 
   const f = setup();
   const far = spawnLinked(f);
   far.body.pos.set(40, 64, 0);
   def.tick(far, f.ctx);
-  assert.equal(far.data._remove, true);
+  assert.equal(far.data._twitch, TWITCH_TICKS);
 });
 
 test("a creaking whose heart forgot it after reload is adopted, a duplicate crumbles", () => {
@@ -165,7 +235,7 @@ test("a creaking whose heart forgot it after reload is adopted, a duplicate crum
   const def = mobDef("creaking")!;
   def.tick(dup, s.ctx);
   assert.equal(s.be.data!.creaking, c.id, "first claimant adopted");
-  assert.equal(dup.data._remove, true);
+  assert.equal(dup.data._twitch, TWITCH_TICKS);
 });
 
 test("a placed heart gets a block entity", () => {

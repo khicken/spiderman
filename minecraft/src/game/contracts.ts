@@ -63,6 +63,8 @@ export type Horizontal = 0 | 1 | 2 | 3;
 //  trial spawner: bits 0-1 0 inactive, 1 active, 2 ejecting reward; bit 3 ominous
 //  creaking heart: bits 0-1 axis (0 y, 1 x, 2 z), bits 2-3 state (0 uprooted, 1 dormant, 2 awake)
 //  pale hanging moss: 0 tip, 1 middle piece
+//  resin clump:   Face of the one neighbor it is attached to (3 lying on the floor, 2 on the ceiling)
+//  pale moss carpet: bits 0-3 side walls covered, by Horizontal (bit 0 south ... bit 3 east); the bottom is always there
 export type Shape =
   | "air"
   | "cube"

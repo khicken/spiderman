@@ -2,13 +2,13 @@ import type { BlockState, GameCtx, WorldApi } from "../contracts";
 import { AIR, Face, idOf, metaOf } from "../contracts";
 import { BLOCKS, blockDef } from "../blocks/registry";
 import {
-  FX, FZ, H_FACE, HX, HZ, OPP, breakBlock, creative, def, isName, isSolid, nameOf, rawBrightness, sturdy, supportsCenter, tag,
+  FX, FY, FZ, H_FACE, HX, HZ, OPP, breakBlock, creative, def, isName, isSolid, nameOf, rawBrightness, sturdy, supportsCenter, tag,
 } from "./util";
 
 export const enum Sup {
   None, Bush, DeadBush, Mushroom, Fungus, Crop, Wart, Upper, Cane, Cactus, Bamboo, LilyPad, Carpet, Snow, StandingTorch,
   WallTorch, FloorSign, WallSign, Ladder, Attach, Rail, Plate, Diode, DoorLower, Bed, Cocoa, HangDown, GrowUp,
-  Lantern, Fire, SoulFire, WallFan, Floor, Petals, WaterPlant, Azalea, AttachedStem, WitherRose, Frogspawn, HangingSign, Dripleaf,
+  Lantern, Fire, SoulFire, WallFan, Floor, Petals, WaterPlant, Azalea, AttachedStem, WitherRose, Frogspawn, HangingSign, Dripleaf, FaceAttached,
 }
 
 const FAMILY = new Uint8Array(4096);
@@ -36,6 +36,7 @@ function familyOf(name: string, shape: string, tags: string[]): Sup {
   if (name === "bamboo" || name === "bamboo_sapling") return Sup.Bamboo;
   if (name === "lily_pad") return Sup.LilyPad;
   if (name === "frogspawn") return Sup.Frogspawn;
+  if (name === "resin_clump") return Sup.FaceAttached;
   if (shape === "carpet") return Sup.Carpet;
   if (shape === "snow_layer") return Sup.Snow;
   if (shape === "torch") return name.includes("wall") ? Sup.WallTorch : Sup.StandingTorch;
@@ -262,6 +263,10 @@ export function canSurviveAt(ctx: GameCtx, x: number, y: number, z: number, s: B
       if (def(s).name === "big_dripleaf") return true;
       const an = nameOf(above());
       return an === "big_dripleaf_stem" || an === "big_dripleaf";
+    }
+    case Sup.FaceAttached: {
+      if (m > 5) return false;
+      return sturdy(w, x + FX[m], y + FY[m], z + FZ[m], OPP[m]);
     }
     case Sup.WaterPlant: {
       const b = below();

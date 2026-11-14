@@ -1,9 +1,12 @@
 import { woodType } from "./wood";
-import { b, PLANT, pillar, silk, tex, variants, type BlockSpec, type Props } from "./spec";
+import { b, NO_ITEM, PLANT, pillar, silk, tex, variants, type BlockSpec, type Props } from "./spec";
 
 // Pale garden content (Java 1.21.4/1.21.5). Appended after every other family, so existing save ids do not move.
 
 const RESIN_BRICKS: Props = { hardness: 1.5, blastResistance: 6, tool: "pickaxe", toolTier: 0, sound: "resin_bricks" };
+const POT: Props = { shape: "flower_pot", layer: "cutout", opaque: false, hardness: 0, blastResistance: 0, sound: "stone", ...NO_ITEM, tags: ["flower_pots"] };
+const potted = (f: string, p: Props = {}) =>
+  b(`potted_${f}`, { ...POT, drops: [{ item: "flower_pot" }, { item: f }], textures: { side: "flower_pot", top: "dirt", front: f }, ...p });
 const FLOWER: Props = { ...PLANT, flammable: true, tags: ["flowers", "small_flowers", "sword_efficient"] };
 
 export const PALE_GARDEN_BLOCKS: BlockSpec[] = [
@@ -25,4 +28,6 @@ export const PALE_GARDEN_BLOCKS: BlockSpec[] = [
     textures: pillar("creaking_heart", "creaking_heart_top"),
     ...silk([{ item: "resin_clump", count: [1, 3] }]),
   }),
+  potted("closed_eyeblossom"),
+  potted("open_eyeblossom", { emissiveTexture: true }),
 ];

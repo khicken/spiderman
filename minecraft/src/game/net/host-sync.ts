@@ -22,7 +22,7 @@ export function entData(e: Entity): Record<string, unknown> {
 
 // Render-only state the host keeps in "_" keys. Timers count down one per tick on the host, and the
 // client counts them down too, so a timer is sent once when it starts rather than every tick.
-const DECAY = ["_swing", "_fire", "fuse", "_eat", "_sit", "_lie", "_roll", "_sneeze", "_croak", "_tongue", "_rear", "_ram", "_stand", "_shake"];
+const DECAY = ["_swing", "_fire", "fuse", "_eat", "_sit", "_lie", "_roll", "_sneeze", "_croak", "_tongue", "_rear", "_ram", "_stand", "_shake", "_twitch"];
 // Plain state, sent when it changes.
 const LATCH = ["_beg", "_dance", "_sleep", "_slope", "_bx", "_by", "_bz", "_swingLen"];
 // How far the client may drift before a resend. Only burning or not shows, and lava holds fire at 300.

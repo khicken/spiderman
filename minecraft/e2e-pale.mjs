@@ -205,6 +205,13 @@ try {
       c(`/fill ${g.x - 2} ${g.y + 4} ${g.z - 2} ${g.x + 2} ${g.y + 5} ${g.z + 2} pale_oak_leaves`);
       c(`/setblock ${g.x + 2} ${g.y + 3} ${g.z} pale_hanging_moss`);
       c(`/setblock ${g.x - 2} ${g.y + 3} ${g.z + 1} pale_hanging_moss`);
+      const w = window.__mc.ctx.world;
+      const withMeta = (x, y, z, name, meta) => { c(`/setblock ${x} ${y} ${z} ${name}`); w.setBlock(x, y, z, (w.getBlock(x, y, z) & 0xfff) | (meta << 12)); };
+      withMeta(g.x, g.y + 2, g.z + 1, "resin_clump", 5);
+      withMeta(g.x + 1, g.y + 3, g.z, "resin_clump", 1);
+      withMeta(g.x + 1, g.y, g.z, "pale_moss_carpet", 2);
+      withMeta(g.x - 1, g.y, g.z, "pale_moss_carpet", 8);
+      c(`/setblock ${g.x - 3} ${g.y} ${g.z + 3} potted_open_eyeblossom`);
       for (const e of window.__mc.ctx.entities.all()) if (e.type === "creaking") e.data._remove = true;
       window.__mc.tp(g.x + 0.5, g.y, g.z + 9.5);
       window.__mc.look(0, 0);

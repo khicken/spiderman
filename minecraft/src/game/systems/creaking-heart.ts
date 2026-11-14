@@ -5,12 +5,19 @@ import type { SystemPart } from "./index";
 
 export const UPROOTED = 0, DORMANT = 1, AWAKE = 2;
 export const HEART_RANGE = 32;
+export const TWITCH_TICKS = 18;
+// Vanilla CreakingHeartBlock: a natural heart drops UniformInt.of(20, 24) experience.
+export const HEART_XP: [number, number] = [20, 24];
 const RESIN_COLOR = 0xfc7812;
 const AXES = [[0, 1, 0], [1, 0, 0], [0, 0, 1]];
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const PALE_LOGS = new Set(["pale_oak_log", "pale_oak_wood", "stripped_pale_oak_log", "stripped_pale_oak_wood"]);
 
 export interface HeartPos { x: number; y: number; z: number }
+
+type Player = GameCtx["player"];
+// The multiplayer host installs playersAll (host plus every client in this dimension); single player has only ctx.player.
+export const allPlayers = (ctx: GameCtx): Player[] => (ctx as GameCtx & { playersAll?: () => Player[] }).playersAll?.() ?? [ctx.player];
 
 let heartId = -1, resinId = -1;
 const heart = () => (heartId >= 0 ? heartId : (heartId = hasBlock("creaking_heart") ? blockId("creaking_heart") : 0));
@@ -37,7 +44,7 @@ export function heartState(ctx: GameCtx, x: number, y: number, z: number, s = ct
 
 const claims = (e: Entity, x: number, y: number, z: number) => {
   const h = e.data.heart as HeartPos | undefined;
-  return e.type === "creaking" && !e.dead && !e.data._remove && !!h && h.x === x && h.y === y && h.z === z;
+  return e.type === "creaking" && !e.dead && !e.data._remove && !twitching(e) && !!h && h.x === x && h.y === y && h.z === z;
 };
 
 // Entity ids change on reload, so a stale id falls back to the creaking whose saved heart is this one.
@@ -63,16 +70,33 @@ export function trail(ctx: GameCtx, ax: number, ay: number, az: number, bx: numb
   }
 }
 
+export const twitching = (e: Entity) => typeof e.data._twitch === "number" && e.data._twitch > 0;
+
+// Vanilla tearDown: the creaking twitches in place for a moment before it crumbles away.
 export function crumble(ctx: GameCtx, e: Entity): void {
-  if (e.data._remove) return;
+  if (e.data._remove || twitching(e)) return;
+  e.data._twitch = TWITCH_TICKS;
+  const p = e.body.pos;
+  ctx.emit({ type: "sound", name: "entity.creaking.twitch", x: p.x, y: p.y + 1.3, z: p.z });
+}
+
+// Returns whether the creaking is gone.
+export function twitchTick(ctx: GameCtx, e: Entity): boolean {
+  const t = (e.data._twitch as number) - 1;
+  e.data._twitch = t;
+  if (t > 0) return false;
   const p = e.body.pos;
   const wood = hasBlock("pale_oak_wood") ? stateOf(blockId("pale_oak_wood")) : AIR;
   const rb = hasBlock("resin_block") ? stateOf(blockId("resin_block")) : AIR;
   for (let i = 0; i < 3; i++) ctx.emit({ type: "particles", kind: "block", x: p.x, y: p.y + 0.4 + i * 0.9, z: p.z, count: 14, state: wood });
   ctx.emit({ type: "particles", kind: "block", x: p.x, y: p.y + 1.6, z: p.z, count: 8, state: rb });
-  ctx.emit({ type: "sound", name: "entity.creaking.twitch", x: p.x, y: p.y + 1.3, z: p.z });
   ctx.emit({ type: "sound", name: "entity.creaking.death", x: p.x, y: p.y + 1.3, z: p.z });
   e.data._remove = true;
+  return true;
+}
+
+export function naturalHeartXp(w: GameCtx["world"], x: number, y: number, z: number, s: BlockState): [number, number] | undefined {
+  return isHeart(s) && w.getBlockEntity(x, y, z)?.data?.natural ? HEART_XP : undefined;
 }
 
 export function linkHolds(ctx: GameCtx, e: Entity): boolean {
@@ -103,8 +127,9 @@ function spreadResin(ctx: GameCtx, hx: number, hy: number, hz: number): boolean 
         for (const [dx, dy, dz] of shuffled()) {
           const nx = x + dx, ny = y + dy, nz = z + dz;
           if (w.getBlock(nx, ny, nz) !== AIR) continue;
-          const opp = DIRS.findIndex((d) => d[0] === -dx && d[1] === -dy && d[2] === -dz);
-          w.setBlock(nx, ny, nz, stateOf(rid, opp < 4 ? 1 << opp : 0));
+          // Meta is the Face index of the log the clump hangs on; DIRS follows Face order.
+          const face = DIRS.findIndex((d) => d[0] === -dx && d[1] === -dy && d[2] === -dz);
+          w.setBlock(nx, ny, nz, stateOf(rid, face));
           ctx.emit({ type: "sound", name: "block.resin.place", x: nx + 0.5, y: ny + 0.5, z: nz + 0.5 });
           return true;
         }
@@ -150,11 +175,13 @@ function spawnSpot(ctx: GameCtx, hx: number, hy: number, hz: number): [number, n
 }
 
 export function trySpawn(ctx: GameCtx, be: BlockEntityData): Entity | null {
-  const pl = ctx.player;
   if (ctx.rules.difficulty === "peaceful" || ctx.rules.doMobSpawning === false) return null;
-  if (pl.dead || (pl.gameMode !== "survival" && pl.gameMode !== "adventure")) return null;
-  const pp = pl.body.pos;
-  if ((pp.x - be.x - 0.5) ** 2 + (pp.y - be.y - 0.5) ** 2 + (pp.z - be.z - 0.5) ** 2 > HEART_RANGE * HEART_RANGE) return null;
+  const near = allPlayers(ctx).some((pl) => {
+    if (pl.dead || (pl.gameMode !== "survival" && pl.gameMode !== "adventure")) return false;
+    const pp = pl.body.pos;
+    return (pp.x - be.x - 0.5) ** 2 + (pp.y - be.y - 0.5) ** 2 + (pp.z - be.z - 0.5) ** 2 <= HEART_RANGE * HEART_RANGE;
+  });
+  if (!near) return null;
   if (heartCreaking(ctx, be)) return null;
   const spot = spawnSpot(ctx, be.x, be.y, be.z);
   if (!spot) return null;
@@ -184,13 +211,18 @@ export function createCreakingHeart(): SystemPart {
     tick(ctx) {
       const w = ctx.world;
       if (!w.blockEntitiesIn || !heart()) return;
-      const p = ctx.player.body.pos;
-      const pcx = Math.floor(p.x) >> 4, pcz = Math.floor(p.z) >> 4;
-      for (let cx = pcx - 3; cx <= pcx + 3; cx++) {
-        for (let cz = pcz - 3; cz <= pcz + 3; cz++) {
-          const list = w.blockEntitiesIn(cx, cz);
-          if (!list) continue;
-          for (const be of list) if (be.type === "creaking_heart") tickHeart(ctx, be);
+      const chunks = new Set<string>();
+      for (const pl of allPlayers(ctx)) {
+        const pcx = Math.floor(pl.body.pos.x) >> 4, pcz = Math.floor(pl.body.pos.z) >> 4;
+        for (let cx = pcx - 3; cx <= pcx + 3; cx++) {
+          for (let cz = pcz - 3; cz <= pcz + 3; cz++) {
+            const k = `${cx},${cz}`;
+            if (chunks.has(k)) continue;
+            chunks.add(k);
+            const list = w.blockEntitiesIn(cx, cz);
+            if (!list) continue;
+            for (const be of list) if (be.type === "creaking_heart") tickHeart(ctx, be);
+          }
         }
       }
     },

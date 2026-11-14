@@ -85,6 +85,7 @@ export function paleOak(w: Writer, r: Rng, x: number, y: number, z: number, hear
     for (let k = 0; k < n; k++) w.set(lx, ly - 1 - k, lz, S(B.pale_hanging_moss, k === n - 1 ? 0 : 1));
   }
 
+  if (r.chance(0.4)) trunkMoss(w, r, x, y, z);
   if (r.chance(0.8)) mossPatch(w, r, x + 0.5, y, z + 0.5, 2 + r.int(2));
 
   if (heart && p.trunk.length) {
@@ -94,6 +95,33 @@ export function paleOak(w: Writer, r: Rng, x: number, y: number, z: number, hear
     if (w.inside(hx, hz) && (w.get(hx, hy, hz) & 0xfff) === LOG && (w.get(hx, hy + 1, hz) & 0xfff) === LOG && (w.get(hx, hy - 1, hz) & 0xfff) === LOG) {
       w.set(hx, hy, hz, S(B.creaking_heart, 1 << 2));
       w.blockEntities.push({ x: hx, y: hy, z: hz, type: "creaking_heart", data: { natural: true } });
+    }
+  }
+}
+
+// Horizontal index h: 0 south (+z), 1 west (-x), 2 north (-z), 3 east (+x). Carpet meta bit h covers that side.
+const TRUNK_MOSS_OVER = idTable(B.short_grass, B.pale_moss_carpet);
+TRUNK_MOSS_OVER[0] = 1;
+const H_DIRS = [[0, 1], [-1, 0], [0, -1], [1, 0]];
+
+// Pale moss carpets on the ground ring around the 2x2 trunk base, climbing the side that faces the trunk.
+// Base logs on a slope can be blocked by terrain, so in-chunk ones are read; one across the chunk border is assumed from the plan.
+function trunkMoss(w: Writer, r: Rng, x: number, y: number, z: number) {
+  for (let dx = -1; dx <= 2; dx++) {
+    for (let dz = -1; dz <= 2; dz++) {
+      const ring = (dx === -1 || dx === 2) !== (dz === -1 || dz === 2);
+      if (!ring) continue;
+      const keep = r.chance(0.75);
+      const cx = x + dx, cz = z + dz;
+      if (!keep || !w.inside(cx, cz) || !TRUNK_MOSS_OVER[w.get(cx, y, cz) & 0xfff] || !MOSS_GROUND[w.get(cx, y - 1, cz) & 0xfff]) continue;
+      let sides = 0;
+      for (let h = 0; h < 4; h++) {
+        const nx = dx + H_DIRS[h][0], nz = dz + H_DIRS[h][1];
+        if (nx < 0 || nx > 1 || nz < 0 || nz > 1) continue;
+        const n = w.get(x + nx, y, z + nz);
+        if (n === -1 || (n & 0xfff) === B.pale_oak_log) sides |= 1 << h;
+      }
+      if (sides) w.set(cx, y, cz, S(B.pale_moss_carpet, sides));
     }
   }
 }

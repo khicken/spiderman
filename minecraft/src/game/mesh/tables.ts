@@ -200,7 +200,7 @@ export const MESH_EMIT = Uint8Array.from(STATE_EMIT);
 for (const d of BLOCKS) {
   for (let m = 0; m < 16; m++) {
     const s = d.id | (m << 12);
-    if (d.name === "open_eyeblossom") MESH_EMIT[s] = Math.max(MESH_EMIT[s], 10);
+    if (d.name === "open_eyeblossom" || d.name === "potted_open_eyeblossom") MESH_EMIT[s] = Math.max(MESH_EMIT[s], 10);
     if (d.name === "creaking_heart" && ((m >> 2) & 3) === 2) MESH_EMIT[s] = Math.max(MESH_EMIT[s], 12);
   }
 }

@@ -1,12 +1,12 @@
 import * as THREE from "three";
 import type { DamageSource, Entity, GameCtx, MobDef, MobModel } from "../../contracts";
 import { blockId, hasBlock } from "../../blocks/registry";
-import { crumble, heartHurt, linkHolds, type HeartPos } from "../../systems/creaking-heart";
+import { crumble, heartHurt, linkHolds, twitchTick, twitching, type HeartPos } from "../../systems/creaking-heart";
 import { applyPhysics, canSee, clearPath, idleLook, meleeAttack, playerTargetable } from "../ai";
 import { chase, hurtAmount, idle, num, sound, updateTarget } from "./brain";
 import { skinOf } from "./looks-undead";
 import { type Pix, shade } from "./pix";
-import { attackTime, headLook, rig, setRot, wrap, type VPart } from "./rig";
+import { attackTime, headLook, rig, setRot, wrap, type AnimArgs, type VPart } from "./rig";
 
 const SPEED = 0.4;
 
@@ -75,6 +75,22 @@ function addEyes(head: THREE.Object3D): { dispose(): void } {
   };
 }
 
+const jit = (n: number) => {
+  const v = Math.sin(n * 12.9898) * 43758.5453;
+  return v - Math.floor(v) - 0.5;
+};
+
+// A fresh random pose every other tick reads as the jerky death twitch.
+function twitch(p: Record<string, THREE.Object3D>, a: AnimArgs): void {
+  const k = Math.floor(a.age / 2) * 17 + a.e.id * 101;
+  setRot(p.head, jit(k) * 0.9, jit(k + 1) * 1.2, jit(k + 2) * 0.7);
+  setRot(p.body, jit(k + 3) * 0.35, 0, jit(k + 4) * 0.35);
+  setRot(p.right_arm, jit(k + 5) * 1.6, 0, 0.3 + jit(k + 6) * 0.6);
+  setRot(p.left_arm, jit(k + 7) * 1.6, 0, -0.3 + jit(k + 8) * 0.6);
+  setRot(p.right_leg, jit(k + 9) * 0.6, 0, jit(k + 10) * 0.3);
+  setRot(p.left_leg, jit(k + 11) * 0.6, 0, jit(k + 12) * 0.3);
+}
+
 function creakingModel(): MobModel {
   const r = rig(skinOf("creaking", 64, 64, paintCreaking), PARTS);
   const eyes = addEyes(r.p.head);
@@ -93,6 +109,7 @@ function creakingModel(): MobModel {
     setRot(r.p.right_arm, -s * 0.8 * a.walk + lift, 0, 0.08 + sway);
     setRot(r.p.left_arm, s * 0.8 * a.walk + lift, 0, -0.08 - sway);
     setRot(r.p.body, 0.04 * a.walk, 0, 0);
+    if (twitching(a.e)) twitch(r.p, a);
   });
   const base = m.dispose;
   m.dispose = () => {
@@ -122,6 +139,12 @@ function watched(e: Entity, ctx: GameCtx): boolean {
 }
 
 function tick(e: Entity, ctx: GameCtx): void {
+  if (twitching(e)) {
+    e.body.vel.x = 0;
+    e.body.vel.z = 0;
+    if (!twitchTick(ctx, e)) applyPhysics(e, ctx);
+    return;
+  }
   if (!linkHolds(ctx, e)) {
     crumble(ctx, e);
     return;
@@ -152,6 +175,7 @@ function tick(e: Entity, ctx: GameCtx): void {
 // Vanilla Creaking.hurtServer: a heart-bound creaking never loses health; a player's hit makes the heart bleed resin.
 function blockHurt(e: Entity, ctx: GameCtx, _amount: number, source: DamageSource, attacker?: Entity | "player"): boolean {
   const h = e.data.heart as HeartPos | undefined;
+  if (twitching(e)) return source !== "void";
   if (!h || source === "void") return false;
   if (!attacker || num(e, "_blockCd") > 0) return true;
   e.data._blockCd = 8;

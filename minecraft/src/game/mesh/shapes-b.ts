@@ -9,6 +9,7 @@ import { waterAt } from "./tint";
 const E = 1, W = 2, U = 4, D = 8, S = 16, N = 32;
 const SIDES = [0, 1, 4, 5];
 const BAMBOO = idOfName("bamboo");
+const RESIN = idOfName("resin_clump");
 const BIG = [BigInt(116129781), BigInt(42317861), BigInt(11), BigInt(16)];
 
 const rect = (u0: number, v0: number, u1: number, v1: number) => [u0, v0, u0, v1, u1, v1, u1, v0];
@@ -389,6 +390,17 @@ function vine() {
   T.double = true;
   const l = texUp();
   const name = blockName(M.id);
+  if (M.id === RESIN) {
+    const f = M.meta;
+    if (f === 2) planeY(15.2, 0, 0, 16, 16, l);
+    else if (f === 3 || f > 5) planeY(0.8, 0, 0, 16, 16, l);
+    else {
+      T.rot = (F2H[f] - 2) & 3;
+      planeZ(0.8, 0, 16, 0, 16, l);
+      T.rot = 0;
+    }
+    return;
+  }
   const fromNeighbors = name !== "vine";
   for (let h = 0; h < 4; h++) {
     const on = fromNeighbors ? FULL[sideState(h) & 0xfff] : (M.meta >> h) & 1;

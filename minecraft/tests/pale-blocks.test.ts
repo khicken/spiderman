@@ -39,3 +39,40 @@ test("eyeblossom sounds and pale behaviors resolve", async () => {
   assert.ok(BEHAVIORS.open_eyeblossom.randomTick && BEHAVIORS.closed_eyeblossom.scheduledTick);
   assert.ok(BEHAVIORS.pale_hanging_moss.canSurvive && BEHAVIORS.pale_hanging_moss.place);
 });
+
+test("potted eyeblossoms: appended last, pot in and out, toggle by time of day", async () => {
+  const { blockId, blockDef } = await import("../src/game/blocks/registry");
+  const { BEHAVIORS } = await import("../src/game/mechanics/index");
+  const { MESH_EMIT, idOfName } = await import("../src/game/mesh/tables");
+  assert.deepEqual(BLOCKS.slice(-2).map((b) => b.name), ["potted_closed_eyeblossom", "potted_open_eyeblossom"]);
+  assert.equal(blockDef(blockId("potted_open_eyeblossom")).textures.front, "open_eyeblossom");
+  assert.ok(MESH_EMIT[idOfName("potted_open_eyeblossom")] > 0);
+  assert.equal(MESH_EMIT[idOfName("potted_closed_eyeblossom")], 0);
+
+  const at = new Map<string, number>([["0,0,0", blockId("flower_pot")]]);
+  const given: string[] = [];
+  let removed = 0;
+  const ctx = {
+    world: { dim: "overworld", getBlock: (x: number, y: number, z: number) => at.get(`${x},${y},${z}`) ?? 0, setBlock: (x: number, y: number, z: number, s: number) => void at.set(`${x},${y},${z}`, s) },
+    player: { sneaking: false, gameMode: "survival" },
+    inventory: { removeHeld: () => removed++, add: (s: { item: string }) => void given.push(s.item) },
+    time: { dayTime: 18000, rain: 0, thunder: 0 },
+    random: () => 0.5,
+    emit: () => {},
+  } as unknown as import("../src/game/contracts").GameCtx;
+  const pot = () => blockDef(at.get("0,0,0")!).name;
+  assert.ok(BEHAVIORS.flower_pot.use!(ctx, 0, 0, 0, at.get("0,0,0")!, { item: "closed_eyeblossom", count: 1 }));
+  assert.equal(pot(), "potted_closed_eyeblossom");
+  assert.equal(removed, 1);
+  BEHAVIORS.potted_closed_eyeblossom.randomTick!(ctx, 0, 0, 0, at.get("0,0,0")!);
+  assert.equal(pot(), "potted_open_eyeblossom", "opens at night");
+  (ctx.time as { dayTime: number }).dayTime = 6000;
+  BEHAVIORS.potted_open_eyeblossom.randomTick!(ctx, 0, 0, 0, at.get("0,0,0")!);
+  assert.equal(pot(), "potted_closed_eyeblossom", "closes by day");
+  assert.ok(BEHAVIORS.potted_closed_eyeblossom.use!(ctx, 0, 0, 0, at.get("0,0,0")!, null));
+  assert.equal(pot(), "flower_pot");
+  assert.deepEqual(given, ["closed_eyeblossom"]);
+  assert.ok(BEHAVIORS.flower_pot.use!(ctx, 0, 0, 0, at.get("0,0,0")!, { item: "open_eyeblossom", count: 1 }));
+  assert.equal(pot(), "potted_open_eyeblossom");
+  assert.deepEqual(blockDef(blockId("potted_open_eyeblossom")).drops, [{ item: "flower_pot" }, { item: "open_eyeblossom" }]);
+});

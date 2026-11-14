@@ -91,6 +91,8 @@ const DRAGON_EGG = [box(1, 0, 1, 15, 16, 15)];
 const DECORATED_POT = [box(1, 0, 1, 15, 16, 15)];
 const VINE_FACE = [box(0, 0, 15, 16, 16, 16), box(0, 0, 0, 1, 16, 16), box(0, 0, 0, 16, 16, 1), box(15, 0, 0, 16, 16, 16)];
 const VINE_UP = box(0, 15, 0, 16, 16, 16);
+const RESIN_FACE = faceBoxes([VINE_UP], CARPET, [VINE_FACE[0]]);
+const RESIN_ID = BLOCKS.find((b) => b.name === "resin_clump")?.id ?? -1;
 const CAKE = [0, 1, 2, 3, 4, 5, 6].map((b) => [box(1 + b * 2, 0, 1, 15, 8, 15)]);
 const CANDLE_CAKE = [box(1, 0, 1, 15, 8, 15), box(7, 8, 7, 9, 14, 9)];
 const SNOW = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((l) => (l === 0 ? NONE : [box(0, 0, 0, 16, l * 2, 16)]));
@@ -248,6 +250,7 @@ function chestBoxes(s: BlockState, world: WorldApi | null, x: number, y: number,
 
 function vineBoxes(s: BlockState, world: WorldApi | null, x: number, y: number, z: number): Aabb[] {
   const m = metaOf(s);
+  if (idOf(s) === RESIN_ID) return RESIN_FACE[m] ?? RESIN_FACE[3];
   const l: Aabb[] = [];
   for (let i = 0; i < 4; i++) if (m & (1 << i)) l.push(VINE_FACE[i]);
   if (world && SOLID[idOf(world.getBlock(x, y + 1, z))]) l.push(VINE_UP);
