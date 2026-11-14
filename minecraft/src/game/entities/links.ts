@@ -12,11 +12,23 @@ function uuidOf(e: Entity): string {
   return e.data.uuid as string;
 }
 
+// Combat memory lives in runtime-only "_" keys, which saves strip. Like vanilla AngerTime/AngryAt, it is saved under these keys.
+const COMBAT_REFS: [string, string][] = [["_target", "aiTarget"], ["_hurtBy", "hurtBy"]];
+const COMBAT_TIMERS: [string, string][] = [["_anger", "angerTime"], ["_angerT", "angerGroupTime"]];
+
 export function linksToSave(saved: Map<number, Entity>, out: { e: Entity; data: Record<string, unknown> }[]) {
   const ref = (id: unknown) => {
     const t = typeof id === "number" ? saved.get(id) : undefined;
     return t ? uuidOf(t) : undefined;
   };
+  for (const { e, data } of out) {
+    for (const [k, s] of COMBAT_REFS) {
+      const v = e.data[k];
+      const r = v === "player" ? "player" : typeof v === "number" && v !== e.id ? ref(v) : undefined;
+      if (r !== undefined) data[s] = r;
+    }
+    for (const [k, s] of COMBAT_TIMERS) if (typeof e.data[k] === "number" && (e.data[k] as number) > 0) data[s] = e.data[k];
+  }
   for (const { data } of out) {
     for (const k of LINKS) if (typeof data[k] === "number") data[k] = ref(data[k]);
     const l = data.leash as { entity?: unknown } | undefined;
@@ -37,6 +49,17 @@ export function linksFromSave(loaded: Entity[]) {
     if (l && typeof l === "object" && !Array.isArray(l) && "entity" in l) {
       const t = id(l.entity);
       d.leash = t === undefined ? undefined : { ...l, entity: t };
+    }
+    for (const [k, s] of COMBAT_REFS) {
+      const v = d[s];
+      delete d[s];
+      const t = v === "player" ? "player" : id(v);
+      if (t !== undefined && t !== e.id) d[k] = t;
+    }
+    for (const [k, s] of COMBAT_TIMERS) {
+      const v = d[s];
+      delete d[s];
+      if (typeof v === "number" && v > 0) d[k] = v;
     }
     if (e.type === "trader_llama" && typeof d.trader === "number") {
       d.trader = undefined;
