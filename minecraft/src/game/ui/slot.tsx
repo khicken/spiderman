@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ClickKind, ItemStack } from "../contracts";
 import { LINE_HEIGHT, textWidth } from "./font";
 import { useGui, Text } from "./gui";
@@ -110,6 +110,11 @@ export function usePointer(tipLines: string[]) {
       tipRef.current.style.transform = `translate(${tx}px, ${ty}px)`;
     }
   }, [width, height]);
+  // A GUI scale change under a still mouse leaves the stored GUI px stale, so the doll would look at the wrong spot.
+  useEffect(() => {
+    mouse.current = { x: lastClient.x / scale, y: lastClient.y / scale };
+    place();
+  }, [scale, place]);
   const onMouseMove = useCallback(
     (e: React.MouseEvent) => {
       mouse.current = { x: e.clientX / scale, y: e.clientY / scale };
