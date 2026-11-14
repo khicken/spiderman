@@ -8,6 +8,8 @@ import { blockId } from "../src/game/blocks/registry";
 import { tickFireball, tickThrown, tickWindCharge } from "../src/game/entities/projectiles";
 import { catchFire, fireAspectHit, remoteFire } from "../src/game/net/host-fire";
 import { remoteHeld, type PvpRemote } from "../src/game/net/pvp";
+import { potionImpact } from "../src/game/systems/brewing/effects";
+import { LIGHTNING_BOLT, inBolt } from "../src/game/systems/features/lightning";
 
 const STONE = blockId("stone");
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -178,4 +180,110 @@ test("a wind charge makes an enderman teleport and does no direct damage", () =>
   tickWindCharge(s.p, s.ctx);
   assert.deepEqual(s.damaged.filter((d) => d.n === 1 && d.source === "generic"), []);
   assert.ok(s.sounds.includes("entity.enderman.teleport"));
+});
+
+// --- putting a remote player's fire out ---
+
+test("a host-side extinguish is sent as fire 0, and the client puts its fire out", async () => {
+  let tick = 0;
+  const sent: number[] = [];
+  const f = remoteFire(() => tick, (n) => sent.push(n));
+  f.set(160);
+  await settle();
+  tick = 5;
+  f.set(0);
+  await settle();
+  assert.deepEqual(sent, [160, 0]);
+  const p = burner({ fireTicks: 120 });
+  catchFire(burnCtx(), p, sent[1]);
+  assert.equal(p.fireTicks, 0);
+});
+
+test("an extinguish the host cannot see burning is still sent, but not every tick", async () => {
+  let tick = 100;
+  const sent: number[] = [];
+  const f = remoteFire(() => tick, (n) => sent.push(n));
+  f.set(0);
+  await settle();
+  tick++;
+  f.set(0);
+  await settle();
+  assert.deepEqual(sent, [0]);
+  tick += 10;
+  f.set(0);
+  await settle();
+  assert.deepEqual(sent, [0, 0]);
+});
+
+test("the client drops a malformed fire message", () => {
+  for (const bad of [-1, NaN, Infinity, "100", null]) {
+    const p = burner({ fireTicks: 50 });
+    catchFire(burnCtx(), p, bad);
+    assert.equal(p.fireTicks, 50, String(bad));
+  }
+});
+
+type FirePlayer = Record<string, unknown> & { fireTicks: number };
+function firePlayer(x: number, y: number, fire: ReturnType<typeof remoteFire> | null, extra: Record<string, unknown> = {}): FirePlayer {
+  const p = { body: { pos: new THREE.Vector3(x, y, 0), width: 0.6, height: 1.8 }, dead: false, gameMode: "survival", _f: 0, ...extra } as Record<string, unknown>;
+  Object.defineProperty(p, "fireTicks", { get: () => (fire ? fire.get() : p._f), set: (v: number) => (fire ? fire.set(v) : (p._f = v)) });
+  return p as FirePlayer;
+}
+
+test("a water splash potion puts out every player in range, remote ones included", async () => {
+  const sent: number[] = [];
+  const remote = remoteFire(() => 0, (n) => sent.push(n));
+  const host = firePlayer(0, 64, null, { _f: 100 }), near = firePlayer(2, 64, remote), far = firePlayer(20, 64, null, { _f: 100 });
+  const ctx = {
+    emit() {},
+    player: host,
+    playersAll: () => [host, near, far],
+    world: { getBlock: () => 0 },
+    entities: { near: (_x: number, _y: number, _z: number, _r: number, out: Entity[]) => out, spawn() {} },
+  } as unknown as GameCtx;
+  potionImpact(ctx, 0.5, 64.5, 0, "water", false);
+  await settle();
+  assert.equal(host.fireTicks, 0);
+  assert.deepEqual(sent, [0]);
+  assert.equal(far.fireTicks, 100);
+});
+
+// --- lightning ---
+
+test("lightning burns and hurts every player in the bolt's area, not just one", async () => {
+  const sent: number[] = [];
+  const hurt: string[] = [];
+  const remote = remoteFire(() => 0, (n) => sent.push(n));
+  const mk = (name: string, x: number, y: number, fire: ReturnType<typeof remoteFire> | null = null, mode = "survival") =>
+    firePlayer(x, y, fire, { gameMode: mode, damage: (n: number, s: string) => hurt.push(`${name}:${n}:${s}`) });
+  const host = mk("host", 0.5, 64), b = mk("b", 3.2, 64, remote), high = mk("high", 0.5, 72), far = mk("far", 5, 64), creative = mk("c", 1, 64, null, "creative");
+  const bolt = { id: 99, type: "lightning_bolt", age: 0, data: {}, dead: false, health: 1, maxHealth: 1, body: { pos: new THREE.Vector3(0.5, 64, 0.5), vel: new THREE.Vector3() } } as unknown as Entity;
+  const ctx = {
+    emit() {},
+    random: () => 0.5,
+    renderer: {},
+    rules: { doFireTick: false, difficulty: "normal" },
+    world: { getBlock: () => 0 },
+    player: host,
+    playersAll: () => [host, b, high, far, creative],
+    entities: { near: (_x: number, _y: number, _z: number, _r: number, out: Entity[]) => out },
+  } as unknown as GameCtx;
+  LIGHTNING_BOLT.tick!(bolt, ctx);
+  await settle();
+  assert.deepEqual(hurt.sort(), ["b:5:lightning", "high:5:lightning", "host:5:lightning"]);
+  assert.equal(host.fireTicks, 160);
+  assert.deepEqual(sent, [160]);
+  assert.equal(far.fireTicks, 0);
+  assert.equal(creative.fireTicks, 0);
+});
+
+test("the bolt's area is x/z +-3 and y -3..+9 against the player's box", () => {
+  const at = (x: number, y: number) => ({ pos: { x, y, z: 0 }, width: 0.6, height: 1.8 });
+  const p = { x: 0, y: 64, z: 0 };
+  assert.ok(inBolt(p, at(3.2, 64)));
+  assert.ok(!inBolt(p, at(3.4, 64)));
+  assert.ok(inBolt(p, at(0, 72.9)));
+  assert.ok(!inBolt(p, at(0, 73)));
+  assert.ok(inBolt(p, at(0, 59.5)));
+  assert.ok(!inBolt(p, at(0, 59.2)));
 });
