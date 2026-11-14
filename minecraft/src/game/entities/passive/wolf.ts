@@ -77,7 +77,10 @@ function paintCollar(p: Pix) {
   p.rect([m.bottom[0], m.bottom[1], 8, 2], 0xffffff);
 }
 
-const wolfKey = (e: Entity) => `wolf_${(e.data.variant as string) ?? "pale"}_${e.data.owner ? "tame" : e.data._target !== undefined ? "angry" : "wild"}`;
+// Host copies know the owner and target; multiplayer client mirrors get only the tamed and angry flags (net/host-sync.ts).
+export const looksTame = (e: Entity) => !!e.data.owner || e.data.tamed === true;
+export const looksAngry = (e: Entity) => e.data._target !== undefined || e.data._angry === true;
+const wolfKey = (e: Entity) => `wolf_${(e.data.variant as string) ?? "pale"}_${looksTame(e) ? "tame" : looksAngry(e) ? "angry" : "wild"}`;
 
 function wolfSkin(key: string) {
   const [, v, mood] = key.split("_");
@@ -120,7 +123,9 @@ function wolfModel() {
       pos("right_front_leg", -2.5, 16, -4);
       pos("left_front_leg", 0.5, 16, -4);
       const health = e.health;
-      const tail = e.data._target !== undefined ? 1.5393804 : e.data.owner ? (0.55 - (e.maxHealth - health) * 0.02) * Math.PI : Math.PI / 5;
+      const tame = looksTame(e);
+      // Tamed wolves have 40 health; a client mirror keeps the wild maximum.
+      const tail = looksAngry(e) ? 1.5393804 : tame ? (0.55 - (40 - health) * 0.02) * Math.PI : Math.PI / 5;
       if (sit) {
         setRot(r.p.upper_body, (Math.PI * 2) / 5, 0, 0);
         pos("upper_body", -1, 16, -3);
@@ -148,7 +153,7 @@ function wolfModel() {
       const cr = collarRig.p.upper_body;
       cr.position.copy(r.p.upper_body.position);
       cr.rotation.copy(r.p.upper_body.rotation);
-      collarRig.root.visible = !!e.data.owner;
+      collarRig.root.visible = tame;
       (collarMat.userData.base as { setHex(n: number): void }).setHex(DYE_RGB[(e.data.collar as Dye) ?? "red"]);
     },
     { variant: wolfKey, variantSkin: wolfSkin },

@@ -101,10 +101,9 @@ function squidModel(glow: boolean) {
   );
 }
 
-// Tentacles beat twice as fast while fleeing. Clients do not get the panic timer, so a hit (which starts the
-// panic on the host) stands in for it there.
+// Tentacles beat twice as fast while fleeing. The panic timer reaches clients as an animation key.
 function waveTentacles(e: Entity) {
-  e.data._tent = num(e, "_tent") + 0.12 * (num(e, "_panic") > 0 || e.hurtTicks > 0 ? 2 : 1);
+  e.data._tent = num(e, "_tent") + 0.12 * (num(e, "_panic") > 0 ? 2 : 1);
 }
 
 function squidDef(glow: boolean): MobDef {

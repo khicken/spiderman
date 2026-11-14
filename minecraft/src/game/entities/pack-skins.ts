@@ -101,7 +101,8 @@ const VARIANT_PATHS: Record<string, (v: unknown, e: Entity) => string> = {
   trader_llama: (v) => `entity/llama/${str(v, "creamy")}`,
   wolf: (v, e) => {
     const base = str(v, "pale") === "pale" ? "entity/wolf/wolf" : `entity/wolf/wolf_${v}`;
-    return base + (e.data.owner ? "_tame" : e.data._target !== undefined ? "_angry" : "");
+    // Same tamed / angry test as passive/wolf.ts, which client mirrors answer from synced flags.
+    return base + (e.data.owner || e.data.tamed === true ? "_tame" : e.data._target !== undefined || e.data._angry === true ? "_angry" : "");
   },
   rabbit: (v) => `entity/rabbit/${str(v, "brown")}`,
   frog: (v) => `entity/frog/${str(v, "temperate")}_frog`,

@@ -7,6 +7,7 @@ import { blockId } from "../src/game/blocks/registry";
 import { createEntities } from "../src/game/entities";
 import { mobDef } from "../src/game/entities/registry";
 import { animDelta, decayAnim, entData, type Sent } from "../src/game/net/host-sync";
+import { looksAngry, looksTame } from "../src/game/entities/passive/wolf";
 
 const WATER = blockId("water");
 // Water fills y < 64 for x >= 10; everything else is air.
@@ -136,4 +137,54 @@ test("slime squish, creeper swell, shulker lid and dragon wings run on client mi
   const f = d.e.data.flap as number;
   clientTick(d.ents, d.e, 0, 70, 0, false);
   assert.ok(Math.abs((d.e.data.flap as number) - f - 0.2) < 1e-9, "hovering beats 0.2 a tick");
+});
+
+test("a tamed pet reaches clients as tamed, never as owned by the client", () => {
+  const e = { data: { owner: "player", sitting: true, collar: "blue", variant: "pale" } } as unknown as Entity;
+  const d = entData(e);
+  assert.equal(d.owner, undefined, "client advancements read owner === \"player\" as their own tame");
+  assert.equal(d.tamed, true);
+  assert.equal(d.sitting, true);
+  assert.equal(d.collar, "blue");
+  assert.equal(entData({ data: { variant: "pale" } } as unknown as Entity).tamed, undefined);
+  const copy = { data: d } as unknown as Entity;
+  assert.ok(looksTame(copy));
+  assert.ok(!looksAngry(copy));
+});
+
+test("a mob's anger reaches clients as a flag when it gains or drops a target", () => {
+  const sent = new Map<string, Sent>();
+  const host: Record<string, unknown> = {};
+  const out: Record<string, unknown> = {};
+  assert.equal(animDelta(host, sent, 0, out), false, "no target, nothing to send");
+  host._target = "player";
+  assert.ok(animDelta(host, sent, 1, out));
+  assert.deepEqual(out, { _angry: true });
+  host._target = 42;
+  assert.equal(animDelta(host, sent, 2, {}), false, "a new target is still just angry");
+  host._target = undefined;
+  const o2: Record<string, unknown> = {};
+  assert.ok(animDelta(host, sent, 3, o2));
+  assert.deepEqual(o2, { _angry: null });
+  assert.ok(looksAngry({ data: { _angry: true } } as unknown as Entity));
+});
+
+test("squid panic is sent once and keeps tentacles fast on clients for the host's 40 ticks", () => {
+  const sent = new Map<string, Sent>();
+  const host: Record<string, unknown> = { _panic: 40 };
+  const out: Record<string, unknown> = {};
+  assert.ok(animDelta(host, sent, 0, out));
+  for (let t = 1; t < 40; t++) {
+    host._panic = 40 - t;
+    assert.equal(animDelta(host, sent, t, {}), false);
+  }
+  const { ents, e } = mirror("squid", 12, 60);
+  Object.assign(e.data, out);
+  let fast = 0;
+  for (let i = 0; i < 45; i++) {
+    const t = (e.data._tent as number) ?? 0;
+    clientTick(ents, e, 12, 60, 0, false);
+    if ((e.data._tent as number) - t > 0.2) fast++;
+  }
+  assert.equal(fast, 39, "fast while the counted-down timer is above 0");
 });

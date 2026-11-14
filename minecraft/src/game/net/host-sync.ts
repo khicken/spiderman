@@ -16,6 +16,9 @@ export function entData(e: Entity): Record<string, unknown> {
     if (typeof v === "object" && v !== null && !safeJson(v)) continue;
     out[k] = v;
   }
+  // Tamed pets: clients only need to know it is tamed. owner itself stays off, since client code reads
+  // owner === "player" as "this client tamed it" (advancements).
+  if (e.data.owner === "player") out.tamed = true;
   // A lead held by a player: which one, so each client draws it to the right hand (0 is the host).
   const by = (e.data._leashP as { netId?: unknown } | undefined)?.netId;
   if (e.data.leash === "player" && typeof by === "number") out.leashBy = by;
@@ -24,9 +27,9 @@ export function entData(e: Entity): Record<string, unknown> {
 
 // Render-only state the host keeps in "_" keys. Timers count down one per tick on the host, and the
 // client counts them down too, so a timer is sent once when it starts rather than every tick.
-const DECAY = ["_swing", "_fire", "fuse", "_eat", "_sit", "_lie", "_roll", "_sneeze", "_croak", "_tongue", "_rear", "_ram", "_stand", "_shake", "_spin", "_dead", "_dmg", "swing", "roar", "boom", "emerge", "dig"];
+const DECAY = ["_panic", "_swing", "_fire", "fuse", "_eat", "_sit", "_lie", "_roll", "_sneeze", "_croak", "_tongue", "_rear", "_ram", "_stand", "_shake", "_spin", "_dead", "_dmg", "swing", "roar", "boom", "emerge", "dig"];
 // Plain state, sent when it changes.
-const LATCH = ["_beg", "_dance", "_sleep", "_slope", "_bx", "_by", "_bz", "_swingLen", "_oars", "_hurtDir", "_sdir"];
+const LATCH = ["_beg", "_dance", "_sleep", "_slope", "_bx", "_by", "_bz", "_swingLen", "_oars", "_hurtDir", "_sdir", "_angry"];
 // How far the client may drift before a resend. Only burning or not shows, and lava holds fire at 300.
 const TOL: Record<string, number> = { _bx: 0.25, _by: 0.25, _bz: 0.25, _fire: 20 };
 export const ANIM_KEYS = [...DECAY, ...LATCH];
@@ -42,7 +45,8 @@ const norm = (v: unknown) => (v === undefined || v === null || typeof v === "num
 export function animDelta(data: Record<string, unknown>, sent: Map<string, Sent>, tick: number, out: Record<string, unknown>): boolean {
   let any = false;
   for (const k of ANIM_KEYS) {
-    const v = norm(data[k]);
+    // _angry is derived: whether the mob has a target, without sending the target itself.
+    const v = k === "_angry" ? (data._target !== undefined || null) : norm(data[k]);
     if (v === undefined) continue;
     const was = sent.get(k);
     const have = was ? (DECAYS.has(k) ? decayed(was.v, tick - was.t) : was.v) : null;
