@@ -163,7 +163,7 @@ export function CreativeScreen({ view, onClick, onClose, creative, advanced, inv
           e.stopPropagation();
           switchTab(s.tab.id);
         }}
-        style={{ position: "absolute", left: x, top: y, width: 26, height: h, cursor: "pointer", zIndex: selected ? 3 : 0 }}
+        style={{ position: "absolute", left: x, top: y, width: 26, height: h, cursor: "pointer", zIndex: selected ? 3 : 0, overflow: "hidden" }}
       >
         <img alt="" src={panelUrl(26, h + 4, selected ? 0xc6c6c6 : 0xa8a8a8)} width={26} height={h + 4} style={{ position: "absolute", left: 0, top: s.top ? 0 : -4, imageRendering: "pixelated" }} />
         {selected && <div style={{ position: "absolute", left: 3, top: s.top ? h - 4 : 0, width: 20, height: 4, background: "#c6c6c6" }} />}

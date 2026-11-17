@@ -9,6 +9,8 @@ export const CHUNK = 16;
 export const MIN_Y = -64;
 export const HEIGHT = 384;
 export const MAX_Y = MIN_Y + HEIGHT - 1;
+// The host serves a client chunks out to this render distance and refuses the rest.
+export const MAX_REMOTE_RD = 8;
 export const SECTIONS = HEIGHT / CHUNK;
 export const SEA_LEVEL = 63;
 export const TPS = 20;
@@ -789,6 +791,9 @@ export interface GameCtx {
   renderer: RendererApi;
   rules: Rules;
   time: { tick: number; dayTime: number; day: number; rain: number; thunder: number };
+  // performance.now() time that the running tick stands for. Several ticks can run in one frame, so the wall
+  // clock bunches them; this stays 50 ms apart and is the timestamp for state that peers interpolate.
+  tickAt?: number;
   emit(e: GameEvent): void;
   random: () => number;
   behaviors: Record<string, BlockBehavior>;

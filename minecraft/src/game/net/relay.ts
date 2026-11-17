@@ -265,14 +265,21 @@ export function createRelay(topicId: string, me: Identity, key: CryptoKey, onMsg
       pkt.set(head);
       pkt.set(msg, head.length);
       const now = performance.now();
+      let sent = false;
+      let best: Broker | null = null;
       for (const b of brokers) {
         if (!b.ok) continue;
         b.tokens = Math.min(b.hz, b.tokens + ((now - b.at) / 1000) * b.hz);
         b.at = now;
+        if (!best || b.hz > best.hz) best = b;
         if (lossy && b.tokens < 1) continue;
-        b.tokens -= 1;
+        // Floor the debt at one second, or a burst of reliable sends keeps the budget negative and starves lossy ones.
+        b.tokens = Math.max(-b.hz, b.tokens - 1);
         send(b, pkt);
+        sent = true;
       }
+      // Player and mob moves are lossy. Over budget everywhere, still send each one on the fastest broker.
+      if (!sent && best) send(best, pkt);
     }).catch((e) => console.warn("relay send:", e));
   }
 
