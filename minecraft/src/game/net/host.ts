@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { BlockState, DamageSource, Dim, Entity, EntityApi, EntitySave, Face, GameCtx, GameEvent, GameMode, ItemStack, PlayerApi } from "../contracts";
-import { MAX_Y, MIN_Y, idOf, metaOf } from "../contracts";
+import { MAX_REMOTE_RD, MAX_Y, MIN_Y, idOf, metaOf } from "../contracts";
 import { BLOCKS } from "../blocks/registry";
 import type { PlayerPicker } from "../entities";
 import { createInventory } from "../items";
@@ -84,7 +84,7 @@ const CHUNKS_PER_TICK = 6;
 // Chunks wait while this much is still queued to a peer, so block changes and other reliable messages
 // never sit behind seconds of terrain data.
 const CHUNK_BACKLOG = 48 * 1024;
-const MAX_RD = 8;
+const MAX_RD = MAX_REMOTE_RD;
 const key = (cx: number, cz: number) => (cx + 32768) * 65536 + (cz + 32768);
 const clampRd = (r: number) => Math.max(2, Math.min(MAX_RD, r | 0));
 const MAX_REQS = (2 * MAX_RD + 3) ** 2;
@@ -1168,7 +1168,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
       const players = snapshot();
       avatars.set(players, 0, g.dim);
       const tm = g.ctx.time;
-      const playersMsg: HostMsg = { t: "players", list: players, at: performance.now() };
+      const playersMsg: HostMsg = { t: "players", list: players, at: g.ctx.tickAt ?? performance.now() };
       for (const r of remotes.values()) {
         const hc = ctxFor(r.dim);
         if (hc) tickHealth(r.owner, hc, hc.rules, tick);
@@ -1180,7 +1180,7 @@ export async function createHost(g: GameInternals, opts: LanOptions): Promise<Ne
         serveChunks(r);
         const ents = entsOf(r.dim);
         if (ents) {
-          r.tracker.sync(ents, r.pos.x, r.pos.y, r.pos.z, tick, (m) => send(r, m), (b) => t.sendBin(r.peer, b, false));
+          r.tracker.sync(ents, r.pos.x, r.pos.y, r.pos.z, tick, (m) => send(r, m), (b) => t.sendBin(r.peer, b, false), g.ctx.tickAt);
           pickups(r, ents);
         }
         t.sendFast(r.peer, playersMsg);

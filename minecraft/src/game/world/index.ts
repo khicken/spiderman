@@ -1,5 +1,5 @@
 import type { BlockBehavior, BlockEntityData, BlockState, ChunkData, ChunkEvent, Dim, EntitySave, GameCtx, HostAction, WorldApi } from "../contracts";
-import { MAX_Y, MIN_Y, SECTIONS, SET_DEFAULT, SET_NO_DROP, SET_NO_LIGHT, SET_NOTIFY } from "../contracts";
+import { MAX_REMOTE_RD, MAX_Y, MIN_Y, SECTIONS, SET_DEFAULT, SET_NO_DROP, SET_NO_LIGHT, SET_NOTIFY } from "../contracts";
 import { BLOCKS, LIGHT_FILTER, STATE_EMIT } from "../blocks/registry";
 import { IMPLICIT_WATER, WATER_ID, WATER_SOURCE, canHoldWater } from "../blocks/waterlog";
 import { BIOMES } from "../worldgen/biomes";
@@ -475,6 +475,8 @@ export function createWorld(opts: WorldOpts): World {
       if (disposed) return;
       const cx = Math.floor(centerX) >> 4;
       const cz = Math.floor(centerZ) >> 4;
+      // Past the host's limit every request comes back "nochunk" and is asked again each second.
+      if (remote) r = Math.min(r, MAX_REMOTE_RD);
       if (cx !== centerCx || cz !== centerCz || r !== radius) recompute(cx, cz, r);
 
       const start = now();

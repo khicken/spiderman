@@ -59,6 +59,19 @@ function useWindowSize() {
   return size;
 }
 
+// Some browsers refuse the async clipboard API; the old copy command still works inside a click.
+const copyLegacy = (text: string) => {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;opacity:0";
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand("copy");
+  ta.remove();
+  if (!ok) throw new Error("copy refused");
+};
+const copyText = (text: string) => (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject(new Error("no clipboard"))).catch(() => copyLegacy(text));
+
 export default function Page() {
   const [screen, setScreen] = useState<Screen>("title");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -161,8 +174,8 @@ export default function Page() {
     });
   }, []);
 
-  const addChat = useCallback((text: string) => {
-    setMessages((m) => [...m.slice(-99), { id: ++msgId.current, text, at: performance.now() }]);
+  const addChat = useCallback((text: string, copy?: string) => {
+    setMessages((m) => [...m.slice(-99), { id: ++msgId.current, text, at: performance.now(), copy }]);
   }, []);
 
   useEffect(() => {
@@ -509,6 +522,12 @@ export default function Page() {
               bgOpacity={settings.chatBackground}
               lineSpacing={settings.chatLineSpacing}
               chatWidth={settings.chatWidth}
+              onCopy={(text) => {
+                void copyText(text).then(
+                  () => addChat("Copied to clipboard"),
+                  () => addChat("§cCould not copy to clipboard"),
+                );
+              }}
               onSend={(line) => {
                 const t = line.trim();
                 if (!t) return;
@@ -578,7 +597,13 @@ export default function Page() {
               onStart={(o) => {
                 resume();
                 void gameRef.current?.openToLan(o).then(
-                  (code) => addChat(`Local game hosted on code ${code}`),
+                  (code) => {
+                    // Still inside the click's user activation, so the browser usually allows the write.
+                    void copyText(code).then(
+                      () => addChat(`Local game hosted on code §a[${code}]§r (copied)`, code),
+                      () => addChat(`Local game hosted on code §a[${code}]§r, click it in chat to copy`, code),
+                    );
+                  },
                   () => addChat("§cUnable to host local game"),
                 );
               }}

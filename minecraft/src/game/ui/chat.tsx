@@ -10,6 +10,7 @@ export interface ChatMessage {
   text: string; // section-sign or "&" color codes
   at: number; // performance.now() when received
   color?: number;
+  copy?: string; // clicking the line in open chat copies this
 }
 
 export interface ChatProps {
@@ -25,6 +26,7 @@ export interface ChatProps {
   lineSpacing?: number;
   chatWidth?: number;
   keepOpen?: boolean; // Enter sends and clears instead of closing (in-bed chat)
+  onCopy?: (text: string) => void;
 }
 
 const WIDTH = 320;
@@ -36,7 +38,7 @@ const fade = (ageMs: number) => {
   return t * t;
 };
 
-export function Chat({ messages, open, initial = "", onSend, onClose, complete, suggest, textOpacity = 1, bgOpacity = 0.5, lineSpacing = 0, chatWidth = WIDTH, keepOpen }: ChatProps) {
+export function Chat({ messages, open, initial = "", onSend, onClose, complete, suggest, textOpacity = 1, bgOpacity = 0.5, lineSpacing = 0, chatWidth = WIDTH, keepOpen, onCopy }: ChatProps) {
   const lineH = Math.floor(LINE * (1 + lineSpacing));
   const textY = lineH + Math.round(-8 * (lineSpacing + 1) + 4 * lineSpacing);
   const { width, height } = useGui();
@@ -73,8 +75,8 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
   }, [open, newest]);
 
   const lines = useMemo(() => {
-    const out: { key: string; text: string; at: number; color: number }[] = [];
-    for (const m of messages.slice(-100)) wrapText(m.text, chatWidth, true).forEach((t, i) => out.push({ key: `${m.id}:${i}`, text: t, at: m.at, color: m.color ?? 0xffffff }));
+    const out: { key: string; text: string; at: number; color: number; copy?: string }[] = [];
+    for (const m of messages.slice(-100)) wrapText(m.text, chatWidth, true).forEach((t, i) => out.push({ key: `${m.id}:${i}`, text: t, at: m.at, color: m.color ?? 0xffffff, copy: m.copy }));
     return out;
   }, [messages, chatWidth]);
 
@@ -166,13 +168,13 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
   const now = performance.now();
   const maxLines = open ? 20 : 10;
   const bottom = height - 40;
-  const visible: { key: string; text: string; color: number; alpha: number }[] = [];
+  const visible: { key: string; text: string; color: number; alpha: number; copy?: string }[] = [];
   const start = Math.max(0, Math.min(scroll, lines.length - maxLines));
   for (let i = lines.length - 1 - (open ? start : 0); i >= 0 && visible.length < maxLines; i--) {
     const l = lines[i];
     const alpha = open ? 1 : fade(now - l.at);
     if (alpha <= 0.02) break;
-    visible.push({ key: l.key, text: l.text, color: l.color, alpha });
+    visible.push({ key: l.key, text: l.text, color: l.color, alpha, copy: l.copy });
   }
 
   // Vanilla CommandSuggestions layout: popup rows 12 px tall above the input, at the argument's x.
@@ -199,7 +201,11 @@ export function Chat({ messages, open, initial = "", onSend, onClose, complete, 
         {visible.map((l, i) => {
           const y = bottom - (i + 1) * lineH;
           return (
-            <div key={l.key} style={{ position: "absolute", left: 0, top: y, width: chatWidth + 12, height: lineH, background: `rgba(0,0,0,${bgOpacity * l.alpha})` }}>
+            <div
+              key={l.key}
+              style={{ position: "absolute", left: 0, top: y, width: chatWidth + 12, height: lineH, background: `rgba(0,0,0,${bgOpacity * l.alpha})`, cursor: open && l.copy ? "pointer" : undefined }}
+              onClick={open && l.copy ? () => onCopy?.(l.copy!) : undefined}
+            >
               <Text text={l.text} color={l.color} amp x={4} y={textY} opacity={l.alpha * (textOpacity * 0.9 + 0.1)} />
             </div>
           );

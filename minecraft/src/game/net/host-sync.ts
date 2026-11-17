@@ -90,7 +90,7 @@ function safeJson(v: unknown): string {
 
 // What one client has seen of the entity list, so each tick sends only spawns, despawns, moves and changed data.
 export interface EntityTracker {
-  sync(ents: EntityApi, x: number, y: number, z: number, tick: number, json: (m: HostMsg) => void, bin: (b: Uint8Array) => void): void;
+  sync(ents: EntityApi, x: number, y: number, z: number, tick: number, json: (m: HostMsg) => void, bin: (b: Uint8Array) => void, at?: number): void;
   clear(): void;
 }
 
@@ -108,7 +108,7 @@ export function createTracker(): EntityTracker {
   const live = new Set<number>();
   const anim: Record<string, unknown> = {};
   return {
-    sync(ents, x, y, z, tick, json, bin) {
+    sync(ents, x, y, z, tick, json, bin, at) {
       ents.near(x, y, z, RANGE, near);
       const spawn: EntSpawn[] = [];
       const data: [number, Record<string, unknown>][] = [];
@@ -156,7 +156,7 @@ export function createTracker(): EntityTracker {
       for (const id of known.keys()) if (!live.has(id)) gone.push(id);
       for (const id of gone) known.delete(id);
       if (spawn.length || gone.length || data.length) json({ t: "ents", spawn: spawn.length ? spawn : undefined, gone: gone.length ? gone : undefined, data: data.length ? data : undefined });
-      if (moves.length) bin(packMoves(moves, performance.now()));
+      if (moves.length) bin(packMoves(moves, at ?? performance.now()));
     },
     clear() {
       known.clear();

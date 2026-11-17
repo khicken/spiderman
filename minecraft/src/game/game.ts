@@ -568,6 +568,7 @@ export function startGame(canvas: HTMLCanvasElement, opts: GameOptions) {
     acc += dt;
     let n = 0;
     while (acc >= TICK && n < MAX_TICKS) {
+      ctx.tickAt = last - (acc - TICK) * 1000;
       tick();
       acc -= TICK;
       n++;
