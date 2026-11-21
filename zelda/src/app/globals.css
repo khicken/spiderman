@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/* HOLLOWMERE design tokens: illuminated manuscript meets watercolor. Owner: ui (append freely, never rename or remove a
+   token: input-camera's touch overlay reads them with var(--color-*)). Values match DESIGN.md. */
+@theme {
+  --color-parchment: #efe3c8;
+  --color-parchment-hi: #f8f0dd;
+  --color-parchment-lo: #d8c49c;
+  --color-ink: #2b2118;
+  --color-ink-soft: #5a4a3a;
+  --color-ink-faint: rgb(43 33 24 / 0.35);
+  --color-gold: #c9a13b;
+  --color-gold-hi: #e8c766;
+  --color-gold-lo: #8f6d22;
+  --color-night: #0f2e33;
+  --color-night-deep: #08191c;
+  --color-teal: #1f5a5e;
+  --color-mist: #8fb9b3;
+  --color-ember: #f08a3c;
+  --color-ember-hi: #ffc07a;
+  --color-ember-lo: #b4511e;
+  --color-rubric: #b8402b;
+  --color-moss: #6f8a4a;
+  --color-gloam: #5b3a6e;
+  --color-gloam-hi: #a47cc6;
+  --color-veil: rgb(8 25 28 / 0.55);
+  --font-display: var(--font-display), "Cormorant Garamond", Georgia, serif;
+  --font-ui: var(--font-ui), "Manrope", system-ui, sans-serif;
+  --ease-ink: cubic-bezier(0.22, 0.9, 0.25, 1);
+}
+
+/* Root size scales the whole UI: 16px at 1600x900, 11px floor, 32px cap. Size everything in rem. */
+html {
+  font-size: clamp(11px, min(1vw, 1.78vh), 32px);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--color-night);
+  font-family: var(--font-ui);
+}
+
+.safe {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Portrait phones: ask for landscape. */
+.rotate-prompt {
+  display: none;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .rotate-prompt {
+    display: flex;
+  }
+}
