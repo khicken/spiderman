@@ -61,6 +61,7 @@ export const createNature: CreateNature = (scene: THREE.Scene, world: World, loo
       if (Math.hypot(cx - lastX, cz - lastZ) > REFRESH_DIST || dyaw > REFRESH_YAW) refresh(cx, cz, dx, dz);
       grass.update(cx, cz, dx, dz, ctx.time, GRASS_BUDGET_MS);
       const p = ctx.player.pos;
+      trees.setFocus(p.x, p.y + 1.1, p.z);
       life.update(ctx.dt, ctx.time, cx, cz, dx, dz, p.x, p.y, p.z, ctx.env.daylight, ctx.env.rain);
     },
 

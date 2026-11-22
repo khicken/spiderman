@@ -101,8 +101,18 @@ void main() {
 }`;
 const MESH_FS = /* glsl */ `
 varying vec3 vCol; varying vec3 vN; varying vec3 vW; varying vec3 vTint;
-uniform vec3 uMoss; uniform float uMossAmt; uniform float uPatch;
+uniform vec3 uMoss; uniform float uMossAmt; uniform float uPatch; uniform float uNearFade; uniform vec3 uFocus;
 void main() {
+  // Screen-door fade of anything in a capsule from the camera to the player, so a camera pushed into a tree crown
+  // (the collision rays only see trunks) shows the player instead of a wall of leaves.
+  if (uNearFade > 0.0) {
+    vec3 seg = uFocus - cameraPosition;
+    float t = clamp(dot(vW - cameraPosition, seg) / max(dot(seg, seg), 1e-4), 0.0, 1.0);
+    float d = length(vW - (cameraPosition + seg * t));
+    float r = uNearFade * mix(1.0, 0.45, t);
+    float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (t < 0.97 && smoothstep(r * 0.55, r, d) < ign) discard;
+  }
   vec3 V = normalize(cameraPosition - vW);
   vec3 n = normalize(vN);
   float nz = nt_n(vW.xz * 0.9 + vW.y * 0.6);
@@ -115,10 +125,10 @@ void main() {
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
-export function meshMat(look: Look, o: { sway: number; moss?: number; patch?: number; mossColor?: string; side?: THREE.Side }): THREE.ShaderMaterial {
+export function meshMat(look: Look, o: { sway: number; moss?: number; patch?: number; mossColor?: string; side?: THREE.Side; nearFade?: number }): THREE.ShaderMaterial {
   return shaderMat(look, MESH_VS, MESH_FS, {
     uSwayAmt: { value: o.sway }, uMossAmt: { value: o.moss ?? 0 }, uMoss: { value: new THREE.Color(o.mossColor ?? "#7a9a4a") },
-    uPatch: { value: o.patch ?? 0.16 },
+    uPatch: { value: o.patch ?? 0.16 }, uNearFade: { value: o.nearFade ?? 0 }, uFocus: { value: new THREE.Vector3() },
   }, { side: o.side ?? THREE.FrontSide });
 }
 

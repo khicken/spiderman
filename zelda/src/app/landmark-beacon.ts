@@ -24,6 +24,7 @@ export interface BeaconOpts {
 
 const A8 = Math.PI / 8;
 const flameGeo = new THREE.ConeGeometry(1, 1, 7, 1).translate(0, 0.5, 0);
+flameGeo.userData.shared = true; // module-level, shared by every beacon of every Landmarks instance
 const columnGeo = (() => {
   const g = new THREE.CylinderGeometry(1.1, 2.0, 260, 14, 1, true).translate(0, 130, 0);
   return g;

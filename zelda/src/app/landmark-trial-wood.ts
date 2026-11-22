@@ -303,6 +303,7 @@ export function buildWoodTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Grou
       }
     },
     abort() {
+      isSolved = false;
       reset();
       closeT = 0;
       applyClose();

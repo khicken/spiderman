@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type {
-  BtnName, EnemyKind, EnemyState, EnvState, InputState, Platform, PlayerState, QuestState, SaveData, Settings,
+  BtnName, EnemyKind, EnemyState, EnvState, InputState, Platform, PlayerState, QuestStage, QuestState, SaveData, Settings,
 } from "./contracts";
 import { DEFAULT_SETTINGS, ENEMY, PLAYER, PLAYER_SPAWN, SAVE_KEY, START_HOUR } from "./contracts";
 
@@ -108,12 +108,30 @@ export function objectiveText(q: QuestState, hasBow: boolean): string {
   }
 }
 
+const STAGES: readonly QuestStage[] = ["awaken", "beacons", "spire", "boss", "ending", "free"];
+const num = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+const bool = (x: unknown): x is boolean => typeof x === "boolean";
+
+/** A hand-edited or half-written save must not reach start(), which trusts every field. */
+function validSave(d: unknown): d is SaveData {
+  if (!d || typeof d !== "object") return false;
+  const o = d as Record<string, unknown>;
+  const pos = o.pos as Record<string, unknown> | null;
+  const q = o.quest as Record<string, unknown> | null;
+  if (o.v !== 1 || !pos || typeof pos !== "object" || !num(pos.x) || !num(pos.y) || !num(pos.z)) return false;
+  if (![o.yaw, o.maxHp, o.hp, o.shards, o.glimmers, o.arrows, o.timeOfDay, o.playTime].every(num)) return false;
+  if (!bool(o.hasBow) || !bool(o.hasGlider) || !Array.isArray(o.collected) || !o.collected.every((c) => typeof c === "string")) return false;
+  if (!q || typeof q !== "object" || !STAGES.includes(q.stage as QuestStage)) return false;
+  if (!Array.isArray(q.beacons) || q.beacons.length !== 4 || !q.beacons.every(bool)) return false;
+  return bool(q.barrierDown) && bool(q.wardenDefeated) && Array.isArray(q.visited);
+}
+
 export function readSave(): SaveData | null {
   try {
     const s = localStorage.getItem(SAVE_KEY);
     if (!s) return null;
     const d = JSON.parse(s) as SaveData;
-    return d && d.v === 1 ? d : null;
+    return validSave(d) ? d : null;
   } catch {
     return null;
   }
@@ -137,7 +155,20 @@ const SETTINGS_KEY = "hollowmere.settings.v1";
 export function readSettings(): Settings {
   try {
     const s = localStorage.getItem(SETTINGS_KEY);
-    return s ? { ...DEFAULT_SETTINGS, ...(JSON.parse(s) as Partial<Settings>) } : { ...DEFAULT_SETTINGS };
+    const out = { ...DEFAULT_SETTINGS };
+    const raw: unknown = s ? JSON.parse(s) : null;
+    if (!raw || typeof raw !== "object") return out;
+    // copy only fields of the right type and range; one bad value (say quality "max") would break the renderer
+    const r = raw as Record<string, unknown>;
+    if (typeof r.quality === "string" && ["auto", "low", "medium", "high", "ultra"].includes(r.quality)) out.quality = r.quality as Settings["quality"];
+    const range = (k: "master" | "music" | "sfx" | "lookSens" | "touchScale" | "renderScale" | "ambience", lo: number, hi: number) => {
+      const v = r[k];
+      if (num(v)) out[k] = Math.min(hi, Math.max(lo, v));
+    };
+    range("master", 0, 1); range("music", 0, 1); range("sfx", 0, 1); range("ambience", 0, 1);
+    range("lookSens", 0.25, 3); range("touchScale", 0.75, 1.4); range("renderScale", 0.5, 1);
+    for (const k of ["dynamicRes", "invertY", "showFps", "reduceMotion"] as const) if (bool(r[k])) out[k] = r[k] as boolean;
+    return out;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

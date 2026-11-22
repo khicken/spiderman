@@ -868,7 +868,7 @@ export interface Audio {
   ui(cue: "move" | "ok" | "back" | "open" | "close" | "error"): void; // menu sounds
   setVolumes(master: number, music: number, sfx: number): void;
   menuMusic(on: boolean): void; // title theme while the menu shows
-  suspend(on: boolean): void; // pause menu / tab hidden
+  suspend(on: boolean): void; // game paused (book, death, ending, title): mutes the world ambience; a hidden tab suspends the context
   dispose(): void;
 }
 /** audio.ts: export function createAudio(ctx: AudioContext): Audio. game.ts creates the AudioContext on the first gesture. */

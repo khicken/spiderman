@@ -353,7 +353,7 @@ export class TreeSystem {
   readonly boxes: number[] = [];
 
   constructor(private group: THREE.Group, private look: Look) {
-    this.detailMat = meshMat(look, { sway: 1, patch: 0.14 });
+    this.detailMat = meshMat(look, { sway: 1, patch: 0.14, nearFade: 3 });
     this.atlas = makeAtlas();
     this.layer = null as unknown as InstLayer;
   }
@@ -533,6 +533,11 @@ export class TreeSystem {
       (this.impMesh.instanceColor as THREE.InstancedBufferAttribute).needsUpdate = true;
       (this.impSlot as THREE.InstancedBufferAttribute).needsUpdate = true;
     }
+  }
+
+  /** Point the crown fade at the player's chest. */
+  setFocus(x: number, y: number, z: number): void {
+    (this.detailMat.uniforms.uFocus.value as THREE.Vector3).set(x, y, z);
   }
 
   dispose(world: { removeBox(id: number): void }): void {

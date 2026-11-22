@@ -80,12 +80,13 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
     set(rig.master.gain, 0.9 * master);
     set(rig.musicBus.gain, 0.42 * musicVol);
     set(rig.sfxBus.gain, 0.9 * sfxVol);
-    set(rig.ambBus.gain, 0.55 * sfxVol * ambVol);
+    set(rig.ambBus.gain, userSuspended ? 0 : 0.55 * sfxVol * ambVol);
   }
 
   function applyRun() {
     const ctx = ac as AudioContext;
-    const want = !(userSuspended || hidden);
+    // only a hidden tab stops the context: the book, death and ending screens still need UI cues, stings and music
+    const want = !hidden;
     if (!ctx.suspend || !ctx.resume) return;
     if (want && ctx.state !== "running") ctx.resume().catch(() => {});
     else if (!want && ctx.state === "running") ctx.suspend().catch(() => {});
@@ -238,7 +239,7 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
     suspend(on) {
       safe(() => {
         userSuspended = on;
-        applyRun();
+        applyVolumes(false);
       });
     },
     dispose() {

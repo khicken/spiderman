@@ -488,6 +488,7 @@ export function buildCliffTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Gro
       if (e.type === "died" || e.type === "respawned" || (e.type === "trialFail" && e.beacon === 0)) reset();
     },
     abort() {
+      solvedFlag = false;
       reset();
     },
     solved(animated: boolean) {

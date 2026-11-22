@@ -170,7 +170,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
         quest.beacons[e.beacon as BeaconId] = true;
         if (quest.stage === "awaken") quest.stage = "beacons";
         if (litCount(quest) === 4 && quest.stage === "beacons") quest.stage = "spire";
-        doSave();
+        saveNow = true;
         break;
       case "barrierDown":
         quest.barrierDown = true;
@@ -182,10 +182,10 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
         quest.wardenDefeated = true;
         quest.stage = "ending";
         endingT = ENDING_DELAY;
-        doSave();
+        saveNow = true;
         break;
       case "rest":
-        doSave();
+        saveNow = true;
         frameEvents.push({ type: "saved" });
         break;
       case "hitstop":
@@ -217,6 +217,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
     }
   }
 
+  let saveNow = false;
   function route() {
     // most land around the shrine belongs to no named area, so "awaken" ends on distance, not only on areaEnter
     if (quest.stage === "awaken" && Math.hypot(player.state.pos.x - SHRINE.x, player.state.pos.z - SHRINE.z) > SHRINE.r) quest.stage = "beacons";
@@ -234,6 +235,11 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
     const h = cb.hudRef();
     if (h) for (const e of frameEvents) h.event(e);
     if (devLog) for (const e of frameEvents) if (e.type !== "footstep") { devLog.push(e); if (devLog.length > 80) devLog.shift(); }
+    // saved after every module handled the events, so the save holds barrierDown, healed HP and new shards
+    if (saveNow) {
+      saveNow = false;
+      doSave();
+    }
   }
 
   function hudFrame() {
@@ -384,7 +390,10 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
 
   const onResize = () => render.resize();
   const onHidden = () => {
-    if (document.hidden && running && !paused) cb.pause();
+    if (!document.hidden || !running) return;
+    // iOS can kill a background tab without a pagehide
+    doSave();
+    if (!paused) cb.pause();
   };
   const onPageHide = () => {
     if (running) doSave();
@@ -403,6 +412,11 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       quest = save ? { ...save.quest, beacons: [...save.quest.beacons] as QuestState["beacons"], visited: [...save.quest.visited] } : newQuest();
       // the Warden is not saved mid-fight: arm the arena again so it wakes when the player walks back in
       if (quest.stage === "boss") quest.stage = "spire";
+      // older saves were written between beaconLit and barrierDown and can hold 4 lit beacons with the barrier up
+      if (litCount(quest) === 4) {
+        quest.barrierDown = true;
+        if (quest.stage === "awaken" || quest.stage === "beacons") quest.stage = "spire";
+      }
       quest.trial = -1;
       ctx.quest = quest;
       combat.clear();
@@ -423,10 +437,11 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       }
       rig.snapBehind();
       trial = null;
-      endingT = -1;
+      // a quit between beating the Warden and the ending screen must still show the ending
+      endingT = quest.stage === "ending" ? 0.5 : -1;
       hitstop = 0;
       running = true;
-      game.pause(false);
+      // the caller unpauses once its loading screen is gone
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       hudSnapshot(true);
       cb.progress(1);
@@ -503,6 +518,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
         audio.setVolumes(cur.master, cur.music, cur.sfx);
         audio.setAmbienceVolume(cur.ambience);
       } catch {
+        ac?.close().catch(() => {});
         ac = null;
         audio = null;
       }

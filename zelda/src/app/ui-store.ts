@@ -30,7 +30,9 @@ export interface LoreEntry {
 export function readLore(): LoreEntry[] {
   try {
     const s = localStorage.getItem(LORE_KEY);
-    return s ? (JSON.parse(s) as LoreEntry[]) : [];
+    const v: unknown = s ? JSON.parse(s) : null;
+    if (!Array.isArray(v)) return [];
+    return v.filter((e): e is LoreEntry => !!e && typeof e.title === "string" && typeof e.text === "string");
   } catch {
     return [];
   }

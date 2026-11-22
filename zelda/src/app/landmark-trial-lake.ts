@@ -24,6 +24,8 @@ const STEP_GAP = 0.12, STEP_DUR = 0.7;
 const STAIR_TOTAL = (STEPS - 1) * STEP_GAP + STEP_DUR;
 const GATE_T = 0.9;
 
+const LEAVE_R = 120; // m from the tower; walking farther fails the block puzzle
+
 export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Group): TrialHandle {
   const { world, look, group, reg } = env;
   const R = rng(3302);
@@ -349,6 +351,14 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
       const busy = mv[0] || mv[1] || mv[2] || resetQ || leverT < 1 || (gateOpen && gateP < 1) || (stairOn && stairT < STAIR_TOTAL);
       if (!near && !started && !busy) {
         return;
+      }
+      // an unfinished puzzle left behind would hold the trial (and autosave) open forever
+      if (started && !done) {
+        const dx = ctx.player.pos.x - tower.cx, dz = ctx.player.pos.z - tower.cz;
+        if (dx * dx + dz * dz > LEAVE_R * LEAVE_R) {
+          emit({ type: "trialFail", beacon: 2 });
+          return;
+        }
       }
 
       if (resetQ) {

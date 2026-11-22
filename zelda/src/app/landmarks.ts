@@ -279,10 +279,19 @@ class LandmarksImpl implements LandmarksDev {
   dispose() {
     this.items.dispose();
     this.group.removeFromParent();
+    const mats = new Set<THREE.Material>();
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.geometry) m.geometry.dispose();
+      if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose();
+      const mm = m.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mm)) mm.forEach((x) => mats.add(x));
+      else if (mm) mats.add(mm);
     });
+    for (const m of mats) {
+      // canvas textures (halos, hex barrier, stripes) are made per instance
+      for (const v of Object.values(m)) if (v instanceof THREE.CanvasTexture) v.dispose();
+      m.dispose();
+    }
   }
 }
 

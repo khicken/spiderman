@@ -58,6 +58,7 @@ function unit(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeomet
     let b = make();
     if (b.index) b = b.toNonIndexed();
     b.computeBoundingBox();
+    b.userData.shared = true; // module cache, outlives any one Landmarks instance
     unitCache.set(key, b);
     g = b;
   }

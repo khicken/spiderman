@@ -90,8 +90,25 @@ export function createEnemies(scene: THREE.Scene, world: World, look: Look, qual
     return -1;
   }
 
-  function spawn(kind: EnemyKind, x: number, z: number, grp: string, camp: number, member: number, emerge: boolean): number {
-    const i = freeSlot();
+  /**
+   * Trial waves and the Warden must spawn or their fights never end. Take the slot of the farthest camp enemy
+   * (camps respawn), else the farthest enemy of another group. Never the Warden or the group being spawned.
+   */
+  function evictSlot(grp: string): number {
+    const pp = lastCtx?.player.pos;
+    let best = -1, bestD = -1;
+    for (let i = 0; i < SLOTS; i++) {
+      if (!rts[i].busy || i === bossId || list[i].group === grp) continue;
+      const d = (pp ? (list[i].pos.x - pp.x) ** 2 + (list[i].pos.z - pp.z) ** 2 : 0) + (rts[i].camp >= 0 ? 1e9 : 0);
+      if (d > bestD) { bestD = d; best = i; }
+    }
+    if (best >= 0) free(best);
+    return best;
+  }
+
+  function spawn(kind: EnemyKind, x: number, z: number, grp: string, camp: number, member: number, emerge: boolean, must = false): number {
+    let i = freeSlot();
+    if (i < 0 && must) i = evictSlot(grp);
     if (i < 0) return -1;
     const e = list[i], rt = rts[i], s = ENEMY[kind];
     const gy = world.heightAt(x, z);
@@ -184,7 +201,7 @@ export function createEnemies(scene: THREE.Scene, world: World, look: Look, qual
     if (bossId >= 0) return;
     const near = Math.hypot(pos.x - ARENA.x, pos.z - ARENA.z) < 45;
     const hx = near ? ARENA.x : pos.x, hz = near ? ARENA.z : pos.z;
-    const i = spawn("warden", near ? ARENA.x : pos.x, near ? ARENA.z : pos.z, BOSS, -1, -1, false);
+    const i = spawn("warden", near ? ARENA.x : pos.x, near ? ARENA.z : pos.z, BOSS, -1, -1, false, true);
     if (i < 0) return;
     bossId = i;
     const e = list[i], rt = rts[i];
@@ -517,7 +534,7 @@ export function createEnemies(scene: THREE.Scene, world: World, look: Look, qual
         case "spawn":
           if (ev.kind === "warden") wakeBoss(ev.pos);
           else {
-            const i = spawn(ev.kind, ev.pos.x, ev.pos.z, ev.group, -1, -1, true);
+            const i = spawn(ev.kind, ev.pos.x, ev.pos.z, ev.group, -1, -1, true, true);
             if (i >= 0) {
               alert(list[i], rts[i], host);
               if (lastCtx) list[i].yaw = Math.atan2(lastCtx.player.pos.x - ev.pos.x, lastCtx.player.pos.z - ev.pos.z);

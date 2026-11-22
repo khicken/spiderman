@@ -177,10 +177,19 @@ export function App() {
       await g.start(cont ? readSave() : null);
     } catch (err) {
       console.error(err);
+      // a half-started world is not playable: go back to the title instead of a dead play screen
+      g.pause(true);
+      g.menuCamera(true);
+      g.audio?.menuMusic(true);
+      setHasSave(readSave() !== null);
+      setScreen("title");
+      setBusy(false);
+      return;
     }
     const wait = MIN_LOADING_MS - (performance.now() - t0);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     resumeAt.current = performance.now();
+    g.pause(false);
     g.input.setTouchVisible(g.platform.touch);
     setScreen("play");
     setBusy(false);

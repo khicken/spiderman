@@ -84,6 +84,7 @@ export function App() {
     g.unlockAudio();
     setScreen("loading");
     await g.start(cont ? readSave() : null);
+    g.pause(false);
     setScreen("play");
   };
   const resume = () => {
