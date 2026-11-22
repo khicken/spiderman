@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Device } from "./contracts";
 import { Corner, DropCap, Flame, FLAME_CORE, FLAME_PATH, Glyph, IlluminatedCapital, InkFrame, Lozenge, Quill, Rule } from "./ui-ink";
 import { CREDITS, ENDING_TEXT, fmtTime, LORE_LINES, SHARD_TOTAL, type EndStats } from "./ui-store";
@@ -265,7 +265,7 @@ export function ReadPanel({ title, text, device, onClose }: { title: string; tex
 
 /* ------------------------------------------------------------ rotate prompt */
 
-export function RotatePrompt() {
+export const RotatePrompt = memo(function RotatePrompt() {
   return (
     <div className="rotate-prompt hm-parchment-dark safe absolute inset-0 z-50 flex-col items-center justify-center gap-[1.6rem] text-center" data-testid="rotate">
       <Corner pos="tl" color="var(--color-gold)" size="4rem" />
@@ -287,4 +287,4 @@ export function RotatePrompt() {
       </div>
     </div>
   );
-}
+});

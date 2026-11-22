@@ -74,7 +74,7 @@ function JournalQuest({ c }: { c: PageCtx }) {
         </blockquote>
       )}
       <ul>
-        <Entry done={!!q && q.stage !== "awaken"} title="Leave the Hollow Shrine">Climb out of the glade to the ridge above.</Entry>
+        <Entry done={!!q && q.stage !== "awaken"} title="Leave the Hollow Shrine">Walk out of the glade into the wider land.</Entry>
         <Entry done={lit === 4} title={`Wake the four beacons · ${lit}/4`} />
         <ul style={{ paddingLeft: "1.2rem" }}>
           {BEACON_NAMES.map((n, i) => (

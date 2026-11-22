@@ -234,6 +234,20 @@ export function Hud({ snap, visible, touch, showFps, handleRef, onRead }: HudPro
       }
     return items;
   }, []);
+  // same element identity every render, so React skips the 72 ticks on each HUD snapshot
+  const stripTicks = useMemo(() => (
+    strip.map((t, i) => (
+      <div key={i} className="absolute top-0 h-full" style={{ left: `${t.left}%` }}>
+        {t.label ? (
+          <span className="font-display absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 font-bold leading-none" style={{ fontSize: t.major ? "1.15em" : "0.8em", color: t.label === "N" ? "var(--color-rubric)" : t.major ? "var(--color-ink)" : "var(--color-ink-soft)" }}>
+            {t.label}
+          </span>
+        ) : (
+          <span className="absolute left-0 -translate-x-1/2" style={{ top: "34%", height: "32%", width: "1px", background: "var(--color-ink-soft)" }} />
+        )}
+      </div>
+    ))
+  ), [strip]);
 
   const hearts = snap ? Array.from({ length: Math.ceil(snap.maxHp / 4) }, (_, i) => Math.max(0, Math.min(4, snap.hp - i * 4))) : [];
   const danger = !!snap && snap.hp > 0 && snap.hp <= 4;
@@ -245,7 +259,8 @@ export function Hud({ snap, visible, touch, showFps, handleRef, onRead }: HudPro
       <div ref={vignette} className="hm-vignette" />
       {danger && <div className="hm-lowhp" />}
 
-      <div className="hm-calm absolute flex flex-col gap-[0.5em]" style={{ left: "max(1.6em, env(safe-area-inset-left))", top: "max(1.2em, env(safe-area-inset-top))" }}>
+      {/* hearts never fade with the calm HUD: health must always be readable during play */}
+      <div className="absolute flex flex-col gap-[0.5em]" style={{ left: "max(1.6em, env(safe-area-inset-left))", top: "max(1.2em, env(safe-area-inset-top))" }}>
         <div className="flex flex-wrap items-end gap-x-[0.28em] gap-y-[0.2em]" style={{ maxWidth: "19em", filter: "drop-shadow(0 0.1em 0.25em rgb(8 25 28 / 0.7))" }} data-testid="hearts">
           {hearts.map((q, i) => (
             <HeartFlame key={i} id={`h${i}`} q={q} danger={danger && q > 0} />
@@ -260,7 +275,7 @@ export function Hud({ snap, visible, touch, showFps, handleRef, onRead }: HudPro
             </span>
           )}
         </div>
-        {touch && snap && <Counters snap={snap} touch />}
+        {touch && snap && <div className="hm-calm"><Counters snap={snap} touch /></div>}
       </div>
 
       <div className="hm-calm-soft absolute left-1/2 -translate-x-1/2 transition-opacity duration-1000" style={{ top: "max(1em, env(safe-area-inset-top))", width: touch ? "55%" : "40%" }} data-testid="compass">
@@ -271,17 +286,7 @@ export function Hud({ snap, visible, touch, showFps, handleRef, onRead }: HudPro
           </svg>
           <div className="hm-compass-mask absolute inset-x-[2%] inset-y-0 overflow-hidden">
             <div ref={stripRef} className="absolute inset-y-0 left-0" style={{ width: `${(3 * 360 * 100) / FOV_DEG}%`, willChange: "transform" }}>
-              {strip.map((t, i) => (
-                <div key={i} className="absolute top-0 h-full" style={{ left: `${t.left}%` }}>
-                  {t.label ? (
-                    <span className="font-display absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 font-bold leading-none" style={{ fontSize: t.major ? "1.15em" : "0.8em", color: t.label === "N" ? "var(--color-rubric)" : t.major ? "var(--color-ink)" : "var(--color-ink-soft)" }}>
-                      {t.label}
-                    </span>
-                  ) : (
-                    <span className="absolute left-0 -translate-x-1/2" style={{ top: "34%", height: "32%", width: "1px", background: "var(--color-ink-soft)" }} />
-                  )}
-                </div>
-              ))}
+              {stripTicks}
             </div>
             {[0, 1, 2, 3, 4].map((i) => (
               <div key={i} ref={(el) => { markerRefs.current[i] = el; }} className="absolute top-0 h-full -translate-x-1/2" style={{ left: "50%", opacity: 0 }}>
@@ -298,8 +303,8 @@ export function Hud({ snap, visible, touch, showFps, handleRef, onRead }: HudPro
             ))}
           </div>
         </div>
-        {!touch && snap && (
-          <p className="font-display hm-shadow mx-auto mt-[0.9em] w-fit text-center italic" style={{ fontSize: "1.12em", color: "var(--color-parchment-hi)", padding: "0.15em 1.6em", background: "radial-gradient(ellipse 50% 50% at 50% 50%, rgb(8 25 28 / 0.38), transparent 100%)" }} data-testid="objective">
+        {snap && (
+          <p className="font-display hm-objective mx-auto w-fit max-w-full text-center italic" style={{ marginTop: "1.05em", fontSize: touch ? "0.98em" : "1.15em" }} data-testid="objective">
             <span style={{ color: "var(--color-gold-hi)" }}>❧ </span>
             {snap.objective}
           </p>

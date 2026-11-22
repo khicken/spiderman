@@ -25,7 +25,7 @@ beacons kept it asleep. Then they went dark. Wren is the last lantern-bearer. Wr
 
 | Stage (`QuestState.stage`) | Trigger | Objective line |
 | --- | --- | --- |
-| `awaken` | new game, at the shrine | "Leave the Hollow Shrine and climb to the ridge" |
+| `awaken` | new game, until you walk past the shrine radius | "Leave the Hollow Shrine and head out into Hollowmere" |
 | `beacons` | first `areaEnter` outside the shrine | "Wake the four beacons (n/4)" |
 | `spire` | 4th `beaconLit` | "The barrier has fallen. Climb Mt. Cinder to the Gloam Spire" |
 | `boss` | `bossWake` (Wren enters the Spire arena) | "Defeat the Gloam Warden" |
@@ -357,12 +357,12 @@ The targets are 60 fps on laptops and 30+ fps on phones.
   - `high` for Apple M-series and discrete GPUs;
   - `ultra` only when the player picks it.
 - Dynamic resolution keeps a 1 s average of the frame time. It lowers `renderScale` by 0.05 when the average is over
-  the target by 10%, and raises it by 0.05 after 3 s under the target by 25%. The scale stays inside
+  the target by 10%, and raises it by 0.05 after 3 s under the target by 25% (after 2 s when 30% under). The scale stays inside
   `[minScale, maxScale]`.
 
 | Field | low | medium | high | ultra |
 | --- | --- | --- | --- | --- |
-| pixel ratio cap | 1 | 1.25 | 1.5 | 2 |
+| pixel ratio cap | 1.25 | 1.25 | 1.5 | 2 |
 | dyn-res scale range | 0.5–1 | 0.6–1 | 0.7–1 | 0.8–1 |
 | shadows (map / extent) | off (blob) | 1024 / 40 m | 2048 / 60 m | 4096 / 80 m |
 | ink outline | depth, half res | depth | depth + normals | depth + normals |

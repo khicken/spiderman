@@ -92,7 +92,7 @@ export function litCount(q: QuestState): number {
 export function objectiveText(q: QuestState, hasBow: boolean): string {
   switch (q.stage) {
     case "awaken":
-      return "Leave the Hollow Shrine and climb to the ridge";
+      return "Leave the Hollow Shrine and head out into Hollowmere";
     case "beacons": {
       const n = litCount(q);
       if (!hasBow && !q.beacons[3] && n >= 1) return `Wake the four beacons (${n}/4). Search Mirebrook Ruin for a bow`;

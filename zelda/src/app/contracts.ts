@@ -191,7 +191,7 @@ export interface QualityPreset {
 
 export const QUALITY: Record<Quality, QualityPreset> = {
   low: {
-    label: "Low", pixelRatio: 1, minScale: 0.5, maxScale: 1, shadow: 0, shadowDist: 0, outline: 0, bloom: false,
+    label: "Low", pixelRatio: 1.25, minScale: 0.5, maxScale: 1, shadow: 0, shadowDist: 0, outline: 0, bloom: false,
     drawDist: 420, fogNear: 120, fogFar: 400, terrainLod: [80, 160, 280], grassDensity: 0.2, grassDist: 30,
     treeDist: 260, treeDetailDist: 45, rockDist: 140, water: 0, particles: 256, rainDrops: 1200, enemyLodDist: 40,
   },

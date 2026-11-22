@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import type { Device } from "./contracts";
 
 // Ink and gold-leaf drawing kit: flames, ornaments, frames, the illuminated capital. Inline SVG only.
@@ -8,7 +8,7 @@ import type { Device } from "./contracts";
 export const FLAME_PATH = "M12 1.2C14.6 6.4 20.6 10.6 20.6 18.9A8.6 8.6 0 0 1 3.4 18.9C3.4 14.2 6 11.3 7.9 7.6C8.6 10.3 10 11.9 11.4 12.6C10.4 8.6 10.9 4.7 12 1.2Z";
 export const FLAME_CORE = "M12 13.6C14.1 16.4 15.9 18.4 15.9 21.6A3.9 3.9 0 0 1 8.1 21.6C8.1 18.6 10 16.6 12 13.6Z";
 
-export function HeartFlame({ q, id, danger, size = 2.1 }: { q: number; id: string; danger?: boolean; size?: number }) {
+export const HeartFlame = memo(function HeartFlame({ q, id, danger, size = 2.1 }: { q: number; id: string; danger?: boolean; size?: number }) {
   const h = 28 * (q / 4);
   const fill = danger ? "var(--color-rubric)" : "url(#hm-ember-grad)";
   return (
@@ -31,10 +31,10 @@ export function HeartFlame({ q, id, danger, size = 2.1 }: { q: number; id: strin
       )}
     </svg>
   );
-}
+});
 
 /** Shared gradient defs (mount once per SVG tree root, here inside a 0x0 svg). */
-export function InkDefs() {
+export const InkDefs = memo(function InkDefs() {
   return (
     <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
       <defs>
@@ -62,7 +62,7 @@ export function InkDefs() {
       </defs>
     </svg>
   );
-}
+});
 
 export function Flame({ color = "var(--color-ember)", lit = true, style, className }: { color?: string; lit?: boolean; style?: CSSProperties; className?: string }) {
   return (

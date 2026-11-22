@@ -190,7 +190,11 @@ body {
 .hm-hud[data-touch="1"] { --hm-hud-scale: 1.15; }
 .hm-hud .hm-calm { transition: opacity 1.2s ease; }
 .hm-hud[data-calm="1"] .hm-calm { opacity: 0; }
-.hm-hud[data-calm="1"] .hm-calm-soft { opacity: 0.55; }
+.hm-hud[data-calm="1"] .hm-calm-soft { opacity: 0.85; }
+/* objective under the compass: a dark ink pill so it reads against a bright noon sky or snow */
+.hm-objective { color: var(--color-parchment-hi); font-weight: 600; line-height: 1.25; padding: 0.22em 1.1em 0.26em; border-radius: 999px;
+  background: rgb(8 25 28 / 0.66); box-shadow: 0 0 0 1px rgb(214 178 106 / 0.35), 0 0.15em 0.6em rgb(8 25 28 / 0.35);
+  text-shadow: 0 0.05em 0.15em rgb(8 25 28 / 0.9); }
 .hm-shadow { text-shadow: 0 0.06em 0.2em rgb(8 25 28 / 0.85), 0 0 0.6em rgb(8 25 28 / 0.5); }
 .hm-flame-flicker { transform-origin: 50% 90%; animation: hm-flicker 1.9s ease-in-out infinite; }
 @keyframes hm-flicker { 0%,100% { transform: scale(1, 1) skewX(0deg); } 25% { transform: scale(0.96, 1.04) skewX(-2deg); } 50% { transform: scale(1.03, 0.97) skewX(1.5deg); } 75% { transform: scale(0.98, 1.03) skewX(-1deg); } }

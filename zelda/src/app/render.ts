@@ -174,7 +174,8 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
     } else if (avg < targetMs * 1.05) {
       // rAF is vsync-capped, so frames rarely come in 25% under target: "at target" counts as headroom
       underN++;
-      if (underN >= raiseNeed) {
+      // far under target (a frame-time spike has passed): climb back every 2 s instead of every 3
+      if (underN >= (avg < targetMs * 0.7 ? Math.min(2, raiseNeed) : raiseNeed)) {
         next = scale + 0.05;
         underN = 0;
         raiseNeed = 3;

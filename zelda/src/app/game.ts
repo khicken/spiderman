@@ -40,6 +40,7 @@ const F = {
 const AUTOSAVE_S = 90;
 const ENDING_DELAY = 5;
 const SPIRE = LANDMARKS.find((l) => l.id === "spire")!;
+const SHRINE = LANDMARKS.find((l) => l.id === "shrine")!;
 const BEACONS = BEACON_LANDMARK.map((id) => LANDMARKS.find((l) => l.id === id)!);
 
 export const startGame: StartGame = (canvas, overlay, cb, settings) => {
@@ -217,6 +218,8 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
   }
 
   function route() {
+    // most land around the shrine belongs to no named area, so "awaken" ends on distance, not only on areaEnter
+    if (quest.stage === "awaken" && Math.hypot(player.state.pos.x - SHRINE.x, player.state.pos.z - SHRINE.z) > SHRINE.r) quest.stage = "beacons";
     // reducer first; it may append system events, which are routed in the same pass
     for (let i = 0; i < frameEvents.length; i++) reduce(frameEvents[i]);
     if (frameEvents.length === 0) return;
@@ -264,15 +267,26 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
     h.frame(hf);
   }
 
-  function hudSnapshot() {
+  // A React HUD render costs several ms on a phone CPU. Push only when something shown changed, plus a 1 Hz refresh
+  // for the slow fields (clock, fps readout).
+  let snapKey = "";
+  let snapAge = 0;
+  function hudSnapshot(force = false) {
     const p = player.state;
-    const st = render.stats();
     const area = world.areaAt(p.pos.x, p.pos.z);
+    const boss = enemies.boss();
+    const tl = trial ? landmarks.trialTimeLeft : null;
+    const key = `${p.hp}|${p.maxHp}|${p.shards}|${p.glimmers}|${p.arrows}|${p.hasBow}|${quest.beacons.join()}|${quest.stage}|${area?.name}|${landmarks.prompt}|${boss ? `${boss.hp}/${boss.maxHp}/${boss.phase}` : ""}|${trial ? `${trial.value}/${trial.total}/${tl == null ? "" : Math.ceil(tl)}` : ""}|${input.state.device}|${render.quality}|${render.env.weather}`;
+    snapAge += 1 / HUD_HZ;
+    if (!force && key === snapKey && snapAge < 1) return;
+    snapKey = key;
+    snapAge = 0;
+    const st = render.stats();
     cb.hud({
       hp: p.hp, maxHp: p.maxHp, shards: p.shards, glimmers: p.glimmers, arrows: p.arrows, hasBow: p.hasBow,
       beacons: [...quest.beacons] as HudSnapshot["beacons"], objective: objectiveText(quest, p.hasBow),
       area: area ? area.name : null, timeOfDay: render.env.timeOfDay, weather: render.env.weather, prompt: landmarks.prompt,
-      boss: enemies.boss(), trial: trial ? { ...trial, timeLeft: landmarks.trialTimeLeft } : null, device: input.state.device, fps: st.fps, scale: st.scale, quality: render.quality,
+      boss, trial: trial ? { ...trial, timeLeft: tl } : null, device: input.state.device, fps: st.fps, scale: st.scale, quality: render.quality,
     });
   }
 
@@ -414,7 +428,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       running = true;
       game.pause(false);
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      hudSnapshot();
+      hudSnapshot(true);
       cb.progress(1);
     },
     menuCamera(on) {
@@ -534,6 +548,9 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       enemies,
       combat,
       rig,
+      terrain,
+      nature,
+      input,
       teleport(x: number, z: number) {
         spawnPos.set(x, world.heightAt(x, z) + 0.1, z);
         player.place(spawnPos, player.state.yaw);

@@ -73,6 +73,11 @@ export const createCamera = ((camera: THREE.PerspectiveCamera, world: World): Ca
     cineAngle = Math.atan2(playerAt.x - at.x, playerAt.z - at.z);
   }
 
+  // reading innerWidth after HUD style writes forces a style recalc every frame; cache it
+  let vw = window.innerWidth, vh = window.innerHeight;
+  const onResize = () => { vw = window.innerWidth; vh = window.innerHeight; };
+  window.addEventListener("resize", onResize);
+
   const rig: CameraPlus = {
     get yaw() { return yaw; },
     get pitch() { return pitch; },
@@ -343,7 +348,7 @@ export const createCamera = ((camera: THREE.PerspectiveCamera, world: World): Ca
 
     toScreen(pt: V3, out: ScreenPoint) {
       _proj.set(pt.x, pt.y, pt.z).project(camera);
-      const w = window.innerWidth, h = window.innerHeight;
+      const w = vw, h = vh;
       out.x = (_proj.x * 0.5 + 0.5) * w;
       out.y = (-_proj.y * 0.5 + 0.5) * h;
       out.on = _proj.z < 1 && Math.abs(_proj.x) <= 1 && Math.abs(_proj.y) <= 1;
@@ -357,6 +362,7 @@ export const createCamera = ((camera: THREE.PerspectiveCamera, world: World): Ca
     setSettings(_s: Settings) {},
 
     dispose() {
+      window.removeEventListener("resize", onResize);
       events.length = 0;
     },
   };

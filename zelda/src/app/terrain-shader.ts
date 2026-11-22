@@ -99,14 +99,21 @@ void main() {
   float rock = max(sharpen(sa.g, rdet), slopeRock);
   col = mix(col, rockC, rock);
 
-  // bump: rock relief from the detail + strata, so shadowed walls still break into lit facets
-  vec3 nL = normalize(mix(n, fN, wall * 0.6));
-  float bh = rdet * 1.1 * rock * (1.0 - fade);
-  float dhx = dFdx(bh), dhy = dFdy(bh);
-  vec3 r1 = cross(dpy, nL), r2 = cross(nL, dpx);
-  float det0 = dot(dpx, r1);
-  vec3 grad = sign(det0) * (dhx * r1 + dhy * r2);
-  nL = normalize(abs(det0) * nL - grad);
+  // bump: rock relief as a world-space gradient of the biplanar detail. Screen derivatives (dFdx of the detail)
+  // are constant per 2x2 pixel quad, and the cel ramp turned them into blocky camo on walls seen up close.
+  // Facets from the 1 m heightfield read as noise near the camera, so they only lean in with distance.
+  vec3 nL = normalize(mix(n, fN, wall * mix(0.2, 0.6, smoothstep(25.0, 90.0, dist))));
+  float bAmt = rock * (1.0 - fade);
+  if (bAmt > 0.02) {
+    vec3 t1 = normalize(cross(nL, abs(nL.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 t2 = cross(t1, nL);
+    float e = 0.3;
+    vec3 p1 = vWorld + t1 * e, p2 = vWorld + t2 * e;
+    float h0 = rx * an.x + rz * an.z + dA.g * an.y;
+    float h1 = texture2D(uTDetail, p1.zy * vec2(0.07, 0.05)).g * an.x + texture2D(uTDetail, p1.xy * vec2(0.07, 0.05)).g * an.z + texture2D(uTDetail, p1.xz * 0.15).g * an.y;
+    float h2 = texture2D(uTDetail, p2.zy * vec2(0.07, 0.05)).g * an.x + texture2D(uTDetail, p2.xy * vec2(0.07, 0.05)).g * an.z + texture2D(uTDetail, p2.xz * 0.15).g * an.y;
+    nL = normalize(nL - (t1 * (h1 - h0) + t2 * (h2 - h0)) * (bAmt * 0.9 / e));
+  }
 
   float snow = sharpen(sb.b * smoothstep(0.5, 0.82, min(n.y, fN.y + 0.1)), det.b);
   col = mix(col, uCSnow * (0.94 + 0.08 * det.b), snow);
