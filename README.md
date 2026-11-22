@@ -8,6 +8,7 @@
 | Attack on Titan | [aot](aot) | [kalebkim.com/aot](https://kalebkim.com/aot) |
 | Racing on real roads | [cars](cars) | [kalebkim.com/cars](https://kalebkim.com/cars) |
 | HOOPS basketball | [2k](2k) | [kalebkim.com/2k](https://kalebkim.com/2k) |
+| HOLLOWMERE open-world adventure | [zelda](zelda) | [kalebkim.com/zelda](https://kalebkim.com/zelda) |
 
 ## Run a game
 
