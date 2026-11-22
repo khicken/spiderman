@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { FrameCtx, GameEvent, Prop, Quality, V3, World } from "./contracts";
-import { BEACON_COLOR, CLIFFS } from "./contracts";
+import { BEACON_COLOR, CLIFFS, PLAYER } from "./contracts";
 import type { BeaconTower } from "./landmark-beacon";
 import type { Emit, SiteEnv, TrialHandle } from "./landmark-kit";
 import { Mesher, PAL, clamp, glowMat, groundMin, haloSprite, lerp, rng } from "./landmark-kit";
@@ -10,6 +10,7 @@ const TIME_LIMIT = 75;
 const RING_R = 4.5;
 const HIT_R = 5.6;
 const BRAZIER_R = 6;
+const RING_STAMINA = 0.25;
 const UPDRAFT_SPEED = 6;
 const UPDRAFT_R = 6.5;
 const UPDRAFT_H = 40;
@@ -82,7 +83,7 @@ export function planCliffTrial(world: World, front: V3): CliffPlan {
   }
 
   const s0 = 6;
-  const sp = clamp((total - s0 - 50) / (CLIFF_TRIAL_TOTAL - 1), 28, 40);
+  const sp = clamp((total - s0 - 50) / (CLIFF_TRIAL_TOTAL - 1), 18, 22);
   const at = (s: number, out: number[]) => {
     let i = 1;
     while (i < N && cum[i] < s) i++;
@@ -94,15 +95,19 @@ export function planCliffTrial(world: World, front: V3): CliffPlan {
     out[3] = (pz[i] - pz[i - 1]) / seg;
   };
 
-  const yTop = top + 4, yEnd = by + 26;
+  // the lip can sit up to 8 m below the summit; launch height is the lip's ground plus a jump
+  const yTop = world.heightAt(ex, ez) + 1.5;
   const tmp = [0, 0, 0, 0];
   const rings: CliffRing[] = [];
-  const slope = (yEnd - yTop) / (sp * (CLIFF_TRIAL_TOTAL - 1));
+  // A straight glide drops 0.235 m per metre (glideSink / glideFwd); a steered, curving glide measures ~0.3. Rings sit on
+  // that line so holding forward threads them; a ring below the line is fine (drop out of the glide), above is not.
+  const GLIDE_DROP = 0.3;
+  const slope = -GLIDE_DROP;
   for (let i = 0; i < CLIFF_TRIAL_TOTAL; i++) {
     const s = s0 + i * sp;
     at(s, tmp);
     const x = tmp[0], z = tmp[1];
-    const y = Math.max(lerp(yTop, yEnd, i / (CLIFF_TRIAL_TOTAL - 1)), Math.max(0, world.heightAt(x, z)) + 7);
+    const y = Math.max(yTop - 2 - s * GLIDE_DROP, Math.max(0, world.heightAt(x, z)) + 7);
     const hl = Math.hypot(tmp[2], tmp[3]) || 1;
     let tx = tmp[2] / hl, tz = tmp[3] / hl, ty = slope;
     const tl = Math.hypot(tx, ty, tz);
@@ -442,6 +447,8 @@ export function buildCliffTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Gro
             if (hx * hx + hy * hy + hz * hz <= HIT_R * HIT_R) {
               progress++;
               leftTop = true;
+              // each ring refills some stamina so the glide can reach the brazier
+              pl.stamina = Math.min(PLAYER.staminaMax, pl.stamina + RING_STAMINA);
               refreshRings();
               ctx.fx.burst("spark", r, 14);
               emit({ type: "trialProgress", beacon: 0, value: progress, total: CLIFF_TRIAL_TOTAL });

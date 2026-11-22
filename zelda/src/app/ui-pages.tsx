@@ -248,11 +248,12 @@ function SettingsSight({ c }: { c: PageCtx }) {
       <Row label="Dynamic resolution" hint="Lowers the resolution to keep the frame rate steady">
         <Toggle on={s.dynamicRes} set={(v) => set({ dynamicRes: v })} label="Dynamic resolution" />
       </Row>
+      <Slider label="Render scale" value={s.renderScale} min={0.5} max={1} step={0.05} set={(v) => set({ renderScale: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
       <Row label="Show frame rate">
         <Toggle on={s.showFps} set={(v) => set({ showFps: v })} label="Show frame rate" />
       </Row>
       <Row label="Reduce motion" hint="Stills shimmer, drift and flicker in menus and the HUD">
-        <Toggle on={c.prefs.reduceMotion} set={(v) => c.onPrefs({ ...c.prefs, reduceMotion: v })} label="Reduce motion" />
+        <Toggle on={s.reduceMotion} set={(v) => set({ reduceMotion: v })} label="Reduce motion" />
       </Row>
     </div>
   );
@@ -268,6 +269,7 @@ function SettingsSound({ c }: { c: PageCtx }) {
       <Slider label="Master" value={s.master} min={0} max={1} step={0.05} set={(v) => set({ master: v })} fmt={pct} />
       <Slider label="Music" value={s.music} min={0} max={1} step={0.05} set={(v) => set({ music: v })} fmt={pct} />
       <Slider label="Effects" value={s.sfx} min={0} max={1} step={0.05} set={(v) => set({ sfx: v })} fmt={pct} />
+      <Slider label="Ambience" value={s.ambience} min={0} max={1} step={0.05} set={(v) => set({ ambience: v })} fmt={pct} />
       <Slider label="Camera sensitivity" value={s.lookSens} min={0.25} max={3} step={0.05} set={(v) => set({ lookSens: v })} fmt={(v) => `${v.toFixed(2)}×`} />
       <Row label="Invert camera Y">
         <Toggle on={s.invertY} set={(v) => set({ invertY: v })} label="Invert camera Y" />

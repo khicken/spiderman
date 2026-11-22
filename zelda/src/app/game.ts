@@ -4,24 +4,24 @@ import type {
   CreatePlayer, CreateRender, CreateTerrain, CreateWorld, DetectQuality, FrameCtx, Game, GameCallbacks, GameEvent, HudFrame,
   HudSnapshot, Quality, QuestState, SaveData, Settings, StartGame, V3,
 } from "./contracts";
-import { BEACON_LANDMARK, BOW, HUD_HZ, LANDMARKS, MAX_FRAME_DT, PLAYER_SPAWN, QUALITY, SWORD, WORLD } from "./contracts";
-import { bearing, detectPlatform, litCount, newQuest, objectiveText, writeSave } from "./state";
+import { BEACON_LANDMARK, BOW, HUD_HZ, LANDMARKS, MAX_FRAME_DT, PLAYER_SPAWN, QUALITY, START_HOUR, SWORD, WORLD } from "./contracts";
+import { bearing, detectPlatform, litCount, newPlayerState, newQuest, objectiveText, writeSave } from "./state";
 
-// ===================================================================================================================
-// SWAP LINES. Every module starts as a stand-in from ./mock. When a builder's module is ready, change ONLY the path
-// on its line ("./mock" -> the file named on the right). Names and signatures are identical (see contracts.ts).
-// ===================================================================================================================
-import { createWorld, createTerrain } from "./mock"; // terrain       -> "./terrain"   (terrain.ts also exports createWorld)
-import { createNature } from "./mock"; // nature                    -> "./nature"
-import { createLandmarks } from "./mock"; // landmarks              -> "./landmarks"
-import { createPlayer } from "./mock"; // player                    -> "./player"
-import { createCombat } from "./mock"; // combat                    -> "./combat"
-import { createEnemies } from "./mock"; // enemies                  -> "./enemies"
-import { createInput } from "./mock"; // input-camera               -> "./input"
-import { createCamera } from "./mock"; // input-camera              -> "./camera"
-import { createRender, detectQuality } from "./mock"; // render     -> "./render"
-import { createAudio } from "./mock"; // audio                      -> "./audio"
-// ui swaps in page.tsx: "./ui-stub" -> "./ui-app"
+import { createWorld, createTerrain } from "./terrain";
+import { LM_OPTIONS, type LandmarksDev } from "./landmarks";
+import type { PlayerPlus } from "./player";
+import type { InputPlus } from "./input";
+import type { RenderPlus } from "./render";
+import type { AudioPlus } from "./audio";
+import { createNature } from "./nature";
+import { createLandmarks } from "./landmarks";
+import { createPlayer } from "./player";
+import { createCombat } from "./combat";
+import { createEnemies } from "./enemies";
+import { createInput } from "./input";
+import { createCamera } from "./camera";
+import { createRender, detectQuality } from "./render";
+import { createAudio } from "./audio";
 
 // Compile-time check that whatever is imported above matches the frozen contract.
 const F = {
@@ -55,17 +55,27 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
   const { scene, look } = render;
   const terrain = F.createTerrain(scene, world, look, quality);
   const nature = F.createNature(scene, world, look, quality);
-  const landmarks = F.createLandmarks(scene, world, look, quality);
+  const landmarks = F.createLandmarks(scene, world, look, quality) as LandmarksDev;
   const combat = F.createCombat(scene, world, look);
   const enemies = F.createEnemies(scene, world, look, quality);
-  const player = F.createPlayer(scene, world, look, quality);
-  const input = F.createInput(canvas, overlay);
+  const player = F.createPlayer(scene, world, look, quality) as PlayerPlus;
+  // one updraft owner: the player reads landmarks' warm air columns into its glide velocity
+  LM_OPTIONS.applyUpdraft = false;
+  player.updraftAt = (x, y, z) => landmarks.updraftAt(x, y, z);
+  // render's Fx.trail(0) draws the sword ribbon
+  player.ownTrail = false;
+  const input = F.createInput(canvas, overlay) as InputPlus;
   input.setSettings(cur);
+  if (platform.touch) input.state.device = "touch";
   input.setTouchVisible(platform.touch);
+  (render as RenderPlus).setRenderScale(cur.renderScale);
   const rig = F.createCamera(render.camera, world);
   rig.setSettings(cur);
   let ac: AudioContext | null = null;
-  let audio: Audio | null = null;
+  let audio: AudioPlus | null = null;
+
+  const spawnPos = new THREE.Vector3(PLAYER_SPAWN.x, world.heightAt(PLAYER_SPAWN.x, PLAYER_SPAWN.z), PLAYER_SPAWN.z);
+  player.place(spawnPos, Math.PI);
 
   let quest: QuestState = newQuest();
   const ctx: FrameCtx = {
@@ -74,6 +84,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
   };
 
   const frameEvents: GameEvent[] = [];
+  const devLog: GameEvent[] | null = process.env.NODE_ENV !== "production" ? [] : null;
   const v3: V3 = { x: 0, y: 0, z: 0 };
   const hf: HudFrame = {
     stamina: 1, staminaShow: false, exhausted: false, staminaAt: { x: 0, y: 0, on: false }, heading: 0,
@@ -92,6 +103,8 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
   let staminaFull = 0;
   let endingT = -1;
   let trial: HudSnapshot["trial"] = null;
+  let menuCam = false;
+  let menuT = 0;
 
   const push = (evs: readonly GameEvent[]) => {
     for (let i = 0; i < evs.length; i++) frameEvents.push(evs[i]);
@@ -114,6 +127,15 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       collected: [...landmarks.collected()],
       timeOfDay: render.env.timeOfDay,
       playTime,
+    };
+  }
+
+  /** A new journey's player stats, so a second New Journey in one session starts clean. */
+  function freshSave(): SaveData {
+    const p = newPlayerState();
+    return {
+      v: 1, pos: { x: 0, y: 0, z: 0 }, yaw: Math.PI, maxHp: p.maxHp, hp: p.maxHp, shards: p.shards, glimmers: p.glimmers,
+      arrows: p.arrows, hasBow: p.hasBow, hasGlider: p.hasGlider, quest: newQuest(), collected: [], timeOfDay: START_HOUR, playTime: 0,
     };
   }
 
@@ -171,6 +193,9 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       case "hit":
         if (e.team === "player" && !e.blocked && e.damage > 0) hitstop = Math.max(hitstop, SWORD.hitstop);
         break;
+      case "shake":
+        if (cur.reduceMotion) e.strength = 0;
+        break;
       case "hurt":
         hf.damageFlash = 1;
         input.rumble(0.6, 0.2);
@@ -178,6 +203,8 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       case "died": {
         const t = quest.trial;
         if (t !== -1) frameEvents.push({ type: "trialFail", beacon: t });
+        // boss resets on death; landmarks re-arms the wake trigger when it sees stage "spire"
+        if (quest.stage === "boss") quest.stage = "spire";
         cb.died();
         break;
       }
@@ -203,6 +230,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
     audio?.handle(frameEvents);
     const h = cb.hudRef();
     if (h) for (const e of frameEvents) h.event(e);
+    if (devLog) for (const e of frameEvents) if (e.type !== "footstep") { devLog.push(e); if (devLog.length > 80) devLog.shift(); }
   }
 
   function hudFrame() {
@@ -244,7 +272,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       hp: p.hp, maxHp: p.maxHp, shards: p.shards, glimmers: p.glimmers, arrows: p.arrows, hasBow: p.hasBow,
       beacons: [...quest.beacons] as HudSnapshot["beacons"], objective: objectiveText(quest, p.hasBow),
       area: area ? area.name : null, timeOfDay: render.env.timeOfDay, weather: render.env.weather, prompt: landmarks.prompt,
-      boss: enemies.boss(), trial, device: input.state.device, fps: st.fps, scale: st.scale, quality: render.quality,
+      boss: enemies.boss(), trial: trial ? { ...trial, timeLeft: landmarks.trialTimeLeft } : null, device: input.state.device, fps: st.fps, scale: st.scale, quality: render.quality,
     });
   }
 
@@ -255,6 +283,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
     last = now;
     ctx.realDt = realDt;
     input.update(realDt);
+    input.syncPlayer(player.state);
     const btn = input.state.btn;
     if (!paused && running) {
       if (btn.pause.pressed) cb.pause();
@@ -262,6 +291,10 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
     }
     if (paused || !running) {
       ctx.dt = 0;
+      if (menuCam && !running) {
+        flyover(realDt);
+        return;
+      }
       render.render(ctx);
       return;
     }
@@ -313,6 +346,28 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
     }
   }
 
+  // Title screen: a slow drifting aerial around Mt. Cinder. The world, sky and grass update around the camera.
+  const camAt = new THREE.Vector3();
+  const lookAt = new THREE.Vector3();
+  function flyover(realDt: number) {
+    menuT += realDt * (cur.reduceMotion ? 0.4 : 1);
+    const a = 2.4 + menuT * 0.018;
+    const r = 330 + Math.sin(menuT * 0.05) * 40;
+    camAt.set(Math.sin(a) * r, 0, -40 + Math.cos(a) * r);
+    camAt.y = Math.max(world.heightAt(camAt.x, camAt.z), 0) + 95 + Math.sin(menuT * 0.07) * 15;
+    lookAt.set(Math.sin(a + 0.5) * 120, 70, -40 + Math.cos(a + 0.5) * 120);
+    const cam = render.camera;
+    cam.position.copy(camAt);
+    cam.lookAt(lookAt);
+    ctx.dt = realDt * 0.25;
+    frameEvents.length = 0;
+    render.update(ctx);
+    terrain.update(ctx);
+    nature.update(ctx);
+    render.render(ctx);
+    ctx.dt = 0;
+  }
+
   const onResize = () => render.resize();
   const onHidden = () => {
     if (document.hidden && running && !paused) cb.pause();
@@ -326,12 +381,15 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
   window.addEventListener("pagehide", onPageHide);
   raf = requestAnimationFrame(frame);
 
-  const spawnPos = new THREE.Vector3();
 
   const game: Game = {
     async start(save) {
       cb.progress(0.1);
+      menuCam = false;
       quest = save ? { ...save.quest, beacons: [...save.quest.beacons] as QuestState["beacons"], visited: [...save.quest.visited] } : newQuest();
+      // the Warden is not saved mid-fight: arm the arena again so it wakes when the player walks back in
+      if (quest.stage === "boss") quest.stage = "spire";
+      quest.trial = -1;
       ctx.quest = quest;
       combat.clear();
       enemies.clear();
@@ -343,6 +401,8 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
         render.setTime(save.timeOfDay);
         playTime = save.playTime;
       } else {
+        player.load(freshSave());
+        render.setTime(START_HOUR);
         spawnPos.set(PLAYER_SPAWN.x, world.heightAt(PLAYER_SPAWN.x, PLAYER_SPAWN.z), PLAYER_SPAWN.z);
         player.place(spawnPos, Math.PI);
         playTime = 0;
@@ -356,6 +416,14 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       hudSnapshot();
       cb.progress(1);
+    },
+    menuCamera(on) {
+      menuCam = on;
+      if (on) {
+        running = false;
+        paused = true;
+        input.setEnabled(false);
+      }
     },
     pause(on) {
       paused = on;
@@ -394,6 +462,8 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       input.setSettings(cur);
       rig.setSettings(cur);
       audio?.setVolumes(cur.master, cur.music, cur.sfx);
+      audio?.setAmbienceVolume(cur.ambience);
+      (render as RenderPlus).setRenderScale(cur.renderScale);
     },
     save: doSave,
     world,
@@ -417,6 +487,7 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
         ac = new AudioContext();
         audio = F.createAudio(ac);
         audio.setVolumes(cur.master, cur.music, cur.sfx);
+        audio.setAmbienceVolume(cur.ambience);
       } catch {
         ac = null;
         audio = null;
@@ -457,6 +528,12 @@ export const startGame: StartGame = (canvas, overlay, cb, settings) => {
       get quest() {
         return quest;
       },
+      log: devLog,
+      player,
+      landmarks,
+      enemies,
+      combat,
+      rig,
       teleport(x: number, z: number) {
         spawnPos.set(x, world.heightAt(x, z) + 0.1, z);
         player.place(spawnPos, player.state.yaw);

@@ -69,7 +69,9 @@ export function App() {
 
   useEffect(() => {
     setHasSave(readSave() !== null);
-    setPrefs(readPrefs());
+    const pr = readPrefs();
+    setPrefs(pr);
+    if (pr.reduceMotion) setSettings((s) => (s.reduceMotion ? s : { ...s, reduceMotion: true }));
     setLore(readLore());
     const canvas = canvasRef.current!, overlay = overlayRef.current!;
     const relay: HudHandle = {
@@ -110,6 +112,7 @@ export function App() {
       readSettings(),
     );
     gameRef.current = game;
+    game.menuCamera(true);
     setTouchPlatform(game.platform.touch);
     game.input.setTouchVisible(false);
 
@@ -123,10 +126,12 @@ export function App() {
     };
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("pointerdown", onFirst, { once: true });
+    window.addEventListener("keydown", onFirst, { once: true });
     return () => {
       offNav();
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("pointerdown", onFirst);
+      window.removeEventListener("keydown", onFirst);
       game.dispose();
       gameRef.current = null;
     };
@@ -191,6 +196,7 @@ export function App() {
     g.input.setTouchVisible(false);
     setHasSave(readSave() !== null);
     setScreen("title");
+    g.menuCamera(true);
     g.audio?.menuMusic(true);
     ui("back");
   };
@@ -205,6 +211,7 @@ export function App() {
   };
 
   const onSettings = (s: Settings) => {
+    if (s.reduceMotion !== settings.reduceMotion) onPrefs({ ...prefs, reduceMotion: s.reduceMotion });
     setSettings(s);
     writeSettings(s);
     gameRef.current?.setSettings(s);
@@ -257,7 +264,7 @@ export function App() {
 
   const device: Device = snap?.device ?? (touchPlatform ? "touch" : "keys");
   const touch = device === "touch" || (touchPlatform && device !== "pad");
-  const reduce = prefs.reduceMotion || osReducedMotion();
+  const reduce = settings.reduceMotion || prefs.reduceMotion || osReducedMotion();
 
   const pageCtx = {
     quest: gameRef.current?.quest ?? null,

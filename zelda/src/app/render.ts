@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { EnvState, FrameCtx, GameEvent, Platform, Quality, QualityPreset, Render, RenderStats, V3, Weather } from "./contracts";
 import { QUALITY, SEA_LEVEL, START_HOUR } from "./contracts";
+import { createBlobShadows } from "./render-blob";
 import { createEnvSim } from "./render-env";
 import { createFx } from "./render-fx";
 import { createLook, createSharedUniforms, HM_EXTRA_UNIFORMS } from "./render-look";
@@ -25,6 +26,8 @@ export type RenderPlus = Render & {
   readonly preset: QualityPreset;
   /** Particles alive right now. */
   particles(): number;
+  /** Player render scale (Settings.renderScale), multiplies the preset pixel ratio. */
+  setRenderScale(s: number): void;
 };
 
 const EMBER = new THREE.Color("#f08a3c");
@@ -47,6 +50,7 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
   renderer.info.autoReset = false;
 
   const scene = new THREE.Scene();
+  const blobs = createBlobShadows(scene);
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, QUALITY[quality].drawDist);
   camera.position.set(0, 8, 20);
 
@@ -86,15 +90,14 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
   const grade: PostGrade = { sat: 1, tint: new THREE.Color(), flash: 0, rain: 0, fog: uniforms.uFogColor.value, fogFar: 600 };
   let flare = 0;
   let lastPx = 0, lastPy = 0, lastPz = 0;
-  const beacons: number[] = []; // x, y, z per lit beacon
-  let beaconAcc = 0;
   let splashAcc = 0;
   let scanT = 0;
   let shadowT = 0;
   let time = 0;
 
   // ------------------------------------------------------------------ quality, size
-  const pixelRatio = () => Math.min(window.devicePixelRatio || 1, preset.pixelRatio);
+  let userScale = 1;
+  const pixelRatio = () => Math.max(0.5, Math.min(window.devicePixelRatio || 1, preset.pixelRatio) * userScale);
 
   const resize = () => {
     cssW = Math.max(1, canvas.clientWidth || window.innerWidth);
@@ -341,7 +344,6 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
         case "beaconLit":
           fx.burst("beacon", e.pos, 40, undefined, 4);
           fx.burst("ember", e.pos, 20, undefined, 3);
-          if (beacons.length < 12) beacons.push(e.pos.x, e.pos.y, e.pos.z);
           flare = Math.max(flare, 1.5);
           break;
       }
@@ -377,6 +379,13 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
       return preset;
     },
     particles: () => fx.count(),
+    setRenderScale(v) {
+      const n = Math.min(1, Math.max(0.5, v || 1));
+      if (n !== userScale) {
+        userScale = n;
+        resize();
+      }
+    },
     setQuality(nq) {
       if (nq !== q) setQuality(nq);
     },
@@ -404,6 +413,7 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
       flare = Math.max(0, flare - ctx.realDt * 0.8);
       writeUniforms(ctx);
       updateShadow(p, ctx.realDt);
+      blobs.update(ctx.world, ctx.player, ctx.enemies, !sun.castShadow);
 
       scanT -= ctx.realDt;
       if (scanT <= 0) {
@@ -422,19 +432,6 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
           const h = ctx.world.heightAt(x, z);
           TMP.x = x; TMP.y = Math.max(h, SEA_LEVEL) + 0.03; TMP.z = z;
           fx.burst("rain-splash", TMP, 2, TMP_DIR);
-        }
-      }
-      // light columns over lit beacons
-      if (beacons.length && ctx.dt > 0) {
-        beaconAcc += ctx.dt * (q === "low" ? 3 : 7);
-        while (beaconAcc >= 1) {
-          beaconAcc -= 1;
-          for (let i = 0; i < beacons.length; i += 3) {
-            TMP.x = beacons[i] + (Math.random() - 0.5) * 1.2;
-            TMP.y = beacons[i + 1] + 1 + Math.random() * 2;
-            TMP.z = beacons[i + 2] + (Math.random() - 0.5) * 1.2;
-            fx.burst("beacon", TMP, 1, TMP_DIR, 3.5);
-          }
         }
       }
       fx.update(ctx.dt, env.wind);
@@ -462,6 +459,7 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
       ro?.disconnect();
       scene.remove(sky.mesh, fx.mesh, rain.mesh, sun, sun.target, hemi);
       sky.dispose();
+      blobs.dispose();
       fx.dispose();
       rain.dispose();
       post.dispose();

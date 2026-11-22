@@ -14,6 +14,8 @@ export interface SpireHandle {
   barrierDown: boolean;
   /** Crack-and-fall (about 2.5 s). Colliders are removed at once; `false` snaps to the down state. */
   dropBarrier(animated: boolean): void;
+  /** Restore the standing barrier (a new journey or a load after it fell). */
+  raiseBarrier(): void;
   lightPath(on: boolean): void;
   bossAwake(on: boolean): void;
   flare(): void;
@@ -285,6 +287,7 @@ export function buildSpire(env: SiteEnv): SpireHandle {
 
   // barrier colliders
   const barrierIds: number[] = [];
+  const addBarrier = () => {
   for (let i = 0; i < BARRIER_N; i++) {
     const a = i / BARRIER_N * TAU;
     const x = cx + Math.cos(a) * BARRIER_R, z = cz + Math.sin(a) * BARRIER_R;
@@ -293,6 +296,8 @@ export function buildSpire(env: SiteEnv): SpireHandle {
       minY: groundMin(world, x, z, 2.2, 2.2) - 3, maxY: gy + 50, tag: "barrier", owner: `landmarks:barrier-${i}`,
     }));
   }
+  };
+  addBarrier();
 
   // ---- rim ring (boss) -------------------------------------------------------------------------------------------------
   rim.torus(cx, gy + 0.3, cz, 32.6, 0.32, "#c9a6ec", Math.PI / 2, 0, 0, 96, 6);
@@ -436,6 +441,17 @@ export function buildSpire(env: SiteEnv): SpireHandle {
       barrierIds.length = 0;
       if (animated) { dropT = 0; domeGroup.visible = true; }
       else finishDrop();
+    },
+    raiseBarrier() {
+      if (!handle.barrierDown) return;
+      handle.barrierDown = false;
+      dropT = -1;
+      addBarrier();
+      domeGroup.visible = true;
+      domeGroup.position.set(cx, domeY, cz);
+      frags.visible = false;
+      domeMat.opacity = 0.32; domeMat.emissiveIntensity = 0.5;
+      crackMat.opacity = 0.85; crackMat.emissiveIntensity = 0.6;
     },
     lightPath(on: boolean) { pathLit = on; paintPath(); },
     bossAwake(on: boolean) { awake = on; if (!isDefeated) rimMat.emissiveIntensity = on ? 1.2 : 0.1; },

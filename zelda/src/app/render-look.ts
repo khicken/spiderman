@@ -77,7 +77,9 @@ vec3 hmShadeS(vec3 albedo, vec3 n, vec3 worldPos, vec3 viewDir, float shadow) {
   return col;
 }
 vec3 hmShade(vec3 albedo, vec3 n, vec3 worldPos, vec3 viewDir) { return hmShadeS(albedo, n, worldPos, viewDir, 1.0); }
-vec3 hmFog(vec3 c, float dist) { return mix(c, uFogColor, smoothstep(uFogNear, uFogFar, dist)); }
+// Eased curve keeps mid-distance (aerial views) clear and still reaches full fog before the far cut.
+float hmFogF(float dist) { float f = smoothstep(uFogNear, uFogFar, dist); return f * f * (1.6 - 0.6 * f); }
+vec3 hmFog(vec3 c, float dist) { return mix(c, uFogColor, hmFogF(dist)); }
 `;
 
 // Extra chunk for patched built-ins: fog that glows toward the sun, matching the sky at the horizon.
@@ -89,7 +91,7 @@ vec3 hmFogW(vec3 c, vec3 wp) {
   float dist = length(d);
   float s = max(dot(d / max(dist, 1e-3), uSunDir), 0.0);
   vec3 fogc = uFogColor + uHazeColor * (s * s * s * 0.35);
-  return mix(c, fogc, smoothstep(uFogNear, uFogFar, dist));
+  return mix(c, fogc, hmFogF(dist));
 }
 `;
 

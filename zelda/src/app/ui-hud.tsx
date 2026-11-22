@@ -480,6 +480,11 @@ function TrialPanel({ trial }: { trial: NonNullable<HudSnapshot["trial"]> }) {
           <span className="font-display tabular-nums" style={{ fontSize: "1.1em", fontWeight: 600 }}>
             {trial.value}/{trial.total} <span style={{ fontSize: "0.75em", color: "var(--color-mist)" }}>{TRIAL_VERB[trial.beacon]}</span>
           </span>
+          {trial.timeLeft != null && (
+            <span className="font-display tabular-nums" data-testid="trial-time" style={{ fontSize: "1.1em", fontWeight: 600, color: trial.timeLeft < 10 ? "var(--color-ember)" : "var(--color-parchment)" }}>
+              {Math.ceil(trial.timeLeft)}s
+            </span>
+          )}
         </div>
       </div>
     </div>

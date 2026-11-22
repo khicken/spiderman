@@ -22,7 +22,7 @@ const DEFS: readonly Def[] = [
   { dx: -1, dz: -67, kind: "tall", up: 6.5 },
   { dx: 19, dz: -70, kind: "tall", up: 7.6 },
   { dx: -26, dz: -132, kind: "stack", up: 4.4, stackTop: 30 },
-  { dx: 28, dz: -136, kind: "stack", up: 4.4, stackTop: 28 },
+  { dx: 28, dz: -148, kind: "stack", up: 4.4, stackTop: 28 }, // -136 sat on the bluff slope (ground 64 m) and buried the target
 ];
 
 const FACE_DORMANT = 0, FACE_LIVE = 1, FACE_HIT = 2, FACE_GOLD = 3;

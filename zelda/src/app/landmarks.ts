@@ -53,6 +53,7 @@ class LandmarksImpl implements LandmarksDev {
   private emitFn = (e: GameEvent) => { this.out.push(e); this.onEmit(e); };
   private queueFn = (e: GameEvent) => { this.queued.push(e); this.onEmit(e); };
   private pending = false;
+  private spireGroup: THREE.Group | null = null;
 
   constructor(scene: THREE.Scene, world: World, look: Look, quality: Quality) {
     this.world = world;
@@ -80,6 +81,7 @@ class LandmarksImpl implements LandmarksDev {
     this.group.add(sg);
     const spire = buildSpire(makeSiteEnv(this.items, world, look, quality, sg));
     this.sites.push({ info: spire.info, group: sg });
+    this.spireGroup = sg;
     this.spire = spire;
 
     const builders = [buildCliffTrial, buildWoodTrial, buildLakeTrial, buildBluffTrial] as const;
@@ -190,6 +192,7 @@ class LandmarksImpl implements LandmarksDev {
     }
     this.barrier = quest.barrierDown;
     if (quest.barrierDown) this.spire.dropBarrier(false);
+    else this.spire.raiseBarrier();
     this.spire.lightPath(quest.barrierDown);
     this.spire.bossAwake(quest.stage === "boss");
     this.spire.defeated(quest.wardenDefeated);
@@ -211,7 +214,8 @@ class LandmarksImpl implements LandmarksDev {
     for (let i = 0; i < this.sites.length; i++) {
       const s = this.sites[i];
       const dx = px - s.info.x, dz = pz - s.info.z;
-      const lim = s.info.radius + SITE_DRAW;
+      // the spire is the island's skyline anchor; keep it visible from anywhere
+      const lim = s.group === this.spireGroup ? 1e5 : s.info.radius + SITE_DRAW;
       s.group.visible = dx * dx + dz * dz < lim * lim;
     }
 
@@ -257,6 +261,11 @@ class LandmarksImpl implements LandmarksDev {
       const e = events[i];
       if (e.type === "bossDefeated") { this.spire.defeated(true); this.spire.flare(); }
       else if (e.type === "bossPhase") this.spire.flare();
+      else if (e.type === "died" && this.wakeSent && this.ctxRef?.quest.stage === "spire") {
+        // enemies despawn the Warden on death; arm the arena again so it wakes when the player returns
+        this.wakeSent = false;
+        this.spire.bossAwake(false);
+      }
       for (let k = 0; k < this.trials.length; k++) this.trials[k].handle(e, this.queueFn);
     }
     this.pending = false;

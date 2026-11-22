@@ -48,9 +48,12 @@ void main() {
   float a = 1.0 / vz(uv + o), b = 1.0 / vz(uv - o), e = 1.0 / vz(uv + vec2(o.x, -o.y)), f = 1.0 / vz(uv + vec2(-o.x, o.y));
   lap += 0.5 * (abs(a + b - 2.0 * ic) + abs(e + f - 2.0 * ic));
   mx = max(mx, max(max(a, b), max(e, f)));
-  float edge = smoothstep(0.045, 0.11, lap / max(mx, 1e-6));
+  // distant rolling crests produce small depth kinks; raise the threshold with distance so only real silhouettes ink
+  float kz = 1.0 + 1.8 * smoothstep(12.0, 160.0, zc);
+  float edge = smoothstep(0.045 * kz, 0.11 * kz, lap / max(mx, 1e-6));
 #else
-  float edge = smoothstep(0.04, 0.1, lap / max(mx, 1e-6));
+  float kz = 1.0 + 1.8 * smoothstep(12.0, 160.0, zc);
+  float edge = smoothstep(0.04 * kz, 0.1 * kz, lap / max(mx, 1e-6));
 #endif
   float zn = 1.0 / mx;
   float fade = 1.0 - smoothstep(uFogFar * 0.25, uFogFar * 0.8, zn);

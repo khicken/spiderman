@@ -232,6 +232,15 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
       const tang = s.walk * 0.9 * rt.strafe;
       dvx = ux * radial - uz * tang;
       dvz = uz * radial + ux * tang;
+      // pen fleeing wisps near home so a sword-only player can corner them (trial arenas must not be left)
+      const hx = e.pos.x - e.home.x, hz = e.pos.z - e.home.z, hd = Math.hypot(hx, hz);
+      const pen = e.group.startsWith("trial") ? 3 : 16; // trial wisps spawn 18-22 m out of a 26 m ring
+      if (hd > pen) {
+        const ox = hx / hd, oz = hz / hd, out = dvx * ox + dvz * oz;
+        if (out > 0) { dvx -= ox * out; dvz -= oz * out; }
+        dvx -= ox * (hd - pen) * 1.5;
+        dvz -= oz * (hd - pen) * 1.5;
+      }
       if (rt.cd <= 0 && d < 24 && rt.seen) rt.want = true;
       if (rt.token && rt.cd <= 0 && rt.seen && d < 26) windup(ctx, e, rt, host);
     } else {

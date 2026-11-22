@@ -234,9 +234,12 @@ export interface Settings {
   invertY: boolean;
   touchScale: number; // 0.75..1.4 touch button size
   showFps: boolean;
+  reduceMotion: boolean; // no camera shake, gentler cinematics and HUD motion
+  renderScale: number; // 0.5..1 multiplier on the preset pixel ratio
+  ambience: number; // 0..1 ambience bed volume
 }
 export const DEFAULT_SETTINGS: Settings = {
-  quality: "auto", dynamicRes: true, master: 0.8, music: 0.7, sfx: 0.9, lookSens: 1, invertY: false, touchScale: 1, showFps: false,
+  quality: "auto", dynamicRes: true, master: 0.8, music: 0.7, sfx: 0.9, lookSens: 1, invertY: false, touchScale: 1, showFps: false, reduceMotion: false, renderScale: 1, ambience: 1,
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -888,7 +891,7 @@ export interface HudSnapshot {
   weather: Weather;
   prompt: string | null;
   boss: { name: string; hp: number; maxHp: number; phase: number } | null;
-  trial: { beacon: BeaconId; value: number; total: number } | null;
+  trial: { beacon: BeaconId; value: number; total: number; timeLeft?: number | null } | null;
   device: Device;
   fps: number;
   scale: number;
@@ -930,6 +933,8 @@ export interface Game {
   /** Begin play. `save` null = new game. Resolves once the world is built and the first frame rendered. */
   start(save: SaveData | null): Promise<void>;
   pause(on: boolean): void;
+  /** Title screen: a slow aerial flyover over the island (stops play). start() turns it off. */
+  menuCamera(on: boolean): void;
   readonly paused: boolean;
   respawn(): void; // after death: checkpoint, full hearts
   setSettings(s: Settings): void;
