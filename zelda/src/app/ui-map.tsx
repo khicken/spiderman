@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import type { LandmarkId, QuestStage } from "./contracts";
-import { BEACON_COLOR, BEACON_LANDMARK, CLIFFS, FOREST, LAKE, LANDMARKS, MOUNTAIN, RIVER } from "./contracts";
+import { useEffect, useRef, type ReactNode } from "react";
+import type { LandmarkId, QuestStage, TrackTarget } from "./contracts";
+import { BEACON_COLOR, BEACON_LANDMARK, CLIFFS, FOREST, LAKE, LANDMARKS, MOUNTAIN, RIVER, WAYSTONES } from "./contracts";
 import { Flame } from "./ui-ink";
 
 // Painted parchment map of the island. Relief comes from world.heightAt; rivers, lake, forest, cliffs and labels come
@@ -16,7 +16,16 @@ export interface MapData {
   visited: readonly LandmarkId[];
   barrierDown: boolean;
   stage: QuestStage;
+  /** v2, all optional so a v1 game still draws. */
+  gladeLit?: boolean;
+  waystones?: readonly string[];
+  tracked?: TrackTarget;
 }
+
+/** A pin the player can pick on the map. */
+export type MapPick = Extract<TrackTarget, { kind: "beacon" | "glade" | "spire" | "waystone" }>;
+export const samePick = (a: TrackTarget | null | undefined, b: TrackTarget | null | undefined) =>
+  !!a && !!b && a.kind === b.kind && (a.kind === "beacon" ? a.id === (b as typeof a).id : a.kind === "waystone" ? a.id === (b as typeof a).id : true);
 
 const EXT = 620; // world half-extent shown
 const RES = 288; // relief samples per side
@@ -277,7 +286,7 @@ function paintFog(ctx: CanvasRenderingContext2D, clear: { x: number; z: number; 
 
 const reliefCache = new WeakMap<object, HTMLCanvasElement>();
 
-export function IslandMap({ data, fog = true }: { data: MapData; fog?: boolean }) {
+export function IslandMap({ data, fog = true, selected, onPick }: { data: MapData; fog?: boolean; selected?: MapPick | null; onPick?(p: MapPick): void }) {
   const baseRef = useRef<HTMLCanvasElement>(null);
   const fogRef = useRef<HTMLCanvasElement>(null);
 
@@ -327,18 +336,35 @@ export function IslandMap({ data, fog = true }: { data: MapData; fog?: boolean }
         {BEACON_LANDMARK.map((id, i) => {
           const l = LANDMARKS.find((x) => x.id === id)!;
           const lit = !!data.beacons[i];
+          const pick: MapPick = { kind: "beacon", id: i as 0 | 1 | 2 | 3 };
           return (
-            <div key={id} className="absolute flex -translate-x-1/2 -translate-y-[85%] flex-col items-center" style={{ left: pct(l.x), top: pct(l.z) }}>
+            <Pin key={id} x={pct(l.x)} y={pct(l.z)} label={l.name} pick={pick} data={data} selected={selected} onPick={onPick} anchor="bottom">
               <Flame color={BEACON_COLOR[i]} lit={lit} style={{ width: "1.5em", height: "1.9em", filter: lit ? `drop-shadow(0 0 0.5em ${BEACON_COLOR[i]})` : "drop-shadow(0 0 0.1em #f3e7cc)" }} />
-            </div>
+            </Pin>
           );
         })}
-        <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: pct(MOUNTAIN.x), top: pct(MOUNTAIN.z) }}>
+        {(() => {
+          const l = LANDMARKS.find((x) => x.id === "beacon-glade");
+          if (!l) return null;
+          return (
+            <Pin x={pct(l.x)} y={pct(l.z)} label="Glade Beacon" pick={{ kind: "glade" }} data={data} selected={selected} onPick={onPick} anchor="bottom">
+              <Flame color="var(--color-gold)" lit={!!data.gladeLit} style={{ width: "1.1em", height: "1.4em", filter: "drop-shadow(0 0 0.1em #f3e7cc)" }} />
+            </Pin>
+          );
+        })()}
+        {WAYSTONES.filter((w) => data.waystones?.includes(w.id)).map((w) => (
+          <Pin key={w.id} x={pct(w.x)} y={pct(w.z)} label={w.name} pick={{ kind: "waystone", id: w.id }} data={data} selected={selected} onPick={onPick} anchor="center">
+            <svg viewBox="0 0 12 12" style={{ width: "1.2em", height: "1.2em", filter: "drop-shadow(0 0 0.1em #f3e7cc)" }} aria-hidden>
+              <path d="M6 0.8L11.2 6L6 11.2L0.8 6Z" fill="#3b8fb0" stroke="#2b2118" strokeWidth="1" />
+            </svg>
+          </Pin>
+        ))}
+        <Pin x={pct(MOUNTAIN.x)} y={pct(MOUNTAIN.z)} label="Gloam Spire" pick={{ kind: "spire" }} data={data} selected={selected} onPick={onPick} anchor="center">
           <svg viewBox="0 0 30 30" style={{ width: "2em", height: "2em" }} aria-hidden>
             <path d="M15 2L19 26H11Z" fill={data.barrierDown ? "#a47cc6" : "#5b3a6e"} stroke="#2b2118" strokeWidth="1.2" />
             {!data.barrierDown && <circle cx="15" cy="16" r="13" fill="rgba(164,124,198,0.25)" stroke="#5b3a6e" strokeWidth="1.2" strokeDasharray="2 2" />}
           </svg>
-        </div>
+        </Pin>
         <div className="absolute" style={{ left: pct(data.player.x), top: pct(data.player.z), transform: `translate(-50%, -50%) rotate(${data.heading}rad)` }} data-testid="map-player">
           <svg viewBox="0 0 24 24" style={{ width: "2.1em", height: "2.1em", filter: "drop-shadow(0 0 0.35em rgb(240 138 60 / 0.9))" }} aria-hidden>
             <path d="M12 2L19 21L12 16.5L5 21Z" fill="var(--color-ember)" stroke="#2b2118" strokeWidth="1.6" strokeLinejoin="round" />
@@ -348,5 +374,21 @@ export function IslandMap({ data, fog = true }: { data: MapData; fog?: boolean }
       </div>
       <div className="pointer-events-none absolute inset-0" style={{ boxShadow: "inset 0 0 0 1px #2b2118, inset 0 0 2.5rem rgb(143 109 34 / 0.45)" }} />
     </div>
+  );
+}
+
+function Pin({ x, y, label, pick, data, selected, onPick, anchor, children }: { x: string; y: string; label: string; pick: MapPick; data: MapData; selected?: MapPick | null; onPick?(p: MapPick): void; anchor: "bottom" | "center"; children: ReactNode }) {
+  const sel = samePick(selected, pick);
+  const tr = samePick(data.tracked, pick);
+  const shift = anchor === "bottom" ? "-translate-y-[85%]" : "-translate-y-1/2";
+  const ring = sel || tr ? `0 0 0 0.18em ${tr ? "var(--color-gold)" : "#2b2118"}` : "none";
+  if (!onPick)
+    return (
+      <div className={`absolute -translate-x-1/2 ${shift}`} style={{ left: x, top: y }}>{children}</div>
+    );
+  return (
+    <button type="button" data-nav="item" aria-label={`${label}${tr ? ", tracked" : ""}`} aria-pressed={sel} onClick={() => onPick(pick)} className={`pointer-events-auto absolute -translate-x-1/2 ${shift}`} style={{ left: x, top: y, padding: "0.2em", background: sel ? "rgb(248 240 221 / 0.6)" : "transparent", borderRadius: "0.4em", boxShadow: ring, border: 0, cursor: "pointer" }} data-testid={`pin-${pick.kind}${"id" in pick ? "-" + pick.id : ""}`}>
+      {children}
+    </button>
   );
 }

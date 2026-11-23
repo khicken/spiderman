@@ -1,6 +1,6 @@
 # aot design rules
 
-Read `../AGENTS.md` first for code and performance rules. This file covers how the game should feel and read.
+Read `../AGENTS.md` first for code and performance rules, and `../GAME-DESIGN.md` for the rules shared by all games. This file covers how the game should feel and read.
 
 ## Text
 

@@ -1,0 +1,348 @@
+{
+ "version": 1,
+ "boot": [
+  "step-grass",
+  "swing",
+  "hit-flesh",
+  "cloth"
+ ],
+ "clips": {
+  "step-grass": {
+   "files": [
+    "step-grass-1.mp3",
+    "step-grass-2.mp3",
+    "step-grass-3.mp3",
+    "step-grass-4.mp3",
+    "step-grass-5.mp3",
+    "step-grass-6.mp3",
+    "step-grass-7.mp3",
+    "step-grass-8.mp3"
+   ]
+  },
+  "step-dirt": {
+   "files": [
+    "step-dirt-1.mp3",
+    "step-dirt-2.mp3",
+    "step-dirt-3.mp3",
+    "step-dirt-4.mp3",
+    "step-dirt-5.mp3",
+    "step-dirt-6.mp3",
+    "step-dirt-7.mp3",
+    "step-dirt-8.mp3"
+   ]
+  },
+  "step-rock": {
+   "files": [
+    "step-rock-1.mp3",
+    "step-rock-2.mp3",
+    "step-rock-3.mp3",
+    "step-rock-4.mp3",
+    "step-rock-5.mp3",
+    "step-rock-6.mp3",
+    "step-rock-7.mp3",
+    "step-rock-8.mp3"
+   ]
+  },
+  "step-stone": {
+   "files": [
+    "step-stone-1.mp3",
+    "step-stone-2.mp3",
+    "step-stone-3.mp3",
+    "step-stone-4.mp3",
+    "step-stone-5.mp3",
+    "step-stone-6.mp3",
+    "step-stone-7.mp3",
+    "step-stone-8.mp3"
+   ]
+  },
+  "step-sand": {
+   "files": [
+    "step-sand-1.mp3",
+    "step-sand-2.mp3",
+    "step-sand-3.mp3",
+    "step-sand-4.mp3",
+    "step-sand-5.mp3",
+    "step-sand-6.mp3",
+    "step-sand-7.mp3",
+    "step-sand-8.mp3"
+   ]
+  },
+  "step-wood": {
+   "files": [
+    "step-wood-1.mp3",
+    "step-wood-2.mp3",
+    "step-wood-3.mp3",
+    "step-wood-4.mp3",
+    "step-wood-5.mp3",
+    "step-wood-6.mp3",
+    "step-wood-7.mp3",
+    "step-wood-8.mp3"
+   ]
+  },
+  "step-water": {
+   "files": [
+    "step-water-1.mp3",
+    "step-water-2.mp3",
+    "step-water-3.mp3",
+    "step-water-4.mp3",
+    "step-water-5.mp3",
+    "step-water-6.mp3"
+   ]
+  },
+  "step-ash": {
+   "files": [
+    "step-ash-1.mp3",
+    "step-ash-2.mp3",
+    "step-ash-3.mp3",
+    "step-ash-4.mp3",
+    "step-ash-5.mp3",
+    "step-ash-6.mp3",
+    "step-ash-7.mp3",
+    "step-ash-8.mp3"
+   ]
+  },
+  "cloth": {
+   "files": [
+    "cloth-1.mp3",
+    "cloth-2.mp3",
+    "cloth-3.mp3",
+    "cloth-4.mp3",
+    "cloth-5.mp3",
+    "cloth-6.mp3",
+    "cloth-7.mp3",
+    "cloth-8.mp3"
+   ]
+  },
+  "whoosh-soft": {
+   "files": [
+    "whoosh-soft-1.mp3",
+    "whoosh-soft-2.mp3",
+    "whoosh-soft-3.mp3"
+   ]
+  },
+  "swing": {
+   "files": [
+    "swing-1.mp3",
+    "swing-2.mp3",
+    "swing-3.mp3",
+    "swing-4.mp3",
+    "swing-5.mp3",
+    "swing-6.mp3",
+    "swing-7.mp3",
+    "swing-8.mp3"
+   ]
+  },
+  "hit-flesh": {
+   "files": [
+    "hit-flesh-1.mp3",
+    "hit-flesh-2.mp3",
+    "hit-flesh-3.mp3",
+    "hit-flesh-4.mp3",
+    "hit-flesh-5.mp3",
+    "hit-flesh-6.mp3",
+    "hit-flesh-7.mp3"
+   ]
+  },
+  "clash": {
+   "files": [
+    "clash-1.mp3",
+    "clash-2.mp3",
+    "clash-3.mp3",
+    "clash-4.mp3",
+    "clash-5.mp3",
+    "clash-6.mp3",
+    "clash-7.mp3",
+    "clash-8.mp3"
+   ]
+  },
+  "creak": {
+   "files": [
+    "creak-1.mp3",
+    "creak-2.mp3",
+    "creak-3.mp3",
+    "creak-4.mp3",
+    "creak-5.mp3"
+   ]
+  },
+  "bow-release": {
+   "files": [
+    "bow-release-1.mp3",
+    "bow-release-2.mp3"
+   ]
+  },
+  "arrow-hit": {
+   "files": [
+    "arrow-hit-1.mp3",
+    "arrow-hit-2.mp3",
+    "arrow-hit-3.mp3",
+    "arrow-hit-4.mp3"
+   ]
+  },
+  "splash": {
+   "files": [
+    "splash-1.mp3",
+    "splash-2.mp3"
+   ]
+  },
+  "splash-big": {
+   "files": [
+    "splash-big-1.mp3"
+   ]
+  },
+  "swim": {
+   "files": [
+    "swim-1.mp3",
+    "swim-2.mp3",
+    "swim-3.mp3",
+    "swim-4.mp3",
+    "swim-5.mp3",
+    "swim-6.mp3"
+   ]
+  },
+  "rock-hit": {
+   "files": [
+    "rock-hit-1.mp3",
+    "rock-hit-2.mp3",
+    "rock-hit-3.mp3",
+    "rock-hit-4.mp3",
+    "rock-hit-5.mp3",
+    "rock-hit-6.mp3",
+    "rock-hit-7.mp3",
+    "rock-hit-8.mp3"
+   ]
+  },
+  "stone-drag": {
+   "files": [
+    "stone-drag-1.mp3",
+    "stone-drag-2.mp3",
+    "stone-drag-3.mp3",
+    "stone-drag-4.mp3"
+   ]
+  },
+  "stone-door": {
+   "files": [
+    "stone-door-1.mp3"
+   ]
+  },
+  "twig": {
+   "files": [
+    "twig-1.mp3",
+    "twig-2.mp3",
+    "twig-3.mp3",
+    "twig-4.mp3",
+    "twig-5.mp3",
+    "twig-6.mp3"
+   ]
+  },
+  "growl": {
+   "files": [
+    "growl-1.mp3",
+    "growl-2.mp3",
+    "growl-3.mp3",
+    "growl-4.mp3",
+    "growl-5.mp3",
+    "growl-6.mp3"
+   ]
+  },
+  "roar": {
+   "files": [
+    "roar-1.mp3"
+   ]
+  },
+  "fire-whoosh": {
+   "files": [
+    "fire-whoosh-1.mp3",
+    "fire-whoosh-2.mp3",
+    "fire-whoosh-3.mp3",
+    "fire-whoosh-4.mp3",
+    "fire-whoosh-5.mp3"
+   ]
+  },
+  "bird": {
+   "files": [
+    "bird-1.mp3",
+    "bird-2.mp3",
+    "bird-3.mp3",
+    "bird-4.mp3",
+    "bird-5.mp3",
+    "bird-6.mp3"
+   ]
+  },
+  "thunder": {
+   "files": [
+    "thunder-1.mp3",
+    "thunder-2.mp3",
+    "thunder-3.mp3",
+    "thunder-4.mp3"
+   ]
+  },
+  "bed-forest": {
+   "files": [
+    "bed-forest-1.mp3"
+   ]
+  },
+  "bed-birds": {
+   "files": [
+    "bed-birds-1.mp3"
+   ]
+  },
+  "bed-night": {
+   "files": [
+    "bed-night-1.mp3"
+   ]
+  },
+  "bed-frogs": {
+   "files": [
+    "bed-frogs-1.mp3"
+   ]
+  },
+  "bed-wind": {
+   "files": [
+    "bed-wind-1.mp3"
+   ]
+  },
+  "bed-wind-high": {
+   "files": [
+    "bed-wind-high-1.mp3"
+   ]
+  },
+  "bed-rain": {
+   "files": [
+    "bed-rain-1.mp3"
+   ]
+  },
+  "bed-rain-heavy": {
+   "files": [
+    "bed-rain-heavy-1.mp3"
+   ]
+  },
+  "bed-river": {
+   "files": [
+    "bed-river-1.mp3"
+   ]
+  },
+  "bed-sea": {
+   "files": [
+    "bed-sea-1.mp3"
+   ]
+  },
+  "bed-lake": {
+   "files": [
+    "bed-lake-1.mp3"
+   ]
+  }
+ },
+ "loops": {
+  "bed-forest": true,
+  "bed-birds": true,
+  "bed-night": true,
+  "bed-frogs": true,
+  "bed-wind": true,
+  "bed-wind-high": true,
+  "bed-rain": true,
+  "bed-rain-heavy": true,
+  "bed-river": true,
+  "bed-sea": true,
+  "bed-lake": true
+ }
+}

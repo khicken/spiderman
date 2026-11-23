@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { Device } from "./contracts";
+import { DEATH_TITLE, type DeathCause, type Device } from "./contracts";
 import { Corner, DropCap, Flame, FLAME_CORE, FLAME_PATH, Glyph, IlluminatedCapital, InkFrame, Lozenge, Quill, Rule } from "./ui-ink";
 import { CREDITS, ENDING_TEXT, fmtTime, LORE_LINES, SHARD_TOTAL, type EndStats } from "./ui-store";
 
@@ -27,7 +27,7 @@ export function TitleScreen({ hasSave, onAction, busy }: { hasSave: boolean; onA
 
       <div className="absolute inset-y-0 flex flex-col justify-center" style={{ left: "clamp(2rem, 7vw, 8rem)", width: "min(48rem, 62vw)" }}>
         <div className="hm-wash-in hm-wash-mask" style={{ animationDelay: "60ms" }}>
-          <h1 className="flex items-end" aria-label="Hollowmere" style={{ gap: "0.4rem" }}>
+          <h1 className="flex items-end" aria-label="Hollowmere" style={{ gap: "0.05rem" }}>
             <IlluminatedCapital letter="H" size="clamp(5.2rem, 9vw, 7.4rem)" />
             <span className="font-display hm-foil" style={{ fontSize: "clamp(2.6rem, 4.6vw, 4.4rem)", fontWeight: 600, letterSpacing: "0.12em", lineHeight: 0.85, paddingBottom: "0.32rem", filter: "drop-shadow(0 0.15rem 0.5rem rgb(0 0 0 / 0.5))" }}>
               OLLOWMERE
@@ -37,7 +37,7 @@ export function TitleScreen({ hasSave, onAction, busy }: { hasSave: boolean; onA
         <div className="hm-rise" style={{ animationDelay: "500ms", marginTop: "1rem" }}>
           <Rule color="var(--color-gold)" style={{ width: "100%" }} />
           <p className="font-display italic" style={{ fontSize: "1.65rem", color: "var(--color-parchment)", marginTop: "0.35rem", textShadow: "0 0.1rem 0.6rem rgb(0 0 0 / 0.6)" }}>
-            Wake the four beacons.
+            Light the four beacons.
           </p>
         </div>
         <nav className="flex flex-col gap-[0.55rem]" style={{ marginTop: "clamp(1rem, 4.5vh, 2.6rem)", maxWidth: "24rem" }} aria-label="Title menu">
@@ -83,10 +83,12 @@ const WAVE_D = (() => {
   return d;
 })();
 
+const TIPS = 5;
+
 export function LoadingScreen({ progress }: { progress: number }) {
-  const [line, setLine] = useState(() => Math.floor(Math.random() * LORE_LINES.length));
+  const [line, setLine] = useState(() => Math.floor(Math.random() * TIPS));
   useEffect(() => {
-    const t = setInterval(() => setLine((l) => (l + 1) % LORE_LINES.length), 3600);
+    const t = setInterval(() => setLine((l) => (l + 1) % TIPS), 3600);
     return () => clearInterval(t);
   }, []);
   const p = Math.max(0.02, Math.min(1, progress));
@@ -97,7 +99,7 @@ export function LoadingScreen({ progress }: { progress: number }) {
       <Corner pos="tr" color="var(--color-gold)" />
       <Corner pos="bl" color="var(--color-gold)" />
       <Corner pos="br" color="var(--color-gold)" />
-      <div className="hm-label" style={{ color: "var(--color-gold-hi)", marginBottom: "1.2rem" }}>Kindling the lantern</div>
+      <div className="hm-label" style={{ color: "var(--color-gold-hi)", marginBottom: "1.2rem" }}>Loading</div>
       <div className="relative" style={{ width: "min(40rem, 76vw)" }}>
         <svg viewBox={`0 -10 ${WAVE_W} 50`} className="w-full overflow-visible" style={{ height: "auto" }} aria-hidden>
           <path d={WAVE_D} fill="none" stroke="rgb(232 199 102 / 0.18)" strokeWidth="1" strokeDasharray="2 5" />
@@ -115,8 +117,8 @@ export function LoadingScreen({ progress }: { progress: number }) {
         </svg>
       </div>
       <div className="relative flex items-center justify-center text-center" style={{ minHeight: "5.5rem", width: "min(36rem, 80vw)", marginTop: "1.8rem" }}>
-        <p key={line} className="hm-lore-line font-display italic" style={{ fontSize: "1.55rem", lineHeight: 1.4, color: "var(--color-parchment)" }}>
-          “{LORE_LINES[line]}”
+        <p key={line} className="hm-lore-line font-display" style={{ fontSize: "1.45rem", lineHeight: 1.4, color: "var(--color-parchment)" }}>
+          {LORE_LINES[line]}
         </p>
       </div>
       <div className="font-display tabular-nums" style={{ marginTop: "1rem", fontSize: "1rem", color: "var(--color-mist)" }}>{Math.round(p * 100)}%</div>
@@ -126,7 +128,7 @@ export function LoadingScreen({ progress }: { progress: number }) {
 
 /* -------------------------------------------------------------------- death */
 
-export function DeathScreen({ onRekindle, device }: { onRekindle(): void; device: Device }) {
+export function DeathScreen({ where, cause, onContinue, device }: { where: string; cause?: DeathCause; onContinue(): void; device: Device }) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setReady(true), 1100);
@@ -146,17 +148,17 @@ export function DeathScreen({ onRekindle, device }: { onRekindle(): void; device
           </g>
         </svg>
       </div>
-      <h2 className="font-display hm-wash-in italic" style={{ fontSize: "clamp(2.8rem, 6vw, 4.4rem)", fontWeight: 600, color: "var(--color-parchment-hi)", marginTop: "0.6rem", textShadow: "0 0.2rem 1rem rgb(0 0 0 / 0.7)" }}>
-        The lantern gutters
+      <h2 className="font-display hm-wash-in" style={{ fontSize: "clamp(2.8rem, 6vw, 4.4rem)", fontWeight: 600, color: "var(--color-parchment-hi)", marginTop: "0.6rem", textShadow: "0 0.2rem 1rem rgb(0 0 0 / 0.7)" }}>
+        {DEATH_TITLE[cause ?? "fall"]}
       </h2>
       <Rule color="var(--color-rubric)" style={{ width: "min(22rem, 60vw)", marginTop: "0.3rem" }} />
-      <p className="font-display hm-rise italic" style={{ fontSize: "1.35rem", color: "var(--color-mist)", marginTop: "0.6rem", animationDelay: "500ms" }}>
-        But an ember remembers. Rise again at the last flame you lit.
+      <p className="font-display hm-rise" style={{ fontSize: "1.35rem", color: "var(--color-mist)", marginTop: "0.6rem", animationDelay: "500ms" }}>
+        Respawning at {where}.
       </p>
       <div style={{ height: "4.5rem", marginTop: "1.4rem" }}>
         {ready && (
-          <button className="hm-btn dark primary hm-rise" autoFocus data-nav="item" style={{ width: "auto", paddingRight: "2rem" }} onClick={onRekindle} data-testid="rekindle">
-            <Lozenge />Rekindle
+          <button className="hm-btn dark primary hm-rise" autoFocus data-nav="item" style={{ width: "auto", paddingRight: "2rem" }} onClick={onContinue} data-testid="continue">
+            <Lozenge />Continue
             {device !== "touch" && <span style={{ marginLeft: "0.6rem" }}><Glyph device={device} keys="Enter" pad="A" /></span>}
           </button>
         )}
@@ -167,7 +169,23 @@ export function DeathScreen({ onRekindle, device }: { onRekindle(): void; device
 
 /* ------------------------------------------------------------------- ending */
 
-export function EndingScreen({ stats, onFree }: { stats: EndStats; onFree(): void }) {
+export function EndingScreen({ stats, onFree, onChoose }: { stats: EndStats; onFree(): void; onChoose(c: "keeper" | "sky"): void }) {
+  const [chosen, setChosen] = useState(false);
+  if (!chosen)
+    return (
+      <div className="safe hm-parchment-dark absolute inset-0 flex flex-col items-center justify-center text-center" data-testid="ending-choice">
+        <h2 className="font-display" style={{ fontSize: "clamp(2rem, 4.5vw, 3rem)", fontWeight: 600, color: "var(--color-parchment-hi)" }}>The Warden is gone. Tallow is free.</h2>
+        <p className="font-display" style={{ fontSize: "1.3rem", color: "var(--color-parchment)", marginTop: "0.6rem", maxWidth: "34rem" }}>Choose what happens to Tallow.</p>
+        <div className="flex flex-wrap justify-center gap-[1rem]" style={{ marginTop: "1.8rem" }}>
+          <button className="hm-btn dark primary" autoFocus style={{ width: "auto" }} data-nav="item" data-testid="choose-keeper" onClick={() => { onChoose("keeper"); setChosen(true); }}><Lozenge />Keep Tallow</button>
+          <button className="hm-btn dark" style={{ width: "auto" }} data-nav="item" data-testid="choose-sky" onClick={() => { onChoose("sky"); setChosen(true); }}><Lozenge />Return Tallow to the sky</button>
+        </div>
+      </div>
+    );
+  return <EndingPage stats={stats} onFree={onFree} />;
+}
+
+function EndingPage({ stats, onFree }: { stats: EndStats; onFree(): void }) {
   const [roll, setRoll] = useState(false);
   const freeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -181,7 +199,7 @@ export function EndingScreen({ stats, onFree }: { stats: EndStats; onFree(): voi
         <div className="hm-scroll absolute inset-0 flex justify-center" style={{ padding: "clamp(0.8rem, 4vh, 3rem) 1rem" }}>
           <InkFrame className="hm-book-in my-auto" style={{ width: "min(46rem, 92vw)", padding: "clamp(1.4rem, 4vh, 3rem) clamp(1.6rem, 4vw, 3.4rem)", animationDelay: "600ms" }}>
             <div className="hm-label text-center" style={{ color: "var(--color-ember-lo)", marginBottom: "0.4rem" }}>The last page</div>
-            <h2 className="font-display text-center" style={{ fontSize: "clamp(2.2rem, 4.5vw, 3.2rem)", fontWeight: 600, lineHeight: 1 }}>Hollowmere wakes</h2>
+            <h2 className="font-display text-center" style={{ fontSize: "clamp(2.2rem, 4.5vw, 3.2rem)", fontWeight: 600, lineHeight: 1 }}>Hollowmere is lit</h2>
             <Rule color="var(--color-gold)" style={{ margin: "0.6rem 0 1rem" }} />
             <DropCap text={ENDING_TEXT[0]} size="4.2rem" />
             {ENDING_TEXT.slice(1).map((t) => (
@@ -282,8 +300,7 @@ export const RotatePrompt = memo(function RotatePrompt() {
         </g>
       </svg>
       <div>
-        <h2 className="font-display italic" style={{ fontSize: "2.4rem", fontWeight: 600, color: "var(--color-parchment-hi)", lineHeight: 1.1 }}>Turn your device sideways</h2>
-        <p className="font-display italic" style={{ fontSize: "1.3rem", color: "var(--color-mist)", marginTop: "0.5rem" }}>Hollowmere is wider than it is tall.</p>
+        <h2 className="font-display italic" style={{ fontSize: "2.4rem", fontWeight: 600, color: "var(--color-parchment-hi)", lineHeight: 1.1 }}>Rotate your phone to landscape to play.</h2>
       </div>
     </div>
   );

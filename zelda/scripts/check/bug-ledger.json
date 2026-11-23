@@ -1,0 +1,960 @@
+[
+ {
+  "id": "B01",
+  "audit": "design",
+  "summary": "Lamp posts and thin solid props are climbable; Wren sticks in climb mode at spawn path",
+  "where": "src/app/landmark-kit.ts:247",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B02",
+  "audit": "design",
+  "summary": "Journal shows heart shards 0/36 but only 12 shards exist",
+  "where": "src/app/ui-store.ts:100",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B03",
+  "audit": "design",
+  "summary": "Death screen copy says 'last flame you lit' when none lit; 'gutters'/'Rekindle' wording",
+  "where": "src/app/ui-screens.tsx:154",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B04",
+  "audit": "design",
+  "summary": "Death stub screen duplicates old 'lantern gutters' / 'Rekindle' copy",
+  "where": "src/app/ui-stub.tsx:149",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B05",
+  "audit": "design",
+  "summary": "Pressing M a second time does not close the map; time stays paused",
+  "where": "src/app/ui-app.tsx:94",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B06",
+  "audit": "design",
+  "summary": "Thornring camps wood-2 and night-wood attack at the pedestal, costing hearts before trial starts",
+  "where": "src/app/contracts.ts:443",
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B07",
+  "audit": "design",
+  "summary": "BTN_NAMES lacks 'thread' button, so Emberthread has no input binding",
+  "where": "src/app/state.ts:9",
+  "owner": "T13",
+  "status": "fixed",
+  "note": "BTN_NAMES has thread"
+ },
+ {
+  "id": "B08",
+  "audit": "design",
+  "summary": "Objective 'Leave the Hollow Shrine' is a non-goal that completes by accident at 45 m",
+  "where": "src/app/state.ts:95",
+  "owner": "T13",
+  "status": "fixed",
+  "note": "objective table: brazier then Glade Beacon"
+ },
+ {
+  "id": "B09",
+  "audit": "design",
+  "summary": "Beacon objective never changes with progress and names no target or direction",
+  "where": "src/app/state.ts:99",
+  "owner": "T13",
+  "status": "fixed",
+  "note": "objective names next beacon and direction"
+ },
+ {
+  "id": "B10",
+  "audit": "design",
+  "summary": "Bow hint appears only after a beacon is lit; player can reach Windward unprepared",
+  "where": "src/app/state.ts:98",
+  "owner": "T13",
+  "status": "fixed",
+  "note": "bow sub-line shown from the start"
+ },
+ {
+  "id": "B11",
+  "audit": "design",
+  "summary": "Objective copy uses banned words ('Wake the four beacons') instead of plain 'Light the beacons'",
+  "where": "src/app/state.ts:99",
+  "owner": "T13",
+  "status": "fixed",
+  "note": "plain wording per DESIGN-V2 table"
+ },
+ {
+  "id": "B12",
+  "audit": "design",
+  "summary": "Unlit beacon light column is hidden, so goals are invisible until completed",
+  "where": "src/app/landmark-beacon.ts:291",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B13",
+  "audit": "design",
+  "summary": "Beacon sites draw only within 260 m of the site; no distant violet smoke column",
+  "where": "src/app/landmarks.ts:20",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B14",
+  "audit": "design",
+  "summary": "Nothing to find across 300-500 m of open meadow between landmarks; no secrets or paths",
+  "where": null,
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B15",
+  "audit": "design",
+  "summary": "Windward bow gate is a toast the player can miss; targets-out-of-reach copy is vague",
+  "where": "src/app/landmark-trial-bluff.ts:252",
+  "owner": "T5",
+  "status": "assigned"
+ },
+ {
+  "id": "B16",
+  "audit": "design",
+  "summary": "Bow chest sits off the critical path, so Windward gating blocks players with no reason to visit",
+  "where": "src/app/landmark-village.ts",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B17",
+  "audit": "design",
+  "summary": "Drowned trial needs 19 pushes; too long and no reward for exploring",
+  "where": "src/app/landmark-trial-lake.ts",
+  "owner": "T5",
+  "status": "assigned"
+ },
+ {
+  "id": "B18",
+  "audit": "design",
+  "summary": "Cliffwatch has a hard 75 s fail timer and never teaches glide or updrafts",
+  "where": "src/app/landmark-trial-cliff.ts",
+  "owner": "T5",
+  "status": "assigned"
+ },
+ {
+  "id": "B19",
+  "audit": "design",
+  "summary": "Thornring trial starts 4 bramblings at once for a player never taught to block",
+  "where": "src/app/landmark-trial-wood.ts",
+  "owner": "T5",
+  "status": "assigned"
+ },
+ {
+  "id": "B20",
+  "audit": "design",
+  "summary": "Pedestal prompt 'Begin trial' not plain copy; trial rules shown only in journal",
+  "where": "src/app/landmarks.ts:129",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B21",
+  "audit": "design",
+  "summary": "HUD toasts use unclear copy ('wakes', 'new flame', 'trial falters', 'Dusk falls')",
+  "where": "src/app/ui-hud.tsx:141",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B22",
+  "audit": "design",
+  "summary": "Rain toast says 'Climbing tires you faster'; unclear wording, no stamina UI context",
+  "where": "src/app/ui-hud.tsx:183",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B23",
+  "audit": "design",
+  "summary": "Journal copy: 'Gleanings', 'Flames' stat, 'Uncharted', 'Sight', 'Colophon' and lantern-bearer kicker unclear",
+  "where": "src/app/ui-pages.tsx:111",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B24",
+  "audit": "design",
+  "summary": "Journal Windward entry says 'out of reach' instead of 'needs a bow, Mirebrook mill'",
+  "where": "src/app/ui-pages.tsx:86",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B25",
+  "audit": "design",
+  "summary": "BEACON_TRIALS and loading LORE_LINES are flavor text, not plain rules or tips",
+  "where": "src/app/ui-store.ts:60",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B26",
+  "audit": "design",
+  "summary": "Compass unlit beacon markers are tiny grey flames with no tracked target",
+  "where": "src/app/ui-hud.tsx",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B27",
+  "audit": "design",
+  "summary": "Controls are never taught in play; no prompts for move, look, jump, climb, glide, attack, block",
+  "where": null,
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B28",
+  "audit": "design",
+  "summary": "No cold open or story at start; New Journey drops straight into play",
+  "where": "src/app/ui-app.tsx",
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B29",
+  "audit": "design",
+  "summary": "Shrine exit and Mt Cinder not framed; trees block the opening view",
+  "where": "src/app/landmark-shrine.ts",
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B30",
+  "audit": "design",
+  "summary": "Game started at 07:30 daylight; START_HOUR now 5.5 (pre-dawn) in contracts",
+  "where": "src/app/contracts.ts:810",
+  "owner": "T13",
+  "status": "fixed-by-design"
+ },
+ {
+  "id": "B31",
+  "audit": "design",
+  "summary": "Lantern does nothing in play; no companion or voice, nothing to care about",
+  "where": null,
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B32",
+  "audit": "playtest",
+  "summary": "No control prompt at start; player does not know to click canvas for mouse look",
+  "where": null,
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B33",
+  "audit": "playtest",
+  "summary": "Pointer lock not re-requested on Resume or after closing map; mouse look dies",
+  "where": "src/app/input.ts",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B34",
+  "audit": "playtest",
+  "summary": "First objective has no marker; second is generic and names no beacon or direction",
+  "where": null,
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B35",
+  "audit": "playtest",
+  "summary": "HUD distance readout jumps between targets and appears stale",
+  "where": "src/app/ui-hud.tsx",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B36",
+  "audit": "playtest",
+  "summary": "Journal is the only tutorial and nothing points the player to it",
+  "where": null,
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B37",
+  "audit": "playtest",
+  "summary": "HUD never explains flames (health), gold counter, or shards; no stamina bar for climb toast",
+  "where": "src/app/ui-hud.tsx",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B38",
+  "audit": "playtest",
+  "summary": "Rain toast cropped at left screen edge and low contrast",
+  "where": "src/app/ui-hud.tsx:183",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B39",
+  "audit": "playtest",
+  "summary": "Steep slope gives no 'too steep' feedback; player runs in place and jump does nothing",
+  "where": "src/app/player.ts:281",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B40",
+  "audit": "playtest",
+  "summary": "Camera goes top-down on slopes and collapses into player head against trunks",
+  "where": "src/app/camera-collide.ts:7",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B41",
+  "audit": "playtest",
+  "summary": "Player sinks into boulders and rock mesh draws over character",
+  "where": null,
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B42",
+  "audit": "playtest",
+  "summary": "Walking off west coast drowns silently; no mist, wall or warning at island edge",
+  "where": "src/app/world.ts:94",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B43",
+  "audit": "playtest",
+  "summary": "Nearest beacon is 450-800 m from spawn; first win takes far too long",
+  "where": null,
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B44",
+  "audit": "playtest",
+  "summary": "10 minutes with no enemy, pickup, NPC or reward; nothing on the first path",
+  "where": null,
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B45",
+  "audit": "playtest",
+  "summary": "Day to dusk in about 10 minutes, so first session goes dark while lost",
+  "where": null,
+  "owner": "T13",
+  "status": "fixed",
+  "note": "clockScale() half speed until first beacon or 25 min (game.ts must call it)"
+ },
+ {
+  "id": "B46",
+  "audit": "playtest",
+  "summary": "Map and journal disagree on Windward direction; map orientation unclear",
+  "where": "src/app/ui-map.tsx",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B47",
+  "audit": "playtest",
+  "summary": "Objective change at 60 m has no sound or banner",
+  "where": null,
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B48",
+  "audit": "mechanics",
+  "summary": "Camera auto-follow spirals when strafing: about 150 deg/s, 4.6 m circle",
+  "where": "src/app/camera.ts:24",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B49",
+  "audit": "mechanics",
+  "summary": "Space-opened glide closes itself about 0.4 s later; fatal at height (jump buffer vs glide toggle)",
+  "where": "src/app/player.ts:897",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B50",
+  "audit": "mechanics",
+  "summary": "Dodge fires on Shift/B release; latency equals hold time",
+  "where": "src/app/input.ts:112",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B51",
+  "audit": "mechanics",
+  "summary": "No input buffering during roll; mashed rolls dropped",
+  "where": "src/app/player.ts:717",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B52",
+  "audit": "mechanics",
+  "summary": "Waist-high obstacles cause a dead stop before vault; needs 0.14 s wall push",
+  "where": "src/app/player.ts:1024",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B53",
+  "audit": "mechanics",
+  "summary": "Climb exhaustion drops Wren instantly with no warning; one stamina ring covers only 16 m",
+  "where": "src/app/contracts.ts:355",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B54",
+  "audit": "mechanics",
+  "summary": "Climb camera hides the summit; wall fills the frame",
+  "where": "src/app/camera.ts",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B55",
+  "audit": "mechanics",
+  "summary": "Tap jump gives 0.32 m hop; early-release cut too harsh, descent floaty",
+  "where": "src/app/player.ts:858",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B56",
+  "audit": "mechanics",
+  "summary": "No walk key on keyboard; keys are always 0 or full speed",
+  "where": "src/app/input.ts:21",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B57",
+  "audit": "mechanics",
+  "summary": "180 degree reverse at run snaps with no pivot or skid; stop has no weight",
+  "where": "src/app/player.ts",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B58",
+  "audit": "mechanics",
+  "summary": "Tab bound to lock-on; conflicts with browser focus",
+  "where": "src/app/input.ts:23",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B59",
+  "audit": "mechanics",
+  "summary": "No keyboard or pad button to switch lock-on target; no soft-lock for swings",
+  "where": "src/app/input.ts",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B60",
+  "audit": "mechanics",
+  "summary": "Swim fast uses Shift like sprint; treading water is free",
+  "where": "src/app/player.ts:906",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B61",
+  "audit": "mechanics",
+  "summary": "Fall damage starts at about 3.8 m, punishing common 4-5 m ledges",
+  "where": "src/app/contracts.ts:359",
+  "owner": "T7",
+  "status": "fixed-by-design"
+ },
+ {
+  "id": "B62",
+  "audit": "mechanics",
+  "summary": "Sword hit lands 80-120 ms before blade crosses target; one-frame active window can miss",
+  "where": null,
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B63",
+  "audit": "mechanics",
+  "summary": "Combo cadence mushy: late presses chain; no clear anticipation pose",
+  "where": null,
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B64",
+  "audit": "mechanics",
+  "summary": "Whole-world hitstop smears camera and particles; player-hurt stop up to 0.12 s",
+  "where": "src/app/combat-events.ts:55",
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B65",
+  "audit": "mechanics",
+  "summary": "Charge requires a first swing; charge-ready cue weak",
+  "where": null,
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B66",
+  "audit": "mechanics",
+  "summary": "Parry has no rumble or riposte prompt; block has no feedback",
+  "where": "src/app/game.ts:202",
+  "owner": "Integrator",
+  "status": "assigned"
+ },
+ {
+  "id": "B67",
+  "audit": "mechanics",
+  "summary": "Brambling telegraph 0.41 s total, below reaction time; violet glow low contrast",
+  "where": "src/app/enemy-brain.ts:264",
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B68",
+  "audit": "mechanics",
+  "summary": "Stamina ring lacks cost preview, low-stamina pulse and refill cue",
+  "where": "src/app/ui-hud.tsx",
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B69",
+  "audit": "mechanics",
+  "summary": "Walking off 80 m cliff without glider kills Wren; no fall prompt",
+  "where": null,
+  "owner": "T10",
+  "status": "assigned"
+ },
+ {
+  "id": "B70",
+  "audit": "mechanics",
+  "summary": "Glide hold-back nearly stops forward motion; no dive, flare or banking",
+  "where": "src/app/player.ts:882",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B71",
+  "audit": "graphics",
+  "summary": "Shadows reach only Lambert materials; terrain, trees, rocks and grass use fixed shadow 1.0",
+  "where": "src/app/render-look.ts:79",
+  "owner": "T2",
+  "status": "assigned"
+ },
+ {
+  "id": "B72",
+  "audit": "graphics",
+  "summary": "Ambient multipliers 1.45 sky and 1.3 ground flatten the ramp; noon is a flat lime wash",
+  "where": "src/app/render.ts:238",
+  "owner": "T1",
+  "status": "assigned"
+ },
+ {
+  "id": "B73",
+  "audit": "graphics",
+  "summary": "Sky gradient posterize rings visible in most sky shots",
+  "where": "src/app/render-sky.ts:38",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B74",
+  "audit": "graphics",
+  "summary": "Plane-projected fbm clouds converge like searchlights; no cloud volumes at horizon",
+  "where": "src/app/render-sky.ts:28",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B75",
+  "audit": "graphics",
+  "summary": "Moon is a grey disc with heavy grey halo",
+  "where": "src/app/render-sky.ts",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B76",
+  "audit": "graphics",
+  "summary": "Night palette is a single teal covering everything",
+  "where": "src/app/render-env.ts:14",
+  "owner": "T2",
+  "status": "assigned"
+ },
+ {
+  "id": "B77",
+  "audit": "graphics",
+  "summary": "Fog depends on distance only: dark sea-horizon band, beige aerial soup, no height fog",
+  "where": "src/app/render-look.ts",
+  "owner": "T2",
+  "status": "assigned"
+ },
+ {
+  "id": "B78",
+  "audit": "graphics",
+  "summary": "Each tree species is one fixed mesh in a near-grid; faceted blob crowns",
+  "where": "src/app/nature-trees.ts",
+  "owner": "T2",
+  "status": "assigned"
+ },
+ {
+  "id": "B79",
+  "audit": "graphics",
+  "summary": "Near-fade IGN screen-door dither shows as coarse dots on trunks and canopies",
+  "where": "src/app/nature-util.ts:113",
+  "owner": "T2",
+  "status": "assigned"
+ },
+ {
+  "id": "B80",
+  "audit": "graphics",
+  "summary": "Rock and Ashen Cliffs show repeating vertical stripes; facet zigzag on steep faces",
+  "where": "src/app/terrain-shader.ts:80",
+  "owner": "T2",
+  "status": "assigned"
+ },
+ {
+  "id": "B81",
+  "audit": "graphics",
+  "summary": "Meadow has no mid-distance texture; uniform lime tint",
+  "where": "src/app/terrain-shader.ts",
+  "owner": "T2",
+  "status": "assigned"
+ },
+ {
+  "id": "B82",
+  "audit": "graphics",
+  "summary": "Flowers are oversized flat star stickers near camera",
+  "where": "src/app/nature-grass.ts:303",
+  "owner": "T1",
+  "status": "assigned"
+ },
+ {
+  "id": "B83",
+  "audit": "graphics",
+  "summary": "Outline pass draws lines on every grass blade and terrain facet creases",
+  "where": "src/app/render-post.ts",
+  "owner": "T1",
+  "status": "assigned"
+ },
+ {
+  "id": "B84",
+  "audit": "graphics",
+  "summary": "No anti-aliasing on low preset; stair-stepped edges on phone",
+  "where": "src/app/render-post.ts:187",
+  "owner": "T1",
+  "status": "assigned"
+ },
+ {
+  "id": "B85",
+  "audit": "graphics",
+  "summary": "No bloom on low preset; lanterns, eyes and runes go dead",
+  "where": "src/app/render-post.ts",
+  "owner": "T1",
+  "status": "assigned"
+ },
+ {
+  "id": "B86",
+  "audit": "graphics",
+  "summary": "River reads as pale grey road; straight foam streaks; box-shaped sea stack",
+  "where": "src/app/terrain-water.ts",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B87",
+  "audit": "graphics",
+  "summary": "Lake shore shows blocky artifacts from low-res heightLo depth sampling",
+  "where": "src/app/terrain-water.ts",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B88",
+  "audit": "graphics",
+  "summary": "Shrine waterfall is a translucent rectangle; water seen from below renders opaque white",
+  "where": "src/app/terrain-water.ts",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B89",
+  "audit": "graphics",
+  "summary": "Gloam aura is a flat purple sphere; fireflies are large white blobs",
+  "where": "src/app/render-fx.ts:38",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B90",
+  "audit": "graphics",
+  "summary": "Rain gives grey-green flat look with no wet sheen or puddles",
+  "where": "src/app/render-rain.ts",
+  "owner": "T3",
+  "status": "assigned"
+ },
+ {
+  "id": "B91",
+  "audit": "graphics",
+  "summary": "Hero reads as Playmobil: sphere head and hood, cylinder body",
+  "where": "src/app/player-model.ts",
+  "owner": "T14",
+  "status": "assigned"
+ },
+ {
+  "id": "B92",
+  "audit": "graphics",
+  "summary": "Hero sword has toy-like orange stripe",
+  "where": "src/app/player-model.ts:349",
+  "owner": "T14",
+  "status": "assigned"
+ },
+ {
+  "id": "B93",
+  "audit": "graphics",
+  "summary": "Enemy models plain: brambling sphere, wisp purple sphere aura, mossback flat moss lid",
+  "where": "src/app/enemy-models.ts:11",
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B94",
+  "audit": "graphics",
+  "summary": "Sword swing has no smear trail, hit squash or flash color",
+  "where": "src/app/combat-flash.ts",
+  "owner": "T8",
+  "status": "assigned"
+ },
+ {
+  "id": "B95",
+  "audit": "graphics",
+  "summary": "Rune color #7fe0d0 is neon sci-fi cyan; fights manuscript palette",
+  "where": "src/app/landmark-kit.ts:14",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B96",
+  "audit": "graphics",
+  "summary": "Gloam #5b3a6e used as flat lavender plastic",
+  "where": "src/app/landmark-kit.ts:12",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B97",
+  "audit": "graphics",
+  "summary": "Gloam Spire is monochrome lavender with generic hex-dome barrier",
+  "where": "src/app/landmark-spire.ts:243",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B98",
+  "audit": "graphics",
+  "summary": "Mt Cinder reads small and bald; pine skirt on a grid; Ashen beacon looks miniature",
+  "where": null,
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B99",
+  "audit": "graphics",
+  "summary": "Thornring walls are a caterpillar of spheres; beacon tower a plain grey cylinder",
+  "where": "src/app/landmark-trial-wood.ts",
+  "owner": "T5",
+  "status": "assigned"
+ },
+ {
+  "id": "B100",
+  "audit": "graphics",
+  "summary": "Village huts tiny against identical oaks; no chimneys, banners or worn paths",
+  "where": "src/app/landmark-village.ts",
+  "owner": "T4",
+  "status": "assigned"
+ },
+ {
+  "id": "B101",
+  "audit": "graphics",
+  "summary": "Shrine aerial view is a boxy cliff block with flat cyan water",
+  "where": "src/app/landmark-shrine.ts",
+  "owner": "T6",
+  "status": "assigned"
+ },
+ {
+  "id": "B102",
+  "audit": "graphics",
+  "summary": "Follow camera clips into canopies and hero head; hidden by bushes on phone",
+  "where": "src/app/camera-collide.ts",
+  "owner": "T7",
+  "status": "assigned"
+ },
+ {
+  "id": "B103",
+  "audit": "audio",
+  "summary": "Whole mix about 6 dB too quiet (explore -22.6 LUFS) and almost mono (L/R corr 0.98)",
+  "where": "src/app/audio.ts",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B104",
+  "audit": "audio",
+  "summary": "Combat music quieter than explore; night 5.4 dB under day; menu 3.8 dB louder than day",
+  "where": "src/app/audio-music.ts:347",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B105",
+  "audit": "audio",
+  "summary": "Flute is a near-pure sine; pad dull with 800 Hz low-pass and no motion",
+  "where": "src/app/audio-music.ts:158",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B106",
+  "audit": "audio",
+  "summary": "Plucks use one Karplus-Strong buffer per note; every repeat identical",
+  "where": "src/app/audio-music.ts:351",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B107",
+  "audit": "audio",
+  "summary": "Combat layer holds a constant minor second; harsh semitone beat, boss pitch smeared",
+  "where": "src/app/audio-music.ts:234",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B108",
+  "audit": "audio",
+  "summary": "Weak tonal centre: C ranks above D in 'D Dorian'; themes lack identity",
+  "where": "src/app/audio-music.ts:57",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B109",
+  "audit": "audio",
+  "summary": "Boss music loops one bar; all layers 72 BPM 4/4; transitions cold with no pickups or tails",
+  "where": "src/app/audio-music.ts",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B110",
+  "audit": "audio",
+  "summary": "Stings span 13 dB in loudness; rest sting inaudible over music",
+  "where": "src/app/audio-music.ts",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B111",
+  "audit": "audio",
+  "summary": "Sub-bass energy (20-60 Hz) in boss and ending eats headroom, inaudible on laptops",
+  "where": "src/app/audio-music.ts",
+  "owner": "T11",
+  "status": "assigned"
+ },
+ {
+  "id": "B112",
+  "audit": "audio",
+  "summary": "Footsteps synthesized: rock click, wood and dirt sine boops, all clones; louder than music",
+  "where": "src/app/audio-sfx.ts:24",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B113",
+  "audit": "audio",
+  "summary": "Dodge cue is the loudest sound (-3.7 dBFS), pure 11.7 kHz hiss",
+  "where": "src/app/audio-sfx.ts:307",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B114",
+  "audit": "audio",
+  "summary": "Sword swings thin; hit is a sine thud; bow draw is a sawtooth buzz; arrow ring is a lute note",
+  "where": "src/app/audio-sfx.ts:348",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B115",
+  "audit": "audio",
+  "summary": "Pickup shard louder than combat hits; cues balanced by peak via TRIM, not loudness",
+  "where": "src/app/audio-sfx.ts:28",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B116",
+  "audit": "audio",
+  "summary": "Crickets are pure 4-5 kHz sines and loudest bed; forest day nearly silent (-41.5 LUFS)",
+  "where": "src/app/audio-ambience.ts:24",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B117",
+  "audit": "audio",
+  "summary": "Every ambience bed uses same 4 s white-noise loop (autocorr 0.97-0.99), mono",
+  "where": "src/app/audio-dsp.ts:128",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B118",
+  "audit": "audio",
+  "summary": "Single 2.4 s hall reverb for music, SFX and ambience; slow convex decay",
+  "where": "src/app/audio-dsp.ts:103",
+  "owner": "T12",
+  "status": "assigned"
+ },
+ {
+  "id": "B119",
+  "audit": "audio",
+  "summary": "No buses or ducking beyond stings; compressor does mixing; no HRTF, air absorption or occlusion",
+  "where": "src/app/audio-dsp.ts:89",
+  "owner": "T12",
+  "status": "assigned"
+ }
+]

@@ -4,7 +4,7 @@ import type { FrameCtx, GameEvent, Look, World } from "./contracts";
 // Enemy-owned effects: ground telegraphs, shockwave walls, glow orbs, the boss beam, "!" alert marks and glimmer drops.
 // Telegraphs, waves and orbs are immediate mode: brains call them every frame between begin() and end().
 
-const RINGS = 24, WAVES = 4, ORBS = 48, DROPS = 64, MARKS = 8;
+const RINGS = 24, WAVES = 4, ORBS = 128, DROPS = 64, MARKS = 8;
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
@@ -105,7 +105,10 @@ export class EnemyFx {
   private readonly dt = new Float32Array(DROPS);
   private readonly da = new Int32Array(DROPS);
 
-  constructor(scene: THREE.Scene | THREE.Group, private readonly world: World, look: Look) {
+  private readonly world: World;
+
+  constructor(scene: THREE.Scene | THREE.Group, world: World, look: Look) {
+    this.world = world;
     const wave = new THREE.CylinderGeometry(1, 1, 1, 56, 1, true).translate(0, 0.5, 0);
     const p = wave.getAttribute("position") as THREE.BufferAttribute;
     const col = new Float32Array(p.count * 3);

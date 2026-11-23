@@ -6,7 +6,7 @@ const display = Cormorant_Garamond({ style: ["normal", "italic"], subsets: ["lat
 const ui = Manrope({ weight: ["400", "500", "600", "700"], subsets: ["latin"], variable: "--font-ui" });
 
 const title = "HOLLOWMERE";
-const description = "Wake the four beacons. An open-world lantern adventure in your browser.";
+const description = "Light the four beacons. An open-world lantern adventure in your browser.";
 
 export const metadata: Metadata = {
   title,

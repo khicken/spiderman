@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Fx, FxKind, SharedUniforms, V3 } from "./contracts";
+import { FOREST, LAKE, LANDMARKS } from "./contracts";
 import { HM_GLSL } from "./render-look";
 
 // One particle pool, one instanced draw call. Every particle is a camera-facing capsule from `pos` to `pos + tail`,
@@ -24,11 +25,13 @@ interface KindDef {
   speed: number; // default burst speed
   up: number; // upward bias added to the burst direction
   stretch: number; // tail = -velocity * stretch
+  wob?: number; // lazy sideways drift (m/s^2), for floating things
 }
 
 const C = (...hex: string[]) => hex.map((h) => new THREE.Color(h));
 
-const KINDS: Record<FxKind | "trail" | "trail-arrow", KindDef> = {
+type AmbientKind = "pollen" | "moonmote" | "wisp" | "mist";
+const KINDS: Record<FxKind | AmbientKind | "trail" | "trail-arrow", KindDef> = {
   dust: { shape: SHAPE.dot, colors: C("#d8c49c", "#c7b08a", "#e0cfa8"), hdr: 1, lit: true, add: false, alpha: 0.55, size: [0.25, 0.45], grow: 1.4, life: [0.6, 1.1], grav: -0.4, drag: 3.5, wind: 0.4, speed: 2.2, up: 0.5, stretch: 0 },
   spark: { shape: SHAPE.streak, colors: C("#ffd27a", "#ffe8b0", "#ffb35a"), hdr: 3.2, lit: false, add: true, alpha: 1, size: [0.035, 0.06], grow: -0.6, life: [0.18, 0.38], grav: 9, drag: 1.5, wind: 0, speed: 7, up: 0.35, stretch: 0.035 },
   leaf: { shape: SHAPE.leaf, colors: C("#6f9a46", "#8fae4c", "#4f7a3a", "#a9c26a"), hdr: 1, lit: true, add: false, alpha: 1, size: [0.09, 0.15], grow: 0, life: [1.4, 2.4], grav: 1.6, drag: 2.2, wind: 0.9, speed: 3, up: 0.8, stretch: 0 },
@@ -40,6 +43,10 @@ const KINDS: Record<FxKind | "trail" | "trail-arrow", KindDef> = {
   "blood-sap": { shape: SHAPE.dot, colors: C("#b4511e", "#d9822e", "#8f3a14"), hdr: 1, lit: true, add: false, alpha: 1, size: [0.05, 0.1], grow: -0.2, life: [0.4, 0.7], grav: 13, drag: 0.8, wind: 0, speed: 4, up: 0.6, stretch: 0.03 },
   "rain-splash": { shape: SHAPE.streak, colors: C("#e6f0ef", "#cfe2e0"), hdr: 1, lit: true, add: false, alpha: 0.55, size: [0.015, 0.025], grow: 0, life: [0.16, 0.26], grav: 9, drag: 0.5, wind: 0, speed: 1.8, up: 1.6, stretch: 0.05 },
   beacon: { shape: SHAPE.glow, colors: C("#ffc07a", "#e8c766", "#f08a3c"), hdr: 3, lit: false, add: true, alpha: 1, size: [0.08, 0.16], grow: -0.2, life: [1.8, 3], grav: -4, drag: 0.4, wind: 0.2, speed: 1, up: 2, stretch: 0.05 },
+  pollen: { shape: SHAPE.glow, colors: C("#ffd98a", "#ffe9b0", "#ffc866"), hdr: 1.7, lit: false, add: true, alpha: 0.75, size: [0.05, 0.1], grow: 0, life: [7, 11], grav: -0.03, drag: 0.8, wind: 0.5, speed: 0.2, up: 0.1, stretch: 0, wob: 0.5 },
+  moonmote: { shape: SHAPE.glow, colors: C("#9fc4ff", "#c8dcff", "#8fb4f0"), hdr: 1.5, lit: false, add: true, alpha: 0.6, size: [0.05, 0.1], grow: 0, life: [7, 11], grav: -0.02, drag: 0.8, wind: 0.4, speed: 0.15, up: 0.1, stretch: 0, wob: 0.45 },
+  wisp: { shape: SHAPE.glow, colors: C("#9ff0d8", "#c8fff0", "#8fd8ff"), hdr: 2.3, lit: false, add: true, alpha: 0.8, size: [0.16, 0.3], grow: -0.08, life: [4, 7], grav: -0.1, drag: 0.9, wind: 0.2, speed: 0.3, up: 0.2, stretch: 0, wob: 1.3 },
+  mist: { shape: SHAPE.dot, colors: C("#e8efe8", "#d6e4e2"), hdr: 1, lit: true, add: false, alpha: 0.1, size: [2.4, 4.2], grow: 0.12, life: [6, 9], grav: 0, drag: 1, wind: 0.3, speed: 0.1, up: 0, stretch: 0, wob: 0.15 },
   trail: { shape: SHAPE.streak, colors: C("#fff6e0"), hdr: 1.5, lit: false, add: true, alpha: 0.55, size: [0.09, 0.09], grow: -2.5, life: [0.16, 0.16], grav: 0, drag: 0, wind: 0, speed: 0, up: 0, stretch: 0 },
   "trail-arrow": { shape: SHAPE.streak, colors: C("#f8f0dd"), hdr: 1.2, lit: false, add: true, alpha: 0.4, size: [0.025, 0.025], grow: -2, life: [0.22, 0.22], grav: 0, drag: 0, wind: 0, speed: 0, up: 0, stretch: 0 },
 };
@@ -94,19 +101,19 @@ void main() {
   float a;
   if (vShape < 0.5) {
     float r = length(p);
-    a = smoothstep(1.0, 0.72, r) * (0.8 + 0.2 * smoothstep(0.9, 0.5, r));
+    a = (1.0 - smoothstep(0.72, 1.0, r)) * (0.8 + 0.2 * (1.0 - smoothstep(0.5, 0.9, r)));
   } else if (vShape < 1.5) {
-    a = smoothstep(1.0, 0.3, abs(p.x)) * smoothstep(1.0, 0.6, abs(p.y));
+    a = (1.0 - smoothstep(0.3, 1.0, abs(p.x))) * (1.0 - smoothstep(0.6, 1.0, abs(p.y)));
   } else if (vShape < 2.5) {
     float w = (1.0 - p.y * p.y) * 0.55;
-    a = smoothstep(w, w - 0.12, abs(p.x));
-    a *= 1.0 - 0.3 * smoothstep(0.08, 0.0, abs(p.x));
+    a = (1.0 - smoothstep(w - 0.12, w, abs(p.x)));
+    a *= 1.0 - 0.3 * (1.0 - smoothstep(0.0, 0.08, abs(p.x)));
   } else if (vShape < 3.5) {
     float st = abs(p.x * p.y) * 9.0 + length(p) * 0.6;
-    a = smoothstep(0.75, 0.25, st);
+    a = (1.0 - smoothstep(0.25, 0.75, st));
   } else {
     float r = length(p);
-    a = smoothstep(0.55, 0.15, r) + 0.45 * exp(-r * r * 4.0);
+    a = (1.0 - smoothstep(0.15, 0.55, r)) + 0.45 * exp(-r * r * 4.0);
   }
   a *= vCol.a;
   if (a < 0.004) discard;
@@ -130,7 +137,7 @@ export function createFx(uniforms: SharedUniforms, budget: number): FxPool {
   let max = 0;
   let px!: Float32Array, py!: Float32Array, pz!: Float32Array, vx!: Float32Array, vy!: Float32Array, vz!: Float32Array;
   let size!: Float32Array, grow!: Float32Array, age!: Float32Array, life!: Float32Array, grav!: Float32Array, drag!: Float32Array;
-  let wnd!: Float32Array, str!: Float32Array, alpha!: Float32Array, rot!: Float32Array, spin!: Float32Array;
+  let wob!: Float32Array, wnd!: Float32Array, str!: Float32Array, alpha!: Float32Array, rot!: Float32Array, spin!: Float32Array;
   let tx!: Float32Array, ty!: Float32Array, tz!: Float32Array;
   let cr!: Float32Array, cg!: Float32Array, cb!: Float32Array, cw!: Float32Array;
   let attrA!: THREE.InstancedBufferAttribute, attrB!: THREE.InstancedBufferAttribute, attrC!: THREE.InstancedBufferAttribute;
@@ -148,7 +155,7 @@ export function createFx(uniforms: SharedUniforms, budget: number): FxPool {
     const f = () => new Float32Array(m);
     px = f(); py = f(); pz = f(); vx = f(); vy = f(); vz = f(); size = f(); grow = f(); age = f(); life = f();
     grav = f(); drag = f(); wnd = f(); str = f(); alpha = f(); rot = f(); spin = f(); tx = f(); ty = f(); tz = f();
-    cr = f(); cg = f(); cb = f(); cw = f();
+    cr = f(); cg = f(); cb = f(); cw = f(); wob = f();
     attrA = new THREE.InstancedBufferAttribute(new Float32Array(m * 4), 4).setUsage(THREE.DynamicDrawUsage);
     attrB = new THREE.InstancedBufferAttribute(new Float32Array(m * 4), 4).setUsage(THREE.DynamicDrawUsage);
     attrC = new THREE.InstancedBufferAttribute(new Float32Array(m * 4), 4).setUsage(THREE.DynamicDrawUsage);
@@ -188,11 +195,67 @@ export function createFx(uniforms: SharedUniforms, budget: number): FxPool {
     grav[i] = k.grav; drag[i] = k.drag; wnd[i] = k.wind; str[i] = k.stretch;
     alpha[i] = k.add ? -k.alpha : k.alpha;
     rot[i] = Math.random(); spin[i] = k.shape === SHAPE.leaf ? (Math.random() - 0.5) * 2.4 : 0;
-    tx[i] = 0; ty[i] = 0; tz[i] = 0;
+    tx[i] = 0; ty[i] = 0; tz[i] = 0; wob[i] = k.wob ?? 0;
     const c = k.colors[(Math.random() * k.colors.length) | 0];
     cr[i] = c.r * k.hdr; cg[i] = c.g * k.hdr; cb[i] = c.b * k.hdr;
     cw[i] = k.shape + (k.lit ? 8 : 0);
     return i;
+  };
+
+  // Ambient families. Self-driven from the shared uniforms (player position, sun color, rain), so render.ts only has to
+  // keep calling update(). Rates are per second; steady count is rate * mean life.
+  const acc = { pollen: 0, moon: 0, wisp: 0, mist: 0 };
+  const SHRINE = LANDMARKS.find((l) => l.id === "shrine")!;
+  const GLADE = LANDMARKS.find((l) => l.id === "beacon-glade")!;
+  const sm = (x: number, a: number, b: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  const sprinkle = (kind: KindDef, cx: number, cy: number, cz: number, rad: number, h: number) => {
+    const a = Math.random() * 6.2832, r = Math.sqrt(Math.random()) * rad;
+    const dx = Math.random() * 2 - 1, dz = Math.random() * 2 - 1;
+    spawn(kind, cx + Math.cos(a) * r, cy + Math.random() * h, cz + Math.sin(a) * r, dx, 0.3, dz, kind.speed);
+  };
+  const ambient = (dt: number) => {
+    if (dt <= 0 || n > max * 0.72) return;
+    const p = uniforms.uPlayerPos.value;
+    const sc = uniforms.uSunColor.value;
+    const lum = sc.r * 0.3 + sc.g * 0.55 + sc.b * 0.15;
+    const day = sm(lum, 0.45, 0.8);
+    const night = 1 - sm(lum, 0.25, 0.5);
+    const dry = 1 - Math.min(1, uniforms.uRain.value * 2.5);
+    const scale = Math.min(2, Math.max(0.5, max / 192));
+    const inWood = Math.hypot(p.x - FOREST.x, p.z - FOREST.z) < FOREST.r + 20;
+    const dShrine = Math.hypot(p.x - SHRINE.x, p.z - SHRINE.z);
+    const dGlade = Math.hypot(p.x - GLADE.x, p.z - GLADE.z);
+    const sacred = dShrine < 60 || dGlade < 40;
+    const dense = inWood || sacred ? 1.6 : 1;
+
+    acc.pollen += (day * dry * 9 * scale * dense) * dt;
+    while (acc.pollen >= 1) { acc.pollen--; sprinkle(KINDS.pollen, p.x, p.y - 0.4, p.z, 22, 5); }
+    acc.moon += (night * dry * (inWood || sacred ? 7 : 3) * scale) * dt;
+    while (acc.moon >= 1) { acc.moon--; sprinkle(KINDS.moonmote, p.x, p.y - 0.4, p.z, 22, 5); }
+
+    // spirit wisps: always at the shrine and the Glade, and a few drifting through the wood after dark
+    const wispRate = (dShrine < 70 ? 1.1 : 0) + (dGlade < 50 ? 0.7 : 0) + (inWood ? night * 0.8 : 0);
+    acc.wisp += wispRate * scale * dt;
+    while (acc.wisp >= 1) {
+      acc.wisp--;
+      if (dShrine < 70 && Math.random() < 0.6) sprinkle(KINDS.wisp, SHRINE.x, p.y - 0.5, SHRINE.z, 12, 4);
+      else if (dGlade < 50 && Math.random() < 0.5) sprinkle(KINDS.wisp, GLADE.x, p.y - 0.5, GLADE.z, 10, 3.5);
+      else sprinkle(KINDS.wisp, p.x, p.y - 0.4, p.z, 18, 3.5);
+    }
+
+    // ground mist hugging the lake while the sun is low
+    if (Math.hypot(p.x - LAKE.x, p.z - LAKE.z) < LAKE.r + 130) {
+      const low = sm(lum, 0.3, 0.5) * (1 - sm(lum, 0.7, 0.9));
+      acc.mist += (low * (1 - uniforms.uRain.value) * 1.3 * scale) * dt;
+      while (acc.mist >= 1) {
+        acc.mist--;
+        const a = Math.random() * 6.2832, r = Math.sqrt(Math.random()) * LAKE.r * 0.95;
+        spawn(KINDS.mist, LAKE.x + Math.cos(a) * r, LAKE.level + 0.5 + Math.random() * 0.8, LAKE.z + Math.sin(a) * r, Math.random() - 0.5, 0, Math.random() - 0.5, KINDS.mist.speed);
+      }
+    }
   };
 
   const trailPrev = new Float32Array(TRAIL_IDS * 3);
@@ -242,6 +305,7 @@ export function createFx(uniforms: SharedUniforms, budget: number): FxPool {
     },
     count: () => n,
     update(dt: number, wind: THREE.Vector2) {
+      ambient(dt);
       const A = attrA.array as Float32Array, B = attrB.array as Float32Array, Cc = attrC.array as Float32Array;
       let i = 0;
       while (i < n) {
@@ -251,7 +315,7 @@ export function createFx(uniforms: SharedUniforms, budget: number): FxPool {
           px[i] = px[j]; py[i] = py[j]; pz[i] = pz[j]; vx[i] = vx[j]; vy[i] = vy[j]; vz[i] = vz[j];
           size[i] = size[j]; grow[i] = grow[j]; age[i] = age[j]; life[i] = life[j]; grav[i] = grav[j]; drag[i] = drag[j];
           wnd[i] = wnd[j]; str[i] = str[j]; alpha[i] = alpha[j]; rot[i] = rot[j]; spin[i] = spin[j];
-          tx[i] = tx[j]; ty[i] = ty[j]; tz[i] = tz[j]; cr[i] = cr[j]; cg[i] = cg[j]; cb[i] = cb[j]; cw[i] = cw[j];
+          tx[i] = tx[j]; ty[i] = ty[j]; tz[i] = tz[j]; cr[i] = cr[j]; cg[i] = cg[j]; cb[i] = cb[j]; cw[i] = cw[j]; wob[i] = wob[j];
           continue;
         }
         const dr = Math.max(0, 1 - drag[i] * dt);
@@ -261,6 +325,12 @@ export function createFx(uniforms: SharedUniforms, budget: number): FxPool {
         if (spin[i] !== 0) {
           vx[i] += Math.sin(age[i] * 5 + rot[i] * 20) * 1.5 * dt;
           rot[i] += spin[i] * dt;
+        }
+        if (wob[i] > 0) {
+          const ph = age[i] * 0.9 + rot[i] * 40;
+          vx[i] += Math.sin(ph) * wob[i] * dt;
+          vz[i] += Math.cos(ph * 0.83 + 1.7) * wob[i] * dt;
+          vy[i] += Math.sin(ph * 0.61 + 4.1) * wob[i] * 0.4 * dt;
         }
         px[i] += vx[i] * dt; py[i] += vy[i] * dt; pz[i] += vz[i] * dt;
         const t = age[i] / life[i];

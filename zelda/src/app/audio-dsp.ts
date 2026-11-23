@@ -1,7 +1,10 @@
 // HOLLOWMERE audio: shared DSP. The Rig (bus graph, reverb, compressor, limiter, voice budget) and the sound primitives
-// (tone, noise, bell, pluck, vocal). Everything is synthesized; no files. Owner: audio.
+// (tone, noise, bell, pluck, vocal). Physical sounds are recorded (audio-sfx.ts); these primitives serve UI and magic cues. Owner: audio.
 // Every primitive is budgeted: it takes a voice slot first and bails out quietly when the slots are full.
 import type { V3 } from "./contracts";
+import { createMix, type Mix } from "./audio-mix";
+import { createSpace, type Space } from "./audio-space";
+import { createSampleBank, type BankPlus } from "./audio-samples";
 
 export type Rng = () => number;
 export const hz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
@@ -28,7 +31,10 @@ export interface Rig {
   sfxBus: GainNode;
   ambBus: GainNode;
   master: GainNode;
-  noise: AudioBuffer; // 4 s of looping white noise (seam crossfaded)
+  mix: Mix;
+  space: Space;
+  bank: BankPlus;
+  noise: AudioBuffer; // 16 s of white noise (seam crossfaded); synthesized cues only
   cache: Map<string, AudioBuffer>;
   vs: Float64Array; // voice start times
   ve: Float64Array; // voice end times
@@ -55,87 +61,37 @@ function makeNoise(ac: BaseAudioContext, seconds: number): AudioBuffer {
   return buf;
 }
 
-function makeIR(ac: BaseAudioContext, seconds: number): AudioBuffer {
-  const sr = ac.sampleRate;
-  const L = Math.floor(seconds * sr);
-  const buf = ac.createBuffer(2, L, sr);
-  const pre = Math.floor(0.018 * sr);
-  for (let c = 0; c < 2; c++) {
-    const d = buf.getChannelData(c);
-    const r = rng(9100 + c * 31);
-    let y = 0;
-    for (let i = pre; i < L; i++) {
-      const p = (i - pre) / (L - pre);
-      const k = 0.5 * (1 - p) + 0.07; // high end dies faster than lows
-      y += ((r() * 2 - 1) - y) * k;
-      d[i] = y * Math.pow(1 - p, 2.6);
-    }
-  }
-  return buf;
-}
-
-export function createRig(ac: BaseAudioContext, opts: { manual?: boolean; lite?: boolean } = {}): Rig {
-  const nodes: AudioNode[] = [];
-  const g = (v: number) => {
-    const n = ac.createGain();
-    n.gain.value = v;
-    nodes.push(n);
-    return n;
-  };
-  const musicBus = g(0.42);
-  const sfxBus = g(0.9);
-  const ambBus = g(0.55);
-  const pre = g(1);
-  const comp = ac.createDynamicsCompressor();
-  comp.threshold.value = -18;
-  comp.knee.value = 14;
-  comp.ratio.value = 5;
-  comp.attack.value = 0.004;
-  comp.release.value = 0.25;
-  const lim = ac.createDynamicsCompressor();
-  lim.threshold.value = -3;
-  lim.knee.value = 0;
-  lim.ratio.value = 20;
-  lim.attack.value = 0.001;
-  lim.release.value = 0.08;
-  const master = g(0.9);
-  const conv = ac.createConvolver();
-  conv.buffer = makeIR(ac, 2.4);
-  const rev = g(0.7);
-  const sends: [GainNode, number][] = [[musicBus, 0.3], [sfxBus, 0.13], [ambBus, 0.07]];
-  for (const [bus, amt] of sends) {
-    const s = g(amt);
-    bus.connect(pre);
-    bus.connect(s);
-    s.connect(conv);
-  }
-  conv.connect(rev);
-  rev.connect(pre);
-  pre.connect(comp);
-  comp.connect(lim);
-  lim.connect(master);
-  master.connect(ac.destination);
-  nodes.push(comp, lim, conv);
+export function createRig(ac: BaseAudioContext, opts: { manual?: boolean; lite?: boolean; bank?: BankPlus } = {}): Rig {
+  const mix = createMix(ac);
+  const space = createSpace(ac, mix);
+  // Reverb sends: the score carries the most, ambience the least. Voice has its own send inside the space.
+  space.send(mix.music, 0.3);
+  space.send(mix.sfx, 0.13);
+  space.send(mix.amb, 0.07);
+  space.send(mix.ui, 0.05);
   const lite = !!opts.lite;
+  const bank = opts.bank ?? createSampleBank(ac);
   return {
     ac,
     manual: !!opts.manual,
     lite,
-    musicBus,
-    sfxBus,
-    ambBus,
-    master,
-    noise: makeNoise(ac, 4),
+    musicBus: mix.music,
+    sfxBus: mix.sfx,
+    ambBus: mix.amb,
+    master: mix.master,
+    mix,
+    space,
+    bank,
+    noise: makeNoise(ac, 16),
     cache: new Map(),
     vs: new Float64Array(160),
     ve: new Float64Array(160),
     maxVoices: lite ? 32 : 52,
     listener: { x: 0, y: 0, z: 0, rx: 1, rz: 0 },
-    nodes,
+    nodes: mix.nodes,
     dispose() {
-      for (const n of nodes) {
-        try { n.disconnect(); } catch { /* already gone */ }
-      }
+      space.dispose();
+      mix.dispose();
     },
   };
 }
@@ -288,7 +244,7 @@ function noiseRaw(r: Rig, o: NoiseOpts): void {
   const t = o.t;
   const src = ac.createBufferSource();
   src.buffer = r.noise;
-  const long = o.dur > 3.4;
+  const long = o.dur > r.noise.duration - 0.3;
   src.loop = long;
   const off = long ? 0 : Math.random() * (r.noise.duration - o.dur - 0.05);
   const fl = ac.createBiquadFilter();

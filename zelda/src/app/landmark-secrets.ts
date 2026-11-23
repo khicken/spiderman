@@ -1,9 +1,12 @@
 import * as THREE from "three";
 import { CLIFFS, LAKE, SEA_LEVEL } from "./contracts";
+import type { GameEvent, Prop, ThreadAnchor } from "./contracts";
 import {
   Mesher, PAL, glowMat, groundMin, haloSprite, lerp, rng, smooth,
-  type SiteEnv, type SiteInfo,
+  type Emit, type SiteEnv, type SiteInfo,
 } from "./landmark-kit";
+import type { Items } from "./landmark-items";
+import type { SecretDef } from "./landmark-paths";
 
 // Hand-made secret places: each builder is its own culling site (own env, own group).
 
@@ -576,4 +579,271 @@ export function buildDrownedRuins(env: SiteEnv): SiteInfo {
   gm.receiveShadow = false;
   halo(env, chx, floorY + 0.9, chz, "#7fe0d0", 5.5, 0.45);
   return { x: cx, z: cz, radius: 112 };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// v2 secrets: six kinds, driven by the SECRETS table in landmark-paths.ts. One site (one group) holds them all; each
+// secret is a small closure with an update step. Rewards use the ordinary shard / chest registry, and Items turns the
+// first pickup of the reward into a `secret` event.
+// ---------------------------------------------------------------------------------------------------------------------
+const LORE: { title: string; text: string }[] = [
+  { title: "A ferrier's tally", text: "Forty crossings, forty lanterns lit. The river never once thanked us." },
+  { title: "Boundary stone", text: "Past this mark the road keeps itself. Walk it kindly." },
+  { title: "Worn rune", text: "The Keeper left the fire to the thread, and the thread to whoever would hold it." },
+  { title: "Moss-grown stone", text: "Here the Four were first counted. Here they were first forgotten." },
+  { title: "Small stone", text: "Something sleeps under the fern. It is not unkind." },
+  { title: "Fisher's mark", text: "Where the foam turns twice, the water is shallow. Mind the third turn." },
+  { title: "Cairn note", text: "Three bells, struck in the order they hang. The old tune is the only key." },
+  { title: "Road ward", text: "Light one, and the next is easier to see." },
+];
+
+export interface SecretSet {
+  readonly props: readonly Prop[];
+  readonly anchors: readonly ThreadAnchor[];
+  update(c: { frame: import("./contracts").FrameCtx; emit: Emit; time: number; dt: number }): void;
+  handle(e: GameEvent): void;
+}
+
+interface Bit { update?(time: number, dt: number, px: number, pz: number, c: import("./contracts").FrameCtx, emit: Emit): void; handle?(e: GameEvent): void }
+
+export function buildSecretSet(env: SiteEnv, items: Items, defs: readonly SecretDef[]): SecretSet {
+  const { world, look } = env;
+  const props: Prop[] = [];
+  const anchors: ThreadAnchor[] = [];
+  const bits: Bit[] = [];
+  const stone = new Mesher(8801);
+  const gold = new Mesher(8802);
+  const dark = new Mesher(8803);
+  const hy = (x: number, z: number) => world.heightAt(x, z);
+  const dry = (x: number, z: number) => world.waterAt(x, z) < hy(x, z) - 0.2;
+  const mkAnchor = (a: ThreadAnchor) => { env.reg.anchor(a); anchors.push(a); return a; };
+  const bind = (itemId: string, d: SecretDef, x: number, z: number) =>
+    items.bindSecret(itemId, { id: d.id, kind: d.kind, pos: { x, y: hy(x, z), z } });
+
+  // Reward at (x, z): a heart shard, or a chest (glimmers / Wick Oil). Returns the id to bind and whether a chest was made.
+  const reward = (d: SecretDef, x: number, z: number, yBase: number, hidden: boolean): string => {
+    const yaw = Math.atan2(-x, -z);
+    if (d.reward === "shard" && !hidden) {
+      env.reg.shard({ id: `shard-${d.id}`, x, y: yBase + 1.1, z });
+      return `shard-${d.id}`;
+    }
+    const cid = `chest-${d.id}`;
+    const r = d.reward === "shard" ? { kind: "shard" as const, amount: 1 } : d.reward === "wick" ? { kind: "wick" as const, amount: 1 } : { kind: "glimmer" as const, amount: 30 };
+    env.reg.chest({ id: cid, x, y: yBase, z, yaw, reward: r, rewardId: d.reward === "shard" ? `shard-${d.id}` : d.reward === "wick" ? `wick-${d.id}` : undefined, hidden });
+    return cid;
+  };
+
+  // Find a dry spot `dist` away from (x, z), trying 12 headings starting at `a0`.
+  const spot = (x: number, z: number, dist: number, a0: number, maxSlope = 0.5): { x: number; z: number } => {
+    for (let k = 0; k < 12; k++) {
+      const a = a0 + k * 0.52 * (k % 2 ? 1 : -1);
+      const px = x + Math.sin(a) * dist, pz = z + Math.cos(a) * dist;
+      if (dry(px, pz) && Math.abs(hy(px, pz) - hy(x, z)) < dist * maxSlope * 0.5 + 2) return { x: px, z: pz };
+    }
+    return { x: x + dist, z };
+  };
+
+  const spirit = (color: string, size: number) => {
+    const h = haloSprite(env.glow, color, size);
+    return h;
+  };
+
+  // every chime bell ring is one instance of a single glowing torus (12 draw calls became 1)
+  const bellRings: { x: number; y: number; z: number; s: number }[] = [];
+  let bellMesh: THREE.InstancedMesh | null = null;
+  const _bm = new THREE.Matrix4(), _bp = new THREE.Vector3(), _bq = new THREE.Quaternion(), _bs = new THREE.Vector3();
+  const setBell = (i: number, sc: number) => {
+    const r = bellRings[i];
+    if (!bellMesh || r.s === sc) return;
+    r.s = sc;
+    bellMesh.setMatrixAt(i, _bm.compose(_bp.set(r.x, r.y, r.z), _bq, _bs.setScalar(sc)));
+    bellMesh.instanceMatrix.needsUpdate = true;
+  };
+
+  let loreN = 0;
+  for (let si = 0; si < defs.length; si++) {
+    const d = defs[si];
+    const a0 = si * 2.399;
+    const gx = d.x, gz = d.z, gg = hy(gx, gz);
+    const done = () => items.has(d.reward === "none" ? `lore-${d.id}` : d.reward === "shard" ? `shard-${d.id}` : `chest-${d.id}`);
+
+    if (d.kind === "lore") {
+      const t = LORE[loreN++ % LORE.length];
+      env.reg.lore({ id: `lore-${d.id}`, x: gx, z: gz, yaw: a0, title: t.title, text: t.text, stone: true });
+      bind(`lore-${d.id}`, d, gx, gz);
+      if (d.reward === "shard") {
+        env.reg.shard({ id: `shard-${d.id}`, x: gx + Math.sin(a0 + 1.2) * 2.2, y: gg + 1.2, z: gz + Math.cos(a0 + 1.2) * 2.2 });
+      }
+    } else if (d.kind === "trail") {
+      // eight single glimmers on a curve; the reward waits at the far end
+      const end = spot(gx, gz, 30, a0);
+      const dx = end.x - gx, dz = end.z - gz, L = Math.hypot(dx, dz) || 1;
+      for (let k = 0; k < 8; k++) {
+        const t = k / 7, bend = Math.sin(t * Math.PI) * 4;
+        const x = gx + dx * t - (dz / L) * bend, z = gz + dz * t + (dx / L) * bend;
+        env.reg.cluster({ x, y: hy(x, z) + 0.9, z, n: 1, key: `${d.id}:${k}`, keep: true });
+      }
+      const id = reward(d, end.x, end.z, hy(end.x, end.z), false);
+      bind(id, d, end.x, end.z);
+      stone.cyl(end.x, hy(end.x, end.z) - 0.3, end.z, 0.9, 0.7, 0.5, PAL.rock, 7);
+    } else if (d.kind === "knots") {
+      // two knots 26 m apart; the far one is on a 3.2 m pillar that carries the reward
+      const far = spot(gx, gz, 26, a0, 0.3);
+      const gB = hy(far.x, far.z);
+      const pillar = 3.2;
+      const kA = mkAnchor({ id: `${d.id}:a`, kind: "knot", pos: { x: gx, y: gg + 1.4, z: gz }, weight: 0, lit: false, enabled: true });
+      const kB = mkAnchor({ id: `${d.id}:b`, kind: "knot", pos: { x: far.x - 1.2, y: gB + pillar + 0.4, z: far.z }, weight: 0, lit: false, enabled: true });
+      stone.cyl(gx, gg - 0.4, gz, 0.6, 0.45, 1.6, PAL.woodLo, 7);
+      gold.torus(gx, kA.pos.y, gz, 0.34, 0.07, PAL.goldHi, 0, 0.6, 0);
+      stone.cyl(far.x, gB - 0.6, far.z, 2.0, 1.7, pillar + 0.6, PAL.rock, 8);
+      stone.cyl(far.x, gB + pillar - 0.1, far.z, 1.9, 2.1, 0.25, PAL.rockHi, 8);
+      world.addBox({ minX: far.x - 1.7, maxX: far.x + 1.7, minZ: far.z - 1.7, maxZ: far.z + 1.7, minY: gB - 0.6, maxY: gB + pillar, tag: "climbable", owner: `landmarks:${d.id}-pillar` });
+      gold.torus(far.x - 1.2, kB.pos.y, far.z, 0.34, 0.07, PAL.goldHi, 0, 0.6, 0);
+      const id = reward(d, far.x + 0.3, far.z, gB + pillar, false);
+      bind(id, d, far.x, far.z);
+    } else if (d.kind === "critter") {
+      // a spirit that waits for the player, then leads on in three hops; the chest is hidden until it arrives
+      const w0 = { x: gx, z: gz };
+      const w1 = spot(gx, gz, 14, a0), w2 = spot(w1.x, w1.z, 14, a0 + 0.5), w3 = spot(w2.x, w2.z, 14, a0 - 0.4);
+      const way = [w0, w1, w2, w3];
+      const cid = reward(d, w3.x + 1.5, w3.z + 1.5, hy(w3.x + 1.5, w3.z + 1.5), true);
+      bind(cid, d, w3.x, w3.z);
+      const sp = spirit("#bfeee4", 2.6);
+      const body = new Mesher(8810 + si);
+      body.ball(0, 0, 0, 0.3, "#e8fff8", 0.8, 1, 0, { ao: 0, jit: 0 });
+      body.cone(0.0, 0.1, -0.28, 0.12, 0.5, "#e8fff8", 5, 0, { rx: -1.2, ao: 0, jit: 0 });
+      const bm = body.build(look, glowMat(look, "#bfeee4", 1.3), "spirit");
+      env.own(bm.geometry);
+      const grp = new THREE.Group();
+      grp.add(bm, sp);
+      env.group.add(grp);
+      let at = 0, t = 0, revealed = false;
+      const pos = { x: w0.x, z: w0.z };
+      bits.push({
+        update(time, dt, px, pz) {
+          if (done()) { grp.visible = false; return; }
+          const dxp = px - pos.x, dzp = pz - pos.z;
+          const near = dxp * dxp + dzp * dzp;
+          if (near > 140 * 140) { grp.visible = false; return; }
+          grp.visible = true;
+          if (!revealed && at < 3 && near < 9 * 9) t = Math.min(1, t + dt * 0.45);
+          if (t >= 1 && at < 3) { at++; t = 0; }
+          const a = way[at], b = way[Math.min(3, at + 1)];
+          pos.x = lerp(a.x, b.x, smooth(t)); pos.z = lerp(a.z, b.z, smooth(t));
+          grp.position.set(pos.x, hy(pos.x, pos.z) + 0.9 + Math.sin(time * 3) * 0.12, pos.z);
+          if (at >= 3 && !revealed) { revealed = true; items.reveal(cid); }
+        },
+      });
+    } else if (d.kind === "chime") {
+      // three bell stones; strike them in order 0, 1, 2. A wrong strike starts over.
+      const cid = reward(d, gx, gz, gg, true);
+      bind(cid, d, gx, gz);
+      const bells: { prop: Prop; bi: number }[] = [];
+      for (let k = 0; k < 3; k++) {
+        const a = a0 + (k * TAU) / 3, x = gx + Math.sin(a) * 4.2, z = gz + Math.cos(a) * 4.2, g0 = hy(x, z);
+        stone.cyl(x, g0 - 0.3, z, 0.55, 0.4, 1.5, PAL.rock, 7);
+        stone.cyl(x, g0 + 1.2, z, 0.5, 0.15, 0.5, PAL.rockHi, 7);
+        const prop: Prop = { id: `chime-${d.id}-${k}`, pos: { x, y: g0 + 1.2, z }, radius: 0.9, active: !items.has(cid) };
+        props.push(prop);
+        bells.push({ prop, bi: bellRings.push({ x, y: g0 + 1.2, z, s: 0 }) - 1 });
+      }
+      let next = 0, revealed = false;
+      bits.push({
+        update(time) {
+          const fin = done();
+          for (let k = 0; k < 3; k++) {
+            bells[k].prop.active = !fin;
+            setBell(bells[k].bi, 1 + (k < next ? 0.08 * Math.sin(time * 6) : 0));
+          }
+          if (next >= 3 && !revealed) { revealed = true; items.reveal(cid); }
+        },
+        handle(e) {
+          if (e.type !== "propHit" || !e.id.startsWith(`chime-${d.id}-`)) return;
+          const k = Number(e.id.slice(-1));
+          if (k === next) next++;
+          else next = k === 0 ? 1 : 0;
+        },
+      });
+    } else if (d.kind === "blight") {
+      // thorny gloam patch; a lit brazier stands 13 m off. Burn a thread from the brazier to the patch to cure it.
+      const bp = spot(gx, gz, 13, a0, 0.3);
+      const gb = hy(bp.x, bp.z);
+      const patch = mkAnchor({ id: `${d.id}:patch`, kind: "knot", pos: { x: gx, y: gg + 0.9, z: gz }, weight: 0, lit: false, enabled: true });
+      const brazier = mkAnchor({ id: `${d.id}:brazier`, kind: "brazier", pos: { x: bp.x, y: gb + 1.5, z: bp.z }, weight: 0, lit: true, enabled: true });
+      stone.cyl(bp.x, gb - 0.4, bp.z, 0.7, 0.55, 1.2, PAL.rock, 8);
+      stone.cyl(bp.x, gb + 0.7, bp.z, 0.45, 0.8, 0.35, PAL.ashLo, 8);
+      const fl = new Mesher(8840 + si);
+      fl.cone(bp.x, gb + 1.0, bp.z, 0.4, 1.0, PAL.ember, 6, 0, { jit: 0, ao: 0 });
+      const fm = fl.build(look, glowMat(look, PAL.ember, 1.6), "blight-flame");
+      env.own(fm.geometry);
+      env.group.add(fm);
+      const bl = new Mesher(8850 + si);
+      bl.cyl(gx, gg - 0.1, gz, 3.6, 3.4, 0.3, PAL.gloamLo, 10, 0, { ao: 0 });
+      for (let k = 0; k < 7; k++) {
+        const a = a0 + k * 0.9, r = 0.8 + (k % 3) * 0.9;
+        bl.cone(gx + Math.sin(a) * r, gg + 0.1, gz + Math.cos(a) * r, 0.35, 1.5 + (k % 2) * 0.8, k % 2 ? PAL.gloam : PAL.gloamHi, 5, a, { rx: Math.sin(a) * 0.25, rz: Math.cos(a) * 0.25 });
+      }
+      const blm = bl.build(look, undefined, "blight");
+      env.own(blm.geometry);
+      env.group.add(blm);
+      const cid = reward(d, gx, gz, gg, true);
+      bind(cid, d, gx, gz);
+      let cured = false, k = 1;
+      bits.push({
+        update(time, dt, px, pz, c) {
+          const fin = done();
+          if (!cured && !fin && c.threads) {
+            const ls = c.threads.lines;
+            for (let i = 0; i < ls.length; i++) {
+              const l = ls[i];
+              if (l.burning && (l.a === patch.id || l.b === patch.id)) { cured = true; items.reveal(cid); break; }
+            }
+          }
+          const target = cured || fin ? 0.001 : 1;
+          k += (target - k) * Math.min(1, dt * 2.5);
+          blm.scale.set(k, k, k);
+          blm.position.set(gx * (1 - k), gg * (1 - k), gz * (1 - k));
+          patch.enabled = !(cured || fin);
+          fm.scale.y = 1 + Math.sin(time * 9 + si) * 0.1;
+          void px; void pz;
+        },
+      });
+    }
+  }
+
+  if (bellRings.length) {
+    const gm0 = new Mesher(8830);
+    gm0.torus(0, 0, 0, 0.5, 0.06, PAL.goldHi, Math.PI / 2, 0, 0, 14, 4);
+    const tm = gm0.build(look, glowMat(look, PAL.goldHi, 0.5), "bell-glow");
+    env.own(tm.geometry);
+    bellMesh = new THREE.InstancedMesh(tm.geometry, tm.material, bellRings.length);
+    bellMesh.name = "bell-glow";
+    bellMesh.castShadow = true;
+    bellMesh.receiveShadow = true;
+    bellMesh.frustumCulled = false;
+    bellMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    env.own({ dispose: () => bellMesh?.dispose() });
+    env.group.add(bellMesh);
+    for (let i = 0; i < bellRings.length; i++) setBell(i, 1);
+  }
+
+  const sm = stone.build(look, undefined, "secrets-stone");
+  const gm = gold.build(look, glowMat(look, PAL.goldHi, 1.0), "secrets-gold");
+  env.own(sm.geometry); env.own(gm.geometry);
+  env.group.add(sm, gm);
+  void dark;
+
+  return {
+    props, anchors,
+    update(c) {
+      const p = c.frame.player.pos;
+      for (let i = 0; i < bits.length; i++) bits[i].update?.(c.time, c.dt, p.x, p.z, c.frame, c.emit);
+      if (bellMesh) {
+        let near = false;
+        for (let i = 0; i < bellRings.length && !near; i++) { const dx = bellRings[i].x - p.x, dz = bellRings[i].z - p.z; near = dx * dx + dz * dz < 200 * 200; }
+        bellMesh.visible = near;
+      }
+    },
+    handle(e) { for (let i = 0; i < bits.length; i++) bits[i].handle?.(e); },
+  };
 }

@@ -1,0 +1,14 @@
+{
+  "oriel-1": {"text": "Four beacons ring the mountain.", "speaker": "oriel", "who": "oriel"},
+  "oriel-2": {"text": "Light them and the Spire barrier falls.", "speaker": "oriel", "who": "oriel"},
+  "oriel-3": {"text": "Touch a waystone to travel back here.", "speaker": "oriel", "who": "oriel"},
+  "tallow-wake": {"text": "There you are. Up you get.", "speaker": "tallow", "who": "tallow"},
+  "tallow-gate": {"text": "Light the brazier at the gate.", "speaker": "tallow", "who": "tallow"},
+  "tallow-vista": {"text": "Look. The Glade Beacon. Let's light it.", "speaker": "tallow", "who": "tallow"},
+  "tallow-ride": {"text": "Jump onto the line. I'll hold you.", "speaker": "tallow", "who": "tallow"},
+  "tallow-gladeLit": {"text": "The Glade Beacon is lit!", "speaker": "tallow", "who": "tallow"},
+  "tallow-mem0": {"text": "I was bigger once. I lit ships home.", "speaker": "tallow", "who": "tallow"},
+  "tallow-mem1": {"text": "Someone carried me. Someone kind.", "speaker": "tallow", "who": "tallow"},
+  "tallow-mem2": {"text": "The water rose. They chose the lamp over the boat.", "speaker": "tallow", "who": "tallow"},
+  "tallow-mem3": {"text": "Their name was... I gave it to the dark.", "speaker": "tallow", "who": "tallow"}
+}

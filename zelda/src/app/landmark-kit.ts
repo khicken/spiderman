@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { BeaconId, FrameCtx, GameEvent, Look, Prop, Quality, ToonOpts, World } from "./contracts";
+import type { BeaconId, FrameCtx, GameEvent, Look, PickupKind, Prop, Quality, SiteRegistryV2, ToonOpts, World } from "./contracts";
 
 // Shared helpers for every landmark-*.ts file: a vertex-color mesh builder (merge per material), the palette, a seeded
 // random, glow textures, and the registry that site builders use to hand collectibles / prompts to landmarks.ts.
@@ -11,7 +11,7 @@ export const PAL = {
   gold: "#c9a13b", goldHi: "#e8c766", goldLo: "#8f6d22", teal: "#1f5a5e", tealHi: "#3f8a86", mist: "#8fb9b3",
   ember: "#f08a3c", emberHi: "#ffc07a", emberLo: "#b4511e", rubric: "#b8402b", gloam: "#5b3a6e", gloamHi: "#a47cc6",
   gloamLo: "#2e1d3a", parchment: "#efe3c8", ink: "#2b2118", cloth: "#b8402b", water: "#6fc2b4", foam: "#f8f0dd",
-  rune: "#7fe0d0",
+  rune: "#f2d27a", runeTeal: "#7fe0d0", // v2: runes are gold-leaf; teal stays for water and spirits
 } as const;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -279,6 +279,88 @@ export function haloSprite(tex: THREE.Texture, color: string, size: number): THR
   return s;
 }
 
+let flameTex: THREE.Texture | null = null;
+/** Teardrop flame card: white core, soft edges, transparent tip. Tinted by the material color. */
+function flameTexture(): THREE.Texture {
+  if (flameTex) return flameTex;
+  // built as raw pixels (no canvas), so offline checks without a DOM can build sites too
+  const data = new Uint8Array(64 * 128 * 4);
+  for (let y = 0; y < 128; y++) {
+    const v = 1 - y / 127; // DataTexture row 0 is the bottom: v is 0 at the tip (top), 1 at the base
+    const w = Math.pow(Math.sin(Math.min(1, v * 1.05) * Math.PI * 0.62), 1.4) * (1 - Math.pow(Math.max(0, v - 0.86) / 0.14, 2) * 0.6);
+    for (let x = 0; x < 64; x++) {
+      const u = Math.abs(x - 31.5) / 31.5;
+      const e = w > 0 ? Math.max(0, 1 - u / w) : 0;
+      const a = Math.pow(e, 0.8) * Math.min(1, v * 3);
+      const core = Math.pow(e, 2.2) * Math.min(1, v * 1.6);
+      const i = (y * 64 + x) * 4;
+      data[i] = 255;
+      data[i + 1] = Math.round(190 + 65 * core);
+      data[i + 2] = Math.round(120 + 135 * core);
+      data[i + 3] = Math.round(255 * Math.min(1, a));
+    }
+  }
+  flameTex = new THREE.DataTexture(data, 64, 128, THREE.RGBAFormat);
+  flameTex.magFilter = THREE.LinearFilter;
+  flameTex.minFilter = THREE.LinearFilter;
+  flameTex.needsUpdate = true;
+  flameTex.colorSpace = THREE.SRGBColorSpace;
+  flameTex.userData.shared = true;
+  return flameTex;
+}
+
+export interface FlameCards {
+  readonly group: THREE.Group;
+  lit: boolean;
+  /** Call every frame the site is drawn. Grows in over ~0.4 s after `lit` turns on. */
+  tick(time: number, dt: number): void;
+}
+/** A brazier flame made of layered, crossed additive cards (outer ember, middle gold, white core) that flicker
+ *  out of step, so it reads as fire from any side instead of a flat cone. (x, y, z) is the flame base. */
+export function flameCards(env: SiteEnv, x: number, y: number, z: number, size = 1): FlameCards {
+  const tex = flameTexture();
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  group.visible = false;
+  const layers: { m: THREE.Mesh; h: number; w: number; ph: number; sp: number }[] = [];
+  const plane = env.own(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0));
+  const spec: [string, number, number, number][] = [[PAL.emberLo, 1.15, 1.9, 0.75], [PAL.ember, 0.9, 1.55, 0.9], [PAL.emberHi, 0.6, 1.15, 1], [PAL.foam, 0.32, 0.7, 1]];
+  spec.forEach(([color, w, h, op], li) => {
+    const mat = env.own(new THREE.MeshBasicMaterial({
+      map: tex, color, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    }));
+    for (let k = 0; k < 2; k++) {
+      const m = new THREE.Mesh(plane, mat);
+      m.rotation.y = (k * Math.PI) / 2 + li * 0.4;
+      m.castShadow = false;
+      m.receiveShadow = false;
+      m.renderOrder = 2 + li;
+      group.add(m);
+      layers.push({ m, h: h * size, w: w * size, ph: li * 1.7 + k * 2.3, sp: 7 + li * 2.1 + k });
+    }
+  });
+  env.group.add(group);
+  let k = 0;
+  const f: FlameCards = {
+    group,
+    lit: false,
+    tick(time, dt) {
+      k = f.lit ? Math.min(1, k + dt / 0.4) : 0;
+      group.visible = k > 0;
+      if (!group.visible) return;
+      const g = smooth(k);
+      for (let i = 0; i < layers.length; i++) {
+        const L = layers[i];
+        const fl = 1 + Math.sin(time * L.sp + L.ph) * 0.12 + Math.sin(time * L.sp * 2.3 + L.ph * 1.3) * 0.07;
+        L.m.scale.set(L.w * g * (1 - (fl - 1) * 0.5), L.h * g * fl, 1);
+        L.m.position.x = Math.sin(time * 3.1 + L.ph) * 0.04 * size;
+      }
+      group.rotation.y += dt * 0.6;
+    },
+  };
+  return f;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Registry: how site builders hand things to landmarks.ts. Every id is stable across sessions (saved in `collected`).
 // ---------------------------------------------------------------------------------------------------------------------
@@ -288,16 +370,31 @@ export interface ChestDef {
   id: string; // e.g. "chest-bow"
   x: number; y: number; z: number; // ground position of the chest center
   yaw: number; // faces (sin yaw, cos yaw)
-  reward: { kind: "bow" | "glimmer" | "shard" | "arrows" | "heart" | "glider"; amount: number };
+  reward: { kind: PickupKind; amount: number };
+  /** Invisible and not interactive until `Items.reveal(id)` (spirit trails, solved puzzles). */
+  hidden?: boolean;
   big?: boolean;
   /** Optional collectible id for the reward heart shard (e.g. "shard-lake"); default = the chest id. */
   rewardId?: string;
 }
-export interface LoreDef { id: string; x: number; z: number; y?: number; yaw: number; title: string; text: string }
+export interface LoreDef {
+  id: string; x: number; z: number; y?: number; yaw: number; title: string; text: string;
+  /** Build a standing rune stone here (the lore stone secrets); village and shrine sites draw their own. */
+  stone?: boolean;
+}
 export interface ShardDef { id: string; x: number; y: number; z: number }
-export interface ClusterDef { x: number; y: number; z: number; n: number; spread?: number }
+export interface ClusterDef {
+  x: number; y: number; z: number; n: number; spread?: number;
+  /** Stable key: glimmers get ids `glimmer:<key>:<k>` instead of an index, so adding clusters never shifts saves. */
+  key?: string;
+  /** Skip the global glimmer cap (secret trails must keep every glimmer). */
+  keep?: boolean;
+}
 
-export interface Registry {
+/** Per-frame data for `Registry.anim`. The object is reused every frame: read it, never keep it. */
+export interface AnimCtx { time: number; dt: number; px: number; py: number; pz: number; frame: FrameCtx; emit: Emit }
+
+export interface Registry extends SiteRegistryV2 {
   chest(c: ChestDef): void;
   lore(l: LoreDef): void;
   shard(s: ShardDef): void;
@@ -310,8 +407,11 @@ export interface Registry {
   /** A use-button interaction (beacon pedestal, lever). `label` returns the HUD prompt or null (hidden); `use` runs on press. */
   interact(def: { id: string; x: number; y: number; z: number; r: number; label: () => string | null; use: () => void }): void;
   /** Per-frame animation hook; only called while the site is within draw distance. */
-  anim(fn: (ctx: { time: number; dt: number; px: number; py: number; pz: number }) => void): void;
+  anim(fn: (ctx: AnimCtx) => void): void;
 }
+
+/** What a site builder really gets: the v1 registry plus the v2 anchor / zone / waystone calls. */
+export type RegistryV2 = Registry & SiteRegistryV2;
 
 export interface SiteEnv {
   world: World;
@@ -324,6 +424,9 @@ export interface SiteEnv {
   own<T extends { dispose(): void }>(x: T): T;
   /** The stable `glowTexture()` shared by all sites. */
   glow: THREE.Texture;
+  /** Saved collectible / reward ids: true once picked up in any session (trial bonuses check this). */
+  collected(id: string): boolean;
+  markCollected(id: string): void;
 }
 
 /** Result of a site builder: where it sits, how far it can be seen from. */
@@ -336,7 +439,7 @@ export function smooth(t: number) { const k = clamp(t, 0, 1); return k * k * (3 
 export type Emit = (e: GameEvent) => void;
 
 export interface TrialHandle {
-  readonly beacon: BeaconId;
+  readonly beacon: BeaconId | "glade";
   readonly active: boolean;
   /** Stable array, owned by the trial; orchestrator concatenates it into Landmarks.props. */
   readonly props: Prop[];

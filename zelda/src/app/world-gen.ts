@@ -1,4 +1,5 @@
-import { CLIFFS, FOREST, LAKE, LANDMARKS, MOUNTAIN, RIVER, WORLD } from "./contracts";
+import { CLIFFS, EMBER_PATHS, FOREST, LAKE, LANDMARKS, MOUNTAIN, PROLOGUE, RIVER, WORLD } from "./contracts";
+import { WAYSTONE_LIST } from "./landmark-paths";
 import type { LandmarkId } from "./contracts";
 import { clamp, lerp, makeNoise, smax, smooth } from "./world-noise";
 import type { Noise2 } from "./world-noise";
@@ -17,14 +18,48 @@ export const SEA_STACKS: readonly { id: string; x: number; z: number; r: number;
   { id: "stack-north", x: 262, z: -566, r: 8, top: 19 },
 ];
 
-/** Dirt trails painted into the splat map (no height change). */
+/** Prologue walkway, gate to Glade. Painted as dirt; the terrain under it is levelled by `prologueGround`. */
+export const PROLOGUE_PATH: readonly (readonly [number, number])[] = [
+  [PROLOGUE.gateBrazier.x, PROLOGUE.gateBrazier.z],
+  [PROLOGUE.stones.x, PROLOGUE.stones.z],
+  [PROLOGUE.ledge.x, PROLOGUE.ledge.z],
+  [PROLOGUE.climbRock.x, PROLOGUE.climbRock.z],
+  [PROLOGUE.knotB.x, PROLOGUE.knotB.z],
+  [PROLOGUE.glade.x, PROLOGUE.glade.z],
+];
+
+/** The ford at 0:45: a wide, 0.4 m deep pool across the prologue path. Wading is safe; the stones are for the jump lesson.
+ *  Water surface is `surf`; the bed is `surf - depth` in the middle. Pools fade out over `fade` m at both ends. */
+export const RILL = { x0: -98, x1: -14, z: 318.4, half: 5, surf: 14.0, bank: 14.2, depth: 0.4, fade: 14 } as const;
+
+/** Levelled ground under the prologue walkway: [z, height]. Knot A top minus knot B ground comes out at 5.2 m. */
+const PRO_PROFILE: readonly (readonly [number, number])[] = [[380, 14.0], [340, 14.2], [292, 14.2], [266, 14.4], [244, 14.67]];
+export function prologueGround(z: number): number {
+  const P = PRO_PROFILE;
+  if (z >= P[0][0]) return P[0][1];
+  for (let i = 0; i < P.length - 1; i++) {
+    if (z <= P[i][0] && z >= P[i + 1][0]) return lerp(P[i][1], P[i + 1][1], (P[i][0] - z) / (P[i][0] - P[i + 1][0]));
+  }
+  return P[P.length - 1][1];
+}
+
+/** Distance from (x, z) to a polyline given as [x, z] pairs. */
+export function distToLine(pts: readonly (readonly [number, number])[], x: number, z: number): number {
+  let best = 1e9;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = pts[i][0], az = pts[i][1], ex = pts[i + 1][0] - ax, ez = pts[i + 1][1] - az;
+    const t = clamp(((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1), 0, 1);
+    best = Math.min(best, Math.hypot(x - ax - ex * t, z - az - ez * t));
+  }
+  return best;
+}
+
+/** Dirt trails painted into the splat map (no height change): the prologue walkway, the 4 ember paths (the lit default
+ *  routes in contracts.ts) and the old Cinder climb from the Glade. */
 export const PATHS: readonly (readonly [number, number])[][] = [
-  [[-60, 356], [-95, 300], [-150, 250], [-205, 205], [-232, 182]],
-  [[-38, 362], [40, 320], [140, 262], [240, 192], [292, 146], [312, 116]],
-  [[-262, 130], [-290, 50], [-318, -40], [-345, -120], [-352, -160]],
-  [[-62, 345], [-30, 280], [10, 200], [40, 130], [60, 60], [95, 25], [105, -40], [78, -94], [29, -120], [-20, -113], [-48, -88]],
-  [[300, 112], [300, 20], [285, -80], [262, -170], [250, -206]],
-  [[-300, -60], [-230, -200], [-170, -300], [-145, -388], [-140, -410]],
+  PROLOGUE_PATH as unknown as [number, number][],
+  ...EMBER_PATHS.map((p) => p.map((q) => [q.x, q.z] as [number, number])),
+  [[-35, 240], [10, 200], [40, 130], [60, 70], [95, 25], [105, -40], [78, -94], [29, -120], [-20, -113], [-48, -88]],
 ];
 
 const SPOT_HEIGHT: Partial<Record<LandmarkId, number>> = {
@@ -308,6 +343,11 @@ export function generateWorld(seed: number): WorldData {
     return h;
   };
 
+  // Waystones sit on a small level pad so the stone and its plinth never tilt.
+  for (const w of WAYSTONE_LIST) {
+    if (w.id === "ws-glade" || w.id === "ws-sunken") continue; // inside the Glade flat / on the lake beacon island
+    flats.push({ l: { id: "shrine", name: w.name, x: w.x, z: w.z, r: 0, flat: 6 }, target: NaN, outer: 22 });
+  }
   for (const f of flats) if (Number.isNaN(f.target)) f.target = base(f.l.x, f.l.z);
 
   const height = new Float32Array(GRID_N * GRID_N);
@@ -322,6 +362,18 @@ export function generateWorld(seed: number): WorldData {
         const dx = x - f.l.x, dz = z - f.l.z;
         if (dx * dx + dz * dz > f.outer * f.outer) continue;
         h = lerp(h, f.target, smooth(f.outer, f.l.flat, Math.sqrt(dx * dx + dz * dz)));
+      }
+      // prologue walkway: level, with a faint swell so it does not look machine-made
+      if (z < 392 && z > 236) {
+        const d = distToLine(PROLOGUE_PATH, x, z);
+        if (d < 34) h = lerp(h, prologueGround(z) + 0.1 * N.n(x / 9, z / 9), smooth(34, 16, d));
+        // the ford
+        if (x > RILL.x0 - RILL.fade && x < RILL.x1 + RILL.fade && Math.abs(z - RILL.z) < RILL.half + 4) {
+          const ex = smooth(RILL.x0 - RILL.fade, RILL.x0, x) * smooth(RILL.x1 + RILL.fade, RILL.x1, x);
+          const side = smooth(RILL.half + 3, RILL.half - 1, Math.abs(z - RILL.z));
+          const bed = RILL.surf - RILL.depth * (0.55 + 0.45 * (1 - Math.abs(z - RILL.z) / RILL.half) ** 2);
+          h = lerp(h, Math.min(h, bed), ex * side);
+        }
       }
       // shrine bowl rim, open to the north
       {

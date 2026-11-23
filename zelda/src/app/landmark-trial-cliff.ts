@@ -1,12 +1,12 @@
 import * as THREE from "three";
 import type { FrameCtx, GameEvent, Prop, Quality, V3, World } from "./contracts";
+import type { SiteRegistryV2 } from "./contracts";
 import { BEACON_COLOR, CLIFFS, PLAYER } from "./contracts";
 import type { BeaconTower } from "./landmark-beacon";
-import type { Emit, SiteEnv, TrialHandle } from "./landmark-kit";
+import type { Emit, Registry, SiteEnv, TrialHandle } from "./landmark-kit";
 import { Mesher, PAL, clamp, glowMat, groundMin, haloSprite, lerp, rng } from "./landmark-kit";
 
 export const CLIFF_TRIAL_TOTAL = 6;
-const TIME_LIMIT = 75;
 const RING_R = 4.5;
 const HIT_R = 5.6;
 const BRAZIER_R = 6;
@@ -16,6 +16,13 @@ const UPDRAFT_R = 6.5;
 const UPDRAFT_H = 40;
 const FLARE_T = 3;
 const TAU = Math.PI * 2;
+const HINT_AFTER = 90;
+const BONUS_GLIMMERS = 50;
+const BONUS_ID = "cliff-bonus";
+const GLIDE_HOLD = 0.5;
+const TEST_STEPS = 5;
+const KNOT_POST_H = 1.4; // knot anchor height above the ground (plan geometry)
+const KNOT_REACH = 3; // m: a knot counts as reached (fall checkpoint) once Wren got this close to it
 
 export interface Updraft { x: number; z: number; r: number }
 const updrafts: Updraft[] = [];
@@ -23,9 +30,46 @@ const updrafts: Updraft[] = [];
 export const CLIFF_UPDRAFTS: readonly Updraft[] = updrafts;
 
 export interface CliffRing { x: number; y: number; z: number; nx: number; ny: number; nz: number }
-export interface CliffPlan { rings: CliffRing[]; brazier: V3; edge: V3; updrafts: Updraft[] }
 
-export function planCliffTrial(world: World, front: V3): CliffPlan {
+export interface CliffTeachPlan {
+  rule: string;
+  hint: string;
+  geometry: { ledge: V3; r: number; minDrop: number };
+}
+export interface CliffTestPlan {
+  rule: string;
+  hint: string;
+  geometry: { knots: V3[]; plinth: V3; baseY: number; climbY: number; reachR: number };
+}
+export interface CliffBonusPlan {
+  rule: string;
+  hint: string;
+  geometry: { rings: CliffRing[]; brazier: V3; topY: number; reachR: number; reward: number };
+}
+export interface CliffPlan {
+  teach: CliffTeachPlan;
+  test: CliffTestPlan;
+  bonus: CliffBonusPlan;
+  rules: { teach: string; test: string; bonus: string };
+  hints: { teach: string; test: string; bonus: string };
+  rings: CliffRing[];
+  brazier: V3;
+  edge: V3;
+  updrafts: Updraft[];
+}
+
+export const CLIFF_RULES = {
+  teach: "Jump off the ledge. Press G to glide.",
+  test: "Ride two knots up the cliff. Reach the beacon.",
+  bonus: `Glide through all ${CLIFF_TRIAL_TOTAL} rings to the beach.`,
+} as const;
+export const CLIFF_HINTS = {
+  teach: "Walk off the ledge, then press G in the air.",
+  test: "Press R on a knot, then R on the next knot. Jump onto the Thread.",
+  bonus: "Hold forward while gliding to fly through each ring.",
+} as const;
+
+export function planCliffTrial(world: Pick<World, "heightAt">, front: V3): CliffPlan {
   const fx = front.x, fz = front.z, top = front.y;
 
   let bx = fx + 40, bz = fz + 150, best = Infinity;
@@ -120,7 +164,273 @@ export function planCliffTrial(world: World, front: V3): CliffPlan {
   const spec: [number, number][] = [[10, 8], [22, -7], [34, 4]];
   for (const [k, lat] of spec) ups.push({ x: ex - dx * k + lx * lat, z: ez - dz * k + lz * lat, r: UPDRAFT_R });
 
-  return { rings, brazier: { x: bx, y: by, z: bz }, edge: { x: ex, y: top, z: ez }, updrafts: ups };
+  const brazierP: V3 = { x: bx, y: by, z: bz };
+  const edge: V3 = { x: ex, y: top, z: ez };
+
+  // Test route: knots from the cliff foot up toward the lip. Foot = first point out from the lip that is 34 m below the top.
+  let kb = 60;
+  for (let k = 4; k <= 120; k += 2) {
+    if (world.heightAt(ex + dx * k, ez + dz * k) <= top - 34) { kb = k; break; }
+  }
+  const baseX = ex + dx * kb, baseZ = ez + dz * kb;
+  const knots: V3[] = [0, 0.38, 0.76].map((f) => {
+    const x = baseX + (ex - baseX) * f, z = baseZ + (ez - baseZ) * f;
+    return { x, y: world.heightAt(x, z) + KNOT_POST_H, z };
+  });
+  const baseY = world.heightAt(baseX, baseZ);
+
+  // Teach ledge: the lip itself, pulled back 3 m so the player starts on solid ground.
+  const ledge: V3 = { x: ex - dx * 3, y: world.heightAt(ex - dx * 3, ez - dz * 3), z: ez - dz * 3 };
+
+  const teach: CliffTeachPlan = { rule: CLIFF_RULES.teach, hint: CLIFF_HINTS.teach, geometry: { ledge, r: 12, minDrop: 3 } };
+  const test: CliffTestPlan = {
+    rule: CLIFF_RULES.test, hint: CLIFF_HINTS.test,
+    geometry: { knots, plinth: { x: fx, y: top, z: fz }, baseY, climbY: top - 3, reachR: 5 },
+  };
+  const bonus: CliffBonusPlan = {
+    rule: CLIFF_RULES.bonus, hint: CLIFF_HINTS.bonus,
+    geometry: { rings, brazier: brazierP, topY: top, reachR: BRAZIER_R, reward: BONUS_GLIMMERS },
+  };
+  return {
+    teach, test, bonus,
+    rules: { ...CLIFF_RULES }, hints: { ...CLIFF_HINTS },
+    rings, brazier: brazierP, edge, updrafts: ups,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Pure state machine. No THREE. The build function feeds it player data each frame and forwards what it returns.
+// ---------------------------------------------------------------------------------------------------------------------
+const claimedBonus = new Set<string>();
+
+export type CliffPhase = "idle" | "teach" | "test" | "bonus" | "done";
+export interface CliffInput {
+  pos: { x: number; y: number; z: number };
+  grounded: boolean;
+  mode: string; // MoveMode; "glide" while the glider is open
+  hp: number;
+  /** Optional extra flag for callers that know the glider is open. */
+  gliding?: boolean;
+}
+export interface CliffOpts {
+  /** Session-wide set of claimed bonus ids. Pass a shared Set to make the reward once per session. */
+  claimed?: Set<string>;
+  onRing?: (index: number, ring: CliffRing) => void;
+  onPhase?: (phase: CliffPhase) => void;
+}
+export interface CliffSnapshot {
+  phase: CliffPhase;
+  /** teach: 0/1, test: steps done of TEST_STEPS, bonus: rings hit. */
+  progress: number;
+  rides: number;
+  climbed: boolean;
+  teachDone: boolean;
+  bonusProgress: number;
+  bonusClaimed: boolean;
+  bonusOpen: boolean;
+  idleT: number;
+  hinted: boolean;
+}
+export interface CliffMachine {
+  start(): GameEvent[];
+  step(input: CliffInput, dt: number): GameEvent[];
+  onRide(): GameEvent[];
+  onDied(): GameEvent[];
+  abort(): void;
+  reload(solved: boolean): void;
+  snapshot(): CliffSnapshot;
+}
+
+export function createCliffMachine(plan: CliffPlan, opts: CliffOpts = {}): CliffMachine {
+  const claimed = opts.claimed ?? new Set<string>();
+  const T = plan.teach.geometry, S = plan.test.geometry, B = plan.bonus.geometry;
+  let phase: CliffPhase = "idle";
+  let idleT = 0, hinted = false;
+  // teach
+  let launched = false, peakY = 0, glideT = 0, tipShown = false;
+  // test
+  let rides = 0, climbed = false, checkY = -Infinity, lastY = 0, knotAt = 0; // knotAt: highest knot reached
+  // bonus
+  let bProg = 0, bLeft = false, havePrev = false, pvx = 0, pvy = 0, pvz = 0;
+
+  const setPhase = (p: CliffPhase) => { phase = p; opts.onPhase?.(p); };
+  const resetTeach = () => { launched = false; peakY = 0; glideT = 0; tipShown = false; };
+  const resetTest = () => { rides = 0; climbed = false; checkY = S.baseY - 8; knotAt = 0; };
+  const resetBonus = () => { bProg = 0; bLeft = false; havePrev = false; };
+  const resetIdle = () => { idleT = 0; hinted = false; };
+  const resetAll = () => { resetTeach(); resetTest(); resetBonus(); resetIdle(); };
+  const rule = (text: string): GameEvent => ({ type: "trialRule", trial: 0, text });
+  const bonusOpen = () => (phase === "bonus" || phase === "done") && !claimed.has(BONUS_ID);
+
+  const testSteps = () => rides === 0 ? 0 : Math.min(rides, 2) + (climbed ? 1 : 0);
+
+  function bonusStep(inp: CliffInput, out: GameEvent[]) {
+    const p = inp.pos;
+    if (bProg < CLIFF_TRIAL_TOTAL) {
+      const r = B.rings[bProg];
+      const d1 = (p.x - r.x) * r.nx + (p.y - r.y) * r.ny + (p.z - r.z) * r.nz;
+      if (havePrev) {
+        const d0 = (pvx - r.x) * r.nx + (pvy - r.y) * r.ny + (pvz - r.z) * r.nz;
+        if (d0 < 0 && d1 >= 0) {
+          const t = d0 / (d0 - d1);
+          const hx = pvx + (p.x - pvx) * t - r.x, hy = pvy + (p.y - pvy) * t - r.y, hz = pvz + (p.z - pvz) * t - r.z;
+          if (hx * hx + hy * hy + hz * hz <= HIT_R * HIT_R) {
+            const i = bProg;
+            bProg++;
+            bLeft = true;
+            opts.onRing?.(i, r);
+            if (phase === "bonus") { idleT = 0; hinted = false; }
+          }
+        }
+      }
+    }
+    pvx = p.x; pvy = p.y; pvz = p.z; havePrev = true;
+    if (!bLeft && !inp.grounded && p.y < B.topY - 4) bLeft = true;
+    if (!bLeft) return;
+    const lost = inp.mode === "swim" || inp.mode === "dead";
+    if (lost || (inp.grounded && bProg < CLIFF_TRIAL_TOTAL)) {
+      if (bProg > 0) out.push({ type: "toast", text: "Missed a ring. Climb up and try again." });
+      resetBonus();
+      return;
+    }
+    if (!inp.grounded) return;
+    const dx = p.x - B.brazier.x, dz = p.z - B.brazier.z;
+    if (bProg >= CLIFF_TRIAL_TOTAL && dx * dx + dz * dz <= B.reachR * B.reachR && Math.abs(p.y - B.brazier.y) < 5) {
+      claimed.add(BONUS_ID);
+      out.push({ type: "pickup", kind: "glimmer", amount: B.reward, pos: { x: B.brazier.x, y: B.brazier.y + 1, z: B.brazier.z }, id: BONUS_ID });
+      out.push({ type: "toast", text: `Bonus done. +${B.reward} glimmers.` });
+      resetBonus();
+      resetIdle();
+      setPhase("done");
+    }
+  }
+
+  return {
+    start() {
+      if (phase !== "idle") return [];
+      resetAll();
+      setPhase("teach");
+      return [{ type: "trialStart", beacon: 0 }, rule(plan.rules.teach)];
+    },
+    step(inp, dt) {
+      const out: GameEvent[] = [];
+      const p = inp.pos;
+      lastY = p.y;
+      if (phase === "idle") return out;
+      if (phase === "teach" || phase === "test" || phase === "bonus") {
+        idleT += dt;
+        if (!hinted && idleT >= HINT_AFTER) {
+          hinted = true;
+          out.push({ type: "toast", text: plan.hints[phase] });
+        }
+      }
+      const gliding = inp.mode === "glide" || inp.gliding === true;
+
+      if (phase === "teach") {
+        const dx = p.x - T.ledge.x, dz = p.z - T.ledge.z;
+        const near = dx * dx + dz * dz <= (T.r + 10) * (T.r + 10);
+        if (!launched) {
+          if (!inp.grounded && near && p.y > T.ledge.y - 3 && inp.mode !== "ride") { launched = true; peakY = p.y; glideT = 0; }
+        } else {
+          peakY = Math.max(peakY, p.y);
+          glideT = gliding ? glideT + dt : 0;
+          if (glideT >= GLIDE_HOLD) {
+            resetTeach();
+            resetIdle();
+            setPhase("test");
+            resetTest();
+            out.push({ type: "trialProgress", beacon: 0, value: 1, total: TEST_STEPS }, rule(plan.rules.test));
+          } else if (inp.grounded) {
+            if (peakY - p.y >= T.minDrop && !tipShown) out.push({ type: "toast", text: "Press G in the air to glide." });
+            tipShown = peakY - p.y >= T.minDrop || tipShown;
+            launched = false; peakY = 0; glideT = 0;
+          }
+        }
+        return out;
+      }
+
+      if (phase === "test") {
+        if (inp.mode === "ride") checkY = Math.max(checkY, p.y);
+        for (let i = knotAt + 1; i < S.knots.length && i <= rides; i++) {
+          const kk = S.knots[i];
+          if ((p.x - kk.x) ** 2 + (p.y - kk.y) ** 2 + (p.z - kk.z) ** 2 <= KNOT_REACH * KNOT_REACH) knotAt = i;
+        }
+        const lost = inp.mode === "swim" || inp.mode === "dead" || (inp.grounded && p.y < checkY - 4);
+        if (lost && rides > 0) {
+          resetIdle();
+          if (inp.mode === "dead") { resetTest(); return out; } // death respawns at the checkpoint (onDied)
+          // back to the highest knot Wren reached: knot k is reached by ride k (knot 0 is the foot)
+          const kn = S.knots, k = knotAt;
+          const at = kn[k], next = kn[Math.min(k + 1, kn.length - 1)], prev = kn[Math.max(k - 1, 0)];
+          // stand 1.2 m down-route of the post, facing the next knot (the last knot faces up the route too)
+          let bx = prev.x - at.x, bz = prev.z - at.z;
+          if (k === 0) { bx = at.x - next.x; bz = at.z - next.z; }
+          const bl = Math.hypot(bx, bz) || 1;
+          const fx = (k < kn.length - 1 ? next.x : at.x) - (at.x + (bx / bl) * 1.2), fz = (k < kn.length - 1 ? next.z : at.z) - (at.z + (bz / bl) * 1.2);
+          const pos = { x: at.x + (bx / bl) * 1.2, y: at.y - KNOT_POST_H, z: at.z + (bz / bl) * 1.2 };
+          rides = k;
+          climbed = false;
+          checkY = pos.y;
+          out.push(
+            { type: "trialRespawn", beacon: 0, pos, yaw: Math.atan2(fx, fz) },
+            { type: "trialProgress", beacon: 0, value: 1 + testSteps(), total: TEST_STEPS },
+            { type: "toast", text: "You fell. Back to the last knot." },
+          );
+          return out;
+        }
+        if (rides >= 2 && !climbed && p.y >= S.climbY) {
+          climbed = true;
+          checkY = Math.max(checkY, p.y);
+          idleT = 0; hinted = false;
+          out.push({ type: "trialProgress", beacon: 0, value: 1 + testSteps(), total: TEST_STEPS });
+        }
+        if (rides >= 2 && climbed && inp.grounded) {
+          const dx = p.x - S.plinth.x, dy = p.y - S.plinth.y, dz = p.z - S.plinth.z;
+          if (dx * dx + dy * dy + dz * dz <= S.reachR * S.reachR) {
+            resetTest();
+            resetIdle();
+            resetBonus();
+            setPhase("bonus");
+            out.push(
+              { type: "power", power: "long" },
+              { type: "memory", beacon: 0 },
+              { type: "trialDone", beacon: 0 },
+              rule(plan.rules.bonus),
+            );
+          }
+        }
+        return out;
+      }
+
+      if (bonusOpen()) bonusStep(inp, out);
+      return out;
+    },
+    onRide() {
+      if (phase !== "test") return [];
+      rides++;
+      idleT = 0; hinted = false;
+      checkY = Math.max(checkY, lastY);
+      if (rides > 2) return [];
+      return [{ type: "trialProgress", beacon: 0, value: rides + 1, total: TEST_STEPS }];
+    },
+    onDied() {
+      if (phase === "teach" || phase === "test") { resetAll(); setPhase("idle"); }
+      else resetBonus();
+      return [];
+    },
+    abort() { resetAll(); setPhase("idle"); },
+    reload(solved) { resetAll(); setPhase(solved ? "done" : "idle"); },
+    snapshot() {
+      return {
+        phase,
+        progress: phase === "teach" ? 0 : phase === "test" ? 1 + testSteps() : phase === "bonus" || phase === "done" ? bProg : 0,
+        rides, climbed,
+        teachDone: phase === "test" || phase === "bonus" || phase === "done",
+        bonusProgress: bProg, bonusClaimed: claimed.has(BONUS_ID), bonusOpen: bonusOpen(),
+        idleT, hinted,
+      };
+    },
+  };
 }
 
 const _m = new THREE.Matrix4();
@@ -158,13 +468,13 @@ function stripeTexture(): THREE.CanvasTexture {
   return t;
 }
 
+
 export function buildCliffTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Group): TrialHandle & { updraftAt(x: number, y: number, z: number): number } {
   void sky;
   const { world, look, group } = env;
   const plan = planCliffTrial(world, tower.front);
   const { rings, brazier } = plan;
   const owner = "landmarks:cliff-trial";
-  const topY = tower.gy;
   const flameColor = BEACON_COLOR[0];
 
   updrafts.length = 0;
@@ -299,17 +609,56 @@ export function buildCliffTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Gro
   ringsG.visible = brazierG.visible = upMesh.visible = false;
   group.add(ringsG, upMesh, brazierG);
 
+
+  // test knots: stone posts the Thread can pin. Anchors are registered when the registry supports them.
+  const knotG = new THREE.Group();
+  knotG.name = "cliff-trial-knots";
+  const km = new Mesher(91);
+  const kn = plan.test.geometry.knots;
+  for (const k of kn) {
+    const g0 = k.y - 1.4;
+    km.cyl(k.x, g0 - 0.4, k.z, 0.9, 0.7, 1.4, PAL.rockLo, 7);
+    km.ball(k.x, k.y, k.z, 0.7, PAL.goldLo, 1, 1);
+  }
+  const kMesh = km.build(look, undefined, "cliff-trial-knots-mesh");
+  env.own(kMesh.geometry);
+  knotG.add(kMesh);
+  const knotHalos: THREE.Sprite[] = kn.map((k) => {
+    const h = haloSprite(env.glow, flameColor, 6);
+    env.own(h.material);
+    h.position.set(k.x, k.y, k.z);
+    h.visible = false;
+    knotG.add(h);
+    return h;
+  });
+  const ledgeHalo = haloSprite(env.glow, flameColor, 8);
+  env.own(ledgeHalo.material);
+  ledgeHalo.position.set(plan.teach.geometry.ledge.x, plan.teach.geometry.ledge.y + 1.2, plan.teach.geometry.ledge.z);
+  ledgeHalo.visible = false;
+  knotG.add(ledgeHalo);
+  knotG.visible = false;
+  group.add(knotG);
+  const reg2 = env.reg as Registry & Partial<SiteRegistryV2>;
+  if (typeof reg2.anchor === "function") {
+    kn.forEach((k, i) => {
+      reg2.anchor!({ id: `cliff:knot${i}`, kind: "knot", pos: { x: k.x, y: k.y, z: k.z }, weight: 0, lit: false, enabled: true });
+    });
+  }
+
   const props: Prop[] = [];
-  let active = false;
-  let timeLeft = TIME_LIMIT;
-  let progress = 0;
-  let leftTop = false;
   let solvedFlag = false;
   let lit = false;
   let flareT = 0;
   let shown = false;
-  let havePrev = false;
-  let pvx = 0, pvy = 0, pvz = 0;
+
+  const machine = createCliffMachine(plan, { claimed: claimedBonus, onRing: (_i, r) => ringHit(r) });
+  function ringHit(r: CliffRing) {
+    const c = curCtx;
+    if (!c) return;
+    c.player.stamina = Math.min(PLAYER.staminaMax, c.player.stamina + RING_STAMINA);
+    c.fx.burst("spark", r, 14);
+  }
+  let curCtx: FrameCtx | null = null;
 
   const paintRing = (i: number, c: THREE.Color) => {
     const a = i * perRing;
@@ -323,17 +672,19 @@ export function buildCliffTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Gro
   };
 
   const refreshRings = () => {
+    const s = machine.snapshot();
+    const live = s.bonusOpen;
     for (let i = 0; i < CLIFF_TRIAL_TOTAL; i++) {
       const h = halos[i];
-      if (solvedFlag) {
+      if (s.bonusClaimed) {
         paintRing(i, cBurnt);
         h.visible = false;
-      } else if (i < progress) {
+      } else if (live && i < s.bonusProgress) {
         paintRing(i, cLit);
         h.visible = true;
         h.scale.set(14, 14, 1);
         h.material.opacity = 0.75;
-      } else if (active && i === progress) {
+      } else if (live && i === s.bonusProgress) {
         paintRing(i, cNextB);
         h.visible = true;
       } else {
@@ -349,18 +700,9 @@ export function buildCliffTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Gro
     bHalo.visible = on;
   };
 
-  const reset = () => {
-    active = false;
-    timeLeft = TIME_LIMIT;
-    progress = 0;
-    leftTop = false;
-    havePrev = false;
-    if (solvedFlag) {
-      setLit(true);
-    } else {
-      setLit(false);
-      flareT = 0;
-    }
+  const resetVisuals = () => {
+    setLit(solvedFlag);
+    if (!solvedFlag) flareT = 0;
     refreshRings();
   };
 
@@ -370,131 +712,103 @@ export function buildCliffTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Gro
     ringsG.visible = on;
     brazierG.visible = on;
     upMesh.visible = on;
+    knotG.visible = on;
   };
 
   const animate = (dt: number, time: number) => {
     stripes.offset.y -= dt * 0.55;
     upMat.opacity = 0.42 + 0.08 * Math.sin(time * 1.7);
-    if (active && progress < CLIFF_TRIAL_TOTAL) {
-      const k = 0.5 + 0.5 * Math.sin(time * 6);
-      paintRing(progress, _c.copy(cNextA).lerp(cNextB, k));
-      const h = halos[progress];
+    const s = machine.snapshot();
+    const k = 0.5 + 0.5 * Math.sin(time * 6);
+    if (s.bonusOpen && s.bonusProgress < CLIFF_TRIAL_TOTAL) {
+      paintRing(s.bonusProgress, _c.copy(cNextA).lerp(cNextB, k));
+      const h = halos[s.bonusProgress];
       h.visible = true;
       const sz = 12 + 6 * k;
       h.scale.set(sz, sz, 1);
       h.material.opacity = 0.45 + 0.45 * k;
     }
+    ledgeHalo.visible = s.phase === "teach";
+    if (ledgeHalo.visible) { const z = 7 + 3 * k; ledgeHalo.scale.set(z, z, 1); }
+    for (let i = 0; i < knotHalos.length; i++) {
+      const on = s.phase === "test";
+      knotHalos[i].visible = on;
+      if (on) { const z = 5 + 2 * k; knotHalos[i].scale.set(z, z, 1); }
+    }
     if (lit) {
       if (flareT > 0) flareT = Math.max(0, flareT - dt);
       const f = flareT / FLARE_T;
       const flick = 1 + 0.07 * Math.sin(time * 9) + 0.05 * Math.sin(time * 17.3);
-      const s = flick * (1 + 1.7 * f * f);
-      flame.scale.set(1.05 * s, 3.2 * s, 1.05 * s);
+      const sc = flick * (1 + 1.7 * f * f);
+      flame.scale.set(1.05 * sc, 3.2 * sc, 1.05 * sc);
       const hs = (9 + 14 * f) * flick;
       bHalo.scale.set(hs, hs, 1);
       bHalo.material.opacity = 0.7 + 0.3 * f;
     }
   };
 
-  const fail = (emit: Emit) => {
-    emit({ type: "trialFail", beacon: 0 });
-    reset();
-  };
+  const isActive = () => { const p = machine.snapshot().phase; return p === "teach" || p === "test"; };
+  const send = (outs: GameEvent[], emit: Emit) => { for (const o of outs) emit(o); };
 
   const trial: TrialHandle & { updraftAt(x: number, y: number, z: number): number } = {
     beacon: 0,
-    get active() { return active; },
+    get active() { return isActive(); },
     props,
-    get timeLeft() { return active ? Math.max(0, timeLeft) : null; },
+    get timeLeft() { return null; },
     canStart() { return null; },
     start(ctx: FrameCtx, emit: Emit) {
-      if (active || solvedFlag) return;
-      active = true;
-      timeLeft = TIME_LIMIT;
-      progress = 0;
-      leftTop = false;
-      const p = ctx.player.pos;
-      pvx = p.x; pvy = p.y; pvz = p.z;
-      havePrev = true;
+      if (isActive() || solvedFlag) return;
+      curCtx = ctx;
+      machine.abort();
+      send(machine.start(), emit);
       refreshRings();
-      emit({ type: "trialStart", beacon: 0 });
     },
     update(ctx: FrameCtx, emit: Emit, near: boolean) {
-      if (!near && !active) {
+      const phase = machine.snapshot().phase;
+      if (!near && phase !== "teach" && phase !== "test") {
         setShown(false);
         return;
       }
       setShown(true);
       animate(ctx.dt, ctx.time);
-      if (!active) return;
-
+      if (phase === "idle") return;
+      curCtx = ctx;
       const pl = ctx.player;
-      const p = pl.pos;
-      timeLeft -= ctx.dt;
-      if (timeLeft <= 0) {
-        fail(emit);
-        return;
-      }
-
-      if (progress < CLIFF_TRIAL_TOTAL) {
-        const r = rings[progress];
-        const d1 = (p.x - r.x) * r.nx + (p.y - r.y) * r.ny + (p.z - r.z) * r.nz;
-        if (havePrev) {
-          const d0 = (pvx - r.x) * r.nx + (pvy - r.y) * r.ny + (pvz - r.z) * r.nz;
-          if (d0 < 0 && d1 >= 0) {
-            const t = d0 / (d0 - d1);
-            const hx = pvx + (p.x - pvx) * t - r.x, hy = pvy + (p.y - pvy) * t - r.y, hz = pvz + (p.z - pvz) * t - r.z;
-            if (hx * hx + hy * hy + hz * hz <= HIT_R * HIT_R) {
-              progress++;
-              leftTop = true;
-              // each ring refills some stamina so the glide can reach the brazier
-              pl.stamina = Math.min(PLAYER.staminaMax, pl.stamina + RING_STAMINA);
-              refreshRings();
-              ctx.fx.burst("spark", r, 14);
-              emit({ type: "trialProgress", beacon: 0, value: progress, total: CLIFF_TRIAL_TOTAL });
-            }
-          }
+      const before = machine.snapshot().bonusProgress;
+      const outs = machine.step({ pos: pl.pos, grounded: pl.grounded, mode: pl.mode, hp: pl.hp }, ctx.dt);
+      if (machine.snapshot().bonusProgress !== before) refreshRings();
+      for (const o of outs) {
+        emit(o);
+        if (o.type === "trialDone") {
+          solvedFlag = true;
+          setLit(true);
+          flareT = FLARE_T;
+          ctx.fx.burst("beacon", flamePos, 24);
         }
       }
-      pvx = p.x; pvy = p.y; pvz = p.z;
-      havePrev = true;
-
-      if (!leftTop && !pl.grounded && p.y < topY - 4) leftTop = true;
-      if (!leftTop) return;
-
-      if (pl.mode === "swim" || pl.mode === "dead") {
-        fail(emit);
-        return;
-      }
-      if (!pl.grounded) return;
-      if (progress < CLIFF_TRIAL_TOTAL) {
-        fail(emit);
-        return;
-      }
-      const dx = p.x - bx, dz = p.z - bz;
-      if (dx * dx + dz * dz <= BRAZIER_R * BRAZIER_R && Math.abs(p.y - gb) < 5) {
-        emit({ type: "trialDone", beacon: 0 });
-        active = false;
-        solvedFlag = true;
-        progress = 0;
-        setLit(true);
-        flareT = FLARE_T;
-        refreshRings();
-        ctx.fx.burst("beacon", flamePos, 24);
-      }
+      refreshRings();
     },
-    handle(e: GameEvent) {
-      if (!active) return;
-      if (e.type === "died" || e.type === "respawned" || (e.type === "trialFail" && e.beacon === 0)) reset();
+    handle(e: GameEvent, emit: Emit) {
+      if (e.type === "threadRide" && e.on) {
+        if (isActive()) send(machine.onRide(), emit);
+        return;
+      }
+      if (e.type === "died" || e.type === "respawned") {
+        if (machine.snapshot().phase !== "idle") { send(machine.onDied(), emit); refreshRings(); }
+      } else if (e.type === "trialFail" && e.beacon === 0 && isActive()) {
+        machine.abort();
+        resetVisuals();
+      }
     },
     abort() {
       solvedFlag = false;
-      reset();
+      machine.abort();
+      resetVisuals();
     },
     solved(animated: boolean) {
       solvedFlag = true;
-      active = false;
-      progress = 0;
+      const ph = machine.snapshot().phase;
+      if (ph !== "bonus" && ph !== "done") machine.reload(true);
       setLit(true);
       flareT = animated ? FLARE_T : 0;
       refreshRings();

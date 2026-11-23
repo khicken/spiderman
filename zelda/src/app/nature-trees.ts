@@ -5,6 +5,8 @@ import {
   GeoBuilder, InstLayer, ScatterSet, clamp01, composeMat, fbm2, hash2, inFlatZone, lakeEdge, meshMat, riverEdge, shaderMat, sstep,
   vnoise, type PlaceEnv,
 } from "./nature-util";
+import { clearCanopyMap, setCanopyMap } from "./render-look";
+import { inViewCut } from "./landmark-paths";
 
 // Tree species. Each species is a list of primitives that feeds two outputs: one merged vertex-coloured mesh (detail) and
 // one painted card in a canvas atlas (impostor), so the far trees match the near ones.
@@ -27,24 +29,37 @@ interface TreeDef {
   swayMul: number;
 }
 
-function oak(): TreeDef {
+function seeded(seed: number): () => number {
+  let s = seed * 9301 + 49297;
+  return () => (s = (s * 16807) % 2147483647) / 2147483647;
+}
+
+/** Seeded oak: variant 0 is the round classic, others shift the ring of lobes, lean and crown width. */
+function oak(seed = 0): TreeDef {
+  const r = seeded(seed + 3);
   const p: Prim[] = [];
   const bark = { lo: "#5a3f2b", hi: "#8a6a48" };
-  p.push({ k: "limb", a: [0, -0.8, 0], b: [0.15, 3.6, 0.1], r0: 0.62, r1: 0.34, ...bark });
-  p.push({ k: "limb", a: [0.1, 2.8, 0], b: [1.9, 4.9, 0.6], r0: 0.26, r1: 0.12, ...bark });
-  p.push({ k: "limb", a: [0.1, 3.0, 0], b: [-1.8, 4.7, -0.5], r0: 0.26, r1: 0.12, ...bark });
-  p.push({ k: "limb", a: [0.1, 3.3, 0], b: [0.3, 5.3, -1.6], r0: 0.22, r1: 0.1, ...bark });
+  const lean = seed ? (r() - 0.5) * 0.9 : 0;
+  const wide = seed ? 0.9 + r() * 0.3 : 1;
+  p.push({ k: "limb", a: [0, -0.8, 0], b: [0.15 + lean, 3.6, 0.1], r0: 0.62, r1: 0.34, ...bark });
+  p.push({ k: "limb", a: [0.1, 2.8, 0], b: [1.9 * wide, 4.9, 0.6], r0: 0.26, r1: 0.12, ...bark });
+  p.push({ k: "limb", a: [0.1, 3.0, 0], b: [-1.8 * wide, 4.7, -0.5], r0: 0.26, r1: 0.12, ...bark });
+  p.push({ k: "limb", a: [0.1, 3.3, 0], b: [0.3, 5.3, -1.6 * wide], r0: 0.22, r1: 0.1, ...bark });
   const lo = ["#3f6a34", "#4a7538", "#45703a"], hi = ["#8fae4c", "#9cb956", "#86a848"];
-  p.push({ k: "blob", x: 0, y: 6.4, z: 0, rx: 3.1, ry: 2.6, rz: 3.1, lo: lo[0], hi: hi[0] });
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2 + 0.4;
+  p.push({ k: "blob", x: lean, y: 6.4, z: 0, rx: 3.1 * wide, ry: 2.6, rz: 3.1 * wide, lo: lo[0], hi: hi[0] });
+  const n = seed ? 5 + Math.floor(r() * 3) : 6;
+  const a0 = seed ? r() * 6.28 : 0.4;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + a0 + (seed ? (r() - 0.5) * 0.5 : 0);
+    const rr = (seed ? 2.1 + r() * 0.8 : 2.5) * wide;
+    const sz = seed ? 0.8 + r() * 0.45 : 1;
     p.push({
-      k: "blob", x: Math.cos(a) * 2.5, y: 5.0 + Math.sin(i * 2.1) * 0.5, z: Math.sin(a) * 2.5, rx: 2.0, ry: 1.7, rz: 2.0,
-      lo: lo[i % 3], hi: hi[(i + 1) % 3],
+      k: "blob", x: Math.cos(a) * rr + lean * 0.6, y: 5.0 + Math.sin(i * 2.1 + seed) * 0.5 + (seed ? r() * 0.8 : 0), z: Math.sin(a) * rr,
+      rx: 2.0 * sz, ry: 1.7 * sz, rz: 2.0 * sz, lo: lo[i % 3], hi: hi[(i + 1) % 3],
     });
   }
-  p.push({ k: "blob", x: 0.2, y: 8.1, z: 0, rx: 2.1, ry: 1.6, rz: 2.1, lo: lo[1], hi: "#a9c460" });
-  return { prims: p, w: 10.4, h: 9.8, trunkR: 0.55, trunkH: 3.6, spacing: 7.5, swayMul: 1 };
+  p.push({ k: "blob", x: 0.2 + lean, y: 8.1 + (seed ? r() * 0.6 : 0), z: 0, rx: 2.1, ry: 1.6, rz: 2.1, lo: lo[1], hi: "#a9c460" });
+  return { prims: p, w: 10.4 * wide, h: 9.8, trunkR: 0.55, trunkH: 3.6, spacing: 7.5, swayMul: 1 };
 }
 
 function pine(): TreeDef {
@@ -78,17 +93,21 @@ function willow(): TreeDef {
   return { prims: p, w: 9.2, h: 7.5, trunkR: 0.62, trunkH: 3.2, spacing: 6.5, swayMul: 1.25 };
 }
 
-function birch(): TreeDef {
+function birch(seed = 0): TreeDef {
+  const r = seeded(seed + 11);
+  const j = (v: number, amt: number) => (seed ? v + (r() - 0.5) * amt : v);
   const p: Prim[] = [];
-  p.push({ k: "limb", a: [0, -0.7, 0], b: [0.1, 6.6, 0.05], r0: 0.24, r1: 0.1, lo: "#bdb49c", hi: "#f1ead6", birch: true });
-  p.push({ k: "limb", a: [0.05, 4.4, 0], b: [0.9, 6.2, 0.3], r0: 0.1, r1: 0.05, lo: "#bdb49c", hi: "#e8dfca", birch: true });
-  p.push({ k: "limb", a: [0.05, 5.0, 0], b: [-0.8, 6.8, -0.3], r0: 0.1, r1: 0.05, lo: "#bdb49c", hi: "#e8dfca", birch: true });
+  const tall = seed ? 0.9 + r() * 0.25 : 1;
+  p.push({ k: "limb", a: [0, -0.7, 0], b: [0.1, 6.6 * tall, 0.05], r0: 0.24, r1: 0.1, lo: "#bdb49c", hi: "#f1ead6", birch: true });
+  p.push({ k: "limb", a: [0.05, 4.4 * tall, 0], b: [0.9, 6.2 * tall, 0.3], r0: 0.1, r1: 0.05, lo: "#bdb49c", hi: "#e8dfca", birch: true });
+  p.push({ k: "limb", a: [0.05, 5.0 * tall, 0], b: [-0.8, 6.8 * tall, -0.3], r0: 0.1, r1: 0.05, lo: "#bdb49c", hi: "#e8dfca", birch: true });
   const lo = "#2f4c3d", hi = "#7ba46a";
-  p.push({ k: "blob", x: 0, y: 7.4, z: 0, rx: 1.7, ry: 1.8, rz: 1.7, lo, hi: "#86ad70" });
-  p.push({ k: "blob", x: 0.9, y: 5.9, z: 0.3, rx: 1.35, ry: 1.2, rz: 1.35, lo: "#35543f", hi });
-  p.push({ k: "blob", x: -0.9, y: 6.3, z: -0.4, rx: 1.4, ry: 1.25, rz: 1.4, lo: "#33503f", hi: "#72996a" });
-  p.push({ k: "blob", x: 0.2, y: 8.7, z: 0.1, rx: 1.1, ry: 1.1, rz: 1.1, lo: "#3a5a46", hi: "#92b87a" });
-  return { prims: p, w: 4.6, h: 9.9, trunkR: 0.24, trunkH: 5.5, spacing: 3.6, swayMul: 1 };
+  p.push({ k: "blob", x: 0, y: 7.4 * tall, z: 0, rx: j(1.7, 0.5), ry: 1.8, rz: j(1.7, 0.5), lo, hi: "#86ad70" });
+  p.push({ k: "blob", x: j(0.9, 0.8), y: j(5.9, 0.8) * tall, z: j(0.3, 0.8), rx: 1.35, ry: 1.2, rz: 1.35, lo: "#35543f", hi });
+  p.push({ k: "blob", x: j(-0.9, 0.8), y: j(6.3, 0.8) * tall, z: j(-0.4, 0.8), rx: 1.4, ry: 1.25, rz: 1.4, lo: "#33503f", hi: "#72996a" });
+  p.push({ k: "blob", x: j(0.2, 0.6), y: 8.7 * tall, z: 0.1, rx: 1.1, ry: 1.1, rz: 1.1, lo: "#3a5a46", hi: "#92b87a" });
+  if (seed) p.push({ k: "blob", x: j(0, 1.4), y: 6.8 * tall, z: j(0.9, 1.0), rx: 1.1, ry: 1.0, rz: 1.1, lo: "#33503f", hi });
+  return { prims: p, w: 4.6, h: 9.9 * tall, trunkR: 0.24, trunkH: 5.5, spacing: 3.6, swayMul: 1 };
 }
 
 function ash(): TreeDef {
@@ -114,7 +133,10 @@ function ash(): TreeDef {
   return { prims: p, w: 8.0, h: 8.2, trunkR: 0.5, trunkH: 3.2, spacing: 5.5, swayMul: 0.35 };
 }
 
-const DEFS: TreeDef[] = [oak(), pine(), willow(), birch(), ash()];
+// Types 5 and 6 are seeded crown variants of oak and birch; they share their base species' impostor slot.
+export const TREE_OAK_B = 5, TREE_BIRCH_B = 6;
+const DEFS: TreeDef[] = [oak(), pine(), willow(), birch(), ash(), oak(2), birch(5)];
+const SLOT = [0, 1, 2, 3, 4, 0, 3];
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Detail geometry
@@ -129,6 +151,44 @@ function buildDetail(def: TreeDef, species: number): THREE.BufferGeometry {
   const H = def.h;
   const swayLeaf = (p: THREE.Vector3) => Math.pow(clamp01(p.y / H), 1.25) * 1.15 * def.swayMul;
   const swayWood = (p: THREE.Vector3) => Math.pow(clamp01(p.y / H), 2) * 0.55 * def.swayMul;
+  // crown ellipsoid from the blobs: normals lean toward it so the crown shades as one soft volume, not facets
+  let cw = 0;
+  const cc = new THREE.Vector3(), cr = new THREE.Vector3(1, 1, 1);
+  const blobs = def.prims.filter((q): q is Extract<Prim, { k: "blob" }> => q.k === "blob");
+  for (const q of blobs) { const w = q.rx * q.ry * q.rz; cc.x += q.x * w; cc.y += q.y * w; cc.z += q.z * w; cw += w; }
+  if (cw > 0) {
+    cc.multiplyScalar(1 / cw);
+    let mx = 0, my = 0;
+    for (const q of blobs) { mx = Math.max(mx, Math.hypot(q.x - cc.x, q.z - cc.z) + q.rx); my = Math.max(my, Math.abs(q.y - cc.y) + q.ry); }
+    cr.set(mx, my, mx);
+  }
+  const _s = new THREE.Vector3();
+  const crownN = (p: THREE.Vector3, n: THREE.Vector3) => {
+    _s.subVectors(p, cc).divide(cr).divide(cr).normalize();
+    n.lerp(_s, 0.72).normalize();
+  };
+  const rf = seeded(species * 7 + 1);
+  const fringe = (pr: Extract<Prim, { k: "blob" }>, count: number) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const d = new THREE.Vector3(), t1 = new THREE.Vector3(), t2 = new THREE.Vector3(), c = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      const u = rf() * Math.PI * 2, v = -0.35 + rf() * 1.2;
+      d.set(Math.cos(u) * Math.sqrt(1 - Math.min(1, v * v)), v, Math.sin(u) * Math.sqrt(1 - Math.min(1, v * v))).normalize();
+      c.set(pr.x + d.x * pr.rx * 0.88, pr.y + d.y * pr.ry * 0.88, pr.z + d.z * pr.rz * 0.88);
+      t1.crossVectors(d, Math.abs(d.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : _up).normalize();
+      t2.crossVectors(t1, d);
+      const w = 0.3 + rf() * 0.25, l = 0.35 + rf() * 0.35, tw = (rf() - 0.5) * 0.6;
+      t1.applyAxisAngle(d, tw);
+      const tip = c.clone().addScaledVector(d, l).addScaledVector(_up, -0.25 * l);
+      const p0 = c.clone().addScaledVector(t1, w), p1 = c.clone().addScaledVector(t1, -w);
+      for (const q of [p0, p1, tip, p1, p0, tip]) { pos.push(q.x, q.y, q.z); nor.push(d.x, d.y, d.z); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+    return g;
+  };
   for (const pr of def.prims) {
     if (pr.k === "blob") {
       cLo.set(pr.lo); cHi.set(pr.hi);
@@ -149,7 +209,21 @@ function buildDetail(def: TreeDef, species: number): THREE.BufferGeometry {
           n.y += 0.3;
           n.normalize();
         },
+        crownN,
       );
+      // leaf-card fringe: small cards poking out of the lobe break the silhouette and catch rim light
+      const nCards = Math.round(Math.min(18, 4.2 * pr.rx * pr.rz));
+      if (nCards > 0) {
+        gb.add(
+          fringe(pr, nCards), _mm.identity(),
+          (p, n, out) => {
+            const t = clamp01(0.55 + 0.4 * n.y + 0.2 * ((p.y - pr.y) / pr.ry));
+            out.copy(cLo).lerp(cHi, sstep(0.2, 0.9, t));
+            out.multiplyScalar(0.72 + 0.3 * sstep(1.6, H * 0.8, p.y));
+          },
+          swayLeaf, undefined, crownN,
+        );
+      }
     } else if (pr.k === "cone") {
       cLo.set(pr.lo); cHi.set(pr.hi);
       const zig = pr.zig ?? 0;
@@ -291,7 +365,7 @@ function makeAtlas(): THREE.CanvasTexture | null {
   c.width = AW; c.height = SH;
   const ctx = c.getContext("2d");
   if (!ctx) return null;
-  DEFS.forEach((d, i) => paint(ctx, d, i, i + 3));
+  DEFS.slice(0, N_SPECIES).forEach((d, i) => paint(ctx, d, i, i + 3));
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
@@ -329,7 +403,7 @@ void main() {
   if (t.a < 0.5) discard;
   vec3 V = normalize(cameraPosition - vW);
   vec3 c = hmShade(t.rgb * vTint * 1.04, normalize(vec3(0.0, 1.0, 0.0) + V * 0.15), vW, V);
-  c = hmFog(c, length(cameraPosition - vW));
+  c = hmFogP(c, vW);
   gl_FragColor = vec4(c, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -347,13 +421,14 @@ export class TreeSystem {
   private impSlot: THREE.InstancedBufferAttribute | null = null;
   private atlas: THREE.CanvasTexture | null;
   private nImp = 0;
+  private canopy: THREE.DataTexture | null = null;
   private detail2 = 0;
   private imp2 = 0;
-  private counts = new Int32Array(N_SPECIES);
+  private counts = new Int32Array(DEFS.length);
   readonly boxes: number[] = [];
 
   constructor(private group: THREE.Group, private look: Look) {
-    this.detailMat = meshMat(look, { sway: 1, patch: 0.14, nearFade: 3 });
+    this.detailMat = meshMat(look, { sway: 1, patch: 0.14, nearFade: 3, foliage: true });
     this.atlas = makeAtlas();
     this.layer = null as unknown as InstLayer;
   }
@@ -380,9 +455,13 @@ export class TreeSystem {
       }
       return true;
     };
-    const put = (type: number, x: number, z: number, h: number, scaleMul = 1): boolean => {
+    const put = (type: number, x: number, z: number, h: number, scaleMul = 1, spMul = 1): boolean => {
+      if (type === TREE_OAK && hash2(Math.floor(x), Math.floor(z), 41) < 0.45) type = TREE_OAK_B;
+      else if (type === TREE_BIRCH && hash2(Math.floor(x), Math.floor(z), 43) < 0.5) type = TREE_BIRCH_B;
       const def = DEFS[type];
-      const sp = def.spacing * scaleMul;
+      const sp = def.spacing * scaleMul * spMul;
+      // keep the vista lines (shrine gate to Glade beacon and Spire) clear of crowns, not just trunks
+      if (inViewCut(x, z, def.w * 0.5 * scaleMul)) return false;
       if (!free(x, z, sp)) return false;
       const s = scaleMul * (0.82 + rnd() * 0.42);
       const yaw = rnd() * Math.PI * 2;
@@ -403,6 +482,32 @@ export class TreeSystem {
     };
 
     const seed = env.seed;
+    // hero trees: a few oversized oaks that frame landmarks; placed first so they claim their space
+    for (const [hx, hz, hs] of [[-8, 262, 2.3], [-92, 352, 2.0], [-318, -176, 2.4]] as const) {
+      for (let k = 0; k < 10; k++) {
+        const x = hx + Math.cos(k * 2.4) * k * 3, z = hz + Math.sin(k * 2.4) * k * 3;
+        if (inFlatZone(x, z, 3)) continue;
+        const h = env.dryHeight(x, z, 0.5);
+        if (h !== h) continue;
+        world.normalAt(x, z, nrm);
+        if (nrm.y < 0.8) continue;
+        if (put(TREE_OAK, x, z, h, hs, 0.7)) break;
+      }
+    }
+    // small clumps: a placed meadow tree sometimes pulls 1-2 neighbours in close, so stands read as groves
+    const clump = (type: number, x: number, z: number, scaleMul: number) => {
+      const n = rnd() < 0.5 ? 1 : 2;
+      for (let k = 0; k < n; k++) {
+        const a = rnd() * Math.PI * 2, d = DEFS[type].spacing * (0.8 + rnd() * 0.5);
+        const cx = x + Math.cos(a) * d, cz = z + Math.sin(a) * d;
+        if (inFlatZone(cx, cz, 7) || riverEdge(cx, cz, tmpEdge) < 3.5) continue;
+        const h = env.dryHeight(cx, cz, 0.5);
+        if (h !== h) continue;
+        world.normalAt(cx, cz, nrm);
+        if (nrm.y < 0.65) continue;
+        put(type, cx, cz, h, scaleMul * (0.7 + rnd() * 0.25), 0.62);
+      }
+    };
     const STEP = 5.2;
     const R = 590;
     for (let gz = -R; gz < R; gz += STEP) {
@@ -429,18 +534,21 @@ export class TreeSystem {
           const clear = fbm2(x * 0.022, z * 0.022, seed + 21);
           if (clear > 0.66) dens *= 0.14;
           if (roll > dens) continue;
-          if (roll2 < 0.11) put(TREE_OAK, x, z, h, 1.18);
-          else put(TREE_BIRCH, x, z, h, 0.9 + roll2 * 0.2);
+          // spacing breathes with noise: tight thickets next to airy stands
+          const spM = 0.8 + 0.7 * fbm2(x * 0.03, z * 0.03, seed + 29);
+          if (roll2 < 0.11) put(TREE_OAK, x, z, h, 1.18, spM);
+          else put(TREE_BIRCH, x, z, h, 0.9 + roll2 * 0.2, spM);
         } else if (biome === "meadow" || biome === "lakeshore") {
           const g = sstep(0.5, 0.7, fbm2(x * 0.013, z * 0.013, seed + 7));
           const dens = (biome === "lakeshore" ? 0.12 : 0.05) + 0.78 * g;
           if (roll > dens) continue;
-          put(TREE_OAK, x, z, h, 0.9 + roll2 * 0.3);
+          const sm = 0.9 + roll2 * 0.3;
+          if (put(TREE_OAK, x, z, h, sm) && rnd() < 0.3) clump(TREE_OAK, x, z, sm);
         } else if (biome === "highland") {
           const g = fbm2(x * 0.02, z * 0.02, seed + 11);
           const dens = (0.42 + 0.5 * sstep(0.35, 0.6, g)) * (1 - 0.75 * sstep(70, 135, h));
           if (roll > dens) continue;
-          put(TREE_PINE, x, z, h, 0.85 + roll2 * 0.4);
+          put(TREE_PINE, x, z, h, 0.85 + roll2 * 0.4, 0.75 + 0.6 * fbm2(x * 0.04, z * 0.04, seed + 31));
         } else if (biome === "ash") {
           if (h > 168 || ny < 0.7) continue;
           const g = fbm2(x * 0.03, z * 0.03, seed + 13);
@@ -480,7 +588,58 @@ export class TreeSystem {
     this.set.finalize();
   }
 
+  /** Bake the 512² canopy map read by hmShadow: r = crown cover, g = crown top ((y + 20) / 280). */
+  private bakeCanopy(): void {
+    const N = 512, X0 = -600, SIZE = 1200, k = N / SIZE;
+    const cover = new Float32Array(N * N), top = new Float32Array(N * N);
+    const s = this.set;
+    for (let i = 0; i < s.count; i++) {
+      const def = DEFS[s.type[i]], sc = s.scale[i];
+      const r = def.w * 0.42 * sc * k, cx = (s.px[i] - X0) * k, cz = (s.pz[i] - X0) * k;
+      const ty = (s.py[i] + def.h * sc * 0.8 + 20) / 280;
+      const dens = s.type[i] === TREE_ASH ? 0.35 : s.type[i] === TREE_PINE ? 0.8 : 0.95;
+      const r0 = Math.max(0, Math.floor(cz - r - 1)), r1 = Math.min(N - 1, Math.ceil(cz + r + 1));
+      const c0 = Math.max(0, Math.floor(cx - r - 1)), c1 = Math.min(N - 1, Math.ceil(cx + r + 1));
+      for (let y = r0; y <= r1; y++) {
+        for (let x = c0; x <= c1; x++) {
+          const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cz) / Math.max(r, 0.5);
+          if (d >= 1) continue;
+          const o = y * N + x;
+          const v = dens * Math.min(1, (1 - d) * 2.2);
+          cover[o] = 1 - (1 - cover[o]) * (1 - v);
+          top[o] = Math.max(top[o], ty);
+        }
+      }
+    }
+    // one box blur on cover so the shadow edge is soft; top is dilated by the same pass so edges keep a height
+    const out = new Uint8Array(N * N * 4);
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        let c = 0, t = 0, n = 0;
+        for (let j = -1; j <= 1; j++) {
+          const yy = Math.min(N - 1, Math.max(0, y + j));
+          for (let i = -1; i <= 1; i++) {
+            const o = yy * N + Math.min(N - 1, Math.max(0, x + i));
+            c += cover[o]; t = Math.max(t, top[o]); n++;
+          }
+        }
+        const o = (y * N + x) * 4;
+        out[o] = Math.round((c / n) * 255);
+        out[o + 1] = Math.round(Math.min(1, t) * 255);
+        out[o + 3] = 255;
+      }
+    }
+    const tex = new THREE.DataTexture(out, N, N, THREE.RGBAFormat);
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    this.canopy = tex;
+    setCanopyMap(tex, X0, X0, SIZE, 0.62);
+  }
+
   build(): void {
+    this.bakeCanopy();
     const caps = Array.from(this.counts);
     const geoms = DEFS.map((d, i) => buildDetail(d, i));
     this.layer = new InstLayer(this.group, geoms, this.detailMat, caps, true);
@@ -514,7 +673,7 @@ export class TreeSystem {
       arr[o + 12] = s.px[i]; arr[o + 13] = s.py[i]; arr[o + 14] = s.pz[i]; arr[o + 15] = 1;
       const tc = (this.impMesh.instanceColor as THREE.InstancedBufferAttribute).array as Float32Array;
       tc[k * 3] = s.tint[i * 3]; tc[k * 3 + 1] = s.tint[i * 3 + 1]; tc[k * 3 + 2] = s.tint[i * 3 + 2];
-      (this.impSlot as THREE.InstancedBufferAttribute).array[k] = s.type[i];
+      (this.impSlot as THREE.InstancedBufferAttribute).array[k] = SLOT[s.type[i]];
     }
   };
 
@@ -552,6 +711,7 @@ export class TreeSystem {
     this.impMat?.dispose();
     this.detailMat.dispose();
     this.atlas?.dispose();
+    if (this.canopy) { clearCanopyMap(this.canopy); this.canopy.dispose(); }
   }
 }
 

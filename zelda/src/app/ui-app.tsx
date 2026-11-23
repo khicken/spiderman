@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Device, Game, GameEvent, HudFrame, HudHandle, HudSnapshot, Settings, V3 } from "./contracts";
+import type { DeathCause, Device, Game, GameEvent, GameV2, HudFrame, HudHandle, HudSnapshot, LanternPower, Settings, TrackTarget, V3 } from "./contracts";
+import { BEACON_POWER } from "./contracts";
 import { startGame } from "./game";
 import { clearSave, readSave, readSettings, writeSettings } from "./state";
 import { Book, type BookTab } from "./ui-book";
 import { Hud } from "./ui-hud";
 import { InkDefs } from "./ui-ink";
-import type { MapData } from "./ui-map";
+import type { MapData, MapPick } from "./ui-map";
 import { navigate, type NavDir } from "./ui-nav";
 import { bookPages } from "./ui-pages";
 import { DeathScreen, EndingScreen, LoadingScreen, ReadPanel, RotatePrompt, TitleScreen, type TitleAction } from "./ui-screens";
-import { addLore, clearLore, endStats, osReducedMotion, readLore, readPrefs, writePrefs, type EndStats, type LoreEntry, type UiPrefs } from "./ui-store";
+import { addLore, clearLore, clearUiProgress, endStats, readUiProgress, osReducedMotion, readLore, readPrefs, writePrefs, type EndStats, type LoreEntry, type UiPrefs } from "./ui-store";
 
 type Screen = "title" | "loading" | "play" | "paused" | "dead" | "ending";
 const GAME_TABS: readonly BookTab[] = ["journal", "map", "settings", "controls"];
@@ -42,6 +43,11 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [touchPlatform, setTouchPlatform] = useState(false);
   const [mapData, setMapData] = useState<MapData | null>(null);
+  const [deathWhere, setDeathWhere] = useState("");
+  const [deathCause, setDeathCause] = useState<DeathCause | undefined>(undefined);
+  const [selected, setSelected] = useState<MapPick | null>(null);
+  const [credits, setCredits] = useState("");
+  const [tracked, setTracked] = useState<TrackTarget | undefined>(undefined);
 
   const screenRef = useRef(screen);
   screenRef.current = screen;
@@ -49,6 +55,9 @@ export function App() {
   readRef.current = read;
   const titleTabRef = useRef(titleTab);
   titleTabRef.current = titleTab;
+  const bookTabRef = useRef(bookTab);
+  bookTabRef.current = bookTab;
+  const resumeRef = useRef<() => void>(() => {});
 
   const ui = (cue: "move" | "ok" | "back" | "open" | "close" | "error") => {
     try {
@@ -92,7 +101,9 @@ export function App() {
         progress: setProgress,
         pause: () => openBook("journal"),
         map: () => openBook("map"),
-        died: () => {
+        died: (where?: string, cause?: DeathCause) => {
+          setDeathWhere(where ?? "");
+          setDeathCause(cause);
           game.pause(true);
           game.input.setTouchVisible(false);
           setRead(null);
@@ -117,8 +128,13 @@ export function App() {
     game.input.setTouchVisible(false);
 
     const offNav = game.input.onNav((d) => onNavRef.current(d));
-    const onKey = () => {
+    const onKey = (e: KeyboardEvent) => {
       keyAt.current = performance.now();
+      if ((e.code === "KeyM" || e.code === "KeyP") && !e.repeat && screenRef.current === "paused" && !readRef.current && performance.now() - resumeAt.current > 200) {
+        const t = e.target as HTMLElement | null;
+        if (t && /^(input|textarea|select)$/i.test(t.tagName)) return;
+        if (e.code === "KeyM" ? bookTabRef.current === "map" : true) resumeRef.current();
+      }
     };
     const onFirst = () => {
       game.unlockAudio();
@@ -144,8 +160,21 @@ export function App() {
     if (screen !== "paused" || !g) return;
     const p = g.playerPos(v3.current);
     const q = g.quest;
-    setMapData({ heightAt, player: { x: p.x, z: p.z }, heading: heading.current, beacons: [...q.beacons], visited: [...q.visited], barrierDown: q.barrierDown, stage: q.stage });
+    setMapData({ heightAt, player: { x: p.x, z: p.z }, heading: heading.current, beacons: [...q.beacons], visited: [...q.visited], barrierDown: q.barrierDown, stage: q.stage, gladeLit: q.gladeLit, waystones: q.waystones ? [...q.waystones] : [] });
+    setTracked(q.tracked);
+    setSelected(null);
   }, [screen, heightAt]);
+
+  useEffect(() => {
+    if (!titleTab || titleTab !== "credits" || credits) return;
+    let off = false;
+    Promise.all(["/zelda/sfx/CREDITS.md", "/zelda/music/CREDITS.md"].map((u) => fetch(u).then((r) => (r.ok ? r.text() : "")).catch(() => ""))).then((t) => {
+      if (!off) setCredits(t.filter(Boolean).join("\n\n") || "No asset credits found.");
+    });
+    return () => {
+      off = true;
+    };
+  }, [titleTab, credits]);
 
   const resume = () => {
     const g = gameRef.current;
@@ -156,6 +185,7 @@ export function App() {
     setScreen("play");
     ui("close");
   };
+  resumeRef.current = resume;
 
   const begin = async (cont: boolean) => {
     const g = gameRef.current;
@@ -167,6 +197,7 @@ export function App() {
     if (!cont) {
       clearSave();
       clearLore();
+      clearUiProgress();
       setLore([]);
     }
     setProgress(0);
@@ -244,6 +275,25 @@ export function App() {
     resume();
   };
 
+  const onTrack = (t: TrackTarget) => {
+    const g = gameRef.current as GameV2 | null;
+    if (!g) return;
+    if (typeof g.track === "function") g.track(t);
+    setTracked(t);
+    ui("ok");
+  };
+  const onTravel = (id: string) => {
+    const g = gameRef.current as GameV2 | null;
+    if (!g || typeof g.travel !== "function") return;
+    g.travel(id);
+    resume();
+  };
+  const onChoose = (c: "keeper" | "sky") => {
+    const g = gameRef.current as GameV2 | null;
+    if (g && typeof g.chooseEnding === "function") g.chooseEnding(c);
+    ui("ok");
+  };
+
   const rekindle = () => {
     const g = gameRef.current;
     if (!g) return;
@@ -275,7 +325,21 @@ export function App() {
   const touch = device === "touch" || (touchPlatform && device !== "pad");
   const reduce = settings.reduceMotion || prefs.reduceMotion || osReducedMotion();
 
+  const gv2 = gameRef.current as GameV2 | null;
+  const uiProg = screen === "paused" ? readUiProgress() : { secrets: [], memories: [] };
+  const q0 = gameRef.current?.quest ?? null;
+  const litPowers = (q0?.beacons ?? []).flatMap((on, i) => (on ? [BEACON_POWER[i]] : []));
+  const powers: LanternPower[] = gv2?.progress?.powers ?? litPowers;
+  const wickOil = gv2?.progress?.wickOil ?? Math.max(0, (snap?.wick ?? 0) - 2);
+  const memories = Array.from(new Set([...(q0?.memories ?? []), ...uiProg.memories]));
   const pageCtx = {
+    collect: { wickOil, powers, memories, secrets: uiProg.secrets.length },
+    selected,
+    onSelect: setSelected,
+    onTrack,
+    onTravel,
+    tracked,
+    credits: credits || "Loading credits.",
     quest: gameRef.current?.quest ?? null,
     snap,
     lore,
@@ -294,7 +358,7 @@ export function App() {
     <main ref={rootRef} className="hm-root fixed inset-0 overflow-hidden" data-reduce={reduce ? "1" : "0"} data-screen={screen}>
       <InkDefs />
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      <Hud snap={snap} visible={screen === "play" && !read} touch={touch} showFps={settings.showFps} handleRef={hudHandle} onRead={onRead} />
+      <Hud snap={snap} visible={screen === "play" && !read} touch={touch} showFps={settings.showFps} subtitles={settings.subtitles || settings.voice === 0} hints={settings.hints} handleRef={hudHandle} onRead={onRead} />
       <div ref={overlayRef} className="pointer-events-none absolute inset-0" />
 
       {screen === "title" && <TitleScreen hasSave={hasSave} onAction={onTitle} busy={busy} />}
@@ -306,8 +370,8 @@ export function App() {
         <Book tabs={GAME_TABS} tab={bookTab} onTab={(t) => { setBookTab(t); ui("move"); }} left={book.left} right={book.right} closeLabel="Resume" onClose={resume} onQuit={quit} />
       )}
       {read && <ReadPanel title={read.title} text={read.text} device={device} onClose={closeRead} />}
-      {screen === "dead" && <DeathScreen device={device} onRekindle={rekindle} />}
-      {screen === "ending" && <EndingScreen stats={stats} onFree={resume} />}
+      {screen === "dead" && <DeathScreen device={device} cause={deathCause} where={deathWhere || snap?.checkpointName || "the last beacon you lit"} onContinue={rekindle} />}
+      {screen === "ending" && <EndingScreen stats={stats} onFree={resume} onChoose={onChoose} />}
       <RotatePrompt />
     </main>
   );

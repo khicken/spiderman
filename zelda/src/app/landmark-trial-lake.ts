@@ -1,42 +1,437 @@
 import * as THREE from "three";
-import { BEACON_COLOR } from "./contracts";
-import type { FrameCtx, GameEvent, Prop, Quality } from "./contracts";
+import { BEACON_COLOR, THREAD } from "./contracts";
+import type { FrameCtx, GameEvent, Prop, Quality, SiteRegistryV2, ThreadAnchor, V3 } from "./contracts";
 import type { BeaconTower } from "./landmark-beacon";
 import { PAL, Mesher, glowMat, groundMin, lerp, rng, smooth, solidBox } from "./landmark-kit";
-import type { Emit, SiteEnv, TrialHandle } from "./landmark-kit";
+import type { Emit, Registry, SiteEnv, TrialHandle } from "./landmark-kit";
 
-// Drowned Beacon trial: a walled 6 x 5 courtyard west of the tower, cells are 2 m, (col, row) with col to the east and
-// row to the south. Entrance gap in the south wall at col 2. Pillars (0,1) (2,1) (3,2). Blocks start at (1,4) (3,4) (1,3).
-// Plates: plate-0 (1,2), plate-1 (4,2), plate-2 (2,0) is the pool plate. Solution, one push per step (from -> to), 19 in
-// all, checked by an exhaustive search that also requires the player to reach the pushing side each time:
-// 3,4>4,4  1,3>2,3  2,3>3,3  4,4>3,4  3,3>4,3  1,4>2,4  2,4>2,3  2,3>3,3  4,3>4,2  4,2>4,1  3,3>4,3  3,4>2,4  2,4>2,3
-// 2,3>1,3  1,3>1,2  4,1>4,0  4,3>4,2  4,0>3,0  3,0>2,0
+// Drowned Beacon trial (v2, Thread pulls). A walled 6 x 5 court west of the tower, cells are 2 m, (col, row) with col to
+// the east and row to the south. The entrance gap in the south wall is at col 2. Terrain never changes: pillars #,
+// open water ~ (a block stops at the shore), floats o (a water cell a block may enter), the pool cell p (plate under
+// water, a block may enter and rest on it). Blocks, posts and plates change per part (teach, test, bonus).
+// Pull = (block, post): the post sits in the same row or column as the block, no pillar between. The block slides cell
+// by cell toward the post and stops one cell short of it (1.5 m stop), or earlier at a pillar, post, block, wall or
+// open water. Weight 3 needs Heavy Thread. The player is not part of the state (threads reach 18 m).
+// The solver (scripts/trials/drowned-solver.ts) proves test <= 6 pulls and the bonus needs Heavy Thread.
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Pull model (pure; shared by the solver and the machine)
+// ---------------------------------------------------------------------------------------------------------------------
+export type LakeCell = readonly [number, number];
+export interface LakeBlockDef { at: LakeCell; weight: 1 | 2 | 3 }
+export interface LakeLayout {
+  posts: readonly LakeCell[];
+  plates: readonly LakeCell[];
+  blocks: readonly LakeBlockDef[];
+}
+/** Cell index of each block, c + r * cols. */
+export type LakeState = readonly number[];
+export interface LakePull { block: number; post: number }
+
 const COLS = 6, ROWS = 5, CELL = 2;
-const PILLARS: readonly (readonly [number, number])[] = [[0, 1], [2, 1], [3, 2]];
-const START: readonly (readonly [number, number])[] = [[1, 4], [3, 4], [1, 3]];
-const PLATES: readonly (readonly [number, number])[] = [[1, 2], [4, 2], [2, 0]];
-const WATER_PLATE = 2;
-const ENTRY_COL = 2;
-const MOVE_T = 0.5;
+const TERRAIN: readonly string[] = [
+  "......",
+  ".p...~",
+  "~~o..o",
+  "......",
+  "......",
+];
+
+function cellsOf(ch: string): LakeCell[] {
+  const out: LakeCell[] = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (TERRAIN[r][c] === ch) out.push([c, r]);
+  return out;
+}
+
+const TEACH_LAYOUT: LakeLayout = {
+  posts: [[3, 3]],
+  plates: [[2, 3]],
+  blocks: [{ at: [0, 3], weight: 1 }],
+};
+const TEST_LAYOUT: LakeLayout = {
+  posts: [[1, 3], [2, 0], [3, 0], [5, 4]],
+  plates: [[1, 1], [2, 1], [3, 1]],
+  blocks: [{ at: [5, 3], weight: 1 }, { at: [2, 3], weight: 1 }, { at: [0, 0], weight: 1 }],
+};
+// block 0 is the heavy block, block 1 the light one that stands in its way
+const BONUS_LAYOUT: LakeLayout = {
+  posts: [[4, 2], [1, 0], [5, 3]],
+  plates: [[3, 3]],
+  blocks: [{ at: [1, 3], weight: 3 }, { at: [2, 3], weight: 1 }],
+};
+
+export const LAKE_MODEL = {
+  cols: COLS,
+  rows: ROWS,
+  cell: CELL,
+  entryCol: 2,
+  grid: TERRAIN,
+  floats: cellsOf("o"),
+  pool: cellsOf("p")[0],
+  teach: TEACH_LAYOUT,
+  test: TEST_LAYOUT,
+  bonus: BONUS_LAYOUT,
+  posts: TEST_LAYOUT.posts,
+  plates: TEST_LAYOUT.plates,
+  blocks: TEST_LAYOUT.blocks,
+  heavyBlock: 0, // index of the weight 3 block in `bonus`
+} as const;
+
+export const startState = (layout: LakeLayout = TEST_LAYOUT): LakeState => layout.blocks.map((b) => b.at[0] + b.at[1] * COLS);
+/** The state with block i resting on plate i (the solved look). */
+export const platesState = (layout: LakeLayout = TEST_LAYOUT): LakeState => layout.plates.map((p) => p[0] + p[1] * COLS);
+
+/** Cells a pull would carry the block through (first entry is the cell after the start), null when it has no line or no room. */
+export function pullCells(state: LakeState, pull: LakePull, layout: LakeLayout = TEST_LAYOUT): number[] | null {
+  const post = layout.posts[pull.post];
+  const from = state[pull.block];
+  if (!post || from === undefined) return null;
+  const bc = from % COLS, br = (from / COLS) | 0;
+  const pc = post[0], pr = post[1];
+  let dc = 0, dr = 0;
+  if (pr === br && pc !== bc) dc = pc > bc ? 1 : -1;
+  else if (pc === bc && pr !== br) dr = pr > br ? 1 : -1;
+  else return null;
+  for (let c = bc + dc, r = br + dr; c !== pc || r !== pr; c += dc, r += dr) if (TERRAIN[r][c] === "#") return null;
+  const path: number[] = [];
+  let c = bc, r = br;
+  for (;;) {
+    const nc = c + dc, nr = r + dr;
+    if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) break;
+    if (nc === pc && nr === pr) break;
+    const t = TERRAIN[nr][nc];
+    if (t === "#" || t === "~") break;
+    if (layout.posts.some((p) => p[0] === nc && p[1] === nr)) break;
+    const idx = nc + nr * COLS;
+    if (state.some((s, i) => i !== pull.block && s === idx)) break;
+    c = nc; r = nr;
+    path.push(idx);
+  }
+  return path.length ? path : null;
+}
+
+/** Every pull that moves a block. A weight 3 block is skipped without Heavy Thread. */
+export function legalPulls(state: LakeState, heavy: boolean, layout: LakeLayout = TEST_LAYOUT): LakePull[] {
+  const out: LakePull[] = [];
+  for (let b = 0; b < state.length; b++) {
+    if (layout.blocks[b].weight === 3 && !heavy) continue;
+    for (let p = 0; p < layout.posts.length; p++) if (pullCells(state, { block: b, post: p }, layout)) out.push({ block: b, post: p });
+  }
+  return out;
+}
+
+/** The state after the pull; the same state when the pull moves nothing. Weight is not checked here (see legalPulls). */
+export function applyPull(state: LakeState, pull: LakePull, layout: LakeLayout = TEST_LAYOUT): LakeState {
+  const path = pullCells(state, pull, layout);
+  if (!path) return state;
+  const next = state.slice();
+  next[pull.block] = path[path.length - 1];
+  return next;
+}
+
+/** Plate j is pressed when any block rests on its cell. */
+export function platesPressed(state: LakeState, layout: LakeLayout = TEST_LAYOUT): boolean[] {
+  return layout.plates.map((p) => state.includes(p[0] + p[1] * COLS));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Plan and machine (pure, no THREE)
+// ---------------------------------------------------------------------------------------------------------------------
+const LEAVE_R = 120; // m from the tower; walking farther fails the trial
+const IDLE_HINT = 90; // s without a pull before the hint toast
+const TEXT_HEAVY = "Needs Heavy Thread.";
+const TEXT_STUCK = "That block can't move that way.";
+
+export const lakeBlockId = (i: number) => `lake:block-${i}`;
+export const lakePostId = (i: number) => `lake:post-${i}`;
+
+export type LakePartName = "teach" | "test" | "bonus";
+export interface LakePart {
+  name: LakePartName;
+  rule: string;
+  hint: string;
+  layout: LakeLayout;
+  /** Pulls the best solution needs (test: at most 6). */
+  minPulls: number;
+}
+export interface LakePlan {
+  cx: number; cz: number; // tower
+  gx0: number; gz0: number; gx1: number; gz1: number;
+  fy: number;
+  cols: number; rows: number; cell: number;
+  cellX: number[]; cellZ: number[];
+  leaveR: number;
+  teach: LakePart;
+  test: LakePart;
+  bonus: LakePart;
+}
+
+export function planLakeTrial(world: { heightAt(x: number, z: number): number }, cx: number, cz: number): LakePlan {
+  const gx0 = cx - 19, gz0 = cz - 6;
+  const cellX: number[] = [], cellZ: number[] = [];
+  for (let c = 0; c < COLS; c++) cellX.push(gx0 + (c + 0.5) * CELL);
+  for (let r = 0; r < ROWS; r++) cellZ.push(gz0 + (r + 0.5) * CELL);
+  return {
+    cx, cz, gx0, gz0, gx1: gx0 + COLS * CELL, gz1: gz0 + ROWS * CELL,
+    fy: world.heightAt(gx0 + COLS, gz0 + ROWS),
+    cols: COLS, rows: ROWS, cell: CELL, cellX, cellZ, leaveR: LEAVE_R,
+    teach: { name: "teach", rule: "Thread the block, then the post.", hint: "Link the block to the post.", layout: TEACH_LAYOUT, minPulls: 1 },
+    test: { name: "test", rule: "Put a block on all 3 plates.", hint: "Pull a block along a row toward a post.", layout: TEST_LAYOUT, minPulls: 5 },
+    bonus: { name: "bonus", rule: "Pull the heavy block onto the plate.", hint: "Move the light block out of the way.", layout: BONUS_LAYOUT, minPulls: 2 },
+  };
+}
+
+export type LakePhase = "idle" | "teach" | "test" | "bonus" | "done";
+export interface LakeInput {
+  player?: { x: number; z: number };
+  pulls?: readonly { anchor: string; speed: number }[];
+  heavy?: boolean;
+}
+export interface LakeOpts { heavy?: boolean; bonusDone?: boolean }
+export interface LakeBlockSnap { id: string; x: number; z: number; cell: number; weight: 1 | 2 | 3; moving: boolean; enabled: boolean }
+export interface LakeSnapshot {
+  phase: LakePhase;
+  part: LakePartName; // which layout is on the court
+  pulls: number;
+  plates: boolean[];
+  count: number;
+  moving: boolean;
+  heavy: boolean;
+  bonusPaid: boolean;
+  state: number[];
+  blocks: LakeBlockSnap[];
+}
+export interface LakeMachine {
+  start(): GameEvent[];
+  startBonus(): GameEvent[];
+  step(input: LakeInput, dt: number): GameEvent[];
+  onEvent(e: GameEvent): GameEvent[];
+  reset(): GameEvent[];
+  abort(): void;
+  reload(solved: boolean): void;
+  snapshot(): LakeSnapshot;
+}
+
+/** Bonus ids already paid out this session (the save keeps the pickup id too). */
+export const lakeBonusPaid = new Set<string>();
+const BONUS_ID = "lake-heavy";
+
+export function createLakeMachine(plan: LakePlan, opts: LakeOpts = {}): LakeMachine {
+  let phase: LakePhase = "idle";
+  let part: LakePart = plan.teach;
+  let state: number[] = [...startState(part.layout)];
+  let plates: boolean[] = part.layout.plates.map(() => false);
+  let pulls = 0, idle = 0, hinted = false;
+  let heavy = opts.heavy === true;
+  let paid = opts.bonusDone === true;
+  let mv: { i: number; from: number; to: number; dist: number; got: number; speed: number } | null = null;
+
+  const wx = (cell: number) => plan.cellX[cell % COLS];
+  const wz = (cell: number) => plan.cellZ[(cell / COLS) | 0];
+  const active = () => phase === "teach" || phase === "test" || phase === "bonus";
+  const count = () => plates.reduce((n, p) => n + (p ? 1 : 0), 0);
+
+  const load = (p: LakePart) => {
+    part = p;
+    state = [...startState(p.layout)];
+    plates = p.layout.plates.map(() => false);
+    mv = null;
+    pulls = 0; idle = 0; hinted = false;
+  };
+  const hardIdle = () => {
+    phase = "idle";
+    load(plan.teach);
+  };
+  const showSolved = () => {
+    part = plan.test;
+    state = [...platesState(plan.test.layout)];
+    plates = plan.test.layout.plates.map(() => true);
+    mv = null;
+    pulls = 0; idle = 0; hinted = false;
+  };
+  const rule = (p: LakePart): GameEvent => ({ type: "trialRule", trial: 2, text: p.rule });
+
+  const settle = (out: GameEvent[]) => {
+    const now = platesPressed(state, part.layout);
+    let changed = false;
+    for (let j = 0; j < now.length; j++) {
+      if (now[j] === plates[j]) continue;
+      plates[j] = now[j];
+      changed = true;
+      out.push({ type: "plate", id: `plate-${j}`, on: now[j] });
+    }
+    if (changed && part.name !== "bonus") out.push({ type: "trialProgress", beacon: 2, value: count(), total: plates.length });
+  };
+
+  const arrive = (out: GameEvent[]) => {
+    if (!mv) return;
+    const m = mv;
+    mv = null;
+    state[m.i] = m.to;
+    out.push({ type: "blockMove", id: `block-${m.i}`, pos: { x: wx(m.to), y: plan.fy, z: wz(m.to) } });
+    settle(out);
+    if (phase === "teach" && count() === plates.length) {
+      for (let j = 0; j < plates.length; j++) out.push({ type: "plate", id: `plate-${j}`, on: false });
+      phase = "test";
+      load(plan.test);
+      out.push(rule(plan.test));
+    } else if (phase === "test" && count() === plates.length) {
+      heavy = true;
+      phase = "done";
+      out.push({ type: "power", power: "heavy" }, { type: "memory", beacon: 2 }, { type: "trialDone", beacon: 2 });
+    } else if (phase === "bonus" && count() === plates.length) {
+      const pl = plan.bonus.layout.plates[0];
+      phase = "done";
+      if (!paid && !lakeBonusPaid.has(BONUS_ID)) {
+        paid = true;
+        lakeBonusPaid.add(BONUS_ID);
+        out.push({ type: "pickup", kind: "glimmer", amount: 50, pos: { x: plan.cellX[pl[0]], y: plan.fy + 1, z: plan.cellZ[pl[1]] }, id: BONUS_ID });
+      }
+      out.push({ type: "toast", text: "Heavy block on the plate." });
+    }
+  };
+
+  const link = (e: Extract<GameEvent, { type: "threadLink" }>): GameEvent[] => {
+    if (!active() || mv) return [];
+    const ids = [e.a, e.b];
+    let block = -1, post = -1;
+    for (const id of ids) {
+      const b = /^lake:block-(\d+)$/.exec(id), p = /^lake:post-(\d+)$/.exec(id);
+      if (b) block = +b[1];
+      if (p) post = +p[1];
+    }
+    if (block < 0 || post < 0 || block >= state.length || post >= part.layout.posts.length) return [];
+    const def = part.layout.blocks[block];
+    if (def.weight === 3 && !heavy) return [{ type: "toast", text: TEXT_HEAVY }];
+    const path = pullCells(state, { block, post }, part.layout);
+    if (!path) return [{ type: "toast", text: TEXT_STUCK }];
+    const to = path[path.length - 1];
+    mv = { i: block, from: state[block], to, dist: path.length * CELL, got: 0, speed: THREAD.pullSpeed[def.weight - 1] };
+    pulls++;
+    idle = 0;
+    return [];
+  };
+
+  const resetPart = (): GameEvent[] => {
+    const out: GameEvent[] = [];
+    const start = startState(part.layout);
+    mv = null;
+    for (let i = 0; i < state.length; i++) {
+      if (state[i] !== start[i]) out.push({ type: "blockMove", id: `block-${i}`, pos: { x: wx(start[i]), y: plan.fy, z: wz(start[i]) } });
+    }
+    state = [...start];
+    settle(out);
+    pulls = 0; idle = 0; hinted = false;
+    return out;
+  };
+
+  const leave = (): GameEvent[] => {
+    if (phase === "bonus") {
+      phase = "done";
+      showSolved();
+      return [];
+    }
+    hardIdle();
+    return [{ type: "trialFail", beacon: 2 }];
+  };
+
+  return {
+    start() {
+      if (phase !== "idle") return [];
+      phase = "teach";
+      load(plan.teach);
+      return [{ type: "trialStart", beacon: 2 }, rule(plan.teach)];
+    },
+    startBonus() {
+      if (phase !== "done") return [];
+      phase = "bonus";
+      load(plan.bonus);
+      return [rule(plan.bonus)];
+    },
+    step(input, dt) {
+      const out: GameEvent[] = [];
+      if (input.heavy !== undefined) heavy = input.heavy || heavy;
+      if (!active()) return out;
+      const p = input.player;
+      if (p && Math.hypot(p.x - plan.cx, p.z - plan.cz) > plan.leaveR) return leave();
+      if (mv) {
+        const m = mv;
+        const fed = input.pulls?.find((q) => q.anchor === lakeBlockId(m.i));
+        if (fed && fed.speed > 0) m.speed = fed.speed;
+        m.got += m.speed * dt;
+        if (m.got >= m.dist) arrive(out);
+        return out;
+      }
+      idle += dt;
+      if (!hinted && idle >= IDLE_HINT) {
+        hinted = true;
+        out.push({ type: "toast", text: part.hint });
+      }
+      return out;
+    },
+    onEvent(e) {
+      if (e.type === "threadLink") return e.use === "pull" ? link(e) : [];
+      if (e.type === "power" && e.power === "heavy") heavy = true;
+      if (e.type === "died" || e.type === "respawned") {
+        if (phase === "bonus") {
+          phase = "done";
+          showSolved();
+        } else if (phase === "teach" || phase === "test") hardIdle();
+      }
+      return [];
+    },
+    reset() {
+      return active() ? resetPart() : [];
+    },
+    abort() {
+      hardIdle();
+    },
+    reload(solved) {
+      if (solved) {
+        phase = "done";
+        showSolved();
+      } else hardIdle();
+    },
+    snapshot() {
+      const blocks: LakeBlockSnap[] = [];
+      for (let i = 0; i < state.length; i++) {
+        let x = wx(state[i]), z = wz(state[i]);
+        const m = mv && mv.i === i ? mv : null;
+        if (m) {
+          const t = Math.min(1, m.got / m.dist);
+          x = lerp(wx(m.from), wx(m.to), t);
+          z = lerp(wz(m.from), wz(m.to), t);
+        }
+        blocks.push({ id: lakeBlockId(i), x, z, cell: state[i], weight: part.layout.blocks[i].weight, moving: !!m, enabled: true });
+      }
+      return { phase, part: part.name, pulls, plates: [...plates], count: count(), moving: !!mv, heavy, bonusPaid: paid || lakeBonusPaid.has(BONUS_ID), state: [...state], blocks };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Visuals
+// ---------------------------------------------------------------------------------------------------------------------
+const ENTRY_COL = LAKE_MODEL.entryCol;
 const SINK = -0.38;
+const DEPTH = -0.4; // water floor below the court
 const STEPS = 10;
 const STEP_GAP = 0.12, STEP_DUR = 0.7;
 const STAIR_TOTAL = (STEPS - 1) * STEP_GAP + STEP_DUR;
 const GATE_T = 0.9;
-
-const LEAVE_R = 120; // m from the tower; walking farther fails the block puzzle
+const MAX_BLOCKS = 3, MAX_POSTS = 4, MAX_PLATES = 4;
 
 export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Group): TrialHandle {
-  const { world, look, group, reg } = env;
+  const { world, look, group } = env;
+  const reg = env.reg as Registry & Partial<SiteRegistryV2>;
+  const plan = planLakeTrial(world, tower.cx, tower.cz);
+  const machine = createLakeMachine(plan);
   const R = rng(3302);
-  const gx0 = tower.cx - 19, gz0 = tower.cz - 6;
-  const gx1 = gx0 + COLS * CELL, gz1 = gz0 + ROWS * CELL;
-  const fy = world.heightAt(gx0 + COLS, gz0 + ROWS);
-  const X = (c: number) => gx0 + (c + 0.5) * CELL;
-  const Z = (r: number) => gz0 + (r + 0.5) * CELL;
-  const isPillar = (c: number, r: number) => PILLARS.some((p) => p[0] === c && p[1] === r);
-  const wc = PLATES[WATER_PLATE];
-  const sinkAt = (c: number, r: number) => (c === wc[0] && r === wc[1] ? SINK : 0);
+  const { gx0, gz0, gx1, gz1, fy } = plan;
+  const X = (c: number) => plan.cellX[c];
+  const Z = (r: number) => plan.cellZ[r];
+  const terrain = (c: number, r: number) => TERRAIN[r][c];
+  const wc = LAKE_MODEL.pool;
 
   const stone = new Mesher(301), moss = new Mesher(302);
   const commit = (m: Mesher, name: string, mat?: THREE.Material) => {
@@ -47,25 +442,38 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
     return mesh;
   };
 
+  const parkY = fy - 60;
   const floorCols = [PAL.rock, PAL.rockHi, PAL.mist, PAL.rockLo];
   const inlay = new Mesher(303);
+  const padMesh = new Mesher(304);
+  const wetCells: LakeCell[] = [];
   for (let c = 0; c < COLS; c++) {
     for (let r = 0; r < ROWS; r++) {
       const x = X(c), z = Z(r);
+      const t = terrain(c, r);
       const y0 = groundMin(world, x, z, 1, 1) - 0.5;
-      const water = c === wc[0] && r === wc[1];
-      stone.box(x, y0, z, 1.96, fy + 0.05 - y0, 1.96, water ? PAL.teal : floorCols[Math.floor(R() * 4)], 0, { ao: 0.05 });
-      if (R() < 0.4 && !water) stone.box(x + (R() - 0.5) * 0.5, fy + 0.05, z + (R() - 0.5) * 0.5, 0.9 + R() * 0.6, 0.012, 0.05, PAL.ashLo, R() * Math.PI, { jit: 0, ao: 0 });
-      if (R() < 0.3 && !isPillar(c, r)) moss.ball(x + (R() - 0.5) * 1.3, fy + 0.05, z + (R() - 0.5) * 1.3, 0.22 + R() * 0.2, R() < 0.5 ? PAL.moss : PAL.mossHi, 0.25, 0);
+      const wet = t === "~" || t === "o";
+      const top = wet ? fy + DEPTH : fy + 0.05;
+      stone.box(x, y0, z, 1.96, top - y0, 1.96, t === "p" || wet ? PAL.teal : floorCols[Math.floor(R() * 4)], 0, { ao: 0.05 });
+      if (wet) {
+        wetCells.push([c, r]);
+        if (t === "~") world.addBox({ minX: x - 0.98, maxX: x + 0.98, minZ: z - 0.98, maxZ: z + 0.98, minY: fy + DEPTH, maxY: fy + 1.2, tag: "decor", owner: `landmarks:lake-water-${c}-${r}` });
+        else {
+          padMesh.box(x, fy - 0.1, z, 1.5, 0.15, 1.5, PAL.rockHi, 0, { ao: 0.1 });
+          padMesh.box(x, fy + 0.05, z, 1.2, 0.02, 1.2, PAL.mossHi, 0, { ao: 0, jit: 0 });
+          padMesh.ball(x + 0.55, fy + 0.07, z - 0.5, 0.2, PAL.goldHi, 1, 0);
+          world.addBox({ minX: x - 0.75, maxX: x + 0.75, minZ: z - 0.75, maxZ: z + 0.75, minY: fy + DEPTH, maxY: fy + 0.05, tag: "solid", owner: `landmarks:lake-float-${c}-${r}` });
+        }
+        continue;
+      }
+      if (R() < 0.4 && t !== "p") stone.box(x + (R() - 0.5) * 0.5, fy + 0.05, z + (R() - 0.5) * 0.5, 0.9 + R() * 0.6, 0.012, 0.05, PAL.ashLo, R() * Math.PI, { jit: 0, ao: 0 });
+      if (R() < 0.3 && t !== "#" && t !== "p") moss.ball(x + (R() - 0.5) * 1.3, fy + 0.05, z + (R() - 0.5) * 1.3, 0.22 + R() * 0.2, R() < 0.5 ? PAL.moss : PAL.mossHi, 0.25, 0);
     }
   }
   inlay.box((gx0 + gx1) / 2, fy + 0.05, gz0 + 0.18, COLS * CELL - 0.4, 0.012, 0.09, PAL.gold, 0, { ao: 0, jit: 0 });
   inlay.box((gx0 + gx1) / 2, fy + 0.05, gz1 - 0.18, COLS * CELL - 0.4, 0.012, 0.09, PAL.gold, 0, { ao: 0, jit: 0 });
   inlay.box(gx0 + 0.18, fy + 0.05, (gz0 + gz1) / 2, 0.09, 0.012, ROWS * CELL - 0.4, PAL.gold, 0, { ao: 0, jit: 0 });
   inlay.box(gx1 - 0.18, fy + 0.05, (gz0 + gz1) / 2, 0.09, 0.012, ROWS * CELL - 0.4, PAL.gold, 0, { ao: 0, jit: 0 });
-  for (let c = 1; c < COLS; c++) {
-    for (let r = 1; r < ROWS; r++) inlay.box(gx0 + c * CELL, fy + 0.05, gz0 + r * CELL, 0.16, 0.014, 0.16, PAL.goldHi, Math.PI / 4, { ao: 0, jit: 0 });
-  }
 
   const wallBit = (x0: number, z0: number, x1: number, z1: number) => {
     const alongX = x1 - x0 >= z1 - z0;
@@ -88,7 +496,7 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
   wallBit(gx0 + (ENTRY_COL + 1) * CELL, gz1, gx1 + 0.8, gz1 + 0.8);
   wallBit(gx0 - 0.8, gz0, gx0, gz1);
   wallBit(gx1, gz0, gx1 + 0.8, gz1 - CELL);
-  for (const [c, r] of PILLARS) {
+  for (const [c, r] of cellsOf("#")) {
     const x = X(c), z = Z(r);
     const top = fy + 2.5;
     solidBox(world, stone, "landmarks:lake-pillar", x, z, 1.9, 1.9, top, PAL.rockHi, "solid", { y0: fy });
@@ -108,28 +516,55 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
   const dimMat = glowMat(look, PAL.rune, 0.25);
   const litMat = glowMat(look, BEACON_COLOR[2], 1.6);
   const plateMesh: THREE.Mesh[] = [];
-  const plateOn = [false, false, false];
   const plateCol: number[] = [];
-  for (let j = 0; j < 3; j++) {
-    const x = X(PLATES[j][0]), z = Z(PLATES[j][1]);
-    inlay.box(x, fy + 0.05, z, 1.8, 0.02, 1.8, PAL.gold, 0, { ao: 0, jit: 0 });
+  for (let j = 0; j < MAX_PLATES; j++) {
     const m = new THREE.Mesh(plateGeo, dimMat);
-    m.position.set(x, fy + 0.07, z);
+    m.visible = false;
     group.add(m);
     plateMesh.push(m);
-    plateCol.push(world.addBox({ minX: x - 0.75, maxX: x + 0.75, minZ: z - 0.75, maxZ: z + 0.75, minY: fy, maxY: fy + 0.1, tag: "plate", owner: `landmarks:plate-${j}` }));
+    plateCol.push(world.addBox({ minX: 0, maxX: 1, minZ: 0, maxZ: 1, minY: parkY, maxY: parkY + 0.1, tag: "plate", owner: `landmarks:plate-${j}` }));
+  }
+
+  const pm = new Mesher(305);
+  pm.box(0, 0, 0, 0.5, 1.25, 0.5, PAL.rockHi, 0, { ao: 0.12 });
+  pm.box(0, 1.25, 0, 0.62, 0.1, 0.62, PAL.rock, 0, { ao: 0 });
+  const postProto = pm.build(look, undefined, "lake-post");
+  env.own(postProto.geometry);
+  const ringGeoP = env.own(new THREE.TorusGeometry(0.3, 0.06, 8, 18));
+  const ringMatP = glowMat(look, PAL.goldHi, 1.1);
+  const postGroup: THREE.Group[] = [];
+  const postCol: number[] = [];
+  for (let j = 0; j < MAX_POSTS; j++) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(postProto.geometry, postProto.material);
+    body.castShadow = true;
+    const ring = new THREE.Mesh(ringGeoP, ringMatP);
+    ring.position.set(0, 0.95, 0.27);
+    g.add(body, ring);
+    g.visible = false;
+    group.add(g);
+    postGroup.push(g);
+    postCol.push(world.addBox({ minX: 0, maxX: 0.5, minZ: 0, maxZ: 0.5, minY: parkY, maxY: parkY + 1, tag: "knot", owner: `landmarks:lake-post-${j}` }));
   }
 
   commit(stone, "lake-court");
   commit(moss, "lake-moss");
   commit(inlay, "lake-inlay");
+  commit(padMesh, "lake-floats");
 
-  const poolGeo = env.own(new THREE.PlaneGeometry(1.8, 1.8).rotateX(-Math.PI / 2));
-  const poolMat = look.toon({ color: PAL.water, emissive: PAL.water, emissiveIntensity: 0.3, transparent: true, opacity: 0.55, rim: 0.6 });
-  const pool = new THREE.Mesh(poolGeo, poolMat);
+  const waterGeo = env.own(new THREE.PlaneGeometry(1.96, 1.96).rotateX(-Math.PI / 2));
+  const waterMat = look.toon({ color: PAL.water, emissive: PAL.water, emissiveIntensity: 0.3, transparent: true, opacity: 0.55, rim: 0.6 });
+  const pool = new THREE.Mesh(waterGeo, waterMat);
   pool.position.set(wx, fy + 0.32, wz);
+  pool.scale.setScalar(0.92);
   pool.renderOrder = 2;
   group.add(pool);
+  for (const [c, r] of wetCells) {
+    const w = new THREE.Mesh(waterGeo, waterMat);
+    w.position.set(X(c), fy - 0.12, Z(r));
+    w.renderOrder = 2;
+    group.add(w);
+  }
   const ringGeo = env.own(new THREE.RingGeometry(0.22, 0.28, 20).rotateX(-Math.PI / 2));
   const rings: THREE.Mesh[] = [];
   const ringMats: THREE.MeshBasicMaterial[] = [];
@@ -143,54 +578,105 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
     ringMats.push(mt);
   }
 
-  const bm = new Mesher(310);
-  bm.box(0, 0, 0, 1.94, 1.94, 1.94, PAL.rock, 0, { ao: 0.18 });
-  bm.box(0, 1.9, 0, 1.7, 0.08, 1.7, PAL.rockHi, 0, { ao: 0 });
-  bm.box(0, 1.97, 0, 1.3, 0.02, 0.1, PAL.gold, 0, { ao: 0, jit: 0 });
-  bm.box(0, 1.97, 0, 0.1, 0.02, 1.3, PAL.gold, 0, { ao: 0, jit: 0 });
-  for (let k = 0; k < 4; k++) {
-    const a = (k * Math.PI) / 2;
-    const dx = Math.sin(a), dz = Math.cos(a);
-    bm.box(dx * 0.97, 0.3, dz * 0.97, k % 2 ? 0.1 : 0.12, 1.2, k % 2 ? 0.12 : 0.1, PAL.gold, 0, { ao: 0, jit: 0 });
-    bm.box(dx * 0.97, 0.88, dz * 0.97, k % 2 ? 0.12 : 0.5, 0.14, k % 2 ? 0.5 : 0.12, PAL.goldHi, 0, { ao: 0, jit: 0 });
-  }
-  bm.ball(0.55, 1.9, 0.45, 0.38, PAL.moss, 0.3, 0);
-  bm.ball(-0.5, 1.9, -0.55, 0.3, PAL.mossHi, 0.3, 0);
-  const blockProto = bm.build(look, undefined, "lake-block");
-  env.own(blockProto.geometry);
+  const mkBlock = (seed: number, heavyBlock: boolean) => {
+    const bm = new Mesher(seed);
+    const body = heavyBlock ? PAL.rockLo : PAL.rock;
+    bm.box(0, 0, 0, 1.94, 1.94, 1.94, body, 0, { ao: 0.18 });
+    bm.box(0, 1.9, 0, 1.7, 0.08, 1.7, heavyBlock ? PAL.rock : PAL.rockHi, 0, { ao: 0 });
+    bm.box(0, 1.97, 0, 1.3, 0.02, 0.1, PAL.gold, 0, { ao: 0, jit: 0 });
+    bm.box(0, 1.97, 0, 0.1, 0.02, 1.3, PAL.gold, 0, { ao: 0, jit: 0 });
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2;
+      const dx = Math.sin(a), dz = Math.cos(a);
+      bm.box(dx * 0.97, 0.3, dz * 0.97, k % 2 ? 0.1 : 0.12, 1.2, k % 2 ? 0.12 : 0.1, PAL.gold, 0, { ao: 0, jit: 0 });
+      bm.box(dx * 0.97, 0.88, dz * 0.97, k % 2 ? 0.12 : 0.5, 0.14, k % 2 ? 0.5 : 0.12, PAL.goldHi, 0, { ao: 0, jit: 0 });
+      if (heavyBlock) bm.box(dx * 0.98, 1.5, dz * 0.98, k % 2 ? 0.14 : 0.9, 0.2, k % 2 ? 0.9 : 0.14, PAL.goldHi, 0, { ao: 0, jit: 0 });
+    }
+    if (!heavyBlock) {
+      bm.ball(0.55, 1.9, 0.45, 0.38, PAL.moss, 0.3, 0);
+      bm.ball(-0.5, 1.9, -0.55, 0.3, PAL.mossHi, 0.3, 0);
+    }
+    const proto = bm.build(look, undefined, heavyBlock ? "lake-block-heavy" : "lake-block");
+    env.own(proto.geometry);
+    return proto;
+  };
+  const lightProto = mkBlock(310, false), heavyProto = mkBlock(311, true);
   const blockMesh: THREE.Mesh[] = [];
   const blockCol: number[] = [];
-  const bc = [0, 0, 0], br = [0, 0, 0];
-  const mv = [false, false, false];
-  const bt = [1, 1, 1];
-  const fxA = [0, 0, 0], fzA = [0, 0, 0], txA = [0, 0, 0], tzA = [0, 0, 0], fsA = [0, 0, 0], tsA = [0, 0, 0];
-  const bx = [0, 0, 0], bz = [0, 0, 0];
-  for (let i = 0; i < 3; i++) {
-    const m = new THREE.Mesh(blockProto.geometry, blockProto.material);
+  const bx = [NaN, NaN, NaN], bz = [NaN, NaN, NaN];
+  for (let i = 0; i < MAX_BLOCKS; i++) {
+    const m = new THREE.Mesh(lightProto.geometry, lightProto.material);
     m.castShadow = true;
     m.receiveShadow = true;
+    m.visible = false;
     group.add(m);
     blockMesh.push(m);
-    blockCol.push(world.addBox({ minX: 0, maxX: 1, minZ: 0, maxZ: 1, minY: fy, maxY: fy + 2.05, tag: "pushable", owner: `landmarks:block-${i}` }));
+    blockCol.push(world.addBox({ minX: 0, maxX: 1, minZ: 0, maxZ: 1, minY: parkY, maxY: parkY + 2, tag: "solid", owner: `landmarks:block-${i}` }));
   }
-  const setBlock = (i: number, x: number, z: number, sink: number) => {
+
+  const aim = new Map<string, ThreadAnchor>();
+  const addAnchor = (a: ThreadAnchor) => {
+    aim.set(a.id, reg.anchor ? reg.anchor(a) : a);
+  };
+  if (typeof reg.anchor === "function") {
+    for (let i = 0; i < MAX_BLOCKS; i++) addAnchor({ id: lakeBlockId(i), kind: "block", pos: { x: 0, y: parkY, z: 0 }, weight: 1, lit: false, enabled: false });
+    for (let j = 0; j < MAX_POSTS; j++) addAnchor({ id: lakePostId(j), kind: "knot", pos: { x: 0, y: parkY, z: 0 }, weight: 0, lit: false, enabled: false });
+  }
+
+  const setBlock = (i: number, x: number, z: number) => {
     bx[i] = x; bz[i] = z;
+    const d = Math.hypot(x - wx, z - wz);
+    const sink = SINK * Math.max(0, 1 - d / CELL);
     blockMesh[i].position.set(x, fy + 0.05 + sink, z);
     world.moveBox(blockCol[i], x - 0.99, fy, z - 0.99, x + 0.99, fy + 2.05, z + 0.99);
+    const a = aim.get(lakeBlockId(i));
+    if (a) { a.pos.x = x; a.pos.y = fy + 1 + sink; a.pos.z = z; }
   };
-  const parkAt = (i: number, c: number, r: number) => {
-    bc[i] = c; br[i] = r; mv[i] = false; bt[i] = 1;
-    setBlock(i, X(c), Z(r), sinkAt(c, r));
-  };
-  const occupied = (c: number, r: number, except: number) => {
-    for (let j = 0; j < 3; j++) if (j !== except && bc[j] === c && br[j] === r) return true;
-    return false;
-  };
-  const slide = (i: number, c: number, r: number) => {
-    fxA[i] = bx[i]; fzA[i] = bz[i]; fsA[i] = blockMesh[i].position.y - fy - 0.05;
-    bc[i] = c; br[i] = r;
-    txA[i] = X(c); tzA[i] = Z(r); tsA[i] = sinkAt(c, r);
-    mv[i] = true; bt[i] = 0;
+
+  let shown: LakePartName | "" = "";
+  const layoutFor = (name: LakePartName) => (name === "teach" ? plan.teach : name === "test" ? plan.test : plan.bonus).layout;
+  const showPart = (name: LakePartName) => {
+    if (shown === name) return;
+    shown = name;
+    const L = layoutFor(name);
+    for (let j = 0; j < MAX_PLATES; j++) {
+      const p = L.plates[j];
+      plateMesh[j].visible = !!p;
+      if (p) {
+        const x = X(p[0]), z = Z(p[1]);
+        plateMesh[j].position.set(x, fy + 0.07, z);
+        world.moveBox(plateCol[j], x - 0.75, fy, z - 0.75, x + 0.75, fy + 0.1, z + 0.75);
+      } else world.moveBox(plateCol[j], 0, parkY, 0, 1, parkY + 0.1, 1);
+    }
+    for (let j = 0; j < MAX_POSTS; j++) {
+      const p = L.posts[j];
+      postGroup[j].visible = !!p;
+      const a = aim.get(lakePostId(j));
+      if (p) {
+        const x = X(p[0]), z = Z(p[1]);
+        postGroup[j].position.set(x, fy + 0.05, z);
+        world.moveBox(postCol[j], x - 0.25, fy, z - 0.25, x + 0.25, fy + 1.3, z + 0.25);
+        if (a) { a.pos.x = x; a.pos.y = fy + 1; a.pos.z = z; a.enabled = true; }
+      } else {
+        world.moveBox(postCol[j], 0, parkY, 0, 0.5, parkY + 1, 0.5);
+        if (a) a.enabled = false;
+      }
+    }
+    for (let i = 0; i < MAX_BLOCKS; i++) {
+      const b = L.blocks[i];
+      blockMesh[i].visible = !!b;
+      const a = aim.get(lakeBlockId(i));
+      if (b) {
+        const proto = b.weight === 3 ? heavyProto : lightProto;
+        bx[i] = NaN;
+        blockMesh[i].geometry = proto.geometry;
+        blockMesh[i].material = proto.material;
+        if (a) { a.weight = b.weight; a.enabled = true; }
+      } else {
+        world.moveBox(blockCol[i], 0, parkY, 0, 1, parkY + 2, 1);
+        if (a) a.enabled = false;
+      }
+    }
   };
 
   const gateX = gx1 + 0.4;
@@ -252,9 +738,12 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
   };
 
   const lx = gx0 + (ENTRY_COL + 2) * CELL + 0.5, lz = gz1 + 2.4;
+  const bonusX = gx0 + (ENTRY_COL - 2) * CELL - 0.5;
   const lv = new Mesher(330);
   lv.box(lx, fy - 0.3, lz, 0.7, 1.3, 0.5, PAL.rock);
   lv.box(lx, fy + 1.0, lz, 0.9, 0.12, 0.7, PAL.gold, 0, { ao: 0 });
+  lv.box(bonusX, fy - 0.3, lz, 0.7, 1.3, 0.5, PAL.rockLo);
+  lv.box(bonusX, fy + 1.0, lz, 0.9, 0.12, 0.7, PAL.goldHi, 0, { ao: 0 });
   commit(lv, "lake-lever");
   const hm = new Mesher(331);
   hm.box(0, 0, 0, 0.1, 0.9, 0.1, PAL.woodHi);
@@ -265,26 +754,7 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
   handle.rotation.z = -0.5;
   group.add(handle);
   let leverT = 1;
-  let resetQ = false;
-
-  let started = false, done = false;
-
-  const recompute = (emit: Emit | null) => {
-    let changed = false, count = 0;
-    for (let j = 0; j < 3; j++) {
-      let on = false;
-      for (let i = 0; i < 3; i++) if (!mv[i] && bc[i] === PLATES[j][0] && br[i] === PLATES[j][1]) on = true;
-      if (on !== plateOn[j]) {
-        plateOn[j] = on;
-        plateMesh[j].material = on ? litMat : dimMat;
-        changed = true;
-        emit?.({ type: "plate", id: `plate-${j}`, on });
-      }
-      if (on) count++;
-    }
-    if (changed) emit?.({ type: "trialProgress", beacon: 2, value: count, total: 3 });
-    return count;
-  };
+  let resetQ = false, bonusQ = false;
 
   const openGate = () => {
     if (gateId >= 0) {
@@ -298,102 +768,75 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
     gateG.visible = gateP < 1;
   };
 
-  const resetBlocks = () => {
-    for (let i = 0; i < 3; i++) slide(i, START[i][0], START[i][1]);
-    recompute(null);
-  };
-
-  for (let i = 0; i < 3; i++) parkAt(i, START[i][0], START[i][1]);
-  applyGate();
-
   reg.interact({
     id: "lever-lake", x: lx, y: fy + 1.2, z: lz, r: 2.4,
-    label: () => (done ? null : "Reset blocks"),
+    label: () => (machine.snapshot().phase === "teach" || machine.snapshot().phase === "test" || machine.snapshot().phase === "bonus" ? "Reset blocks" : null),
     use: () => {
-      if (done) return;
       resetQ = true;
       leverT = 0;
+    },
+  });
+  reg.interact({
+    id: "lever-lake-bonus", x: bonusX, y: fy + 1.2, z: lz, r: 2.4,
+    label: () => (machine.snapshot().phase === "done" && !machine.snapshot().bonusPaid ? "Try the heavy block" : null),
+    use: () => {
+      bonusQ = true;
     },
   });
 
   const props: Prop[] = [];
 
-  const tryPush = (i: number, dc: number, dr: number, ctx: FrameCtx) => {
-    const tc = bc[i] + dc, tr = br[i] + dr;
-    if (tc < 0 || tc >= COLS || tr < 0 || tr >= ROWS || isPillar(tc, tr) || occupied(tc, tr, i)) return;
-    const p = ctx.player.pos;
-    if (Math.abs(p.x - X(tc)) < 1.35 && Math.abs(p.z - Z(tr)) < 1.35 && p.y < fy + 2.2) return;
-    slide(i, tc, tr);
+  const apply = (snap: LakeSnapshot) => {
+    showPart(snap.part);
+    const L = layoutFor(snap.part);
+    for (let j = 0; j < L.plates.length; j++) plateMesh[j].material = snap.plates[j] ? litMat : dimMat;
+    for (let i = 0; i < L.blocks.length; i++) {
+      const b = snap.blocks[i];
+      if (b && (b.x !== bx[i] || b.z !== bz[i])) setBlock(i, b.x, b.z);
+    }
   };
+  apply(machine.snapshot());
+  applyGate();
 
-  const complete = (emit: Emit) => {
-    if (!started) emit({ type: "trialStart", beacon: 2 });
-    done = true;
-    started = false;
-    emit({ type: "trialDone", beacon: 2 });
-    openGate();
-    stairOn = true;
+  const emitAll = (outs: GameEvent[], emit: Emit) => {
+    for (const e of outs) {
+      emit(e);
+      if (e.type === "trialDone") {
+        openGate();
+        stairOn = true;
+      }
+    }
   };
 
   const handleObj: TrialHandle = {
     beacon: 2,
-    get active() { return started && !done; },
+    get active() { const p = machine.snapshot().phase; return p === "teach" || p === "test"; },
     props,
     timeLeft: null,
     canStart: () => null,
     start(_ctx, emit) {
-      if (started || done) return;
-      started = true;
-      emit({ type: "trialStart", beacon: 2 });
+      emitAll(machine.start(), emit);
+      apply(machine.snapshot());
     },
-    update(ctx, emit, near) {
+    update(ctx: FrameCtx, emit: Emit, near: boolean) {
       const dt = ctx.dt;
-      const busy = mv[0] || mv[1] || mv[2] || resetQ || leverT < 1 || (gateOpen && gateP < 1) || (stairOn && stairT < STAIR_TOTAL);
-      if (!near && !started && !busy) {
-        return;
-      }
-      // an unfinished puzzle left behind would hold the trial (and autosave) open forever
-      if (started && !done) {
-        const dx = ctx.player.pos.x - tower.cx, dz = ctx.player.pos.z - tower.cz;
-        if (dx * dx + dz * dz > LEAVE_R * LEAVE_R) {
-          emit({ type: "trialFail", beacon: 2 });
-          return;
-        }
-      }
+      const snap0 = machine.snapshot();
+      const busy = snap0.moving || resetQ || bonusQ || leverT < 1 || (gateOpen && gateP < 1) || (stairOn && stairT < STAIR_TOTAL);
+      if (!near && snap0.phase !== "teach" && snap0.phase !== "test" && !busy) return;
 
       if (resetQ) {
         resetQ = false;
-        if (!done) resetBlocks();
+        emitAll(machine.reset(), emit);
       }
-
-      let finished = false;
-      for (let i = 0; i < 3; i++) {
-        if (!mv[i]) continue;
-        bt[i] = Math.min(1, bt[i] + dt / MOVE_T);
-        const e = smooth(bt[i]);
-        setBlock(i, lerp(fxA[i], txA[i], e), lerp(fzA[i], tzA[i], e), lerp(fsA[i], tsA[i], e));
-        if (bt[i] >= 1) {
-          mv[i] = false;
-          emit({ type: "blockMove", id: `block-${i}`, pos: { x: txA[i], y: fy, z: tzA[i] } });
-          finished = true;
-        }
+      if (bonusQ) {
+        bonusQ = false;
+        emitAll(machine.startBonus(), emit);
       }
-      if (finished) {
-        const count = recompute(emit);
-        if (count === 3 && !done) complete(emit);
-      }
-
-      if (!done) {
-        const pl = ctx.player;
-        if (pl.pushBox >= 0) {
-          const i = blockCol.indexOf(pl.pushBox);
-          if (i >= 0 && !mv[i]) {
-            const dc = pl.pushDir.x > 0.5 ? 1 : pl.pushDir.x < -0.5 ? -1 : 0;
-            const dr = pl.pushDir.y > 0.5 ? 1 : pl.pushDir.y < -0.5 ? -1 : 0;
-            if ((dc !== 0) !== (dr !== 0)) tryPush(i, dc, dr, ctx);
-          }
-        }
-      }
+      const heavy = ctx.progress ? ctx.progress.powers.includes("heavy") : undefined;
+      const p = ctx.player.pos;
+      emitAll(machine.step({ player: { x: p.x, z: p.z }, pulls: ctx.threads?.pulls, heavy }, dt), emit);
+      const snap = machine.snapshot();
+      apply(snap);
 
       if (gateOpen && gateP < 1) {
         gateP = Math.min(1, gateP + dt / GATE_T);
@@ -412,44 +855,51 @@ export function buildLakeTrial(env: SiteEnv, tower: BeaconTower, _sky: THREE.Gro
         const t = ctx.time;
         pool.position.y = fy + 0.32 + Math.sin(t * 1.7) * 0.012;
         for (let k = 0; k < 3; k++) {
-          const p = (t * 0.45 + k / 3) % 1;
-          rings[k].scale.setScalar(1 + p * 3.2);
-          ringMats[k].opacity = (1 - p) * 0.45;
+          const q = (t * 0.45 + k / 3) % 1;
+          rings[k].scale.setScalar(1 + q * 3.2);
+          ringMats[k].opacity = (1 - q) * 0.45;
         }
       }
     },
-    handle(e: GameEvent) {
-      if (e.type === "trialFail" && e.beacon === 2) handleObj.abort();
+    handle(e: GameEvent, emit: Emit) {
+      if (e.type === "trialFail" && e.beacon === 2) {
+        handleObj.abort();
+        return;
+      }
+      emitAll(machine.onEvent(e), emit);
+      if (e.type === "died" || e.type === "respawned" || e.type === "threadLink") apply(machine.snapshot());
     },
     abort() {
-      started = false;
-      done = false;
+      const was = machine.snapshot().phase;
+      machine.abort();
+      if (was === "done" || was === "bonus") machine.reload(true);
       resetQ = false;
+      bonusQ = false;
       leverT = 1;
       handle.rotation.z = -0.5;
-      for (let i = 0; i < 3; i++) parkAt(i, START[i][0], START[i][1]);
-      recompute(null);
-      stairOn = false;
-      stairT = 0;
-      stairApply();
-      gateOpen = false;
-      gateP = 0;
-      if (gateId < 0) gateId = addGate();
-      applyGate();
+      apply(machine.snapshot());
+      if (was !== "done" && was !== "bonus") {
+        stairOn = false;
+        stairT = 0;
+        stairApply();
+        gateOpen = false;
+        gateP = 0;
+        if (gateId < 0) gateId = addGate();
+        applyGate();
+      }
     },
     solved(animated) {
-      if (done && animated) return;
-      for (let i = 0; i < 3; i++) parkAt(i, PLATES[i][0], PLATES[i][1]);
-      recompute(null);
-      done = true;
-      started = false;
+      if (machine.snapshot().phase === "done" && animated) return;
+      machine.reload(true);
       resetQ = false;
+      bonusQ = false;
       openGate();
       stairOn = true;
       if (!animated) {
         gateP = 1;
         stairT = STAIR_TOTAL;
       }
+      apply(machine.snapshot());
       applyGate();
       stairApply();
     },

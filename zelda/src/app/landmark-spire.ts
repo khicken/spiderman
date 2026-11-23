@@ -430,6 +430,35 @@ export function buildSpire(env: SiteEnv): SpireHandle {
     }
   });
 
+  // Four lit braziers 3 m inside the Warden's chain anchors (compass points, 22 m out): in phase 3 the player carries
+  // fire from one of these to a chain with a thread.
+  {
+    const bm = new Mesher(16), fm = new Mesher(17);
+    const flames: THREE.Mesh[] = [];
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2;
+      const x = cx + Math.sin(a) * 19, z = cz + Math.cos(a) * 19, g = world.heightAt(x, z);
+      bm.cyl(x, g - 0.3, z, 0.8, 0.6, 1.3, PAL.ashHi, 8);
+      bm.cyl(x, g + 0.9, z, 0.55, 0.95, 0.4, PAL.ashLo, 8);
+      bm.torus(x, g + 1.3, z, 0.9, 0.06, PAL.gloamHi, Math.PI / 2, 0, 0, 14, 4);
+      world.addBox({ minX: x - 0.8, maxX: x + 0.8, minZ: z - 0.8, maxZ: z + 0.8, minY: g - 0.3, maxY: g + 1.3, tag: "decor", owner: "landmarks:spire-brazier" });
+      env.reg.anchor({ id: `spire:brazier-${i}`, kind: "brazier", pos: { x, y: g + 1.7, z }, weight: 0, lit: true, enabled: true });
+      const one = new Mesher(18 + i);
+      one.cone(x, g + 1.2, z, 0.5, 1.2, PAL.ember, 7, 0, { jit: 0, ao: 0 });
+      one.cone(x, g + 1.2, z, 0.3, 1.7, PAL.emberHi, 6, 0, { jit: 0, ao: 0 });
+      const f = one.build(look, glowMat(look, PAL.ember, 1.7), "spire-brazier-flame");
+      f.castShadow = false;
+      env.own(f.geometry);
+      group.add(f);
+      flames.push(f);
+    }
+    const bmesh = bm.build(look, undefined, "spire-braziers");
+    env.own(bmesh.geometry);
+    group.add(bmesh);
+    void fm;
+    env.reg.anim((c) => { for (let i = 0; i < 4; i++) flames[i].scale.y = 1 + Math.sin(c.time * 9 + i * 1.7) * 0.1; });
+  }
+
   const handle: SpireHandle = {
     info: { x: cx, z: cz, radius: 140 },
     arena: { x: cx, y: gy, z: cz, r: 30 },

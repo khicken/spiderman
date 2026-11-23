@@ -32,7 +32,7 @@ const NAV_FIRST = 0.4;
 const NAV_REPEAT = 0.12;
 
 const MAP: readonly [number, BtnName][] = [
-  [0, "jump"], [2, "attack"], [6, "block"], [7, "bow"], [5, "lock"], [3, "use"], [8, "map"], [9, "pause"],
+  [0, "jump"], [2, "attack"], [6, "block"], [7, "bow"], [5, "lock"], [4, "thread"], [3, "use"], [8, "map"], [9, "pause"],
 ];
 
 function radial(x: number, y: number, dz: number, curve: number, o: { x: number; y: number }) {
@@ -105,21 +105,27 @@ export function createPad(nav: (d: NavDir) => void): Pad {
         down[name] = d;
         prev[i] = d;
       }
-      // B: held = sprint at once, a short tap = dodge roll on release.
+      // B: the roll fires on press (no release lag); held past TAP_S it becomes sprint. L3 also sprints.
       const b = btnDown(p, 1, 0.5);
       const l3 = btnDown(p, 10, 0.5);
+      const r3 = btnDown(p, 11, 0.5);
       const bEdge = b && !prev[1];
-      if (bEdge) active = true;
-      if (b) bHeld += dt;
-      else {
-        if (prev[1] && bHeld < TAP_S) latch.dodge = true;
-        bHeld = 0;
+      if (bEdge) {
+        active = true;
+        latch.dodge = true;
       }
+      bHeld = b ? bHeld + dt : 0;
       prev[1] = b;
       if (l3 && !prev[10]) active = true;
       prev[10] = l3;
-      down.sprint = b || l3;
-      down.dodge = false;
+      if (r3 && !prev[11]) {
+        active = true;
+        latch.lock = true;
+      }
+      prev[11] = r3;
+      down.lock = down.lock || r3;
+      down.sprint = (b && bHeld >= TAP_S) || l3;
+      down.dodge = b && bHeld < TAP_S;
       out.active = active;
 
       // Menu navigation: d-pad and left stick, with repeat. A = ok, B or Start = back (only while menus own input).

@@ -1,14 +1,19 @@
 // HOLLOWMERE audio: createAudio(ac) wires the rig, the score, the ambience and the SFX to the game.
 // Every public method catches its own errors. The AudioContext comes from game.ts (created on the first gesture).
 import { LAKE, SEA_LEVEL } from "./contracts";
-import type { Audio, FrameCtx, GameEvent } from "./contracts";
+import type { AudioV2, FrameCtx, GameEvent } from "./contracts";
+import { createSampleBank, SFX_MANIFEST, VOICE_MANIFEST, type BankPlus } from "./audio-samples";
+import { createVoice } from "./audio-voice";
+import { presetFor } from "./audio-space";
 import { createAmbience, type AmbInput, type Ambience } from "./audio-ambience";
 import { Rig, clamp, createRig } from "./audio-dsp";
 import { createMusic, type Music, type MusicState } from "./audio-music";
-import { createSfx, type Sfx } from "./audio-sfx";
+import { createSfx, type Sfx, type SfxFrame } from "./audio-sfx";
 
-export interface AudioPlus extends Audio {
+export interface AudioPlus extends AudioV2 {
   setAmbienceVolume(v: number): void;
+  /** Resolves when the boot clips are decoded (sfx first, voice after). */
+  ready: Promise<void>;
   lab: { rig: Rig; music: Music; sfx: Sfx; amb: Ambience; pump(until: number): void } | null;
 }
 
@@ -16,6 +21,10 @@ export interface AudioOpts {
   manual?: boolean; // offline rendering: no timers, no voice budget; call lab.pump(until)
   seed?: number;
   lite?: boolean;
+  bank?: BankPlus; // offline rendering injects a bank that is already loaded
+  noLoad?: boolean; // do not fetch manifests
+  musicBank?: BankPlus; // bank the score loads its instruments into; default is the rig bank
+  firstGap?: number; // seconds before the first score cue (offline checks)
 }
 
 const ALERTED = new Set(["alert", "chase", "windup", "attack", "recover", "stunned", "hurt"]);
@@ -29,10 +38,23 @@ for (let i = 0; i < DIRS; i++) {
 }
 const BIRDY: Record<string, number> = { whisperwood: 1, village: 0.8, shrine: 0.6, lake: 0.5, cliffs: 0.25, cinder: 0, spire: 0 };
 
+/** Terrain between the listener and a source: sample the heightfield along the line. */
+function blocked(world: FrameCtx["world"], L: { x: number; y: number; z: number }, x: number, y: number, z: number): boolean {
+  const n = 6;
+  for (let i = 1; i < n; i++) {
+    const k = i / n;
+    const px = L.x + (x - L.x) * k;
+    const pz = L.z + (z - L.z) * k;
+    if (world.heightAt(px, pz) > L.y + (y - L.y) * k + 0.5) return true;
+  }
+  return false;
+}
+
 function silent(): AudioPlus {
   return {
     update() {}, handle() {}, ui() {}, setVolumes() {}, menuMusic() {}, suspend() {}, dispose() {},
-    setAmbienceVolume() {}, lab: null,
+    setAmbienceVolume() {}, lab: null, ready: Promise.resolve(),
+    levels: () => ({ music: -120, sfx: -120, ambience: -120, voice: -120, master: -120, oscStarts: 0 }),
   };
 }
 
@@ -48,16 +70,23 @@ export function createAudio(ac: AudioContext, opts: AudioOpts = {}): AudioPlus {
 function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
   const lite =
     opts.lite ?? (typeof navigator !== "undefined" && navigator.maxTouchPoints > 1 && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
-  const rig = createRig(ac, { manual: opts.manual, lite });
-  const music = createMusic(rig, { seed: opts.seed });
+  const bank = opts.bank ?? createSampleBank(ac);
+  const rig = createRig(ac, { manual: opts.manual, lite, bank });
+  const music = createMusic(rig, { seed: opts.seed, bank: opts.musicBank, firstGap: opts.firstGap });
   const sfx = createSfx(rig);
   const amb = createAmbience(rig);
+  const voice = createVoice(rig);
+  const ready: Promise<void> = opts.noLoad
+    ? Promise.resolve()
+    : bank.load(SFX_MANIFEST).then(() => bank.load(VOICE_MANIFEST)).catch(() => {});
   const st: MusicState = music.state;
 
   let master = 1;
   let musicVol = 1;
   let sfxVol = 1;
   let ambVol = 1;
+  let voiceVol = 1;
+  let areaPreset = "";
   let userSuspended = false;
   let hidden = typeof document !== "undefined" && document.hidden;
   let acc = 0;
@@ -65,7 +94,23 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
   let bossFlag = false;
   let disposed = false;
   const input: AmbInput = { daylight: 1, rain: 0, wind: 0, altitude: 0, gliding: false, water: 0, waterKind: 0, waterPan: 0, birdy: 0.4 };
-  const sf = { hp: 0, maxHp: 0, charging: 0, wet: 0 };
+  const sf: SfxFrame = { hp: 0, maxHp: 0, charging: 0, wet: 0 };
+
+  // one occlusion test for the whole run; slow() points it at the current world
+  let occWorld: FrameCtx["world"] | null = null;
+  rig.space.setOcclusion((x, y, z) => occWorld !== null && blocked(occWorld, rig.listener, x, y, z));
+
+  const handleOne = (e: GameEvent) => {
+    switch (e.type) {
+      case "bossWake": bossFlag = true; break;
+      case "bossDefeated": bossFlag = false; break;
+      case "thunder": amb.thunder(e.delay, pan(e.pos.x, e.pos.z)); return;
+      case "say": voice.say(e); return;
+      case "dawn": amb.chirpNow(4); break;
+      default: break;
+    }
+    sfx.handle(e);
+  };
 
   const safe = (fn: () => void) => {
     try { fn(); } catch { /* audio never throws into the game loop */ }
@@ -78,14 +123,17 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
       else p.setTargetAtTime(v, now, 0.03);
     };
     set(rig.master.gain, 0.9 * master);
-    set(rig.musicBus.gain, 0.42 * musicVol);
+    set(rig.musicBus.gain, musicVol);
     set(rig.sfxBus.gain, 0.9 * sfxVol);
+    set(rig.mix.ui.gain, sfxVol);
     set(rig.ambBus.gain, userSuspended ? 0 : 0.55 * sfxVol * ambVol);
+    voice.setVolume(voiceVol);
   }
 
   function applyRun() {
     const ctx = ac as AudioContext;
     // only a hidden tab stops the context: the book, death and ending screens still need UI cues, stings and music
+    if (typeof (ac as OfflineAudioContext).startRendering === "function") return;
     const want = !hidden;
     if (!ctx.suspend || !ctx.resume) return;
     if (want && ctx.state !== "running") ctx.resume().catch(() => {});
@@ -166,14 +214,28 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
     input.waterPan = wd === 99 ? 0 : pan(rig.listener.x + wdx * wd, rig.listener.z + wdz * wd);
 
     amb.set(input, ac.currentTime, dt);
+    const preset = presetFor(area?.id);
+    if (preset !== areaPreset) {
+      areaPreset = preset;
+      rig.space.setArea(preset);
+    }
+    occWorld = ctx.world;
+    rig.mix.setCombat(combatT > 0 && st.boss === 0 ? true : st.boss > 0);
+    rig.mix.tick();
+    rig.space.tick(ac.currentTime);
     sf.hp = p.hp;
     sf.maxHp = p.maxHp;
     sf.charging = p.action === "charge" ? p.charge : 0;
     sf.wet = ctx.env.wet;
+    sf.pushing = p.action === "push";
     sfx.update(ac.currentTime, sf);
   }
 
   const out: AudioPlus = {
+    ready,
+    levels: () => {
+      try { return rig.mix.levels(); } catch { return { music: -120, sfx: -120, ambience: -120, voice: -120, master: -120, oscStarts: 0 }; }
+    },
     lab: { rig, music, sfx, amb, pump: (until: number) => music.pump(until) },
     update(ctx) {
       safe(() => {
@@ -187,6 +249,8 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
         } else {
           L.x = ctx.player.pos.x; L.y = ctx.player.pos.y; L.z = ctx.player.pos.z;
         }
+        rig.space.setListener(L.x, L.y, L.z, L.rx, L.rz);
+        music.update(ctx);
         acc += ctx.realDt;
         if (acc < 0.125) return;
         const dt = acc;
@@ -195,35 +259,20 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
       });
     },
     handle(events: readonly GameEvent[]) {
+      safe(() => music.handle(events));
       for (let i = 0; i < events.length; i++) {
-        const e = events[i];
-        safe(() => {
-          switch (e.type) {
-            case "beaconLit": music.sting("beacon"); break;
-            case "bossWake": bossFlag = true; break;
-            case "bossDefeated": bossFlag = false; music.sting("victory"); break;
-            case "died": music.sting("death"); break;
-            case "rest": music.sting("rest"); break;
-            case "ending": st.ending = true; break;
-            case "trialStart": st.trial = true; break;
-            case "trialDone":
-            case "trialFail": st.trial = false; break;
-            case "thunder": amb.thunder(e.delay, pan(e.pos.x, e.pos.z)); return;
-            case "dawn": amb.chirpNow(4); break;
-            default: break;
-          }
-          sfx.handle(e);
-        });
+        try { handleOne(events[i]); } catch { /* audio never throws into the game loop */ }
       }
     },
     ui(cue) {
       safe(() => sfx.ui(cue));
     },
-    setVolumes(m, mu, sf2) {
+    setVolumes(m, mu, sf2, vo) {
       safe(() => {
         master = clamp(m);
         musicVol = clamp(mu);
         sfxVol = clamp(sf2);
+        if (vo !== undefined) voiceVol = clamp(vo);
         applyVolumes(false);
       });
     },
@@ -240,18 +289,22 @@ function build(ac: BaseAudioContext, opts: AudioOpts): AudioPlus {
       safe(() => {
         userSuspended = on;
         applyVolumes(false);
+        // iOS resumes a context only inside a user gesture; Resume and unpause call this from their click / key handler
+        if (!on) applyRun();
       });
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      // each on its own: one throw must not leave the rest running
       safe(() => {
         if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVis);
-        music.dispose();
-        sfx.dispose();
-        amb.dispose();
-        rig.dispose();
       });
+      safe(() => music.dispose());
+      safe(() => voice.dispose());
+      safe(() => sfx.dispose());
+      safe(() => amb.dispose());
+      safe(() => rig.dispose());
     },
   };
   return out;

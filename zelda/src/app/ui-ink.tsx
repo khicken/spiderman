@@ -8,27 +8,26 @@ import type { Device } from "./contracts";
 export const FLAME_PATH = "M12 1.2C14.6 6.4 20.6 10.6 20.6 18.9A8.6 8.6 0 0 1 3.4 18.9C3.4 14.2 6 11.3 7.9 7.6C8.6 10.3 10 11.9 11.4 12.6C10.4 8.6 10.9 4.7 12 1.2Z";
 export const FLAME_CORE = "M12 13.6C14.1 16.4 15.9 18.4 15.9 21.6A3.9 3.9 0 0 1 8.1 21.6C8.1 18.6 10 16.6 12 13.6Z";
 
-export const HeartFlame = memo(function HeartFlame({ q, id, danger, size = 2.1 }: { q: number; id: string; danger?: boolean; size?: number }) {
-  const h = 28 * (q / 4);
-  const fill = danger ? "var(--color-rubric)" : "url(#hm-ember-grad)";
+const HEART_PATH = "M12 21.5C5 16.4 2 12.6 2 8.4A5.4 5.4 0 0 1 12 5.6A5.4 5.4 0 0 1 22 8.4C22 12.6 19 16.4 12 21.5Z";
+
+/** One heart, filled in quarters from the bottom (q 0..4). Red, so it reads as health. */
+export const HeartIcon = memo(function HeartIcon({ q, id, danger, size = 1.9 }: { q: number; id: string; danger?: boolean; size?: number }) {
+  const h = 20 * (q / 4);
   return (
-    <svg viewBox="0 0 24 34" style={{ width: `${size * 0.72}em`, height: `${size}em`, overflow: "visible" }} aria-hidden>
+    <svg viewBox="0 0 24 24" style={{ width: `${size}em`, height: `${size}em`, overflow: "visible" }} aria-hidden>
       <defs>
-        <clipPath id={`hf-${id}`}>
-          <rect x="0" y={29 - h} width="24" height={h + 6} />
+        <clipPath id={`hc-${id}`}>
+          <rect x="0" y={22 - h} width="24" height={h + 4} />
         </clipPath>
       </defs>
-      <ellipse cx="12" cy="31.2" rx="7.5" ry="1.9" fill="var(--color-gold-lo)" />
-      <path d="M5.5 30.4h13" stroke="var(--color-gold-hi)" strokeWidth="1.2" strokeLinecap="round" />
-      <path d={FLAME_PATH} fill="rgb(8 25 28 / 0.45)" stroke="rgb(248 240 221 / 0.55)" strokeWidth="1" />
+      <path d={HEART_PATH} fill="rgb(8 25 28 / 0.55)" stroke="rgb(248 240 221 / 0.7)" strokeWidth="1.3" strokeLinejoin="round" />
       {q > 0 && (
-        <g clipPath={`url(#hf-${id})`}>
-          <g className={danger ? "hm-gutter" : "hm-flame-flicker"} style={{ animationDelay: `${(id.length * 0.37) % 1.3}s` }}>
-            <path d={FLAME_PATH} fill={fill} stroke="var(--color-ink)" strokeWidth="0.9" />
-            <path d={FLAME_CORE} fill={danger ? "#f2a08c" : "var(--color-ember-hi)"} />
-          </g>
+        <g clipPath={`url(#hc-${id})`} className={danger ? "hm-gutter" : undefined}>
+          <path d={HEART_PATH} fill={danger ? "#d8452f" : "#e0533f"} stroke="var(--color-ink)" strokeWidth="1" strokeLinejoin="round" />
+          <path d="M6 7.4C6.6 5.9 8.2 5.3 9.4 5.9" stroke="#ffd3c4" strokeWidth="1.5" strokeLinecap="round" fill="none" />
         </g>
       )}
+      <path d={HEART_PATH} fill="none" stroke="var(--color-ink)" strokeWidth="0.7" strokeLinejoin="round" opacity="0.7" />
     </svg>
   );
 });

@@ -1,0 +1,50 @@
+{
+"oriel-1": {
+"hash": "efa79bd5cf69",
+"durationSec": 1.775
+},
+"oriel-2": {
+"hash": "7895fe8d211f",
+"durationSec": 2.42
+},
+"oriel-3": {
+"hash": "edf6e85f43ce",
+"durationSec": 2.191
+},
+"tallow-wake": {
+"hash": "5bb02767d29b",
+"durationSec": 1.708
+},
+"tallow-gate": {
+"hash": "9d89e0617d82",
+"durationSec": 1.377
+},
+"tallow-vista": {
+"hash": "8e639416ccff",
+"durationSec": 2.385
+},
+"tallow-ride": {
+"hash": "c13f7f69281c",
+"durationSec": 2.489
+},
+"tallow-gladeLit": {
+"hash": "3dd62f4cfc9e",
+"durationSec": 1.508
+},
+"tallow-mem0": {
+"hash": "23f59ec5554f",
+"durationSec": 2.54
+},
+"tallow-mem1": {
+"hash": "e24bb650d11e",
+"durationSec": 2.183
+},
+"tallow-mem2": {
+"hash": "6a3957b45b84",
+"durationSec": 2.812
+},
+"tallow-mem3": {
+"hash": "30d78c915067",
+"durationSec": 2.113
+}
+}

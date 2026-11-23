@@ -1,6 +1,8 @@
 # AGENTS.md
 
-Rules and lessons for all games in this repo. Add a lesson here when it applies to more than one game.
+Code, performance and test rules for all games in this repo. Add a lesson here when it applies to more than one game.
+
+For design and feel rules (onboarding, text, controls, combat, audio levels, graphics), read `GAME-DESIGN.md`.
 
 ## Layout
 
@@ -14,7 +16,6 @@ Rules and lessons for all games in this repo. Add a lesson here when it applies 
 
 - Use no asset files. Build everything with three.js geometry, canvas textures, and Web Audio.
 - Exception: recorded voice clips. Do not use the browser speechSynthesis voice. Generate voice lines one time with a local TTS model (Chatterbox) and ship them in `public/voice/` with a manifest. See `2k/scripts/voice/`.
-- Exception: real recorded sound effects, when synthesis sounds fake (crowds, ball, rim, whistles). Use only CC0 or CC BY clips, list each one in `public/sfx/CREDITS.md`, and show CC BY credits in the game. See `2k/public/sfx/`.
 - Exception: recorded sound effects and crowd audio. Synthesized crowds, ball bounces and whistles sound fake. Ship real recordings (CC0 or CC BY) in `public/sfx/`, load them through one sample module (`2k/src/app/audio-samples.ts`), credit every clip in `public/sfx/CREDITS.md`, and show the CC BY credits in the game's settings. Keep synthesis only for UI cues.
 - Each module is a `createX()` factory that returns a plain object with `update` and `dispose`.
 - `game.ts` owns the one `requestAnimationFrame` loop. Modules return `GameEvent[]`, and `game.ts` routes them to audio, camera, and UI.

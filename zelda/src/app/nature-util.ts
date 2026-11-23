@@ -110,8 +110,10 @@ void main() {
     float t = clamp(dot(vW - cameraPosition, seg) / max(dot(seg, seg), 1e-4), 0.0, 1.0);
     float d = length(vW - (cameraPosition + seg * t));
     float r = uNearFade * mix(1.0, 0.45, t);
-    float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    if (t < 0.97 && smoothstep(r * 0.55, r, d) < ign) discard;
+    // R2 low-discrepancy dither: blue-noise-like, so the fade reads as a soft veil instead of a grid pattern
+    vec2 fc = floor(gl_FragCoord.xy);
+    float bn = fract(dot(fc, vec2(0.7548776662, 0.5698402910)) + 0.5 * fract(dot(fc, vec2(0.0671, 0.0058)) * 52.98));
+    if (t < 0.97 && smoothstep(r * 0.55, r, d) < bn) discard;
   }
   vec3 V = normalize(cameraPosition - vW);
   vec3 n = normalize(vN);
@@ -120,16 +122,18 @@ void main() {
   float up = smoothstep(0.55, 0.92, n.y);
   alb = mix(alb, uMoss * (0.8 + 0.4 * nz), up * uMossAmt);
   vec3 c = hmShade(alb, n, vW, V);
-  c = hmFog(c, length(cameraPosition - vW));
+  c = hmFogP(c, vW);
   gl_FragColor = vec4(c, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
-export function meshMat(look: Look, o: { sway: number; moss?: number; patch?: number; mossColor?: string; side?: THREE.Side; nearFade?: number }): THREE.ShaderMaterial {
+export function meshMat(
+  look: Look, o: { sway: number; moss?: number; patch?: number; mossColor?: string; side?: THREE.Side; nearFade?: number; foliage?: boolean },
+): THREE.ShaderMaterial {
   return shaderMat(look, MESH_VS, MESH_FS, {
     uSwayAmt: { value: o.sway }, uMossAmt: { value: o.moss ?? 0 }, uMoss: { value: new THREE.Color(o.mossColor ?? "#7a9a4a") },
     uPatch: { value: o.patch ?? 0.16 }, uNearFade: { value: o.nearFade ?? 0 }, uFocus: { value: new THREE.Vector3() },
-  }, { side: o.side ?? THREE.FrontSide });
+  }, { side: o.side ?? THREE.FrontSide, defines: o.foliage ? { HM_FOLIAGE: "" } : {} });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -149,7 +153,8 @@ export class GeoBuilder {
   private c = new THREE.Color();
   private nm = new THREE.Matrix3();
 
-  add(g0: THREE.BufferGeometry, m: THREE.Matrix4, color: ColorFn, sway: SwayFn, local?: LocalFn): void {
+  /** post: runs on the transformed position/normal, before colour (e.g. spherical crown normals). */
+  add(g0: THREE.BufferGeometry, m: THREE.Matrix4, color: ColorFn, sway: SwayFn, local?: LocalFn, post?: LocalFn): void {
     const g = g0.index ? g0.toNonIndexed() : g0;
     const P = g.getAttribute("position"), N = g.getAttribute("normal");
     this.nm.getNormalMatrix(m);
@@ -159,6 +164,7 @@ export class GeoBuilder {
       if (local) local(this.p, this.n);
       this.p.applyMatrix4(m);
       this.n.applyMatrix3(this.nm).normalize();
+      if (post) post(this.p, this.n);
       color(this.p, this.n, this.c);
       this.pos.push(this.p.x, this.p.y, this.p.z);
       this.nor.push(this.n.x, this.n.y, this.n.z);

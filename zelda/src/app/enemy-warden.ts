@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import type { EnemyKind, EnemyState, FrameCtx, GameEvent, Look } from "./contracts";
-import { ENEMY, SWORD, WARDEN_PHASES } from "./contracts";
+import type { EnemyKind, EnemyState, FrameCtx, GameEvent, Look, ThreadAnchor } from "./contracts";
+import { ENEMY, SWORD, TELL, WARDEN_PHASES } from "./contracts";
 import { angleDiff } from "./state";
 import { fireBolt, move, turnTo, v3 } from "./enemy-brain";
 import type { EnemyRt, Host } from "./enemy-brain";
@@ -48,7 +48,9 @@ const P = {
   dead: pose({ hipY: -1.9, torsoX: 1.1, headX: 0.6, rShX: 0.2, rShZ: -0.5, rEl: 0, swX: 2.9, lShX: 0.2, lShZ: 0.5, lEl: 0 }),
 };
 
-const enum A { None, Chain, Lunge, Slam, Volley, Beam, Summon, Roar, Stagger, Death }
+// plain object, not a const enum: node --experimental-strip-types (scripts/sim) cannot run enums
+const A = { None: 0, Chain: 1, Lunge: 2, Slam: 3, Volley: 4, Beam: 5, Summon: 6, Roar: 7, Stagger: 8, Death: 9 } as const;
+type A = (typeof A)[keyof typeof A];
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -76,11 +78,11 @@ export class Warden {
   private rate = 6;
 
   phase = 1;
-  private atk = A.None;
+  private atk: A = A.None;
   private atkT = 0;
   private step = 0;
   private fired = 0;
-  private last = A.None;
+  private last: A = A.None;
   private crownHits = 0;
   private weak = 0; // vulnerability window left (s)
   private summoned = false;
@@ -97,7 +99,18 @@ export class Warden {
   private hitDone = false;
   private sweepPrev = 0;
   readonly crown = new THREE.Vector3();
-  readonly summonAt: THREE.Vector3[] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  readonly summonAt: THREE.Vector3[] = [new THREE.Vector3(), new THREE.Vector3()]; // phase 2 summons 2 bramblings
+  // v2 telegraphs: one tell per scheduled hit frame (bit mask of hits already told this attack)
+  private told = 0;
+  glint = 0; // s of gold blade glint left
+  // v2 phase 3: the Warden pins 4 gloam threads to the arena braziers; burning one cuts it. Fixed anchors (kind "chain").
+  readonly chains: ThreadAnchor[] = [0, 1, 2, 3].map((i) => ({
+    id: `warden:chain-${i}`, kind: "chain" as const, pos: { x: 0, y: 0, z: 0 }, weight: 0 as const, lit: false, enabled: false,
+  }));
+  private readonly cut = [false, false, false, false];
+  /** Hit frames of the current attack, s after its start. Fixed scratch array; `hitN` entries are valid. */
+  private readonly hitAt = new Float32Array(6);
+  private hitN = 0;
 
   constructor(group: THREE.Group, look: Look) {
     const vc = look.toon({ color: "#ffffff", vertexColors: true, side: THREE.DoubleSide });
@@ -267,6 +280,9 @@ export class Warden {
     this.flare = 1;
     this.last = A.None;
     for (const w of this.waves) w.on = false;
+    this.told = 0;
+    this.glint = 0;
+    this.placeChains(e);
     e.phase = 1;
     rt.aggro = true;
     rt.emerge = 1;
@@ -277,6 +293,44 @@ export class Warden {
   sleep(): void {
     this.root.visible = false;
     for (const w of this.waves) w.on = false;
+    for (const c of this.chains) c.enabled = false;
+    this.glint = 0;
+  }
+
+  /** Chain anchors stand at the 4 compass points of the arena, 22 m out (near the rim braziers). */
+  private placeChains(e: EnemyState): void {
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2;
+      const c = this.chains[i];
+      c.pos.x = e.home.x + Math.sin(a) * 22;
+      c.pos.z = e.home.z + Math.cos(a) * 22;
+      c.pos.y = e.home.y + 1.6;
+      c.enabled = false;
+      this.cut[i] = false;
+    }
+  }
+
+  /** Threads still standing (phase 3). */
+  get chainsUp(): number {
+    let n = 0;
+    for (let i = 0; i < 4; i++) if (this.chains[i].enabled) n++;
+    return n;
+  }
+
+  /** A burning thread touched chain anchor `id`: cut it. All 4 cut: a long kneel. Returns true if it was cut now. */
+  cutChain(id: string, e: EnemyState, out: GameEvent[]): boolean {
+    for (let i = 0; i < 4; i++) {
+      const c = this.chains[i];
+      if (c.id !== id || !c.enabled) continue;
+      c.enabled = false;
+      this.cut[i] = true;
+      out.push({ type: "shake", strength: 0.35 });
+      if (this.atk === A.Death || this.atk === A.Roar) return true;
+      this.start(A.Stagger, e);
+      this.weak = this.chainsUp === 0 ? 4 : 1;
+      return true;
+    }
+    return false;
   }
 
   get dying(): boolean {
@@ -302,6 +356,8 @@ export class Warden {
       }
     }
     if (this.weak > 0) k *= 1.5;
+    if (this.phase === 3 && this.chainsUp > 0 && this.atk !== A.Stagger) k *= 0.35; // the threads feed it: cut them
+    if (kind === "bind") return 0;
     return dmg * k;
   }
 
@@ -330,6 +386,20 @@ export class Warden {
   private start(a: A, e: EnemyState): void {
     this.atk = a;
     this.atkT = 0;
+    this.told = 0;
+    this.glint = 0;
+    const f = this.phase === 3 ? 0.8 : 1;
+    const h = this.hitAt;
+    let n = 0;
+    if (a === A.Chain) {
+      const t1 = 0.75 * f, t2 = t1 + 0.25 + 0.45 * f, t3 = t2 + 0.25 + 1.1 * f;
+      h[n++] = t1; h[n++] = t2; h[n++] = t3 + 0.1;
+    } else if (a === A.Lunge) {
+      h[n++] = 0.75 * f + 0.14; h[n++] = 0.75 * f + 0.3;
+    } else if (a === A.Slam) h[n++] = 1.0 * f + 0.1;
+    else if (a === A.Volley) h[n++] = 1.0 * f; // the first bolt leaves
+    else if (a === A.Beam) h[n++] = 1.4 * f;
+    this.hitN = n;
     this.step = 0;
     this.fired = 0;
     this.hitDone = false;
@@ -388,6 +458,16 @@ export class Warden {
     this.atkT += dt;
     e.brainT += dt;
     this.weak = Math.max(0, this.weak - dt);
+    this.glint = Math.max(0, this.glint - dt);
+    if (this.step < 99) {
+      for (let i = 0; i < this.hitN; i++) {
+        const tt = this.hitAt[i] - TELL.glintLead;
+        if (this.told & (1 << i) || this.atkT < tt - 1e-6) continue;
+        this.told |= 1 << i;
+        this.glint = 0.14;
+        host.out.push({ type: "tell", id: e.id, kind: "warden", pos: v3(this.crown.x, this.crown.y, this.crown.z), lead: Math.max(0, this.hitAt[i] - this.atkT) });
+      }
+    }
     this.flare = Math.max(0, this.flare - dt * 0.5);
     const dx = p.pos.x - e.pos.x, dz = p.pos.z - e.pos.z;
     const d = Math.hypot(dx, dz) + 1e-6;
@@ -406,6 +486,7 @@ export class Warden {
         this.nextPhase = want;
         this.start(A.Roar, e);
         host.release(rt);
+        if (want === 3) for (let i = 0; i < 4; i++) this.chains[i].enabled = !this.cut[i];
       }
     }
 
@@ -627,8 +708,8 @@ export class Warden {
           this.step = 1;
           this.summoned = true;
           this.windEvt(e, host);
-          for (let i = 0; i < 3; i++) {
-            const a = e.yaw + (i - 1) * 1.4;
+          for (let i = 0; i < this.summonAt.length; i++) {
+            const a = e.yaw + (i - 0.5) * 1.6;
             const hx = e.home.x, hz = e.home.z;
             let sx = e.pos.x + Math.sin(a) * 7, sz = e.pos.z + Math.cos(a) * 7;
             const r = Math.hypot(sx - hx, sz - hz);
@@ -642,8 +723,9 @@ export class Warden {
         this.brain(e, t < 1.2 ? "windup" : "recover");
         glowT = Math.min(1, t / 1.2);
         for (const s of this.summonAt) host.fx.ring(s.x, ctx.world.heightAt(s.x, s.z), s.z, 1.3, Math.min(1, t / 1.2), 0.9, 0.45, 1.1);
-        if (t >= 1.2 && this.step === 1) {
-          this.step = 2;
+        if (t >= 1.2 && this.step === 2) {
+          // windEvt above already moved step 1 -> 2 (v1 checked step 1 here, so summons never came)
+          this.step = 3;
           for (const s of this.summonAt) summon("brambling", s.x, s.z);
         }
         if (t >= 1.8) this.start(A.None, e);
@@ -742,6 +824,21 @@ export class Warden {
       }
     }
     if (this.flare > 0) host.fx.ring(e.home.x, e.home.y, e.home.z, ARENA_R, 0, 1.2 * this.flare, 0.6 * this.flare, 1.6 * this.flare);
+    if (this.phase === 3 && this.atk !== A.Death) {
+      // gloam flood on the arena floor, and the 4 threads from the braziers to the Warden's chest
+      host.fx.ring(e.home.x, e.home.y + 0.05, e.home.z, ARENA_R - 2, 1, 0.12, 0.04, 0.22);
+      for (let i = 0; i < 4; i++) {
+        const c = this.chains[i];
+        if (!c.enabled) continue;
+        const x0 = c.pos.x, y0 = c.pos.y, z0 = c.pos.z, x1 = e.pos.x, y1 = e.pos.y + 3.4, z1 = e.pos.z;
+        const n = 12;
+        for (let j = 0; j <= n; j++) {
+          const u = j / n, sag = Math.sin(u * Math.PI) * 0.8;
+          const pul = 0.75 + 0.25 * Math.sin(ctx.time * 8 - j * 0.7 + i);
+          host.fx.orb(x0 + (x1 - x0) * u, y0 + (y1 - y0) * u - sag, z0 + (z1 - z0) * u, 0.12, 0.5 * pul, 0.12 * pul, 0.9 * pul);
+        }
+      }
+    }
 
     this.glow += (glowT - this.glow) * Math.min(1, dt * 12);
     if (this.atk !== A.Death && this.atk !== A.Beam) {
@@ -843,10 +940,11 @@ export class Warden {
     const g = this.glow;
     const weakK = this.weak > 0 ? 0.6 + 0.4 * Math.sin(t * 10) : 0;
     this.glowBody.color.setRGB(0.5 * g + 0.35 * weakK, 0.25 * g + 0.25 * weakK, 0.8 * g + 0.1 * weakK);
-    this.glowBlade.color.setRGB(0.75 * g + 0.05, 0.4 * g + 0.02, 1.1 * g + 0.08);
-    this.glowBody.visible = g + weakK > 0.02;
+    const gl = this.glint > 0 ? this.glint / 0.14 : 0; // gold tell glint
+    this.glowBlade.color.setRGB(0.75 * g + 0.05 + 1.0 * gl, 0.4 * g + 0.02 + 0.8 * gl, 1.1 * g + 0.08 + 0.3 * gl);
+    if (rt.flash > 0) this.glowBody.color.setRGB(0.9 * rt.flash, 0.85 * rt.flash, 0.8 * rt.flash); // uniform white hit flash
+    this.glowBody.visible = g + weakK + rt.flash > 0.02;
     void _w;
-    void rt;
   }
 
   /** Crown lantern glows, drawn through the shared orb pool. */
@@ -859,6 +957,12 @@ export class Warden {
       const f = 0.85 + 0.15 * Math.sin(t * 13 + i * 2.1);
       const k = (0.35 + 0.5 * weakK + 0.35 * p3) * f * (this.deathT >= 0 ? Math.max(0, 1 - this.deathT) : 1);
       host.fx.orb(_v.x, _v.y, _v.z, 0.22 + 0.12 * (weakK + p3), 0.9 * k, 0.62 * k, 0.25 * k);
+    }
+    if (this.glint > 0) {
+      this.tip.getWorldPosition(_v);
+      const k = this.glint / 0.14;
+      host.fx.orb(_v.x, _v.y, _v.z, 0.5 * k + 0.15, 1.6 * k, 1.25 * k, 0.5 * k);
+      host.fx.orb(_v.x, _v.y, _v.z, 0.2 * k + 0.05, 1.5, 1.5, 1.4);
     }
     if (this.weak > 0 || this.phase === 3) e.aimPoint.copy(this.crown);
     else e.aimPoint.set(e.pos.x, e.pos.y + 3.6, e.pos.z);

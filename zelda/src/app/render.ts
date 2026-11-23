@@ -1,15 +1,17 @@
 import * as THREE from "three";
-import type { EnvState, FrameCtx, GameEvent, Platform, Quality, QualityPreset, Render, RenderStats, V3, Weather } from "./contracts";
-import { QUALITY, SEA_LEVEL, START_HOUR } from "./contracts";
+import type { BeaconId, EnvState, FrameCtx, GameEvent, Platform, Quality, QualityPreset, RenderStats, RenderV2, V3, Weather } from "./contracts";
+import { FRAME_GOVERNOR, QUALITY, SEA_LEVEL, START_HOUR } from "./contracts";
 import { createBlobShadows } from "./render-blob";
 import { createEnvSim } from "./render-env";
 import { createFx } from "./render-fx";
-import { createLook, createSharedUniforms, HM_EXTRA_UNIFORMS } from "./render-look";
+import { createLook, createSharedUniforms, HM_EXTRA_UNIFORMS, setRegionColor as lookRegionColor } from "./render-look";
 import { createPost, type PostGrade } from "./render-post";
 import { createRain } from "./render-rain";
 import { createSky } from "./render-sky";
+import { setShaftGround } from "./render-shafts";
+import { createRenderTiming, type RenderTiming } from "./render-timing";
 
-// Owner: render. Renderer, Look, sky, day/night, weather, particles, ink post, bloom, dynamic resolution.
+// Owner: render. Renderer, Look, sky, day/night, weather, particles, post (AA, bloom), frame governor, dynamic resolution.
 
 /** low for phones and weak GPUs, medium for other touch devices and integrated GPUs, high for Apple M-series and
  *  discrete GPUs. ultra only when the player picks it. */
@@ -22,12 +24,17 @@ export function detectQuality(p: Platform): Quality {
 }
 
 /** Extra handles for lab pages and test scripts. */
-export type RenderPlus = Render & {
+export type RenderPlus = RenderV2 & {
   readonly preset: QualityPreset;
   /** Particles alive right now. */
   particles(): number;
   /** Player render scale (Settings.renderScale), multiplies the preset pixel ratio. */
   setRenderScale(s: number): void;
+  readonly timing: RenderTiming;
+  /** 0..1 per main beacon region, as set by setRegionColor. */
+  regionColor(beacon: BeaconId): number;
+  /** Frames drawn since creation (governor and hidden-tab checks). */
+  frames(): number;
 };
 
 const EMBER = new THREE.Color("#f08a3c");
@@ -71,17 +78,61 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
   scene.add(sun, sun.target, hemi);
 
   const sky = createSky();
+  let shaftWorld: unknown = null;
   scene.add(sky.mesh);
   const fx = createFx(uniforms, QUALITY[quality].particles);
   scene.add(fx.mesh);
   const rain = createRain(QUALITY[quality].rainDrops);
   scene.add(rain.mesh);
-  const post = createPost(renderer, QUALITY[quality]);
+  const timing = createRenderTiming(renderer);
+  const post = createPost(renderer, QUALITY[quality], timing);
+
+  // Fake glow on presets without bloom: one additive sprite on the lantern.
+  const glowTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d");
+    if (g) {
+      const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      r.addColorStop(0, "rgba(255,255,255,1)");
+      r.addColorStop(0.25, "rgba(255,255,255,0.45)");
+      r.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = r;
+      g.fillRect(0, 0, 64, 64);
+    }
+    return new THREE.CanvasTexture(c);
+  })();
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false, toneMapped: false,
+  }));
+  glow.userData.hmPass = "particles";
+  glow.visible = false;
+  scene.add(glow);
+  const region = [1, 1, 1, 1];
+  let tagT = 0;
+  const classify = (o: THREE.Mesh): string => {
+    if (o === sky.mesh) return "sky";
+    if (o === fx.mesh || o === rain.mesh) return "particles";
+    const m = o.material as THREE.Material | THREE.Material[];
+    if (!Array.isArray(m) && m?.transparent) return "transparent";
+    for (let p: THREE.Object3D | null = o; p; p = p.parent) {
+      if (p.name === "sea" || p.name === "inland-water") return "water";
+      if (p.name === "terrain") return "terrain";
+      if (p.name === "nature") return "nature";
+      if (p.name === "landmarks") return "landmarks";
+      if (p.name === "wren" || p.name === "enemies") return "actors";
+    }
+    return "opaque";
+  };
 
   let q: Quality = quality;
   let preset = QUALITY[q];
   let dynOn = true;
   let targetMs = 1000 / 60;
+  let userCap: 0 | 30 | 60 = 0;
+  let govState: "play" | "idle" | "paused" | "hidden" = "play";
+  let nextT = 0;
+  let drawn = 0;
   let scale = preset.maxScale;
   let cssW = 1, cssH = 1;
   let lost = false;
@@ -99,15 +150,18 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
   let userScale = 1;
   const pixelRatio = () => Math.max(0.5, Math.min(window.devicePixelRatio || 1, preset.pixelRatio) * userScale);
 
+  // Dynamic resolution scales the drawing buffer itself (the canvas is stretched by CSS), so post runs at that size too.
   const resize = () => {
     cssW = Math.max(1, canvas.clientWidth || window.innerWidth);
     cssH = Math.max(1, canvas.clientHeight || window.innerHeight);
-    const pr = pixelRatio();
+    const cap = Math.sqrt(preset.maxPixels / (cssW * cssH));
+    const pr = Math.max(0.25, Math.min(pixelRatio(), cap) * scale);
     renderer.setPixelRatio(pr);
     renderer.setSize(cssW, cssH, false);
     camera.aspect = cssW / cssH;
     camera.updateProjectionMatrix();
-    post.setSize(Math.round(cssW * pr), Math.round(cssH * pr), scale);
+    const gl = renderer.getContext();
+    post.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
   };
 
   const refreshMaterials = () => {
@@ -145,17 +199,47 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
     rain.setMax(preset.rainDrops);
     sky.setLow(q === "low");
     post.setPreset(preset);
+    glow.visible = false;
     scale = Math.min(preset.maxScale, Math.max(preset.minScale, scale));
+    nextT = 0;
     resize();
   };
 
-  // ------------------------------------------------------------------ dynamic resolution
+  // ------------------------------------------------------------------ frame governor and dynamic resolution
+  const G = FRAME_GOVERNOR;
+  const capFps = (): number => {
+    let c = 0;
+    const take = (v: number) => {
+      if (v > 0) c = c > 0 ? Math.min(c, v) : v;
+    };
+    take(preset.fpsCap);
+    take(userCap);
+    if (govState === "idle") take(G.idleFps);
+    if (govState === "paused") take(G.pausedFps);
+    return c;
+  };
+  const shouldRender = (now: number, state: "play" | "idle" | "paused" | "hidden"): boolean => {
+    if (state !== govState) {
+      govState = state;
+      nextT = 0;
+      frameT0 = 0;
+    }
+    if (state === "hidden") return false;
+    const cap = capFps();
+    if (cap <= 0) return true;
+    const iv = 1000 / cap;
+    // 2 ms slack absorbs rAF jitter, so a 60 cap on a 60 Hz display never drops a frame
+    if (nextT > 0 && now < nextT - 2) return false;
+    nextT = nextT > 0 && now - nextT < iv ? nextT + iv : now + iv;
+    return true;
+  };
+
   let frameT0 = 0;
-  let winSum = 0, winN = 0, winT = 0, underN = 0, raiseNeed = 3, warm = 2;
+  let winSum = 0, winN = 0, winT = 0, lowS = 0, highS = 0, warm = 2;
   let fpsMs = 16.7;
   const dynres = (ms: number) => {
     fpsMs += (ms - fpsMs) * 0.08;
-    if (!dynOn) return;
+    if (!dynOn || govState !== "play") return;
     winSum += ms;
     winN++;
     winT += ms;
@@ -166,21 +250,23 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
       warm--;
       return;
     }
+    const cap = capFps();
+    const want = Math.max(targetMs, cap > 0 ? 1000 / cap : 0);
+    const fps = 1000 / avg, wantFps = 1000 / want;
     let next = scale;
-    if (avg > targetMs * 1.1) {
-      next = scale - 0.05;
-      underN = 0;
-      raiseNeed = 6;
-    } else if (avg < targetMs * 1.05) {
-      // rAF is vsync-capped, so frames rarely come in 25% under target: "at target" counts as headroom
-      underN++;
-      // far under target (a frame-time spike has passed): climb back every 2 s instead of every 3
-      if (underN >= (avg < targetMs * 0.7 ? Math.min(2, raiseNeed) : raiseNeed)) {
-        next = scale + 0.05;
-        underN = 0;
-        raiseNeed = 3;
+    if (fps < G.dynResDownFps * (wantFps / 60)) {
+      highS = 0;
+      if (++lowS >= G.dynResDownSecs) {
+        next = scale - 0.05;
+        lowS = 0;
       }
-    } else underN = 0;
+    } else if (fps > G.dynResUpFps * (wantFps / 60)) {
+      lowS = 0;
+      if (++highS >= G.dynResUpSecs) {
+        next = scale + 0.05;
+        highS = 0;
+      }
+    } else lowS = highS = 0;
     next = Math.min(preset.maxScale, Math.max(preset.minScale, Math.round(next * 100) / 100));
     if (next !== scale) {
       scale = next;
@@ -256,6 +342,14 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
     const flicker = 1 + 0.05 * Math.sin(t * 13.1) + 0.04 * Math.sin(t * 7.3 + 1.7) + 0.03 * Math.sin(t * 23.9);
     u.uLanternColor.value.copy(EMBER).multiplyScalar((0.05 + pal.lantern * 1.05 + flare) * flicker);
     HM_EXTRA_UNIFORMS.uHazeColor.value.copy(pal.glow);
+    const lc = u.uLanternColor.value;
+    const li = Math.max(lc.r, lc.g, lc.b);
+    glow.visible = preset.fakeGlow && li > 0.2;
+    if (glow.visible) {
+      glow.position.copy(u.uLanternPos.value);
+      glow.material.color.copy(lc).multiplyScalar(0.55 / Math.max(1, li));
+      glow.scale.setScalar(1.4 + 0.5 * Math.min(1, li));
+    }
     sun.color.copy(pal.sun);
     hemi.color.copy(pal.amb);
     hemi.groundColor.copy(pal.gnd);
@@ -380,6 +474,21 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
       return preset;
     },
     particles: () => fx.count(),
+    timing,
+    setTiming(on) {
+      timing.enabled = on && timing.supported;
+    },
+    shouldRender,
+    setFpsCap(cap) {
+      userCap = cap;
+      nextT = 0;
+    },
+    setRegionColor(beacon, t) {
+      region[beacon] = Math.min(1, Math.max(0, t));
+      lookRegionColor(beacon, region[beacon]);
+    },
+    regionColor: (beacon) => region[beacon],
+    frames: () => drawn,
     setRenderScale(v) {
       const n = Math.min(1, Math.max(0.5, v || 1));
       if (n !== userScale) {
@@ -442,28 +551,50 @@ export function createRender(canvas: HTMLCanvasElement, quality: Quality): Rende
     },
     handle,
     render(ctx) {
+      if (lost || (typeof document !== "undefined" && document.hidden)) return;
       const now = performance.now();
       if (frameT0 > 0) dynres(Math.min(250, now - frameT0));
       frameT0 = now;
-      if (lost) return;
+      drawn++;
+      if (shaftWorld !== ctx.world) {
+        shaftWorld = ctx.world;
+        const w = ctx.world;
+        setShaftGround((x, z) => w.heightAt(x, z));
+      }
       sky.update(camera, sim.pal, uniforms, env.daylight, time, env.wind, ctx.dt);
       renderer.info.reset();
+      if (timing.enabled) {
+        tagT -= ctx.realDt;
+        if (tagT <= 0) {
+          tagT = 1;
+          timing.tagScene(scene, classify);
+        }
+      }
+      timing.beginFrame();
       post.render(scene, camera, grade, time);
+      timing.endFrame();
     },
     stats(): RenderStats {
-      return { fps: 1000 / fpsMs, ms: fpsMs, scale, calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+      return {
+        fps: 1000 / fpsMs, ms: fpsMs, scale, calls: renderer.info.render.calls, tris: renderer.info.render.triangles,
+        gpu: timing.enabled ? timing.stats() : undefined,
+      };
     },
     dispose() {
+      setShaftGround(null);
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
       window.removeEventListener("orientationchange", onOrient);
       ro?.disconnect();
-      scene.remove(sky.mesh, fx.mesh, rain.mesh, sun, sun.target, hemi);
+      scene.remove(sky.mesh, fx.mesh, rain.mesh, sun, sun.target, hemi, glow);
+      glow.material.dispose();
+      glowTex.dispose();
       sky.dispose();
       blobs.dispose();
       fx.dispose();
       rain.dispose();
       post.dispose();
+      timing.dispose();
       look.dispose();
       sun.shadow.map?.dispose();
       sun.dispose();

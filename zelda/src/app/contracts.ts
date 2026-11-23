@@ -23,6 +23,9 @@ import type * as THREE from "three";
 //        Event payload vectors are plain V3 copies, never live THREE.Vector3 references.
 // OWNERSHIP: each module mutates only its own state. Cross-module effects travel as GameEvents routed by game.ts
 //        (example: combat emits "hit"; player/enemies apply the damage in their own handle()).
+// V2:    v2 additions are marked "v2". Design and numbers: zelda/v2/DESIGN-V2.md. Track split: zelda/v2/TRACKS.md.
+//        New module APIs are `XV2 extends X` interfaces, so v1 code keeps compiling while tracks build in parallel.
+//        The "v2 optional until merge" fields were made required at merge.
 // =====================================================================================================================
 
 export type V3 = { x: number; y: number; z: number }; // THREE.Vector3 satisfies this.
@@ -50,11 +53,13 @@ export const WORLD = {
 
 export type LandmarkId =
   | "shrine" | "village" | "whisperwood" | "cliffs" | "lake" | "cinder" | "spire"
-  | "beacon-cliff" | "beacon-wood" | "beacon-lake" | "beacon-bluff";
+  | "beacon-cliff" | "beacon-wood" | "beacon-lake" | "beacon-bluff"
+  | "beacon-glade"; // v2: the first, small beacon 130 m north of spawn (prologue trial)
 
 export interface Landmark {
   id: LandmarkId;
   name: string; // shown on the map and in the "areaEnter" banner
+  place?: string; // region name for "You are in <place>" when the area is a site (a beacon), not a region
   x: number;
   z: number;
   r: number; // area radius (m) for "areaEnter" and map labels
@@ -69,10 +74,11 @@ export const LANDMARKS: readonly Landmark[] = [
   { id: "lake", name: "Sunken Lake", x: 230, z: -300, r: 110, flat: 0 },
   { id: "cinder", name: "Mt. Cinder", x: 0, z: -40, r: 230, flat: 0 },
   { id: "spire", name: "Gloam Spire", x: 0, z: -40, r: 40, flat: 34 },
-  { id: "beacon-cliff", name: "Cliffwatch Beacon", x: 420, z: 150, r: 30, flat: 16 },
-  { id: "beacon-wood", name: "Thornring Beacon", x: -360, z: -190, r: 35, flat: 26 },
-  { id: "beacon-lake", name: "Drowned Beacon", x: 250, z: -330, r: 30, flat: 18 },
-  { id: "beacon-bluff", name: "Windward Beacon", x: -140, z: -430, r: 35, flat: 20 },
+  { id: "beacon-cliff", name: "Cliffwatch Beacon", place: "Cliffwatch", x: 420, z: 150, r: 30, flat: 16 },
+  { id: "beacon-wood", name: "Thornring Beacon", place: "Thornring", x: -360, z: -190, r: 35, flat: 26 },
+  { id: "beacon-lake", name: "Drowned Beacon", place: "Sunken Lake", x: 250, z: -330, r: 30, flat: 18 },
+  { id: "beacon-bluff", name: "Windward Beacon", place: "Windward Bluff", x: -140, z: -430, r: 35, flat: 20 },
+  { id: "beacon-glade", name: "Glade Beacon", place: "Glade", x: -35, z: 240, r: 40, flat: 24 }, // v2
 ];
 
 export const PLAYER_SPAWN: V3 = { x: -60, y: 0, z: 368 }; // y is resolved with heightAt at spawn; faces north (yaw PI)
@@ -95,6 +101,47 @@ export const RIVER: readonly { x: number; z: number; w: number }[] = [
 /** Whisperwood forest disc (dense trees, darker grass, fog). */
 export const FOREST = { x: -330, z: -150, r: 190 } as const;
 
+/** v2 prologue layout, spawn to Glade Beacon (DESIGN-V2.md section 2). Builders may shift a point up to 8 m to fit the
+ *  terrain but must keep the order and the spawn-to-beacon distance under 150 m. y values are heights above ground. */
+export const PROLOGUE = {
+  gateBrazier: { x: -60, z: 350 }, // first "Light" prompt; the gate opens onto the vista
+  vista: { x: -60, z: 346, lookAt: { x: -35, z: 240 } }, // camera frames the Glade Beacon, the 4 far columns behind it
+  stones: { x: -56, z: 322, gap: 2.4, count: 4 }, // stepping stones over a 0.4 m deep rill (wading is safe)
+  ledge: { x: -52, z: 310, h: 1.2 }, // first full jump
+  climbRock: { x: -45, z: 292, h: 6, knotY: 7.5 }, // first climb; knot A on top
+  knotB: { x: -40, z: 266, y: 2.3 }, // stump knot, about 26 m from knot A and 5 m lower: the first ride
+  // bramble thicket along the back of the climb rock: the ride passes over it, walking round its ends is a ~110 m detour
+  thicket: { x0: -87, x1: -3, z: 289.5, depth: 1.6, h: 4.3 },
+  glade: { x: -35, z: 240 }, // Glade trial arena center (radius 30); the beacon stands on a plinth at its north edge
+  oriel: { x: -58, z: 226 }, // Oriel's waystone, the first fast-travel point
+} as const;
+
+/** v2 waystones: rest, save, fast travel, upgrades. Ids are stable save keys. */
+export const WAYSTONES: readonly { id: string; name: string; x: number; z: number }[] = [
+  { id: "ws-glade", name: "Glade Waystone", x: -58, z: 226 },
+  { id: "ws-mirebrook", name: "Mirebrook Waystone", x: -228, z: 190 },
+  { id: "ws-whisperwood", name: "Whisperwood Waystone", x: -320, z: -150 },
+  { id: "ws-ashen", name: "Ashen Waystone", x: 350, z: 158 },
+  { id: "ws-sunken", name: "Sunken Waystone", x: 246, z: -346 },
+  { id: "ws-windward", name: "Windward Waystone", x: -110, z: -370 },
+  { id: "ws-cinder", name: "Cinder Waystone", x: 75, z: 110 },
+];
+
+/** v2 ember paths: glowing stones every 15 m from the Glade to each beacon. Index = BeaconId. Polylines on (x, z).
+ *  world-gen.ts PATHS (dirt tracks) stays; these are the lit "default route" laid over it. */
+export const EMBER_PATHS: readonly (readonly { x: number; z: number }[])[] = [
+  [{ x: -35, z: 240 }, { x: 40, z: 248 }, { x: 140, z: 238 }, { x: 240, z: 192 }, { x: 300, z: 150 }, { x: 335, z: 140 }],
+  [{ x: -58, z: 226 }, { x: -150, z: 230 }, { x: -228, z: 190 }, { x: -262, z: 130 }, { x: -300, z: -20 }, { x: -340, z: -150 }],
+  [{ x: -35, z: 240 }, { x: 60, z: 140 }, { x: 150, z: 20 }, { x: 175, z: -120 }, { x: 175, z: -245 }, { x: 235, z: -315 }],
+  [{ x: -228, z: 190 }, { x: -262, z: 130 }, { x: -300, z: -60 }, { x: -230, z: -200 }, { x: -170, z: -300 }, { x: -140, z: -410 }],
+];
+
+/** v2 tree-free sight lines (nature skips trees and tall props within `w` m of each segment). */
+export const VIEW_CUTS: readonly { x0: number; z0: number; x1: number; z1: number; w: number }[] = [
+  { x0: -60, z0: 348, x1: -35, z1: 240, w: 14 }, // gate to Glade Beacon
+  { x0: -60, z0: 348, x1: 0, z1: -40, w: 8 }, // gate to the Spire (the Spire stays visible above the glade)
+];
+
 export type BeaconId = 0 | 1 | 2 | 3; // 0 cliff (climb/glide), 1 wood (combat), 2 lake (blocks), 3 bluff (archery)
 export const BEACON_LANDMARK: readonly LandmarkId[] = ["beacon-cliff", "beacon-wood", "beacon-lake", "beacon-bluff"];
 export const BEACON_COLOR: readonly string[] = ["#f08a3c", "#e2b04a", "#6fc7c0", "#c58be0"]; // flame tint per beacon
@@ -106,7 +153,10 @@ export type Surface = "grass" | "dirt" | "rock" | "sand" | "stone" | "wood" | "w
 // World query API (pure data, no rendering). Files: world.ts, world-*.ts (owner: terrain).
 // Every query is deterministic for a seed and allocation free. Hot paths (heightAt) must cost under ~1 us.
 // ---------------------------------------------------------------------------------------------------------------------
-export type ColliderTag = "solid" | "climbable" | "pushable" | "water-gate" | "barrier" | "tree" | "plate";
+export type ColliderTag =
+  | "solid" | "climbable" | "pushable" | "water-gate" | "barrier" | "tree" | "plate"
+  | "decor" // v2: blocks movement, never climbable (lamp posts, signs, fences, anything under 0.6 m wide)
+  | "knot"; // v2: a wick-knot ring; solid, not climbable, a thread anchor
 
 /** Axis-aligned box collider. Static scenery is AABB only; rotated props use their bounding box or several boxes. */
 export interface Box {
@@ -172,8 +222,15 @@ export interface QualityPreset {
   maxScale: number; // dynamic resolution ceiling
   shadow: number; // shadow map size, 0 = off (blob shadows only)
   shadowDist: number; // shadow camera half extent around the player (m)
-  outline: 0 | 1 | 2; // ink outline: 0 depth edges at half res, 1 depth edges, 2 depth + normal edges
+  outline: 0 | 1 | 2; // v1 screen-space ink outline. v2: always 0 (pass removed). See heroOutline.
   bloom: boolean; // lantern and beacon glow
+  // v2 perf + AA (perf track). Budgets per preset are in DESIGN-V2.md section 11.
+  aa: "msaa" | "smaa" | "fxaa" | "none"; // msaa on desktop presets, fxaa/smaa on phones
+  msaa: 0 | 2 | 4; // samples for the main render target when aa = "msaa"
+  maxPixels: number; // device cap: canvas pixels (w * h * scale^2) never exceed this, whatever the DPR
+  fpsCap: 0 | 30 | 60; // 0 = display rate. Idle / paused / hidden-tab throttling is separate (FRAME_GOVERNOR)
+  heroOutline: boolean; // thin inverted-hull outline on Wren and enemies only, faded out by 25 m
+  fakeGlow: boolean; // additive glow sprites for lanterns/beacons when bloom is off
   drawDist: number; // camera far plane and terrain chunk cull radius (m)
   fogNear: number;
   fogFar: number;
@@ -192,25 +249,41 @@ export interface QualityPreset {
 export const QUALITY: Record<Quality, QualityPreset> = {
   low: {
     label: "Low", pixelRatio: 1.25, minScale: 0.5, maxScale: 1, shadow: 0, shadowDist: 0, outline: 0, bloom: false,
-    drawDist: 420, fogNear: 120, fogFar: 400, terrainLod: [80, 160, 280], grassDensity: 0.2, grassDist: 30,
-    treeDist: 260, treeDetailDist: 45, rockDist: 140, water: 0, particles: 256, rainDrops: 1200, enemyLodDist: 40,
+    drawDist: 380, fogNear: 110, fogFar: 360, terrainLod: [36, 72, 150], grassDensity: 0.15, grassDist: 26,
+    treeDist: 170, treeDetailDist: 20, rockDist: 140, water: 0, particles: 192, rainDrops: 1000, enemyLodDist: 40,
+    aa: "fxaa", msaa: 0, maxPixels: 1_100_000, fpsCap: 60, heroOutline: false, fakeGlow: true,
   },
   medium: {
-    label: "Medium", pixelRatio: 1.25, minScale: 0.6, maxScale: 1, shadow: 1024, shadowDist: 40, outline: 1, bloom: false,
-    drawDist: 650, fogNear: 180, fogFar: 620, terrainLod: [110, 220, 400], grassDensity: 0.4, grassDist: 45,
-    treeDist: 420, treeDetailDist: 70, rockDist: 220, water: 1, particles: 512, rainDrops: 2500, enemyLodDist: 60,
+    label: "Medium", pixelRatio: 1.25, minScale: 0.6, maxScale: 1, shadow: 1024, shadowDist: 40, outline: 0, bloom: false,
+    drawDist: 650, fogNear: 180, fogFar: 620, terrainLod: [110, 220, 400], grassDensity: 0.35, grassDist: 42,
+    treeDist: 420, treeDetailDist: 70, rockDist: 220, water: 1, particles: 384, rainDrops: 2200, enemyLodDist: 60,
+    aa: "smaa", msaa: 0, maxPixels: 2_100_000, fpsCap: 60, heroOutline: true, fakeGlow: true,
   },
   high: {
-    label: "High", pixelRatio: 1.5, minScale: 0.7, maxScale: 1, shadow: 2048, shadowDist: 60, outline: 2, bloom: true,
-    drawDist: 900, fogNear: 260, fogFar: 880, terrainLod: [150, 300, 550], grassDensity: 0.7, grassDist: 65,
-    treeDist: 650, treeDetailDist: 100, rockDist: 320, water: 2, particles: 1024, rainDrops: 5000, enemyLodDist: 90,
+    label: "High", pixelRatio: 1.5, minScale: 0.7, maxScale: 1, shadow: 2048, shadowDist: 60, outline: 0, bloom: true,
+    drawDist: 900, fogNear: 260, fogFar: 880, terrainLod: [150, 300, 550], grassDensity: 0.6, grassDist: 60,
+    treeDist: 650, treeDetailDist: 85, rockDist: 320, water: 2, particles: 768, rainDrops: 4500, enemyLodDist: 90,
+    aa: "msaa", msaa: 4, maxPixels: 3_700_000, fpsCap: 0, heroOutline: true, fakeGlow: false,
   },
   ultra: {
-    label: "Ultra", pixelRatio: 2, minScale: 0.8, maxScale: 1, shadow: 4096, shadowDist: 80, outline: 2, bloom: true,
-    drawDist: 1300, fogNear: 360, fogFar: 1250, terrainLod: [200, 400, 750], grassDensity: 1, grassDist: 90,
-    treeDist: 1000, treeDetailDist: 150, rockDist: 450, water: 2, particles: 2048, rainDrops: 9000, enemyLodDist: 140,
+    label: "Ultra", pixelRatio: 2, minScale: 0.8, maxScale: 1, shadow: 4096, shadowDist: 80, outline: 0, bloom: true,
+    drawDist: 1300, fogNear: 360, fogFar: 1250, terrainLod: [200, 400, 750], grassDensity: 0.85, grassDist: 80,
+    treeDist: 1000, treeDetailDist: 150, rockDist: 450, water: 2, particles: 1536, rainDrops: 8000, enemyLodDist: 140,
+    aa: "msaa", msaa: 4, maxPixels: 8_300_000, fpsCap: 0, heroOutline: true, fakeGlow: false,
   },
 };
+
+/** v2 frame governor (perf track implements, game.ts calls it before each rAF render). */
+export const FRAME_GOVERNOR = {
+  idleAfter: 20, // s with no input while not in combat -> idle
+  idleFps: 30,
+  pausedFps: 10, // menus, journal, death screen (the scene still shows behind the book)
+  hiddenFps: 0, // hidden tab: stop rendering; keep a 1 Hz timer only for audio suspend
+  dynResDownFps: 55, // average under this for 3 s -> lower scale one step (0.05)
+  dynResDownSecs: 3,
+  dynResUpFps: 59, // average over this for 6 s -> raise one step
+  dynResUpSecs: 6,
+} as const;
 
 /** Device facts, measured once by state.ts detectPlatform(). */
 export interface Platform {
@@ -237,9 +310,16 @@ export interface Settings {
   reduceMotion: boolean; // no camera shake, gentler cinematics and HUD motion
   renderScale: number; // 0.5..1 multiplier on the preset pixel ratio
   ambience: number; // 0..1 ambience bed volume
+  // v2
+  voice: number; // 0..1 Tallow and Oriel voice lines
+  subtitles: boolean; // companion lines as text (default on; lines are also text when voice is 0)
+  hints: boolean; // control chips (off = never show)
+  cameraFollow: boolean; // camera auto-follow behind Wren while moving
+  fpsCap: 0 | 30 | 60; // user cap; the stricter of this and QualityPreset.fpsCap wins
 }
 export const DEFAULT_SETTINGS: Settings = {
   quality: "auto", dynamicRes: true, master: 0.8, music: 0.7, sfx: 0.9, lookSens: 1, invertY: false, touchScale: 1, showFps: false, reduceMotion: false, renderScale: 1, ambience: 1,
+  voice: 0.9, subtitles: true, hints: true, cameraFollow: true, fpsCap: 0,
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -249,22 +329,51 @@ export const PLAYER = {
   radius: 0.35, height: 1.7, eye: 1.5,
   walk: 3.0, run: 6.0, sprint: 9.0, // m/s
   accel: 40, airAccel: 10, turnRate: 12, // m/s^2, m/s^2, rad/s
-  jumpV: 7.2, coyote: 0.12, jumpBuffer: 0.12, // m/s, s, s
-  climb: 1.8, climbJump: 3.2, // m/s along the wall, m climb-jump burst
-  glideFwd: 8.5, glideSink: 2.0, glideMinHeight: 2.5, // m/s, m/s, glider only opens this high above ground
+  jumpV: 7.6, coyote: 0.15, jumpBuffer: 0.15, // v2: 1.3 m full jump at GRAVITY, 0.15 s coyote and buffer
+  climb: 2.0, climbJump: 2.6, // v2: m/s along the wall, m climb-jump burst
+  glideFwd: 9, glideSink: 2.0, glideMinHeight: 2.5, // m/s, m/s, glider only opens this high above ground
   swim: 2.6, swimFast: 4.4,
+  // v2 movement feel (player track). DESIGN-V2.md section 6.
+  startEase: 0.2, // s from 0 to run speed
+  skidSpeed: 4.5, skidAngle: 2.36, skidTime: 0.18, skidRelaunch: 0.7, // skid-turn above 4.5 m/s when input is > 135 deg off
+  sprintTurn: 7, sprintLean: 0.22, // rad/s, rad of body lean at full sprint turn
+  fallGravityMul: 1.35, jumpCutT: 0.08, jumpCutMul: 0.4, // release before jumpCutT -> vy *= jumpCutMul (0.65 m short hop)
+  vaultMin: 0.45, vaultMax: 1.3, vaultTime: 0.3, vaultSpeedMul: 0.8, // auto-vault on contact while moving
+  mantleMax: 2.2, mantleTime: 0.45, mantleExitMul: 0.5,
+  climbMinWidth: 0.6, // boxes narrower than this on both axes are never climbable
+  climbDrain: 0.08, lastGasp: 0.15, hangAtZero: 0.6, ledgeCatch: 0.6, // stamina/s on the wall, s hang at 0, m reach
+  glideFlareFwd: 5, glideFlareSink: 1.2, glideFlareCost: 1.5, // hold back: slow and float, x1.5 stamina
+  glideDiveFwd: 16, glideDiveSink: 6, glideDiveClimb: 3, // hold forward: dive; release converts up to 3 m back to height
+  glideBank: 0.44, glideTurn: 3, glidePromptSpeed: 14, glidePromptDrop: 8,
+  swimDashTime: 1.2, swimDashCost: 0.2, treadCost: 0.02,
+  rollLandWindow: 0.15, // press dodge within this of landing: no fall damage below fallSafe + 6 m/s
+  dodgeIFrameStart: 0.05, dodgeIFrameEnd: 0.35, dodgeRecover: 0.1, dodgeCooldown: 0.25,
+  backstepDist: 2.2, backstepTime: 0.3, // dodge with no stick while locked on
+  hurtTime: 0.3, hurtBigTime: 0.9, hurtBigCancel: 0.5, // s; a big hit can be roll-cancelled after 0.5 s
+  softLockRange: 3.5, softLockAngle: 0.785, // sword swings turn toward an enemy inside this cone
+  pickupMagnet: 2.5, // glimmers fly to Wren inside this radius
   stepUp: 0.45, slopeWalk: 0.75, // max step height (m), min normal.y that counts as walkable ground
   // stamina is 0..staminaMax; 1 = one full ring
   staminaMax: 1, staminaRegen: 0.4, staminaDelay: 0.6,
   sprintCost: 0.18, climbCost: 0.11, climbJumpCost: 0.2, glideCost: 0.06, swimCost: 0.05, swimFastCost: 0.16,
   dodgeCost: 0.12, spinCost: 0.3, rainClimbMul: 1.5,
   // health in quarter hearts
-  startHearts: 3, maxHearts: 12, shardsPerHeart: 4,
-  fallSafe: 13, fallPerQuarter: 2.2, // m/s impact speed: above fallSafe lose 1 quarter per fallPerQuarter m/s
+  startHearts: 3, maxHearts: 9, shardsPerHeart: 4, // v2: 24 heart shards on the island ((9 - 3) * 4): 5 from beacons, 19 from secrets and the shop
+  fallSafe: 19.5, fallPerQuarter: 2.2, // v2: 6.5 m of free fall (falling uses GRAVITY * fallGravityMul) before damage
   drownPenalty: 2, // quarters lost when stamina runs out while swimming (respawn on last safe ground)
   hurtIFrames: 0.9, dodgeIFrames: 0.32, dodgeTime: 0.45, dodgeDist: 4.2,
   maxArrows: 30, startArrows: 15,
 } as const;
+
+/** Heart shard model, one for every screen. `shards` (PlayerState) is the count toward the next heart (0..3); four
+ *  roll into a heart. Show `toNext/perHeart` ("1/4 to next heart") on toasts and the HUD, and `found/total` ("1/24
+ *  found") only where the whole island is counted (journal stats). */
+export function shardProgress(maxHp: number, shards: number) {
+  const perHeart = PLAYER.shardsPerHeart;
+  const total = (PLAYER.maxHearts - PLAYER.startHearts) * perHeart;
+  const found = Math.max(0, Math.min(total, (maxHp / 4 - PLAYER.startHearts) * perHeart + shards));
+  return { toNext: shards, perHeart, found, total };
+}
 
 export const SWORD = {
   combo: [10, 10, 16] as const, // damage per hit
@@ -277,7 +386,20 @@ export const SWORD = {
   blockChip: 0, // quarters taken through the shield (0: full block from the front 120 deg)
   blockArc: 2.1,
   knockback: 4, // m/s
-  hitstop: 0.06, // s of global slow on a sword hit (game.ts applies it)
+  hitstop: 0.06, // v1 global slow. v2 uses hitstopLocal (attacker and victim only)
+  // v2 swing timing per combo step 1..3 (player track). comboWindup/comboRecover above are v1 and unused in v2.
+  startup: [0.12, 0.10, 0.20] as const, // s before the active frames
+  active: [0.06, 0.06, 0.09] as const, // s the hit arc sweeps (test the arc every substep, not one frame)
+  recovery: [0.22, 0.22, 0.45] as const, // s after active; attack press inside chainWindow chains
+  chainWindow: 0.25, // s at the end of recovery (and buffered 0.15 s before it) that accepts the next press
+  lateBonus: 0.2, // +20% damage when the chain press lands in the last 0.08 s of the window
+  knockbackStep: [5, 5, 8] as const, // m/s per combo step
+  hitstopLocal: [0.05, 0.05, 0.09] as const, // s per combo step; spin and riposte use 0.09
+  hitstopHurtMax: 0.05, // s, when Wren is the one hit
+  parryWindowTouch: 0.22,
+  parrySlowMo: 0.35, parrySlowScale: 0.4, // world time scale after a parry (Wren runs at full speed)
+  parryHitstop: 0.12, parryHitstopScale: 0.5,
+  rumbleParry: [0.4, 0.1] as const, rumbleBlock: [0.2, 0.05] as const, // [strength, seconds]
 } as const;
 
 export const BOW = {
@@ -306,32 +428,139 @@ export interface EnemySpec {
   glimmers: number; // dropped on death
 }
 export const ENEMY: Record<EnemyKind, EnemySpec> = {
-  brambling: { hp: 30, damage: 2, walk: 2.2, chase: 6.6, sight: 18, leash: 40, reach: 1.4, windup: 0.35, cooldown: 1.0, radius: 0.4, height: 1.0, glimmers: 3 },
-  mossback: { hp: 120, damage: 6, walk: 1.4, chase: 3.4, sight: 16, leash: 35, reach: 2.6, windup: 0.9, cooldown: 2.2, radius: 1.1, height: 2.6, glimmers: 10 },
+  brambling: { hp: 30, damage: 2, walk: 2.2, chase: 6.0, sight: 18, leash: 40, reach: 1.4, windup: 0.5, cooldown: 1.0, radius: 0.4, height: 1.0, glimmers: 3 },
+  mossback: { hp: 120, damage: 6, walk: 1.4, chase: 3.4, sight: 16, leash: 35, reach: 2.6, windup: 1.0, cooldown: 2.2, radius: 1.1, height: 2.6, glimmers: 10 },
   wisp: { hp: 40, damage: 3, walk: 2.0, chase: 4.0, sight: 32, leash: 50, reach: 18, windup: 0.8, cooldown: 2.6, radius: 0.45, height: 0.9, glimmers: 6 },
   warden: { hp: 600, damage: 6, walk: 2.4, chase: 5.0, sight: 60, leash: 80, reach: 4.0, windup: 0.75, cooldown: 1.6, radius: 2.2, height: 6.0, glimmers: 100 },
 };
 /** Boss phases start at these hp fractions (phase 1 at 1.0, phase 2 at 0.66, phase 3 at 0.33). */
 export const WARDEN_PHASES = [1, 0.66, 0.33] as const;
 export const WISP_BOLT = { speed: 16, life: 3, radius: 0.3 } as const;
+/** How a sword-only player beats a wisp or a mossback (scripts/sim/combat-sim.ts section 8 checks the kill counts). */
+export const COUNTER = {
+  // Wisp: it hovers at 2.8 m, above the sword. It sinks to sword height to charge a bolt (gold glint), then hangs
+  // there, dim and slow, for wispSpent s. A sword hit keeps it down for wispHurtHold s so a combo can finish it.
+  wispLowY: 1.1, // m above ground (body center) while low; the sword covers up to 2 m
+  wispSpent: 1.6, // s it stays low after the bolt leaves
+  wispHurtHold: 1.0, // s a sword hit keeps it low
+  wispSink: 6, // 1/s drop rate (it rises back at the normal hover rate)
+  wispSpentDrift: 0.25, // fraction of its normal speed while spent (it does not flee)
+  // Mossback: it used to circle at 4.4 m between slams, out of sword reach, so a player swinging in place whiffed.
+  mossbackRing: 2.4, // m it circles at between slams (sword reach 2.0 + its radius 1.1)
+  mossbackSlamFrom: 2.9, // m it closes to before the slam windup (was 3.55, outside sword reach; the slam still covers 4.2 m)
+  mossbackKnock: 0.1, // share of sword knockback it takes (was 0.25: hits pushed it out of reach)
+  mossbackBehind: 1.5, // sword damage multiplier from behind
+  mossbackBurn: 3, // burning thread damage multiplier: its moss burns (design: "burn its moss")
+} as const;
+
+/** v2 telegraphs (combat track). Every enemy attack shows all three: pose, sound, glint. */
+export const TELL = {
+  glintLead: 0.15, // s before the hit frame: gold glint on the weapon = "block or dodge now"
+  mossbackPreHold: 0.15, // s freeze at the top of the slam, inside its windup
+  maxAttackers: 2, // attack tokens: at most 2 enemies in windup/attack on Wren at once
+  tokenCooldown: 0.4, // s before a returned token can be taken again
+  questStartSafeR: 45, // m: no camp spawns or aggro this close to a pedestal, waystone or the prologue path
+} as const;
 
 /** Enemy camps. Enemies owner spawns these at start and respawns killed camps on "rest" (or 12 real minutes). */
 export interface Camp { id: string; x: number; z: number; kinds: readonly EnemyKind[]; night?: boolean }
 export const CAMPS: readonly Camp[] = [
-  { id: "glade-edge", x: 40, z: 300, kinds: ["brambling", "brambling"] },
+  { id: "glade-edge", x: 120, z: 275, kinds: ["brambling", "brambling"] }, // v2: moved off the prologue path
   { id: "village-n", x: -230, z: 110, kinds: ["brambling", "brambling", "brambling"] },
-  { id: "village-bridge", x: -300, z: 200, kinds: ["mossback"] },
-  { id: "wood-1", x: -260, z: -60, kinds: ["brambling", "brambling", "wisp"] },
-  { id: "wood-2", x: -420, z: -100, kinds: ["mossback", "brambling"] },
-  { id: "cliff-base", x: 300, z: 140, kinds: ["brambling", "wisp"] },
+  { id: "village-bridge", x: -282, z: 200, kinds: ["mossback"] },
+  { id: "wood-1", x: -255, z: -44, kinds: ["brambling", "brambling", "wisp"] },
+  { id: "wood-2", x: -470, z: -40, kinds: ["mossback", "brambling"] }, // v2: moved 160 m from the Thornring pedestal
+  { id: "cliff-base", x: 300, z: 107, kinds: ["brambling", "wisp"] },
   { id: "cliff-top", x: 390, z: 60, kinds: ["wisp", "wisp"] },
-  { id: "lake-shore", x: 140, z: -260, kinds: ["mossback", "brambling", "brambling"] },
-  { id: "lake-ruin", x: 300, z: -360, kinds: ["wisp"] },
-  { id: "bluff", x: -60, z: -380, kinds: ["brambling", "brambling", "mossback"] },
-  { id: "cinder-path", x: 60, z: 60, kinds: ["mossback", "wisp"] },
+  { id: "lake-shore", x: 126, z: -266, kinds: ["mossback", "brambling", "brambling"] },
+  { id: "lake-ruin", x: 312, z: -381, kinds: ["wisp"] },
+  { id: "bluff", x: -58, z: -380, kinds: ["brambling", "brambling", "mossback"] },
+  { id: "cinder-path", x: 60, z: 17, kinds: ["mossback", "wisp"] },
   { id: "night-meadow", x: 120, z: 220, kinds: ["wisp", "wisp", "wisp"], night: true },
-  { id: "night-wood", x: -340, z: -220, kinds: ["wisp", "wisp"], night: true },
+  { id: "night-wood", x: -250, z: -265, kinds: ["wisp", "wisp"], night: true }, // v2: moved off the Thornring arena
 ];
+
+// ---------------------------------------------------------------------------------------------------------------------
+// v2 signature mechanic: the Thread (design name Emberthread). Files: thread.ts, thread-*.ts (owner: thread track).
+// The lantern spins a line of light between two anchors. Pin end 1, pin end 2: the pair decides what the thread does.
+// Rules and examples: DESIGN-V2.md section 3.
+// ---------------------------------------------------------------------------------------------------------------------
+export const THREAD = {
+  range: 18, rangeLong: 30, // m from the lantern to an anchor (Long Thread power)
+  wickStart: 2, wickMax: 5, // live threads allowed at once
+  life: 12, // s; a thread being ridden does not age; pinning beyond the wick limit cuts the oldest
+  pendingLife: 6, // s that end 1 waits for end 2 before it lets go
+  aimCone: 0.14, // rad around the reticle ray that snaps to an anchor (lock-on target wins when locked)
+  aimSnapR: 2.5, // m: or an anchor within this of the reticle ray's hit point
+  maxLen: 40, // m between the two ends; longer pairs are refused ("Too far")
+  recallHold: 0.4, // s hold of the Thread button: cut all threads
+  // ride (knot <-> knot)
+  rideGrabR: 1.2, // m from the line: jump into it or press use/jump near an end to hang on
+  rideSpeed: 10, rideMax: 16, rideAccel: 9, // m/s base, cap, m/s^2 from slope (downhill)
+  rideUpMaxSlope: 0.44, rideUpSpeed: 5, rideUpCost: 0.15, // uphill rides up to 25 deg, stamina/s
+  rideExitBoost: 1.0, // jump off keeps velocity and adds this much up (m/s * jumpV fraction)
+  // pull (movable <-> fixed): the movable end slides toward the fixed end
+  pullSpeed: [3, 2, 1.2] as const, // m/s for weight 1, 2, 3 (weight 3 needs Heavy Pull)
+  pullStop: 1.5, // m from the fixed end
+  // bind (enemy <-> enemy / enemy <-> fixed)
+  bindYank: 6, // m/s the two enemies fly together
+  bindDamage: 8, bindStagger: 2, // per enemy on contact; s staggered
+  tetherStagger: 1, // s, enemy pinned to a fixed anchor; it cannot move beyond the thread length
+  // burn (any thread with a lit brazier at one end, or the Burning Thread power)
+  burnDps: 6, burnTime: 4, // damage points per s on a threaded enemy, s it keeps burning after the thread goes
+  burnBrambleTime: 1, // s to burn away bramble walls and thorn gates touching the thread
+  burnTouchDamage: 6, // enemies that walk into a burning thread take this and are pushed back; they will not path through
+  carrySecs: 0.8, // s for fire to travel along a thread to a cold brazier, lamp or beacon bowl
+} as const;
+
+export type AnchorKind =
+  | "knot" // fixed brass ring: ride lines, pull targets, tether points
+  | "brazier" // fixed; lit ones make the thread burn, cold ones can be lit by fire carried along a thread
+  | "lamp" // fixed; dark until fire or light reaches it, then opens what it is wired to
+  | "block" // movable, weight 1 or 3
+  | "float" // movable lantern-float on water, weight 1
+  | "enemy" // movable; brambling and wisp weight 1, mossback weight 3, warden never
+  | "target" // archery target / sea stack; Thread Arrow pins here
+  | "chain"; // the Warden's gloam chains (boss phase 2): burn to stagger
+
+export interface ThreadAnchor {
+  id: string; // landmarks: "<site>:<name>"; enemies: "enemy:<id>"
+  kind: AnchorKind;
+  pos: V3; // live position (landmarks / enemies update it in place)
+  weight: 0 | 1 | 2 | 3; // 0 = fixed
+  lit: boolean; // braziers and lamps: burning now
+  enabled: boolean; // false hides it from aiming (collected, sunk, dead)
+}
+
+export type ThreadUse = "ride" | "pull" | "bind" | "tether" | "carry" | "inert";
+
+export interface ThreadLine {
+  id: number;
+  a: string; // anchor id of end 1
+  b: string; // anchor id of end 2
+  use: ThreadUse;
+  burning: boolean;
+  age: number; // s
+  len: number; // m, current
+}
+
+/** Read-only view the thread module publishes every frame (FrameCtx.threads). Fixed arrays, no allocation. */
+export interface ThreadState {
+  wick: number; // live threads allowed (THREAD.wickStart + Wick Oil, max wickMax)
+  used: number; // live threads now
+  lines: readonly ThreadLine[]; // live threads; length = used
+  pending: string | null; // anchor id of a pinned end 1 waiting for end 2
+  aimAnchor: string | null; // anchor under the reticle now (HUD reticle snaps here)
+  aimValid: boolean; // aimAnchor can pair with `pending` (or can be end 1)
+  aimReason: "ok" | "far" | "none" | "pair" | "heavy"; // pair = these two anchors make no thread; heavy = weight 3 without Heavy Thread ("Too heavy")
+  ride: { on: boolean; line: number; pos: THREE.Vector3; vel: THREE.Vector3; t: number }; // player follows pos while on
+  /** Movable anchors being pulled this frame: landmarks / enemies move their own objects toward `to` at `speed`. */
+  pulls: readonly { anchor: string; to: V3; speed: number }[];
+}
+
+/** Lantern powers, one per main beacon (DESIGN-V2.md section 9). */
+export type LanternPower = "long" | "burning" | "heavy" | "arrow";
+export const BEACON_POWER: readonly LanternPower[] = ["long", "burning", "heavy", "arrow"]; // index = BeaconId
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Input. Files: input.ts, input-*.ts (owner: input-camera). Keyboard + mouse (pointer lock optional), touch, gamepad.
@@ -349,14 +578,15 @@ export type BtnName =
   | "jump" // Space / A / touch jump: jump, climb-jump, let go while climbing with dodge
   | "attack" // LMB or J / X / touch sword: tap = combo, hold = charge spin
   | "block" // RMB-hold or K / LT / touch shield: shield up (parry window on raise)
-  | "dodge" // Shift-tap or L / B / touch roll: dodge roll; on ground hold = sprint (keys use Shift hold)
+  | "dodge" // v2: C or L / B / touch roll, fires on press (Shift is sprint only; Ctrl is never bound)
   | "sprint" // Shift hold / B hold / touch: double tap stick to toggle (derived by input)
-  | "bow" // F or MMB / RT / touch bow: hold to draw, release to shoot
+  | "bow" // v2: F / RT / touch bow: hold to draw, release to shoot (MMB moves to lock)
   | "glide" // G / A in air / touch glide: open or close the glider
-  | "lock" // Q or Tab / RB press / touch lock: toggle lock-on
+  | "lock" // v2: Q or MMB / RB / tap an enemy on touch: toggle lock-on; with no target it recenters the camera (Tab is never bound)
   | "use" // E / Y / touch hand (appears only with a prompt): interact, pick up, read
   | "map" // M / View / touch map
-  | "pause"; // Esc or P / Menu / touch pause
+  | "pause" // Esc or P / Menu / touch pause
+  | "thread"; // v2: R / LB / touch lantern button. Press = pin an end, hold THREAD.recallHold = cut all
 
 export interface InputState {
   device: Device; // last device that produced input (HUD swaps glyphs, touch overlay hides on keys/pad)
@@ -388,13 +618,22 @@ export interface Input {
 /** input.ts: export function createInput(canvas: HTMLCanvasElement, container: HTMLElement): Input */
 export type CreateInput = (canvas: HTMLCanvasElement, container: HTMLElement) => Input;
 
+/** v2 input additions. */
+export interface InputV2 extends Input {
+  /** Ask for pointer lock again (after Resume / closing the map). Must run inside the click / key handler. */
+  relock(): void;
+  /** Glyph text for a button on the current device: "R", "LB", "Lantern"... HUD chips and prompts use it. */
+  glyph(b: BtnName | "move" | "look"): string;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Player state. Files: player.ts, player-*.ts (owner: player).
 // ---------------------------------------------------------------------------------------------------------------------
-export type MoveMode = "ground" | "air" | "climb" | "glide" | "swim" | "dead";
+export type MoveMode = "ground" | "air" | "climb" | "glide" | "swim" | "dead" | "ride"; // v2 ride = hanging on a thread
 export type PlayerAction =
   | "none" | "attack1" | "attack2" | "attack3" | "charge" | "spin" | "block" | "parry" | "riposte"
-  | "dodge" | "aim" | "hurt" | "push" | "interact" | "land";
+  | "dodge" | "aim" | "hurt" | "push" | "interact" | "land"
+  | "skid" | "vault" | "mantle" | "backstep" | "rollLand" | "pin"; // v2
 
 export interface PlayerState {
   pos: THREE.Vector3; // feet position
@@ -424,6 +663,11 @@ export interface PlayerState {
   hasGlider: boolean;
   lanternPos: THREE.Vector3; // world position of the lantern on the hip (render puts the ember point light here)
   handPos: THREE.Vector3; // sword hand (fx trails)
+  // v2 (player track fills them every frame)
+  aimOrigin: THREE.Vector3; // camera-reticle ray origin for thread / bow aiming
+  aimDir: THREE.Vector3; // unit
+  staminaRings: number; // 1..2 (Ember Seeds); staminaMax scales by this
+  softLockId: number; // enemy the current swing turned toward, -1 none
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -466,7 +710,7 @@ export interface Strike {
   arc: number; // radians, full width of the sweep (Math.PI * 2 = spin)
   height: number; // vertical half extent around origin.y
   damage: number; // player strikes: damage points; enemy strikes: quarter hearts
-  kind: "sword" | "spin" | "riposte" | "claw" | "slam" | "warden";
+  kind: "sword" | "spin" | "riposte" | "claw" | "slam" | "warden" | "bind" | "burn"; // v2 bind/burn come from the thread module
   knockback: number;
   unblockable?: boolean;
 }
@@ -509,7 +753,21 @@ export type CreateCombat = (scene: THREE.Scene, world: World, look: Look) => Com
 // ---------------------------------------------------------------------------------------------------------------------
 // Quest, save, HUD data.
 // ---------------------------------------------------------------------------------------------------------------------
+/** v2: "awaken" now lasts until the Glade Beacon is lit (the prologue). It no longer ends on leaving the shrine. */
 export type QuestStage = "awaken" | "beacons" | "spire" | "boss" | "ending" | "free";
+
+/** v2 prologue beats, in order. The onboarding track advances them; objective text and hints key off them. */
+export type PrologueStep =
+  | "wake" | "gate" | "vista" | "stones" | "climb" | "ride" | "glade" | "gladePull" | "gladeFight" | "gladeCarry" | "done";
+
+/** v2 tracked target: what the compass, lantern pull and objective line point at. */
+export type TrackTarget =
+  | { kind: "beacon"; id: BeaconId }
+  | { kind: "glade" }
+  | { kind: "spire" }
+  | { kind: "waystone"; id: string }
+  | { kind: "item"; id: string } // e.g. "chest-bow" (the Mirebrook mill)
+  | { kind: "none" };
 
 export interface QuestState {
   stage: QuestStage;
@@ -518,6 +776,14 @@ export interface QuestState {
   barrierDown: boolean;
   wardenDefeated: boolean;
   visited: LandmarkId[]; // for map labels; first visit shows the area banner
+  // v2 (newQuest + save migration fill them)
+  prologue: PrologueStep;
+  gladeLit: boolean;
+  tracked: TrackTarget; // null-free: { kind: "none" } when nothing is tracked
+  autoTrack: boolean; // true until the player picks Track in the journal; then the choice sticks
+  waystones: string[]; // WAYSTONES ids found (fast travel targets)
+  memories: BeaconId[]; // memory pages already shown
+  endingChoice: "keeper" | "sky" | null;
 }
 
 export interface SaveData {
@@ -538,6 +804,25 @@ export interface SaveData {
 }
 export const SAVE_KEY = "hollowmere.save.v1";
 
+/** v2 progress that is not quest state (save track owns; player / thread / UI read it). */
+export interface Progress {
+  wickOil: number; // 0..3 found; wick = THREAD.wickStart + wickOil
+  seeds: number; // Ember Seeds, 3 = +1/3 stamina ring, 0..9
+  powers: LanternPower[];
+  hintsSeen: HintId[];
+  glimmersSpent: number;
+}
+
+/** v2 save. game.ts writes this from v2 on; readSave() migrates v1 (keeps beacons, collected, hearts, gear; new fields
+ *  default; a v1 save with any beacon lit gets prologue "done" and gladeLit true). Saves match items by id, never index. */
+export interface SaveDataV2 extends Omit<SaveData, "v" | "quest"> {
+  v: 2;
+  quest: Required<QuestState>;
+  progress: Progress;
+  waystone: string | null; // last rest point id, respawn there
+}
+export const SAVE_KEY_V2 = "hollowmere.save.v2";
+
 export type Weather = "clear" | "cloudy" | "rain" | "storm";
 
 /** Environment state. Owned and advanced by render (day/night + weather). Everyone else reads it from FrameCtx. */
@@ -551,12 +836,21 @@ export interface EnvState {
   wet: number; // 0..1 surfaces wetness (slower than rain)
 }
 export const DAY_SECONDS = 960; // one in-game day lasts 16 real minutes
-export const START_HOUR = 7.5;
+export const START_HOUR = 5.5; // v2: pre-dawn; the sun clears the horizon about 40 s in, as the gate opens
+/** v2: the clock runs at this rate until the first main beacon is lit (or 25 real minutes), so the first session
+ *  stays in daylight (dusk not before ~17 real minutes). */
+export const FIRST_DAY_SCALE = 0.5;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Events. Modules return GameEvent[] from update(); game.ts routes every event to every module's handle().
 // ---------------------------------------------------------------------------------------------------------------------
-export type PickupKind = "glimmer" | "shard" | "arrows" | "heart" | "bow" | "glider";
+export type PickupKind = "glimmer" | "shard" | "arrows" | "heart" | "bow" | "glider" | "wick" | "seed"; // v2 wick = Wick Oil
+
+/** v2 control chips. Each shows once (Progress.hintsSeen), only until the verb is used. DESIGN-V2.md section 10. */
+export type HintId =
+  | "move" | "look" | "use" | "jump" | "climb" | "thread" | "ride" | "attack" | "block" | "parry" | "dodge" | "sprint"
+  | "glide" | "lock" | "bow" | "map" | "journal" | "recall"
+  | "edge"; // soft world edge: "Turn back" (game.ts, never marked seen)
 
 export type GameEvent =
   // player movement
@@ -606,6 +900,7 @@ export type GameEvent =
   | { type: "trialStart"; beacon: BeaconId }
   | { type: "trialProgress"; beacon: BeaconId; value: number; total: number }
   | { type: "trialFail"; beacon: BeaconId }
+  | { type: "trialRespawn"; beacon: BeaconId; pos: V3; yaw: number } // request: game places Wren at a trial checkpoint (feet)
   | { type: "trialDone"; beacon: BeaconId }
   | { type: "beaconLit"; beacon: BeaconId; pos: V3 }
   | { type: "barrierDown" }
@@ -620,6 +915,37 @@ export type GameEvent =
   | { type: "thunder"; pos: V3; delay: number }
   | { type: "dawn" }
   | { type: "dusk" }
+  // v2 thread (from thread)
+  | { type: "threadPin"; end: 1 | 2; anchor: string; kind: AnchorKind; pos: V3 }
+  | { type: "threadLink"; id: number; use: ThreadUse; a: string; b: string; burning: boolean }
+  | { type: "threadCut"; id: number; why: "expired" | "recall" | "replaced" | "broken" | "pending" }
+  | { type: "threadRide"; on: boolean; id: number; pos: V3 }
+  | { type: "threadFizzle"; why: "far" | "none" | "pair" | "heavy"; pos: V3 }
+  | { type: "threadFire"; anchor: string; pos: V3 } // fire reached a brazier / lamp / beacon bowl / bramble wall
+  | { type: "threadBind"; a: number; b: number; pos: V3 } // two enemy ids yanked together (b = -1 for a tether)
+  // v2 combat feel (from combat)
+  | { type: "parry"; id: number; pos: V3 }
+  | { type: "slowmo"; scale: number; seconds: number } // world time scale; Wren and the camera keep real time
+  | { type: "tell"; id: number; kind: EnemyKind; pos: V3; lead: number } // glint: hit lands in `lead` s
+  // v2 guidance (from onboarding: companion / hints / objective)
+  | { type: "say"; who: "tallow" | "oriel" | "mulberry"; line: string; text: string; voice: string | null; seconds: number }
+  | { type: "hint"; id: HintId; btn: BtnName | "move" | "look"; text: string } // show a chip
+  | { type: "hintDone"; id: HintId } // the verb was used: hide the chip, mark seen
+  | { type: "prologue"; step: PrologueStep }
+  | { type: "objective"; text: string; sub: string | null } // only on change
+  | { type: "track"; target: TrackTarget; auto: boolean }
+  | { type: "cine"; shot: "wake" | "vista" | "arena" | "beacon" | "memory"; pos: V3; look: V3; seconds: number }
+  // v2 world (from landmarks)
+  | { type: "gladeLit"; pos: V3 }
+  | { type: "trialRule"; trial: BeaconId | "glade"; text: string } // rule card, shown until the first progress tick
+  | { type: "waystone"; id: string; first: boolean }
+  | { type: "travel"; to: string } // request from the UI map: fast travel to a waystone id
+  | { type: "memory"; beacon: BeaconId }
+  | { type: "power"; power: LanternPower }
+  | { type: "upgrade"; kind: "wick" | "stamina" | "heart"; level: number }
+  | { type: "shop"; item: "wick" | "quiver" | "dye"; cost: number }
+  | { type: "endingChoice"; choice: "keeper" | "sky" }
+  | { type: "secret"; id: string; kind: "trail" | "knots" | "critter" | "chime" | "blight" | "lore"; pos: V3 }
   // system (from game.ts)
   | { type: "saved" }
   | { type: "toast"; text: string };
@@ -642,6 +968,11 @@ export interface FrameCtx {
   combat: CombatSink;
   fx: Fx;
   quality: QualityPreset;
+  // v2 (game.ts fills them)
+  threads: ThreadState; // from the thread module, previous frame
+  progress: Progress;
+  anchors: readonly ThreadAnchor[]; // landmarks anchors + live enemy anchors, rebuilt by game.ts when either changes
+  worldScale: number; // slow-mo scale applied to dt for the world (Wren uses realDt during parry slow-mo)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -709,6 +1040,14 @@ export interface RenderStats {
   scale: number; // current dynamic resolution scale
   calls: number;
   tris: number;
+  gpu?: GpuTiming; // v2: null-safe; present when EXT_disjoint_timer_query_webgl2 exists
+}
+
+/** v2 per-pass GPU timing (perf track). Averages over the last 60 frames, in ms. */
+export interface GpuTiming {
+  supported: boolean;
+  total: number;
+  passes: Record<string, number>; // "shadow", "opaque", "grass", "water", "transparent", "post", "ui-fx" ...
 }
 
 export interface Render {
@@ -735,6 +1074,17 @@ export interface Render {
 /** render.ts: export function createRender(canvas: HTMLCanvasElement, quality: Quality): Render
  *  render.ts: export function detectQuality(p: Platform): Quality */
 export type CreateRender = (canvas: HTMLCanvasElement, quality: Quality) => Render;
+
+/** v2 render additions (perf track: governor, AA, timing; look/sky tracks: region color, columns). */
+export interface RenderV2 extends Render {
+  /** Frame governor. game.ts calls it at the top of each rAF tick; false = skip this tick entirely (no update, no draw). */
+  shouldRender(nowMs: number, state: "play" | "idle" | "paused" | "hidden"): boolean;
+  setFpsCap(cap: 0 | 30 | 60): void;
+  /** 0 = full Gloam (desaturated) .. 1 = color restored, per main beacon region. Look track reads it in hmShade. */
+  setRegionColor(beacon: BeaconId, t: number): void;
+  /** Toggle per-pass GPU timing (dev only; costs a query per pass). */
+  setTiming(on: boolean): void;
+}
 export type DetectQuality = (p: Platform) => Quality;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -789,6 +1139,27 @@ export interface Landmarks {
 /** landmarks.ts: export function createLandmarks(scene: THREE.Scene, world: World, look: Look, quality: Quality): Landmarks */
 export type CreateLandmarks = (scene: THREE.Scene, world: World, look: Look, quality: Quality) => Landmarks;
 
+/** v2 landmarks additions (world track; trials and prologue plug in through SiteRegistryV2). */
+export interface LandmarksV2 extends Landmarks {
+  /** Every thread anchor the landmarks own (knots, braziers, lamps, blocks, floats, targets, chains). Stable array. */
+  readonly anchors: readonly ThreadAnchor[];
+  /** Where to place Wren after a fast travel / respawn at a waystone. Returns false for an unknown or unfound id. */
+  waystonePos(id: string, out: THREE.Vector3): boolean;
+  /** Current target position for the compass / lantern pull; false when the target has no position. */
+  targetPos(t: TrackTarget, out: THREE.Vector3): boolean;
+  /** Short name of the checkpoint for the death screen: "Glade Waystone", "Cliffwatch Beacon", "Hollow Shrine". */
+  checkpointName(): string;
+}
+
+/** v2 registry extension the world track adds to landmark-kit.ts Registry. Trials and the prologue build against it
+ *  (cast env.reg to `Registry & SiteRegistryV2` until landmark-kit.ts lands). */
+export interface SiteRegistryV2 {
+  anchor(a: ThreadAnchor): ThreadAnchor; // registers it in LandmarksV2.anchors; the caller keeps and moves `pos`
+  /** A trigger volume; enter -> `onEnter` once per load (prologue beats, hint zones, trial arrival pans). */
+  zone(def: { id: string; x: number; y: number; z: number; r: number; h?: number; onEnter: () => void }): void;
+  waystone(id: string): void; // builds the waystone at WAYSTONES[id] with rest + travel + shop interactions
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Player: Wren. Movement state machine, collisions against World, combat inputs, gear, model and animation.
 // Files: player.ts, player-*.ts (owner: player).
@@ -809,6 +1180,39 @@ export interface Player {
 /** player.ts: export function createPlayer(scene: THREE.Scene, world: World, look: Look, quality: Quality): Player */
 export type CreatePlayer = (scene: THREE.Scene, world: World, look: Look, quality: Quality) => Player;
 
+/** v2: player-model.ts input. The player track fills it every frame; the hero-model track animates from it.
+ *  Superset of v1 WrenAnimIn (player-model.ts), which the hero-model track replaces with this type. */
+export interface HeroAnimIn {
+  mode: MoveMode; action: PlayerAction; actionT: number;
+  speed: number; vy: number; grounded: boolean; sprint: boolean; turn: number;
+  climbX: number; climbY: number; mantle: number;
+  combo: number; windup: number; recover: number; charge: number; draw: number; shield: boolean;
+  swimMove: number; wade: number; hurtBig: boolean; armed: boolean; hasBow: boolean;
+  time: number; windX: number; windZ: number; slope: number; exhausted: boolean;
+  // v2
+  lean: number; // -1..1 sprint/glide bank (+ = lean left)
+  skid: number; // -1 none, else 0..1
+  vault: number; // -1 none, else 0..1
+  rideT: number; // -1 not riding, else s on the line (hang pose, legs swing with speed)
+  pinAim: boolean; // lantern arm raised toward aimDir (thread aim)
+  lanternLean: V2; // xz unit direction the lantern flame leans (tracked target), length 0 = none
+  glideMode: 0 | 1 | 2; // 0 cruise, 1 flare, 2 dive
+}
+
+/** v2 hero model API (hero-model track). Same sockets as v1 WrenModel, single skinned or merged mesh. */
+export interface HeroModel {
+  readonly group: THREE.Group;
+  readonly lanternWorld: THREE.Vector3;
+  readonly handWorld: THREE.Vector3;
+  readonly bladeTipWorld: THREE.Vector3;
+  readonly bowHandWorld: THREE.Vector3;
+  footstep: boolean;
+  trailOn: boolean;
+  update(a: HeroAnimIn, dt: number): void;
+  setOutline(on: boolean): void; // QualityPreset.heroOutline
+  dispose(): void;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Enemies: pool, AI brains, meshes, animation, the Gloam Warden boss. Files: enemies.ts, enemy-*.ts (owner: enemies).
 // ---------------------------------------------------------------------------------------------------------------------
@@ -828,6 +1232,14 @@ export interface Enemies {
 }
 /** enemies.ts: export function createEnemies(scene: THREE.Scene, world: World, look: Look, quality: Quality): Enemies */
 export type CreateEnemies = (scene: THREE.Scene, world: World, look: Look, quality: Quality) => Enemies;
+
+/** v2 enemies additions (combat track). Enemies read ctx.threads for pulls/binds on "enemy:<id>" anchors. */
+export interface EnemiesV2 extends Enemies {
+  /** One anchor per live enemy slot (weight from AnchorKind rules), positions updated in place. Stable array. */
+  readonly anchors: readonly ThreadAnchor[];
+  /** Thin inverted-hull outline on enemy rigs (QualityPreset.heroOutline). Default off. */
+  setOutline(on: boolean): void;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Camera: third-person orbit with collision against World, lock-on targeting, aim mode, shake, cinematics.
@@ -856,6 +1268,24 @@ export interface CameraRig {
 /** camera.ts: export function createCamera(camera: THREE.PerspectiveCamera, world: World): CameraRig */
 export type CreateCamera = (camera: THREE.PerspectiveCamera, world: World) => CameraRig;
 
+/** v2 camera numbers (player + camera track). DESIGN-V2.md section 6. */
+export const CAMERA = {
+  followRate: 0.52, // rad/s auto-follow toward behind Wren (30 deg/s); 0 on a pure strafe (|move.x| > 0.9, |move.y| < 0.2)
+  followDelayMouse: 1.6, followDelayStick: 0.6, // s after manual look input before follow resumes
+  dist: 5.2, distSprint: 5.8, distClimb: 7, climbPitch: 0.15, distGlide: 6.5, distRide: 6.5,
+  minCollideDist: 0.9, // never closer; fade Wren's mesh out under 1.2 m instead of clipping into the head
+  recenterTime: 0.25, // s to swing behind Wren on recenter
+} as const;
+
+/** v2 camera additions. */
+export interface CameraRigV2 extends CameraRig {
+  recenter(): void;
+  /** Scripted shot (cold open, vista, trial arena pan, beacon lit). Input look is ignored while it plays; any key skips
+   *  shots marked skippable. */
+  cine(shot: { pos: V3; look: V3; seconds: number; skippable: boolean } | null): void;
+  readonly cineOn: boolean;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Audio: Web Audio synthesis only. Adaptive score (explore / night / combat / boss layers), ambience, SFX.
 // Files: audio.ts, audio-*.ts (owner: audio). Catch every error inside the module.
@@ -874,6 +1304,31 @@ export interface Audio {
 /** audio.ts: export function createAudio(ctx: AudioContext): Audio. game.ts creates the AudioContext on the first gesture. */
 export type CreateAudio = (ac: AudioContext) => Audio;
 
+/** v2 audio: recorded instruments + recorded SFX/ambience + optional voice. One sample loader for everything. */
+export interface SampleBank {
+  /** Fetch + decode a manifest (public/<dir>/manifest.json). Resolves when the listed "boot" set is ready. */
+  load(manifestUrl: string, onProgress?: (p: number) => void): Promise<void>;
+  /** A decoded take for a sound id ("step-grass", "sword-swing", "harp-D4"...). Picks among takes, never the same
+   *  take twice in a row. null if not loaded yet. */
+  take(id: string): AudioBuffer | null;
+  has(id: string): boolean;
+}
+
+/** v2 loudness targets (LUFS integrated, measured per layer solo through the master bus). audit-audio.md has the method. */
+export const MIX = {
+  full: [-18, -16], truePeak: -1, // whole mix while playing, dBFS ceiling
+  musicExplore: -24, musicCombat: -21, musicBoss: -20, stings: -18, voice: -18,
+  ambienceDay: -30, ambienceNight: -31, footsteps: -30, swing: -20, hit: -17, ui: -26,
+  duckVoice: -8, duckSting: -8, duckImpact: -3, duckAmbienceInCombat: -6, // dB
+  silenceGap: [30, 90], // s of no score between explore cues
+} as const;
+
+export interface AudioV2 extends Audio {
+  setVolumes(master: number, music: number, sfx: number, voice?: number): void;
+  /** Dev/test: running loudness per bus (short-term LUFS approx.) and how many OscillatorNode.start calls ran. */
+  levels(): { music: number; sfx: number; ambience: number; voice: number; master: number; oscStarts: number };
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // HUD + game API for React. Files: ui-*.tsx (owner: ui). React renders menus and HUD only.
 // ---------------------------------------------------------------------------------------------------------------------
@@ -885,7 +1340,7 @@ export interface HudSnapshot {
   arrows: number;
   hasBow: boolean;
   beacons: [boolean, boolean, boolean, boolean];
-  objective: string; // one line, from game.ts objectiveText()
+  objective: string; // one line, from guide.ts objectiveFor()
   area: string | null; // current area name
   timeOfDay: number;
   weather: Weather;
@@ -896,6 +1351,14 @@ export interface HudSnapshot {
   fps: number;
   scale: number;
   quality: Quality;
+  // v2 (game.ts fills them)
+  objectiveSub: string | null; // second line: distance-free hint ("On the cliff top, east")
+  gladeLit: boolean;
+  wick: number; // live threads allowed
+  wickUsed: number;
+  seeds: number;
+  trialRule: string | null; // rule card text while a trial is active and before its first progress tick
+  checkpointName: string; // death screen: "Respawning at <checkpointName>."
 }
 
 /** Per-frame HUD data, written by game.ts into ONE reused object. The HUD writes it to DOM refs, never React state. */
@@ -905,12 +1368,18 @@ export interface HudFrame {
   exhausted: boolean;
   staminaAt: ScreenPoint; // beside the player's shoulder
   heading: number; // camera compass bearing (0 = north, clockwise radians)
-  markers: { bearing: number; dist: number; lit: boolean; on: boolean }[]; // 4 beacons + spire (index 4), fixed length 5
+  markers: { bearing: number; dist: number; lit: boolean; on: boolean; kind: "beacon" | "glade" | "spire" | "waystone" | "item"; tracked: boolean }[]; // fixed length 13: 4 beacons (0..3), spire (4), glade (5), 7 waystones (6..12)
   lockAt: ScreenPoint; // lock-on reticle
   lockOn: boolean;
   charge: number; // sword charge / bow draw 0..1 (reticle fill)
   aiming: boolean;
   damageFlash: number; // 0..1, decays
+  // v2
+  lanternAt: ScreenPoint; // subtitles anchor above the lantern
+  threadAim: { at: ScreenPoint; valid: boolean; reason: ThreadState["aimReason"]; pending: boolean };
+  trackedDist: number; // m to the tracked target, smoothed (never jumps between targets: fade 0.3 s on change)
+  trackedAt: ScreenPoint; // world marker over the tracked target
+  riposteAt: ScreenPoint; // riposte glyph over the enemy just parried
 }
 
 export interface HudHandle {
@@ -918,13 +1387,23 @@ export interface HudHandle {
   event(e: GameEvent): void; // banners (areaEnter, beaconLit, trial*), pickup counters, toasts, read panels
 }
 
+/** What took Wren's last heart. game.ts reads it from the hit, fall or drown that came just before "died". */
+export type DeathCause = "fall" | "enemy" | "drown";
+/** Death screen title per cause (v2/copy-rule.md: say what happened, plainly). */
+export const DEATH_TITLE: Record<DeathCause, string> = {
+  fall: "You fell",
+  enemy: "You were knocked out",
+  drown: "You drowned",
+};
+
 export interface GameCallbacks {
   hud(h: HudSnapshot): void; // at HUD_HZ
   hudRef(): HudHandle | null;
   progress(p: number): void; // loading 0..1
   pause(): void; // the player pressed pause / map in game: UI opens its menu and calls game.pause(true)
   map(): void;
-  died(): void; // UI shows the "lantern gutters" screen, then calls game.respawn()
+  /** v2: UI shows DEATH_TITLE[cause] ("You fell" when cause is absent) + "Respawning at <where>.", then calls game.respawn() */
+  died(where: string, cause?: DeathCause): void;
   ending(): void; // UI shows the ending page
 }
 
@@ -949,3 +1428,49 @@ export interface Game {
   dispose(): void;
 }
 export type StartGame = (canvas: HTMLCanvasElement, overlay: HTMLElement, cb: GameCallbacks, settings: Settings) => Game;
+
+/** v2 game additions (integrator). */
+export interface GameV2 extends Game {
+  track(t: TrackTarget): void; // journal "Track" button
+  travel(waystone: string): void; // map fast travel
+  chooseEnding(c: "keeper" | "sky"): void;
+  readonly progress: Progress;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// v2 new modules. Each is a createX() factory with update/handle/dispose like the rest.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Thread (thread track): thread.ts. Reads ctx.input.btn.thread, ctx.player.aimOrigin/aimDir, ctx.anchors.
+ *  Submits bind/burn strikes through ctx.combat. Publishes ThreadState; moves nothing it does not own. */
+export interface Thread {
+  readonly state: ThreadState;
+  readonly group: THREE.Group; // thread ribbons + aim arc, one draw call each
+  update(ctx: FrameCtx): readonly GameEvent[];
+  handle(events: readonly GameEvent[]): void; // died/respawned/travel: cut all; power/upgrade: range and wick
+  setWick(n: number): void;
+  setPowers(p: readonly LanternPower[]): void;
+  cutAll(): void;
+  dispose(): void;
+}
+export type CreateThread = (scene: THREE.Scene, world: World, look: Look) => Thread;
+
+/** Companion (onboarding track): companion.ts. Tallow's event-driven line bank. Emits "say". Cooldowns: guidance
+ *  lines 8 s, idle lines 45 s; never two lines within 4 s; drops a line rather than queueing it past 3 s. */
+export interface Companion {
+  update(ctx: FrameCtx): readonly GameEvent[];
+  handle(events: readonly GameEvent[]): void;
+  dispose(): void;
+}
+export type CreateCompanion = (seen: Progress) => Companion;
+
+/** Guide (onboarding track): guide.ts. Owns the hint chips, the prologue step machine and the objective line.
+ *  Emits "hint", "hintDone", "prologue", "objective", "track" (auto-track), "cine". */
+export interface Guide {
+  update(ctx: FrameCtx): readonly GameEvent[];
+  handle(events: readonly GameEvent[]): void;
+  /** Objective line for a quest + progress, plain words (DESIGN-V2.md section 10 table). Pure function. */
+  objective(q: QuestState, hasBow: boolean): { text: string; sub: string | null };
+  dispose(): void;
+}
+export type CreateGuide = (progress: Progress, settings: Settings) => Guide;

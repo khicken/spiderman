@@ -30,7 +30,7 @@ export interface BookProps {
 export function Book({ tabs, tab, onTab, left, right, closeLabel, onClose, quitLabel, onQuit }: BookProps) {
   return (
     <div className="safe absolute inset-0 flex items-center justify-center" style={{ background: "radial-gradient(ellipse at 50% 50%, rgb(8 25 28 / 0.55), rgb(8 25 28 / 0.88))", backdropFilter: "blur(3px)" }} data-testid="book">
-      <div className="hm-book-in relative flex" style={{ width: "min(94vw, 78rem)", height: "min(calc(100dvh - 1.2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 46rem)" }}>
+      <div className="hm-book-in relative flex" style={{ width: "min(94vw, 78rem)", height: "min(calc(100dvh - 1.2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 50rem)" }}>
         <div className="relative flex min-w-0 flex-1" style={{ padding: "0.7rem", borderRadius: "0.6rem", background: "radial-gradient(ellipse at 30% 20%, #24585b, #12353a 60%, #0a2226)", boxShadow: "0 2rem 4rem rgb(0 0 0 / 0.6), inset 0 0 0 1px rgb(232 199 102 / 0.35), inset 0 0 0 0.35rem #0f2e33, inset 0 0 0 calc(0.35rem + 1px) rgb(232 199 102 / 0.55)" }}>
           <div className="relative flex min-w-0 flex-1 overflow-hidden" style={{ borderRadius: "0.25rem", boxShadow: "0 0 0 1px #2b2118, 0 0.3rem 0.6rem rgb(0 0 0 / 0.4)" }}>
             <Page side="l" key={`l-${tab}`}>{left}</Page>
@@ -90,7 +90,8 @@ function Page({ side, children }: { side: "l" | "r"; children: ReactNode }) {
     <section className="hm-parchment relative flex min-w-0 flex-1 flex-col" style={{ backgroundPosition: side === "l" ? "0 0, 0 0, 0 0, 0 0" : "110px 60px, 0 0, 0 0, 0 0" }}>
       <Corner pos={side === "l" ? "tl" : "tr"} size="2.6rem" />
       <Corner pos={side === "l" ? "bl" : "br"} size="2.6rem" delay={100} />
-      <div className="hm-page-in hm-scroll relative min-h-0 flex-1" style={{ padding: side === "l" ? "clamp(1rem, 3.2vh, 2.2rem) clamp(1.6rem, 3vw, 2.8rem) 1.4rem clamp(1.8rem, 3.2vw, 3rem)" : "clamp(1rem, 3.2vh, 2.2rem) clamp(1.8rem, 3.2vw, 3rem) 1.4rem clamp(1.6rem, 3vw, 2.8rem)" }}>
+      {/* bottom pad clears the corner ornament; the fade shows that a long page scrolls */}
+      <div className="hm-page-in hm-scroll relative min-h-0 flex-1" style={{ padding: side === "l" ? "clamp(1rem, 3.2vh, 2.2rem) clamp(1.6rem, 3vw, 2.8rem) 2.4rem clamp(1.8rem, 3.2vw, 3rem)" : "clamp(1rem, 3.2vh, 2.2rem) clamp(1.8rem, 3.2vw, 3rem) 2.4rem clamp(1.6rem, 3vw, 2.8rem)", maskImage: "linear-gradient(to bottom, #000 calc(100% - 2rem), transparent)", WebkitMaskImage: "linear-gradient(to bottom, #000 calc(100% - 2rem), transparent)" }}>
         {children}
       </div>
     </section>

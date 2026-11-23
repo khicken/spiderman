@@ -1,24 +1,31 @@
 import * as THREE from "three";
-import type { BeaconId, FrameCtx, GameEvent, Prop, Quality, V3 } from "./contracts";
+import type { BeaconId, FrameCtx, GameEvent, Prop, Quality, SiteRegistryV2, V3 } from "./contracts";
 import type { BeaconTower } from "./landmark-beacon";
-import { Mesher, PAL, glowMat, groundMin, rng, smooth, solidBox, type Emit, type SiteEnv, type TrialHandle } from "./landmark-kit";
+import { Mesher, PAL, glowMat, groundMin, rng, smooth, solidBox, type Emit, type Registry, type SiteEnv, type TrialHandle } from "./landmark-kit";
 
 const BEACON: BeaconId = 1;
 const GROUP = "trial-1";
+const GROUP_TEACH = "trial-1-teach";
+const GROUP_TEST = "trial-1-test";
 const RING_R = 26;
-const TOTAL = 3;
+const TOTAL = 2;
 const WAVE_DELAY = 2.5;
+const PAIR_TIMEOUT = 4;
+const MAX_ALIVE = 2;
+const HINT_AFTER = 90;
 const TAU = Math.PI * 2;
 const GAPS = [0.35, 1.92, 3.5, 5.07];
 const GAP_HALF = 0.2;
 const THORN = "#617f3d";
 const THORN_HI = "#8c5f3b";
+const WICK_ID = "wick-wood";
+const WICK_GIVEN = new Set<string>();
+void GROUP;
 
 type Kind = "brambling" | "mossback" | "wisp";
 const WAVES: readonly (readonly Kind[])[] = [
-  ["brambling", "brambling", "brambling", "brambling"],
-  ["brambling", "brambling", "mossback", "wisp"],
-  ["mossback", "mossback", "wisp", "wisp"],
+  ["brambling", "brambling", "brambling"],
+  ["brambling", "brambling", "wisp"],
 ];
 
 const outTilt = (a: number, t: number) => ({ rx: Math.cos(a) * t, rz: -Math.sin(a) * t });
@@ -31,6 +38,242 @@ function inGap(a: number, pad = 0): boolean {
     if (d < GAP_HALF + pad) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Pure plan + state machine (no THREE). buildWoodTrial wires visuals and events around it.
+// ---------------------------------------------------------------------------------------------------------------------
+export interface WoodSpawn { kind: Kind; pos: V3 }
+export interface WoodPlan {
+  cx: number;
+  cz: number;
+  ringR: number;
+  brazier: V3;
+  total: number;
+  spawnPoints: V3[];
+  teach: { rule: string; hint: string; group: string; mossback: V3 };
+  test: { rule: string; hint: string; group: string; waves: WoodSpawn[][]; maxAlive: number; pairTimeout: number; waveDelay: number };
+  bonus: { rule: string; hint: string; reward: "wick"; id: string; pos: V3 };
+}
+export interface WoodWorld { heightAt(x: number, z: number): number }
+export type WoodOut = GameEvent;
+export type WoodPhase = "idle" | "teach" | "test" | "bonus" | "done";
+export interface WoodInput { px: number; pz: number; grounded: boolean }
+export interface WoodOpts { bonusDone?: boolean | (() => boolean) }
+export interface WoodSnapshot {
+  phase: WoodPhase;
+  wave: number;
+  deadCount: number;
+  alive: number;
+  spawned: number;
+  flags: { teachDone: boolean; flawless: boolean; bonusGiven: boolean; hintFired: boolean };
+}
+export interface WoodMachine {
+  start(): WoodOut[];
+  step(input: WoodInput, dt: number): WoodOut[];
+  onEvent(e: GameEvent): WoodOut[];
+  abort(): WoodOut[];
+  reload(solved: boolean): WoodOut[];
+  snapshot(): WoodSnapshot;
+}
+
+export function planWoodTrial(world: WoodWorld, cx: number, cz: number): WoodPlan {
+  const at = (a: number, r: number, lift = 0): V3 => {
+    const x = cx + Math.sin(a) * r, z = cz + Math.cos(a) * r;
+    return { x, y: world.heightAt(x, z) + lift, z };
+  };
+  const waves: WoodSpawn[][] = WAVES.map((w, wi) => w.map((kind, i) => ({
+    kind,
+    pos: at((i / w.length) * TAU + wi * 0.9 + 0.5, 18 + ((i * 7 + wi * 3) % 5) * 0.8, kind === "wisp" ? 2.5 : 0),
+  })));
+  const spawnPoints: V3[] = [];
+  for (const w of waves) for (const s of w) spawnPoints.push(s.pos);
+  return {
+    cx, cz, ringR: RING_R, total: TOTAL, spawnPoints,
+    brazier: { x: cx, y: world.heightAt(cx, cz), z: cz },
+    teach: {
+      rule: "Shield on the glint. Right mouse or K.",
+      hint: "Raise your shield just as it glints.",
+      group: GROUP_TEACH,
+      mossback: at(2.4, 14),
+    },
+    test: {
+      rule: "Clear 2 waves. Bind pairs, burn at the brazier.",
+      hint: "Thread two enemies together to bind them.",
+      group: GROUP_TEST,
+      waves, maxAlive: MAX_ALIVE, pairTimeout: PAIR_TIMEOUT, waveDelay: WAVE_DELAY,
+    },
+    bonus: {
+      rule: "Bonus: clear wave 2 without a hit.",
+      hint: "Bonus: clear wave 2 without taking damage.",
+      reward: "wick", id: WICK_ID, pos: at(0.6, 4),
+    },
+  };
+}
+
+export function createWoodMachine(plan: WoodPlan, opts: WoodOpts = {}): WoodMachine {
+  let phase: WoodPhase = "idle";
+  let teachDone = false;
+  let wave = 0, spawned = 0, dead = 0, alive = 0;
+  let sinceSpawn = 0, delay = 0;
+  let flawless = true;
+  let hintT = 0, hintFired = false;
+  let bonusGiven = false;
+  const groups = new Set<string>();
+
+  const bonusDone = () => bonusGiven || (typeof opts.bonusDone === "function" ? opts.bonusDone() : !!opts.bonusDone);
+  const progress = () => { hintT = 0; };
+  const clearGroups = (out: WoodOut[]) => {
+    for (const g of groups) out.push({ type: "despawnGroup", group: g });
+    groups.clear();
+  };
+  const wipe = () => {
+    wave = 0; spawned = 0; dead = 0; alive = 0; sinceSpawn = 0; delay = 0;
+    flawless = true; hintT = 0; hintFired = false;
+  };
+  const spawnNext = (out: WoodOut[]) => {
+    const list = plan.test.waves[wave];
+    const n = Math.min(plan.test.maxAlive - alive, list.length - spawned);
+    for (let i = 0; i < n; i++) {
+      const s = list[spawned + i];
+      out.push({ type: "spawn", kind: s.kind, pos: { x: s.pos.x, y: s.pos.y, z: s.pos.z }, group: plan.test.group });
+      groups.add(plan.test.group);
+    }
+    spawned += n; alive += n; sinceSpawn = 0;
+  };
+  const startWave = (out: WoodOut[], first: boolean) => {
+    spawned = 0; dead = 0; alive = 0; sinceSpawn = 0;
+    if (wave === plan.test.waves.length - 1 && flawless) {
+      phase = "bonus";
+      out.push({ type: "trialRule", trial: BEACON, text: plan.bonus.rule });
+    }
+    if (first) { delay = 0; spawnNext(out); } else { delay = plan.test.waveDelay; }
+  };
+  const beginTest = (out: WoodOut[]) => {
+    wipe();
+    phase = "test";
+    out.push({ type: "trialRule", trial: BEACON, text: plan.test.rule });
+    startWave(out, true);
+  };
+  const beginTeach = (out: WoodOut[]) => {
+    wipe();
+    phase = "teach";
+    out.push({ type: "trialRule", trial: BEACON, text: plan.teach.rule });
+    out.push({ type: "spawn", kind: "mossback", pos: { ...plan.teach.mossback }, group: plan.teach.group });
+    groups.add(plan.teach.group);
+  };
+  const failTest = (out: WoodOut[]) => {
+    clearGroups(out);
+    out.push({ type: "trialFail", beacon: BEACON });
+    phase = "idle";
+    wipe();
+  };
+  const quitTeach = (out: WoodOut[]) => {
+    clearGroups(out);
+    phase = "idle";
+    teachDone = false;
+    wipe();
+  };
+  const finish = (out: WoodOut[]) => {
+    phase = "done";
+    delay = 0;
+    if (flawless && !bonusDone()) {
+      bonusGiven = true;
+      out.push({ type: "pickup", kind: "wick", amount: 1, pos: { ...plan.bonus.pos }, id: plan.bonus.id });
+    }
+    out.push({ type: "power", power: "burning" });
+    out.push({ type: "memory", beacon: BEACON });
+    out.push({ type: "trialDone", beacon: BEACON });
+  };
+  const inTest = () => phase === "test" || phase === "bonus";
+
+  return {
+    start() {
+      if (phase !== "idle") return [];
+      const out: WoodOut[] = [{ type: "trialStart", beacon: BEACON }];
+      if (teachDone) beginTest(out); else beginTeach(out);
+      return out;
+    },
+    step(input, dt) {
+      if (phase === "idle" || phase === "done") return [];
+      const out: WoodOut[] = [];
+      const dx = input.px - plan.cx, dz = input.pz - plan.cz;
+      if (dx * dx + dz * dz > plan.ringR * plan.ringR) {
+        if (phase === "teach") quitTeach(out); else failTest(out);
+        return out;
+      }
+      hintT += dt;
+      if (hintT >= HINT_AFTER && !hintFired) {
+        hintFired = true;
+        out.push({ type: "toast", text: phase === "teach" ? plan.teach.hint : plan.test.hint });
+      }
+      if (inTest()) {
+        if (delay > 0) {
+          delay -= dt;
+          if (delay <= 0) { delay = 0; spawnNext(out); }
+        } else if (spawned < plan.test.waves[wave].length) {
+          sinceSpawn += dt;
+          if (alive === 0 || sinceSpawn >= plan.test.pairTimeout) spawnNext(out);
+        }
+      }
+      return out;
+    },
+    onEvent(e) {
+      const out: WoodOut[] = [];
+      if (phase === "idle" || phase === "done") return out;
+      if (e.type === "parry") {
+        if (phase !== "teach") return out;
+        clearGroups(out);
+        teachDone = true;
+        out.push({ type: "toast", text: "Good parry. Now the test." });
+        beginTest(out);
+      } else if (e.type === "enemyDied") {
+        if (phase === "teach" && e.group === plan.teach.group) {
+          groups.delete(plan.teach.group);
+          teachDone = true;
+          out.push({ type: "toast", text: "Mossback down. Now the test." });
+          beginTest(out);
+        } else if (inTest() && e.group === plan.test.group && delay <= 0 && alive > 0) {
+          alive--; dead++; progress();
+          if (dead >= plan.test.waves[wave].length) {
+            wave++;
+            out.push({ type: "trialProgress", beacon: BEACON, value: wave, total: plan.total });
+            if (wave >= plan.total) finish(out);
+            else {
+              out.push({ type: "toast", text: `Wave ${wave + 1} of ${plan.total}` });
+              startWave(out, false);
+            }
+          } else if (alive === 0 && spawned < plan.test.waves[wave].length) {
+            spawnNext(out);
+          }
+        }
+      } else if (e.type === "hurt") {
+        if (inTest()) { flawless = false; if (phase === "bonus") phase = "test"; }
+      } else if (e.type === "died" || e.type === "respawned") {
+        if (phase === "teach") quitTeach(out); else failTest(out);
+      }
+      return out;
+    },
+    abort() {
+      const out: WoodOut[] = [];
+      clearGroups(out);
+      phase = "idle";
+      teachDone = false;
+      wipe();
+      return out;
+    },
+    reload(solved) {
+      const out: WoodOut[] = [];
+      clearGroups(out);
+      teachDone = solved;
+      phase = solved ? "done" : "idle";
+      wipe();
+      return out;
+    },
+    snapshot() {
+      return { phase, wave, deadCount: dead, alive, spawned, flags: { teachDone, flawless, bonusGiven, hintFired } };
+    },
+  };
 }
 
 export function buildWoodTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Group): TrialHandle {
@@ -167,6 +410,16 @@ export function buildWoodTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Grou
     if (i % 3 === 0) glow.cone(x, y, z, 0.12, 0.9 + (i % 2) * 0.6, "#ffffff", 4, 0, { jit: 0, ao: 0 });
   }
 
+  const plan = planWoodTrial(world, cx, cz);
+  const flame = new Mesher(105);
+  {
+    const b = plan.brazier;
+    wood.cyl(b.x, b.y - 0.2, b.z, 0.9, 0.7, 0.9, PAL.rockLo, 8);
+    wood.cyl(b.x, b.y + 0.7, b.z, 1.15, 0.9, 0.35, PAL.rock, 8);
+    flame.cone(b.x, b.y + 1.0, b.z, 0.6, 1.5, PAL.ember, 6, 0, { jit: 0, ao: 0 });
+    flame.cone(b.x, b.y + 1.0, b.z, 0.35, 2.1, PAL.emberHi, 5, 0.4, { jit: 0, ao: 0 });
+  }
+
   const addMesh = (m: Mesher, name: string, mat?: THREE.Material, shadow = true) => {
     const mesh = m.build(look, mat, name);
     mesh.castShadow = shadow;
@@ -176,6 +429,7 @@ export function buildWoodTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Grou
   };
   addMesh(wood, "thorn-ring");
   addMesh(runes, "thorn-runes", glowMat(look, PAL.rune, 0.9), false);
+  addMesh(flame, "thorn-brazier", glowMat(look, PAL.ember, 1.2), false);
   const closeMesh = addMesh(closing, "thorn-closing");
   closeMesh.position.y = gy;
   closeMesh.scale.y = 0.001;
@@ -188,22 +442,23 @@ export function buildWoodTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Grou
   glowMesh.visible = false;
   glowMesh.receiveShadow = false;
 
-  const spawnPts: V3[][] = WAVES.map((w, wi) => w.map((kind, i) => {
-    const a = (i / w.length) * TAU + wi * 0.9 + 0.5 + (rnd() - 0.5) * 0.3;
-    const r = 18 + rnd() * 4;
-    const x = cx + Math.sin(a) * r, z = cz + Math.cos(a) * r;
-    return { x, y: world.heightAt(x, z) + (kind === "wisp" ? 2.5 : 0), z };
-  }));
+  const machine = createWoodMachine(plan, { bonusDone: () => WICK_GIVEN.has(WICK_ID) });
+  const reg = env.reg as Registry & Partial<SiteRegistryV2>;
+  if (typeof reg.anchor === "function") {
+    reg.anchor({ id: "wood:brazier", kind: "brazier", pos: { ...plan.brazier }, weight: 0, lit: true, enabled: true });
+  }
 
   const props: Prop[] = [];
-  let active = false;
-  let wave = 0;
-  let dead = 0;
-  let delay = 0;
-  let isSolved = false;
+  let lastEmit: Emit | null = null;
   let closeT = 0;
-  let closeTarget = 0;
   let lastTime = 0;
+  const isActive = () => { const p = machine.snapshot().phase; return p !== "idle" && p !== "done"; };
+  const send = (outs: GameEvent[], emit: Emit | null) => {
+    for (const o of outs) {
+      if (o.type === "pickup" && o.id === WICK_ID) WICK_GIVEN.add(WICK_ID);
+      if (emit) emit(o);
+    }
+  };
 
   const applyClose = () => {
     const k = smooth(closeT);
@@ -212,106 +467,47 @@ export function buildWoodTrial(env: SiteEnv, tower: BeaconTower, sky: THREE.Grou
     glowMesh.visible = k > 0.01;
   };
 
-  const spawnWave = (emit: Emit) => {
-    const pts = spawnPts[wave];
-    const kinds = WAVES[wave];
-    for (let i = 0; i < kinds.length; i++) {
-      const p = pts[i];
-      emit({ type: "spawn", kind: kinds[i], pos: { x: p.x, y: p.y, z: p.z }, group: GROUP });
-    }
-    dead = 0;
-  };
-
-  const reset = () => {
-    active = false;
-    wave = 0;
-    dead = 0;
-    delay = 0;
-    closeTarget = 0;
-  };
-
   return {
     beacon: BEACON,
-    get active() { return active; },
+    get active() { return isActive(); },
     props,
     timeLeft: null,
     canStart(_ctx: FrameCtx) { return null; },
     start(_ctx: FrameCtx, emit: Emit) {
-      if (active || isSolved) return;
-      active = true;
-      wave = 0;
-      dead = 0;
-      delay = 0;
-      closeTarget = 1;
-      emit({ type: "trialStart", beacon: BEACON });
-      emit({ type: "toast", text: "Wave 1 of 3" });
-      spawnWave(emit);
+      lastEmit = emit;
+      send(machine.start(), emit);
     },
     update(ctx: FrameCtx, emit: Emit, near: boolean) {
-      if (!active && !near && closeT <= 0.001) return;
+      const act = isActive();
+      if (!act && !near && closeT <= 0.001) return;
+      lastEmit = emit;
       const dt = ctx.dt;
       lastTime = ctx.time;
-      if (closeT !== closeTarget) {
-        const step = dt / (closeTarget > closeT ? 2.2 : 3.5);
-        closeT = closeTarget > closeT ? Math.min(closeTarget, closeT + step) : Math.max(closeTarget, closeT - step);
+      if (act) send(machine.step({ px: ctx.player.pos.x, pz: ctx.player.pos.z, grounded: ctx.player.grounded }, dt), emit);
+      const on = isActive();
+      const target = on ? 1 : 0;
+      if (closeT !== target) {
+        const step = dt / (target > closeT ? 2.2 : 3.5);
+        closeT = target > closeT ? Math.min(target, closeT + step) : Math.max(target, closeT - step);
         applyClose();
       }
       if (closeT > 0.01) {
         const f = 0.5 + 0.3 * Math.sin(lastTime * 3.1) + 0.2 * Math.sin(lastTime * 7.3);
-        glowMatl.opacity = smooth(closeT) * (active ? 0.55 + 0.25 * f : 0.25);
-      }
-      if (!active) return;
-      const dx = ctx.player.pos.x - cx, dz = ctx.player.pos.z - cz;
-      if (dx * dx + dz * dz > RING_R * RING_R) {
-        emit({ type: "despawnGroup", group: GROUP });
-        emit({ type: "trialFail", beacon: BEACON });
-        reset();
-        return;
-      }
-      if (delay > 0) {
-        delay -= dt;
-        if (delay <= 0) {
-          delay = 0;
-          spawnWave(emit);
-        }
+        glowMatl.opacity = smooth(closeT) * (on ? 0.55 + 0.25 * f : 0.25);
       }
     },
     handle(e: GameEvent, emit: Emit) {
-      if (!active) return;
-      if (e.type === "enemyDied") {
-        if (e.group !== GROUP || delay > 0) return;
-        dead++;
-        if (dead < WAVES[wave].length) return;
-        wave++;
-        emit({ type: "trialProgress", beacon: BEACON, value: wave, total: TOTAL });
-        if (wave >= TOTAL) {
-          active = false;
-          isSolved = true;
-          closeTarget = 0;
-          emit({ type: "trialDone", beacon: BEACON });
-        } else {
-          delay = WAVE_DELAY;
-          dead = 0;
-          emit({ type: "toast", text: `Wave ${wave + 1} of ${TOTAL}` });
-        }
-      } else if (e.type === "died") {
-        emit({ type: "despawnGroup", group: GROUP });
-        reset();
-      } else if (e.type === "trialFail" && e.beacon === BEACON) {
-        emit({ type: "despawnGroup", group: GROUP });
-        reset();
-      }
+      lastEmit = emit;
+      send(machine.onEvent(e), emit);
     },
     abort() {
-      isSolved = false;
-      reset();
+      send(machine.abort(), lastEmit);
       closeT = 0;
       applyClose();
     },
     solved(animated: boolean) {
-      isSolved = true;
-      active = false;
-      closeTarget = 0;
+      send(machine.reload(true), lastEmit);
+      WICK_GIVEN.add(WICK_ID);
       if (!animated) {
         closeT = 0;
         applyClose();

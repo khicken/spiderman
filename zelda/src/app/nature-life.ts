@@ -8,9 +8,11 @@ uniform float uSize;
 varying float vGlow;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  float pulse = 0.5 + 0.5 * sin(uTime * (1.4 + aF.y * 1.6) + aF.x * 40.0);
-  vGlow = aF.z * (0.25 + 0.75 * pulse * pulse);
-  gl_PointSize = clamp(uSize * (0.55 + 0.7 * pulse) / max(-mv.z, 1.0), 3.0, 48.0) * (0.3 + 0.7 * aF.z);
+  // slow breathing with a sharper blink on top; each fly has its own rhythm and goes dark between blinks
+  float ph = uTime * (0.7 + aF.y * 0.9) + aF.x * 40.0;
+  float blink = pow(max(sin(ph), 0.0), 3.0) * (0.55 + 0.45 * sin(ph * 2.7 + aF.x * 9.0));
+  vGlow = aF.z * (0.08 + 0.92 * blink);
+  gl_PointSize = clamp(uSize * (0.6 + 0.5 * blink) / max(-mv.z, 1.0), 2.0, 15.0) * (0.45 + 0.55 * aF.z);
   gl_Position = projectionMatrix * mv;
 }`;
 
@@ -19,11 +21,12 @@ varying float vGlow;
 void main() {
   vec2 p = gl_PointCoord - 0.5;
   float d = length(p) * 2.0;
-  float core = smoothstep(1.0, 0.0, d);
-  float a = core * core * vGlow;
+  float core = exp(-d * d * 5.0);
+  float halo = (1.0 - smoothstep(0.0, 1.0, d)) * 0.22;
+  float a = (core + halo) * vGlow;
   if (a < 0.01) discard;
-  vec3 c = mix(vec3(1.0, 0.7, 0.25), vec3(1.0, 0.95, 0.6), core * core);
-  gl_FragColor = vec4(c * (0.7 + 0.8 * vGlow), a);
+  vec3 c = mix(vec3(1.0, 0.72, 0.3), vec3(1.0, 0.84, 0.48), core);
+  gl_FragColor = vec4(c * (0.55 + 0.6 * vGlow), a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -116,7 +119,7 @@ export class LifeSystem {
   }
 
   private build(q: QualityPreset): void {
-    this.ffN = Math.round(32 + 56 * clamp01(q.grassDensity));
+    this.ffN = Math.round(48 + 80 * clamp01(q.grassDensity));
     this.ffPos = new Float32Array(this.ffN * 3);
     this.ffF = new Float32Array(this.ffN * 4);
     this.ffVel = new Float32Array(this.ffN * 3);
@@ -130,7 +133,7 @@ export class LifeSystem {
     const fa = new THREE.BufferAttribute(this.ffF, 4).setUsage(THREE.DynamicDrawUsage);
     this.ffGeo.setAttribute("position", pa);
     this.ffGeo.setAttribute("aF", fa);
-    this.ffMat = shaderMat(this.look, FIREFLY_VS, FIREFLY_FS, { uSize: { value: 900 } }, { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.ffMat = shaderMat(this.look, FIREFLY_VS, FIREFLY_FS, { uSize: { value: 520 } }, { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     this.ffPts = new THREE.Points(this.ffGeo, this.ffMat);
     this.ffPts.frustumCulled = false;
     this.group.add(this.ffPts);

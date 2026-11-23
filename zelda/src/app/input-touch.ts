@@ -45,11 +45,12 @@ interface Spec {
 
 // Arc around the bottom-right corner. Centers are measured from the corner, margins included.
 export const TOUCH_SPECS: readonly Spec[] = [
-  { name: "attack", glyph: "sword", cap: "Strike", x: 64, y: 62, s: 84, dragLook: true },
-  { name: "jump", glyph: "jump", cap: "Leap", x: 68, y: 152, s: 64 },
-  { name: "dodge", glyph: "roll", cap: "Roll", x: 152, y: 44, s: 58 },
-  { name: "block", glyph: "shield", cap: "Guard", x: 226, y: 100, s: 62, dragLook: true },
-  { name: "glide", glyph: "glide", cap: "Glide", x: 150, y: 128, s: 60 },
+  { name: "attack", glyph: "sword", cap: "Attack", x: 64, y: 62, s: 84, dragLook: true },
+  { name: "jump", glyph: "jump", cap: "Jump", x: 68, y: 152, s: 64 },
+  { name: "dodge", glyph: "roll", cap: "Dodge", x: 152, y: 44, s: 58 },
+  { name: "block", glyph: "shield", cap: "Shield", x: 226, y: 100, s: 62, dragLook: true },
+  { name: "thread", glyph: "lantern", cap: "Thread", x: 150, y: 128, s: 60 },
+  { name: "glide", glyph: "glide", cap: "Glide", x: 150, y: 128, s: 60 }, // v2: hidden; the jump button glides in the air
   { name: "bow", glyph: "bow", cap: "Bow", x: 68, y: 232, s: 60, dragLook: true },
   { name: "lock", glyph: "lock", cap: "Lock", x: 152, y: 210, s: 54 },
   { name: "use", glyph: "star", cap: "Use", x: 226, y: 182, s: 58 },
@@ -64,6 +65,7 @@ const GLYPHS: Record<string, string> = {
   shield: '<path d="M12 3.5 L19 6.5 V12 C19 16.4 15.6 19.6 12 21 C8.4 19.6 5 16.4 5 12 V6.5 Z"/><path d="M12 3.5 V21" opacity="0.5"/>',
   bow: '<path d="M7 3.5 C17.5 8 17.5 16 7 20.5"/><path d="M7 3.5 L7 20.5" opacity="0.6"/><path d="M3.5 12 H19.5"/><path d="M16.5 9 L19.5 12 L16.5 15"/>',
   lock: '<path d="M4 9 V4 H9 M15 4 H20 V9 M20 15 V20 H15 M9 20 H4 V15"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/>',
+  lantern: '<path d="M9 4 H15"/><path d="M12 2 V4"/><path d="M8 7 H16 L15 18 H9 Z"/><path d="M12 10.5 C10.8 12 10.8 13.5 12 15 C13.2 13.5 13.2 12 12 10.5 Z"/><path d="M8 21 H16"/>',
   glide: '<path d="M2.5 15.5 C7 8 10 8.5 12 11.5 C14 8.5 17 8 21.5 15.5 C17.5 13.2 14 13.4 12 16.5 C10 13.4 6.5 13.2 2.5 15.5 Z"/>',
   star: '<path d="M12 3 L14.2 9.8 L21 12 L14.2 14.2 L12 21 L9.8 14.2 L3 12 L9.8 9.8 Z"/>',
   map: '<path d="M4 6.5 L9 4.5 L15 6.5 L20 4.5 V17.5 L15 19.5 L9 17.5 L4 19.5 Z"/><path d="M9 4.5 V17.5 M15 6.5 V19.5" opacity="0.6"/>',
@@ -392,19 +394,16 @@ export function createTouch(container: HTMLElement, onTouch: () => void, vibrate
     const glide = byName.get("glide")!, bow = byName.get("bow")!, use = byName.get("use")!;
     const lock = byName.get("lock")!, jump = byName.get("jump")!, dodge = byName.get("dodge")!;
     if (c) {
-      glide.shown = (c.airborne || c.gliding) && !c.climbing && !c.swimming;
-      glide.dim = false;
-      glide.on = c.gliding;
-      setCap(glide, c.gliding ? "Close" : "Glide");
+      glide.shown = false;
+      const air = (c.airborne || c.gliding) && !c.climbing && !c.swimming;
       bow.shown = c.hasBow;
       lock.on = c.locked;
       setCap(lock, c.locked ? "Free" : "Lock");
-      setCap(jump, c.climbing ? "Hop" : c.swimming ? "Dive" : "Leap");
-      setCap(dodge, c.swimming ? "Dash" : "Roll");
+      jump.on = c.gliding;
+      setCap(jump, c.gliding ? "Close" : air ? "Glide" : c.climbing ? "Hop" : c.swimming ? "Dive" : "Jump");
+      setCap(dodge, c.swimming ? "Dash" : "Dodge");
     } else {
-      glide.shown = true;
-      glide.dim = true;
-      glide.on = false;
+      glide.shown = false;
       bow.shown = true;
     }
     use.shown = prompt !== null;
@@ -433,7 +432,8 @@ export function createTouch(container: HTMLElement, onTouch: () => void, vibrate
       out.moveY = touchMove.y;
       const mag = Math.hypot(touchMove.x, touchMove.y);
       magHeldT = stickId !== NONE && mag > 0.95 ? magHeldT + dt : 0;
-      out.sprint = stickId !== NONE && (magHeldT > 0.4 || (toggled && mag > 0.2));
+      // auto-sprint after 1 s at full tilt; a double-tap on the stick toggles it at any tilt
+      out.sprint = stickId !== NONE && (magHeldT >= 1 || (toggled && mag > 0.2));
       out.lookDX = lookDX;
       out.lookDY = lookDY;
       out.zoom = zoomAcc;
