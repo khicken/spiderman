@@ -1,0 +1,1508 @@
+{
+ "version": 1,
+ "note": "HOLLOWMERE score instruments. Built by scripts/audio/build-instruments.py. Sources in CREDITS.md.",
+ "boot": [
+  "harp-D2",
+  "harp-F2",
+  "harp-A2",
+  "harp-C3",
+  "harp-E3",
+  "harp-G3",
+  "harp-B3",
+  "harp-D4",
+  "harp-F4",
+  "harp-A4",
+  "harp-C5",
+  "harp-E5",
+  "harp-G5",
+  "harp-B5",
+  "harp-D6",
+  "flute-C5",
+  "flute-E5",
+  "flute-A5",
+  "flute-C6",
+  "flute-E6",
+  "flute-A6",
+  "flute-C7",
+  "violins-G3",
+  "violins-B3",
+  "violins-D4",
+  "violins-Fs4",
+  "violins-A4",
+  "violins-C5",
+  "violins-E5",
+  "violins-G5",
+  "violins-B5",
+  "violins-D6",
+  "celli-C2",
+  "celli-E2",
+  "celli-G2",
+  "celli-B2",
+  "celli-D3",
+  "celli-F3",
+  "celli-A3",
+  "celli-C4",
+  "celli-E4",
+  "celli-G4",
+  "glock-G5",
+  "glock-C6",
+  "glock-G6",
+  "glock-C7",
+  "glock-G7",
+  "glock-C8"
+ ],
+ "clips": {
+  "harp-D2": {
+   "file": "inst/harp-D2.m4a"
+  },
+  "harp-F2": {
+   "file": "inst/harp-F2.m4a"
+  },
+  "harp-A2": {
+   "file": "inst/harp-A2.m4a"
+  },
+  "harp-C3": {
+   "file": "inst/harp-C3.m4a"
+  },
+  "harp-E3": {
+   "file": "inst/harp-E3.m4a"
+  },
+  "harp-G3": {
+   "file": "inst/harp-G3.m4a"
+  },
+  "harp-B3": {
+   "file": "inst/harp-B3.m4a"
+  },
+  "harp-D4": {
+   "file": "inst/harp-D4.m4a"
+  },
+  "harp-F4": {
+   "file": "inst/harp-F4.m4a"
+  },
+  "harp-A4": {
+   "file": "inst/harp-A4.m4a"
+  },
+  "harp-C5": {
+   "file": "inst/harp-C5.m4a"
+  },
+  "harp-E5": {
+   "file": "inst/harp-E5.m4a"
+  },
+  "harp-G5": {
+   "file": "inst/harp-G5.m4a"
+  },
+  "harp-B5": {
+   "file": "inst/harp-B5.m4a"
+  },
+  "harp-D6": {
+   "file": "inst/harp-D6.m4a"
+  },
+  "flute-C5": {
+   "file": "inst/flute-C5.m4a"
+  },
+  "flute-E5": {
+   "file": "inst/flute-E5.m4a"
+  },
+  "flute-A5": {
+   "file": "inst/flute-A5.m4a"
+  },
+  "flute-C6": {
+   "file": "inst/flute-C6.m4a"
+  },
+  "flute-E6": {
+   "file": "inst/flute-E6.m4a"
+  },
+  "flute-A6": {
+   "file": "inst/flute-A6.m4a"
+  },
+  "flute-C7": {
+   "file": "inst/flute-C7.m4a"
+  },
+  "violins-G3": {
+   "file": "inst/violins-G3.m4a"
+  },
+  "violins-B3": {
+   "file": "inst/violins-B3.m4a"
+  },
+  "violins-D4": {
+   "file": "inst/violins-D4.m4a"
+  },
+  "violins-Fs4": {
+   "file": "inst/violins-Fs4.m4a"
+  },
+  "violins-A4": {
+   "file": "inst/violins-A4.m4a"
+  },
+  "violins-C5": {
+   "file": "inst/violins-C5.m4a"
+  },
+  "violins-E5": {
+   "file": "inst/violins-E5.m4a"
+  },
+  "violins-G5": {
+   "file": "inst/violins-G5.m4a"
+  },
+  "violins-B5": {
+   "file": "inst/violins-B5.m4a"
+  },
+  "violins-D6": {
+   "file": "inst/violins-D6.m4a"
+  },
+  "violas-C3": {
+   "file": "inst/violas-C3.m4a"
+  },
+  "violas-E3": {
+   "file": "inst/violas-E3.m4a"
+  },
+  "violas-G3": {
+   "file": "inst/violas-G3.m4a"
+  },
+  "violas-B3": {
+   "file": "inst/violas-B3.m4a"
+  },
+  "violas-D4": {
+   "file": "inst/violas-D4.m4a"
+  },
+  "violas-F4": {
+   "file": "inst/violas-F4.m4a"
+  },
+  "violas-A4": {
+   "file": "inst/violas-A4.m4a"
+  },
+  "violas-C5": {
+   "file": "inst/violas-C5.m4a"
+  },
+  "celli-C2": {
+   "file": "inst/celli-C2.m4a"
+  },
+  "celli-E2": {
+   "file": "inst/celli-E2.m4a"
+  },
+  "celli-G2": {
+   "file": "inst/celli-G2.m4a"
+  },
+  "celli-B2": {
+   "file": "inst/celli-B2.m4a"
+  },
+  "celli-D3": {
+   "file": "inst/celli-D3.m4a"
+  },
+  "celli-F3": {
+   "file": "inst/celli-F3.m4a"
+  },
+  "celli-A3": {
+   "file": "inst/celli-A3.m4a"
+  },
+  "celli-C4": {
+   "file": "inst/celli-C4.m4a"
+  },
+  "celli-E4": {
+   "file": "inst/celli-E4.m4a"
+  },
+  "celli-G4": {
+   "file": "inst/celli-G4.m4a"
+  },
+  "vlnPizz-G3": {
+   "file": "inst/vlnPizz-G3.m4a"
+  },
+  "vlnPizz-B3": {
+   "file": "inst/vlnPizz-B3.m4a"
+  },
+  "vlnPizz-D4": {
+   "file": "inst/vlnPizz-D4.m4a"
+  },
+  "vlnPizz-Fs4": {
+   "file": "inst/vlnPizz-Fs4.m4a"
+  },
+  "vlnPizz-A4": {
+   "file": "inst/vlnPizz-A4.m4a"
+  },
+  "vlnPizz-C5": {
+   "file": "inst/vlnPizz-C5.m4a"
+  },
+  "vlnPizz-E5": {
+   "file": "inst/vlnPizz-E5.m4a"
+  },
+  "vlnPizz-G5": {
+   "file": "inst/vlnPizz-G5.m4a"
+  },
+  "vlnPizz-B5": {
+   "file": "inst/vlnPizz-B5.m4a"
+  },
+  "vlnPizz-D6": {
+   "file": "inst/vlnPizz-D6.m4a"
+  },
+  "celloPizz-C2": {
+   "file": "inst/celloPizz-C2.m4a"
+  },
+  "celloPizz-E2": {
+   "file": "inst/celloPizz-E2.m4a"
+  },
+  "celloPizz-G2": {
+   "file": "inst/celloPizz-G2.m4a"
+  },
+  "celloPizz-B2": {
+   "file": "inst/celloPizz-B2.m4a"
+  },
+  "celloPizz-D3": {
+   "file": "inst/celloPizz-D3.m4a"
+  },
+  "celloPizz-F3": {
+   "file": "inst/celloPizz-F3.m4a"
+  },
+  "celloPizz-A3": {
+   "file": "inst/celloPizz-A3.m4a"
+  },
+  "celloPizz-C4": {
+   "file": "inst/celloPizz-C4.m4a"
+  },
+  "vlnTrem-A3": {
+   "file": "inst/vlnTrem-A3.m4a"
+  },
+  "vlnTrem-D4": {
+   "file": "inst/vlnTrem-D4.m4a"
+  },
+  "vlnTrem-Fs4": {
+   "file": "inst/vlnTrem-Fs4.m4a"
+  },
+  "vlnTrem-A4": {
+   "file": "inst/vlnTrem-A4.m4a"
+  },
+  "vlnTrem-C5": {
+   "file": "inst/vlnTrem-C5.m4a"
+  },
+  "vlnTrem-E5": {
+   "file": "inst/vlnTrem-E5.m4a"
+  },
+  "vlnTrem-G5": {
+   "file": "inst/vlnTrem-G5.m4a"
+  },
+  "celloTrem-E2": {
+   "file": "inst/celloTrem-E2.m4a"
+  },
+  "celloTrem-G2": {
+   "file": "inst/celloTrem-G2.m4a"
+  },
+  "celloTrem-D3": {
+   "file": "inst/celloTrem-D3.m4a"
+  },
+  "celloTrem-F3": {
+   "file": "inst/celloTrem-F3.m4a"
+  },
+  "celloTrem-A3": {
+   "file": "inst/celloTrem-A3.m4a"
+  },
+  "celloTrem-C4": {
+   "file": "inst/celloTrem-C4.m4a"
+  },
+  "horn-G2": {
+   "file": "inst/horn-G2.m4a"
+  },
+  "horn-As2": {
+   "file": "inst/horn-As2.m4a"
+  },
+  "horn-D3": {
+   "file": "inst/horn-D3.m4a"
+  },
+  "horn-F3": {
+   "file": "inst/horn-F3.m4a"
+  },
+  "horn-A3": {
+   "file": "inst/horn-A3.m4a"
+  },
+  "horn-C4": {
+   "file": "inst/horn-C4.m4a"
+  },
+  "horn-D5": {
+   "file": "inst/horn-D5.m4a"
+  },
+  "horn-F5": {
+   "file": "inst/horn-F5.m4a"
+  },
+  "timpani-F2": {
+   "file": "inst/timpani-F2.m4a"
+  },
+  "timpani-B2": {
+   "file": "inst/timpani-B2.m4a"
+  },
+  "timpani-D3": {
+   "file": "inst/timpani-D3.m4a"
+  },
+  "timpani-E3": {
+   "file": "inst/timpani-E3.m4a"
+  },
+  "timpani-B2-5": {
+   "file": "inst/timpani-B2-5.m4a"
+  },
+  "timpani-E3-6": {
+   "file": "inst/timpani-E3-6.m4a"
+  },
+  "timpRoll-B2": {
+   "file": "inst/timpRoll-B2.m4a"
+  },
+  "timpRoll-E3": {
+   "file": "inst/timpRoll-E3.m4a"
+  },
+  "glock-G5": {
+   "file": "inst/glock-G5.m4a"
+  },
+  "glock-C6": {
+   "file": "inst/glock-C6.m4a"
+  },
+  "glock-G6": {
+   "file": "inst/glock-G6.m4a"
+  },
+  "glock-C7": {
+   "file": "inst/glock-C7.m4a"
+  },
+  "glock-G7": {
+   "file": "inst/glock-G7.m4a"
+  },
+  "glock-C8": {
+   "file": "inst/glock-C8.m4a"
+  },
+  "frameDrum-1": {
+   "file": "inst/frameDrum-1.m4a"
+  },
+  "frameDrum-2": {
+   "file": "inst/frameDrum-2.m4a"
+  },
+  "frameDrum-3": {
+   "file": "inst/frameDrum-3.m4a"
+  },
+  "frameDrum-4": {
+   "file": "inst/frameDrum-4.m4a"
+  },
+  "frameDrum-5": {
+   "file": "inst/frameDrum-5.m4a"
+  },
+  "frameDrum-6": {
+   "file": "inst/frameDrum-6.m4a"
+  },
+  "kalimba-B3": {
+   "file": "inst/kalimba-B3.m4a"
+  },
+  "kalimba-Cs4": {
+   "file": "inst/kalimba-Cs4.m4a"
+  },
+  "kalimba-Ds4": {
+   "file": "inst/kalimba-Ds4.m4a"
+  },
+  "kalimba-Fs4": {
+   "file": "inst/kalimba-Fs4.m4a"
+  },
+  "kalimba-Gs4": {
+   "file": "inst/kalimba-Gs4.m4a"
+  },
+  "kalimba-B4": {
+   "file": "inst/kalimba-B4.m4a"
+  },
+  "kalimba-Cs5": {
+   "file": "inst/kalimba-Cs5.m4a"
+  },
+  "kalimba-Fs5": {
+   "file": "inst/kalimba-Fs5.m4a"
+  },
+  "kalimba-A5": {
+   "file": "inst/kalimba-A5.m4a"
+  },
+  "ocarina-A4": {
+   "file": "inst/ocarina-A4.m4a"
+  },
+  "ocarina-C5": {
+   "file": "inst/ocarina-C5.m4a"
+  },
+  "ocarina-E5": {
+   "file": "inst/ocarina-E5.m4a"
+  },
+  "ocarina-Fs5": {
+   "file": "inst/ocarina-Fs5.m4a"
+  },
+  "ocarina-A5": {
+   "file": "inst/ocarina-A5.m4a"
+  },
+  "ocarina-C6": {
+   "file": "inst/ocarina-C6.m4a"
+  },
+  "recorder-F4": {
+   "file": "inst/recorder-F4.m4a"
+  },
+  "recorder-As4": {
+   "file": "inst/recorder-As4.m4a"
+  },
+  "recorder-D5": {
+   "file": "inst/recorder-D5.m4a"
+  },
+  "recorder-Fs5": {
+   "file": "inst/recorder-Fs5.m4a"
+  },
+  "recorder-As5": {
+   "file": "inst/recorder-As5.m4a"
+  },
+  "recorder-D6": {
+   "file": "inst/recorder-D6.m4a"
+  },
+  "psaltery-As4": {
+   "file": "inst/psaltery-As4.m4a"
+  },
+  "psaltery-D5": {
+   "file": "inst/psaltery-D5.m4a"
+  },
+  "psaltery-Fs5": {
+   "file": "inst/psaltery-Fs5.m4a"
+  },
+  "psaltery-As5": {
+   "file": "inst/psaltery-As5.m4a"
+  },
+  "psaltery-D6": {
+   "file": "inst/psaltery-D6.m4a"
+  },
+  "psaltery-Fs6": {
+   "file": "inst/psaltery-Fs6.m4a"
+  },
+  "bowPsaltery-As4": {
+   "file": "inst/bowPsaltery-As4.m4a"
+  },
+  "bowPsaltery-D5": {
+   "file": "inst/bowPsaltery-D5.m4a"
+  },
+  "bowPsaltery-Fs5": {
+   "file": "inst/bowPsaltery-Fs5.m4a"
+  },
+  "bowPsaltery-As5": {
+   "file": "inst/bowPsaltery-As5.m4a"
+  },
+  "bowPsaltery-D6": {
+   "file": "inst/bowPsaltery-D6.m4a"
+  },
+  "vibes-F3": {
+   "file": "inst/vibes-F3.m4a"
+  },
+  "vibes-C4": {
+   "file": "inst/vibes-C4.m4a"
+  },
+  "vibes-E4": {
+   "file": "inst/vibes-E4.m4a"
+  },
+  "vibes-G4": {
+   "file": "inst/vibes-G4.m4a"
+  },
+  "vibes-B4": {
+   "file": "inst/vibes-B4.m4a"
+  },
+  "vibes-D5": {
+   "file": "inst/vibes-D5.m4a"
+  },
+  "vibes-F5": {
+   "file": "inst/vibes-F5.m4a"
+  },
+  "vibes-A5": {
+   "file": "inst/vibes-A5.m4a"
+  },
+  "vibes-C6": {
+   "file": "inst/vibes-C6.m4a"
+  }
+ },
+ "instruments": {
+  "harp": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "harp-D2",
+     "midi": 37.93,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_D2_mf.wav"
+    },
+    {
+     "id": "harp-F2",
+     "midi": 40.92,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_F2_mf.wav"
+    },
+    {
+     "id": "harp-A2",
+     "midi": 44.94,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_A2_mf.wav"
+    },
+    {
+     "id": "harp-C3",
+     "midi": 47.98,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_C3_mf.wav"
+    },
+    {
+     "id": "harp-E3",
+     "midi": 51.95,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_E3_mf.wav"
+    },
+    {
+     "id": "harp-G3",
+     "midi": 54.93,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_G3_mf.wav"
+    },
+    {
+     "id": "harp-B3",
+     "midi": 58.88,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_B3_mf.wav"
+    },
+    {
+     "id": "harp-D4",
+     "midi": 61.87,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_D4_mf.wav"
+    },
+    {
+     "id": "harp-F4",
+     "midi": 64.98,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_F4_mf.wav"
+    },
+    {
+     "id": "harp-A4",
+     "midi": 68.91,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_A4_mf.wav"
+    },
+    {
+     "id": "harp-C5",
+     "midi": 71.9,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_C5_mf.wav"
+    },
+    {
+     "id": "harp-E5",
+     "midi": 75.88,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_E5_mf.wav"
+    },
+    {
+     "id": "harp-G5",
+     "midi": 78.94,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_G5_mf.wav"
+    },
+    {
+     "id": "harp-B5",
+     "midi": 82.91,
+     "len": 4.0,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_B5_mf.wav"
+    },
+    {
+     "id": "harp-D6",
+     "midi": 85.91,
+     "len": 3.88,
+     "src": "VSCO-2-CE/Strings/Harp/KSHarp_D6_mf.wav"
+    }
+   ]
+  },
+  "flute": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "flute-C5",
+     "midi": 72.0,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Woodwinds/Flute/susvib/LDFlute_susvib_C4_v1_1.wav"
+    },
+    {
+     "id": "flute-E5",
+     "midi": 76.03,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Woodwinds/Flute/susvib/LDFlute_susvib_E4_v1_1.wav"
+    },
+    {
+     "id": "flute-A5",
+     "midi": 81.02,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Woodwinds/Flute/susvib/LDFlute_susvib_A4_v1_1.wav"
+    },
+    {
+     "id": "flute-C6",
+     "midi": 84.08,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Woodwinds/Flute/susvib/LDFlute_susvib_C5_v1_1.wav"
+    },
+    {
+     "id": "flute-E6",
+     "midi": 88.04,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Woodwinds/Flute/susvib/LDFlute_susvib_E5_v1_1.wav"
+    },
+    {
+     "id": "flute-A6",
+     "midi": 93.03,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Woodwinds/Flute/susvib/LDFlute_susvib_A5_v1_1.wav"
+    },
+    {
+     "id": "flute-C7",
+     "midi": 96.0,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Woodwinds/Flute/susvib/LDFlute_susvib_C6_v1_1.wav"
+    }
+   ]
+  },
+  "violins": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "violins-G3",
+     "midi": 54.99,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_G2_v1.wav"
+    },
+    {
+     "id": "violins-B3",
+     "midi": 58.99,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_B2_v1.wav"
+    },
+    {
+     "id": "violins-D4",
+     "midi": 62.01,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_D3_v1.wav"
+    },
+    {
+     "id": "violins-Fs4",
+     "midi": 66.01,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_F#3_v1.wav"
+    },
+    {
+     "id": "violins-A4",
+     "midi": 69.01,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_A3_v1.wav"
+    },
+    {
+     "id": "violins-C5",
+     "midi": 72.02,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_C4_v1.wav"
+    },
+    {
+     "id": "violins-E5",
+     "midi": 76.02,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_E4_v1.wav"
+    },
+    {
+     "id": "violins-G5",
+     "midi": 79.03,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_G4_v1.wav"
+    },
+    {
+     "id": "violins-B5",
+     "midi": 83.05,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_B4_v1.wav"
+    },
+    {
+     "id": "violins-D6",
+     "midi": 86.03,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/susVib/VlnEns_susVib_D5_v1.wav"
+    }
+   ]
+  },
+  "violas": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "violas-C3",
+     "midi": 47.99,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_C2_v1_1.wav"
+    },
+    {
+     "id": "violas-E3",
+     "midi": 52.07,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_E2_v1_1.wav"
+    },
+    {
+     "id": "violas-G3",
+     "midi": 54.97,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_G2_v1_1.wav"
+    },
+    {
+     "id": "violas-B3",
+     "midi": 58.98,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_B2_v1_1.wav"
+    },
+    {
+     "id": "violas-D4",
+     "midi": 62.09,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_D3_v1_1.wav"
+    },
+    {
+     "id": "violas-F4",
+     "midi": 64.99,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_F3_v1_1.wav"
+    },
+    {
+     "id": "violas-A4",
+     "midi": 69.0,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_A3_v1_1.wav"
+    },
+    {
+     "id": "violas-C5",
+     "midi": 71.99,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Viola Section/susvib/ViolaEns_susvib_C4_v1_1.wav"
+    }
+   ]
+  },
+  "celli": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "celli-C2",
+     "midi": 36.03,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_C1_v1_1.wav"
+    },
+    {
+     "id": "celli-E2",
+     "midi": 39.99,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_E1_v1_1.wav"
+    },
+    {
+     "id": "celli-G2",
+     "midi": 42.95,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_G1_v1_1.wav"
+    },
+    {
+     "id": "celli-B2",
+     "midi": 47.01,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_B1_v1_1.wav"
+    },
+    {
+     "id": "celli-D3",
+     "midi": 50.02,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_D2_v1_1.wav"
+    },
+    {
+     "id": "celli-F3",
+     "midi": 53.04,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_F2_v1_1.wav"
+    },
+    {
+     "id": "celli-A3",
+     "midi": 57.02,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_A2_v1_1.wav"
+    },
+    {
+     "id": "celli-C4",
+     "midi": 60.02,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_C3_v1_1.wav"
+    },
+    {
+     "id": "celli-E4",
+     "midi": 64.03,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_E3_v1_1.wav"
+    },
+    {
+     "id": "celli-G4",
+     "midi": 67.03,
+     "len": 4.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/susvib/susvib_G3_v1_1.wav"
+    }
+   ]
+  },
+  "vlnPizz": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "vlnPizz-G3",
+     "midi": 54.97,
+     "len": 1.1,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_G2_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-B3",
+     "midi": 58.99,
+     "len": 1.02,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_B2_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-D4",
+     "midi": 62.11,
+     "len": 1.1,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_D3_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-Fs4",
+     "midi": 65.94,
+     "len": 0.89,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_F#3_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-A4",
+     "midi": 69.05,
+     "len": 1.1,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_A3_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-C5",
+     "midi": 72.01,
+     "len": 1.05,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_C4_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-E5",
+     "midi": 76.01,
+     "len": 0.83,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_E4_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-G5",
+     "midi": 79.02,
+     "len": 1.04,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_G4_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-B5",
+     "midi": 82.95,
+     "len": 0.6,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_B4_v2_rr1.wav"
+    },
+    {
+     "id": "vlnPizz-D6",
+     "midi": 86.13,
+     "len": 0.64,
+     "src": "VSCO-2-CE/Strings/Violin Section/Pizz/VlnEns_Pizz_D5_v2_rr1.wav"
+    }
+   ]
+  },
+  "celloPizz": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "celloPizz-C2",
+     "midi": 36.06,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_C1_v2_RR1.wav"
+    },
+    {
+     "id": "celloPizz-E2",
+     "midi": 39.96,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_E1_v2_RR1.wav"
+    },
+    {
+     "id": "celloPizz-G2",
+     "midi": 43.03,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_G1_v2_RR1.wav"
+    },
+    {
+     "id": "celloPizz-B2",
+     "midi": 46.98,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_B1_v2_RR1.wav"
+    },
+    {
+     "id": "celloPizz-D3",
+     "midi": 50.02,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_D2_v2_RR1.wav"
+    },
+    {
+     "id": "celloPizz-F3",
+     "midi": 53.02,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_F2_v2_RR1.wav"
+    },
+    {
+     "id": "celloPizz-A3",
+     "midi": 57.02,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_A2_v2_RR1.wav"
+    },
+    {
+     "id": "celloPizz-C4",
+     "midi": 60.01,
+     "len": 1.3,
+     "src": "VSCO-2-CE/Strings/Cello Section/pizzT/pizzT_C3_v2_RR1.wav"
+    }
+   ]
+  },
+  "vlnTrem": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "vlnTrem-A3",
+     "midi": 56.9,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/Trem/VlnEns_Trem_A2_v2.wav"
+    },
+    {
+     "id": "vlnTrem-D4",
+     "midi": 62.12,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/Trem/VlnEns_Trem_D3_v2.wav"
+    },
+    {
+     "id": "vlnTrem-Fs4",
+     "midi": 65.96,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/Trem/VlnEns_Trem_F#3_v1.wav"
+    },
+    {
+     "id": "vlnTrem-A4",
+     "midi": 68.99,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/Trem/VlnEns_Trem_A3_v2.wav"
+    },
+    {
+     "id": "vlnTrem-C5",
+     "midi": 71.99,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/Trem/VlnEns_Trem_C4_v2.wav"
+    },
+    {
+     "id": "vlnTrem-E5",
+     "midi": 75.98,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/Trem/VlnEns_Trem_E4_v2.wav"
+    },
+    {
+     "id": "vlnTrem-G5",
+     "midi": 78.92,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Violin Section/Trem/VlnEns_Trem_G4_v2.wav"
+    }
+   ]
+  },
+  "celloTrem": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "celloTrem-E2",
+     "midi": 39.93,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/trem/trem_E1_v2_1.wav"
+    },
+    {
+     "id": "celloTrem-G2",
+     "midi": 42.85,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/trem/trem_G1_v2_1.wav"
+    },
+    {
+     "id": "celloTrem-D3",
+     "midi": 49.96,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/trem/trem_D2_v2_1.wav"
+    },
+    {
+     "id": "celloTrem-F3",
+     "midi": 52.96,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/trem/trem_F2_v2_1.wav"
+    },
+    {
+     "id": "celloTrem-A3",
+     "midi": 57.01,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/trem/trem_A2_v2_1.wav"
+    },
+    {
+     "id": "celloTrem-C4",
+     "midi": 60.01,
+     "len": 3.2,
+     "src": "VSCO-2-CE/Strings/Cello Section/trem/trem_C3_v2_1.wav"
+    }
+   ]
+  },
+  "horn": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "horn-G2",
+     "midi": 43.01,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_G1_v2_1.wav"
+    },
+    {
+     "id": "horn-As2",
+     "midi": 45.94,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_A#1_v2_1.wav"
+    },
+    {
+     "id": "horn-D3",
+     "midi": 49.9,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_D2_v2_1.wav"
+    },
+    {
+     "id": "horn-F3",
+     "midi": 52.92,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_F2_v2_1.wav"
+    },
+    {
+     "id": "horn-A3",
+     "midi": 57.0,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_A2_v2_1.wav"
+    },
+    {
+     "id": "horn-C4",
+     "midi": 59.96,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_C3_v2_1.wav"
+    },
+    {
+     "id": "horn-D5",
+     "midi": 74.05,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_D4_v1_1.wav"
+    },
+    {
+     "id": "horn-F5",
+     "midi": 77.0,
+     "len": 3.6,
+     "src": "VSCO-2-CE/Brass/F Horn/sus/MOHorn_sus_F4_v1_1.wav"
+    }
+   ]
+  },
+  "timpani": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "timpani-F2",
+     "midi": 41.47,
+     "len": 2.6,
+     "src": "VSCO-2-CE/Percussion/Timpani/Timpani1_Hit_v3_rr1_Sum.wav"
+    },
+    {
+     "id": "timpani-B2",
+     "midi": 46.75,
+     "len": 2.6,
+     "src": "VSCO-2-CE/Percussion/Timpani/Timpani2_Hit_v3_rr1_Sum.wav"
+    },
+    {
+     "id": "timpani-B2-5",
+     "midi": 46.75,
+     "len": 2.6,
+     "src": "VSCO-2-CE/Percussion/Timpani/Timpani2_Hit_v1_rr1_Sum.wav"
+    },
+    {
+     "id": "timpani-D3",
+     "midi": 49.5,
+     "len": 2.6,
+     "src": "VSCO-2-CE/Percussion/Timpani/Timpani3_Hit_v3_rr1_Sum.wav"
+    },
+    {
+     "id": "timpani-E3",
+     "midi": 52.42,
+     "len": 2.6,
+     "src": "VSCO-2-CE/Percussion/Timpani/Timpani4_Hit_v3_rr1_Sum.wav"
+    },
+    {
+     "id": "timpani-E3-6",
+     "midi": 52.42,
+     "len": 2.6,
+     "src": "VSCO-2-CE/Percussion/Timpani/Timpani4_Hit_v1_rr1_Sum.wav"
+    }
+   ]
+  },
+  "timpRoll": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "timpRoll-B2",
+     "midi": 47.4,
+     "len": 3.4,
+     "src": "VSCO-2-CE/Percussion/Timpani/Rolls/Timpani2_Roll_v3_rr1_Sum.wav"
+    },
+    {
+     "id": "timpRoll-E3",
+     "midi": 52.13,
+     "len": 3.4,
+     "src": "VSCO-2-CE/Percussion/Timpani/Rolls/Timpani4_Roll_v3_rr1_Sum.wav"
+    }
+   ]
+  },
+  "glock": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "glock-G5",
+     "midi": 79.19,
+     "len": 2.2,
+     "src": "VSCO-2-CE/Percussion/Glock/glock_medium_G4.wav"
+    },
+    {
+     "id": "glock-C6",
+     "midi": 83.94,
+     "len": 2.2,
+     "src": "VSCO-2-CE/Percussion/Glock/glock_medium_C5.wav"
+    },
+    {
+     "id": "glock-G6",
+     "midi": 90.77,
+     "len": 2.2,
+     "src": "VSCO-2-CE/Percussion/Glock/glock_medium_G5.wav"
+    },
+    {
+     "id": "glock-C7",
+     "midi": 96.15,
+     "len": 2.2,
+     "src": "VSCO-2-CE/Percussion/Glock/glock_medium_C6.wav"
+    },
+    {
+     "id": "glock-G7",
+     "midi": 103.16,
+     "len": 2.2,
+     "src": "VSCO-2-CE/Percussion/Glock/glock_medium_G6.wav"
+    },
+    {
+     "id": "glock-C8",
+     "midi": 108.24,
+     "len": 2.2,
+     "src": "VSCO-2-CE/Percussion/Glock/glock_medium_C7.wav"
+    }
+   ]
+  },
+  "frameDrum": {
+   "kind": "perc",
+   "notes": [
+    {
+     "id": "frameDrum-1",
+     "midi": null,
+     "len": 0.9,
+     "src": "VCSL/Membranophones/Struck Membranophones/Frame Drum/HDrumL_Hit_v3_rr1_Sum.wav"
+    },
+    {
+     "id": "frameDrum-2",
+     "midi": null,
+     "len": 0.9,
+     "src": "VCSL/Membranophones/Struck Membranophones/Frame Drum/HDrumL_Hit_v3_rr2_Sum.wav"
+    },
+    {
+     "id": "frameDrum-3",
+     "midi": null,
+     "len": 0.9,
+     "src": "VCSL/Membranophones/Struck Membranophones/Frame Drum/HDrumL_Hit_v2_rr1_Sum.wav"
+    },
+    {
+     "id": "frameDrum-4",
+     "midi": null,
+     "len": 0.9,
+     "src": "VCSL/Membranophones/Struck Membranophones/Frame Drum/HDrumL_HitMuted_v2_rr1_Sum.wav"
+    },
+    {
+     "id": "frameDrum-5",
+     "midi": null,
+     "len": 0.9,
+     "src": "VCSL/Membranophones/Struck Membranophones/Frame Drum/HDrumS_Hit_v2_rr1_Sum.wav"
+    },
+    {
+     "id": "frameDrum-6",
+     "midi": null,
+     "len": 0.9,
+     "src": "VCSL/Membranophones/Struck Membranophones/Frame Drum/HDrumS_HitMuted_v2_rr1_Sum.wav"
+    }
+   ]
+  },
+  "kalimba": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "kalimba-B3",
+     "midi": 58.91,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_B2_k8_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-Cs4",
+     "midi": 61.2,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_C#3_k7_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-Ds4",
+     "midi": 63.18,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_D#3_k6_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-Fs4",
+     "midi": 66.27,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_F#3_k5_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-Gs4",
+     "midi": 68.45,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_G#3_k4_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-B4",
+     "midi": 71.18,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_B3_k3_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-Cs5",
+     "midi": 73.2,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_C#4_k2_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-Fs5",
+     "midi": 78.35,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_F#4_k14_vl3_rr2.wav"
+    },
+    {
+     "id": "kalimba-A5",
+     "midi": 80.63,
+     "len": 1.8,
+     "src": "VCSL/Idiophones/Plucked Idiophones/Kalimba, Kenya/Mbira6_Normal_MainSpirit_A4_k1_vl3_rr2.wav"
+    }
+   ]
+  },
+  "ocarina": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "ocarina-A4",
+     "midi": 68.91,
+     "len": 3.0,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Ocarina, Typical/Sustains/SusVib/StdOcarina_SusVib_A3.wav"
+    },
+    {
+     "id": "ocarina-C5",
+     "midi": 72.14,
+     "len": 3.0,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Ocarina, Typical/Sustains/SusVib/StdOcarina_SusVib_C4.wav"
+    },
+    {
+     "id": "ocarina-E5",
+     "midi": 76.01,
+     "len": 3.0,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Ocarina, Typical/Sustains/SusVib/StdOcarina_SusVib_E4.wav"
+    },
+    {
+     "id": "ocarina-Fs5",
+     "midi": 78.04,
+     "len": 3.0,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Ocarina, Typical/Sustains/SusVib/StdOcarina_SusVib_F#4.wav"
+    },
+    {
+     "id": "ocarina-A5",
+     "midi": 80.95,
+     "len": 3.0,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Ocarina, Typical/Sustains/SusVib/StdOcarina_SusVib_A4.wav"
+    },
+    {
+     "id": "ocarina-C6",
+     "midi": 84.09,
+     "len": 3.0,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Ocarina, Typical/Sustains/SusVib/StdOcarina_SusVib_C5.wav"
+    }
+   ]
+  },
+  "recorder": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "recorder-F4",
+     "midi": 65.02,
+     "len": 2.8,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Baroque Alto Recorder/SusVib/AltRecorder_SusVib_F3_rr1_Main.wav"
+    },
+    {
+     "id": "recorder-As4",
+     "midi": 69.98,
+     "len": 2.8,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Baroque Alto Recorder/SusVib/AltRecorder_SusVib_A#3_rr1_Main.wav"
+    },
+    {
+     "id": "recorder-D5",
+     "midi": 73.98,
+     "len": 2.8,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Baroque Alto Recorder/SusVib/AltRecorder_SusVib_D4_rr1_Main.wav"
+    },
+    {
+     "id": "recorder-Fs5",
+     "midi": 78.06,
+     "len": 2.8,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Baroque Alto Recorder/SusVib/AltRecorder_SusVib_F#4_rr1_Main.wav"
+    },
+    {
+     "id": "recorder-As5",
+     "midi": 81.97,
+     "len": 2.8,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Baroque Alto Recorder/SusVib/AltRecorder_SusVib_A#4_rr1_Main.wav"
+    },
+    {
+     "id": "recorder-D6",
+     "midi": 86.07,
+     "len": 2.8,
+     "src": "VCSL/Aerophones/Edge-blown Aerophones/Baroque Alto Recorder/SusVib/AltRecorder_SusVib_D5_rr1_Main.wav"
+    }
+   ]
+  },
+  "psaltery": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "psaltery-As4",
+     "midi": 70.0,
+     "len": 2.2,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/Pluck/BowedPsaltery_A#3_Main_Pluck_rr1.wav"
+    },
+    {
+     "id": "psaltery-D5",
+     "midi": 74.0,
+     "len": 2.2,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/Pluck/BowedPsaltery_D4_Main_Pluck_rr1.wav"
+    },
+    {
+     "id": "psaltery-Fs5",
+     "midi": 78.0,
+     "len": 2.2,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/Pluck/BowedPsaltery_F#4_Main_Pluck_rr1.wav"
+    },
+    {
+     "id": "psaltery-As5",
+     "midi": 82.0,
+     "len": 2.2,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/Pluck/BowedPsaltery_A#4_Main_Pluck_rr1.wav"
+    },
+    {
+     "id": "psaltery-D6",
+     "midi": 86.0,
+     "len": 2.2,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/Pluck/BowedPsaltery_D5_Main_Pluck_rr1.wav"
+    },
+    {
+     "id": "psaltery-Fs6",
+     "midi": 90.0,
+     "len": 2.2,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/Pluck/BowedPsaltery_F#5_Main_Pluck_rr3.wav"
+    }
+   ]
+  },
+  "bowPsaltery": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "bowPsaltery-As4",
+     "midi": 70.0,
+     "len": 3.0,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/LongBow/BowedPsaltery_A#3_Main_LongBow_rr2.wav"
+    },
+    {
+     "id": "bowPsaltery-D5",
+     "midi": 73.93,
+     "len": 3.0,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/LongBow/BowedPsaltery_D4_Main_LongBow_rr1.wav"
+    },
+    {
+     "id": "bowPsaltery-Fs5",
+     "midi": 78.01,
+     "len": 3.0,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/LongBow/BowedPsaltery_F#4_Main_LongBow_rr1.wav"
+    },
+    {
+     "id": "bowPsaltery-As5",
+     "midi": 82.01,
+     "len": 3.0,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/LongBow/BowedPsaltery_A#4_Main_LongBow_rr2.wav"
+    },
+    {
+     "id": "bowPsaltery-D6",
+     "midi": 86.0,
+     "len": 3.0,
+     "src": "VCSL/Chordophones/Zithers/Psaltery, Bowed and Plucked/LongBow/BowedPsaltery_D5_Main_LongBow_rr2.wav"
+    }
+   ]
+  },
+  "vibes": {
+   "kind": "pitched",
+   "notes": [
+    {
+     "id": "vibes-F3",
+     "midi": 52.97,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_F2_v1_rr1_Main.wav"
+    },
+    {
+     "id": "vibes-C4",
+     "midi": 60.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_C3_v1_rr2_Main.wav"
+    },
+    {
+     "id": "vibes-E4",
+     "midi": 64.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_E3_v1_rr2_Main.wav"
+    },
+    {
+     "id": "vibes-G4",
+     "midi": 67.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_G3_v1_rr1_Main.wav"
+    },
+    {
+     "id": "vibes-B4",
+     "midi": 71.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_B3_v1_rr1_Main.wav"
+    },
+    {
+     "id": "vibes-D5",
+     "midi": 74.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_D4_v1_rr1_Main.wav"
+    },
+    {
+     "id": "vibes-F5",
+     "midi": 77.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_F4_v1_rr1_Main.wav"
+    },
+    {
+     "id": "vibes-A5",
+     "midi": 81.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_A4_v1_rr1_Main.wav"
+    },
+    {
+     "id": "vibes-C6",
+     "midi": 84.0,
+     "len": 3.0,
+     "src": "VCSL/Idiophones/Struck Idiophones/Vibraphone/Soft Mallets/Vibes_soft_C5_v1_rr1_Main.wav"
+    }
+   ]
+  }
+ }
+}

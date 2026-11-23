@@ -1,33 +1,35 @@
 import * as THREE from "three";
 import type { EnvState, GameEvent, Weather } from "./contracts";
 import { DAY_SECONDS } from "./contracts";
+import { writeLook } from "./render-look";
 
 // Day/night clock, weather rolls, wind, and the color-graded palette for the current hour and weather.
 
 type Key = {
   h: number;
   top: string; hor: string; sun: string; sunI: number; amb: string; gnd: string; rim: string;
-  cLit: string; cShade: string; glow: string; stars: number; sat: number; tint: string;
+  cLit: string; cShade: string; glow: string; fog: string; stars: number; sat: number; tint: string;
 };
 
-// tint = grade color for the shadows in post (lifted toward it), sat = post saturation
+// v2 palette (audit-graphics.md section 3): warm gold key, cool blue-violet shade, a fog tint per hour and a blue-hour
+// key. tint = grade color for the shadows in post (lifted toward it), sat = post saturation, fog = aerial perspective.
+const NIGHT = { top: "#0b1330", hor: "#23305a", sun: "#9fb4ff", sunI: 0.35, amb: "#2a3566", gnd: "#141a2e", rim: "#8fa8ff", cLit: "#d7defa", cShade: "#1d2548", glow: "#ffb357", fog: "#1a2244", stars: 1, sat: 0.85, tint: "#1a1f48" };
 const KEYS: Key[] = [
-  { h: 0, top: "#061519", hor: "#1b4a50", sun: "#a9cbd6", sunI: 0.42, amb: "#2d5a63", gnd: "#122a2c", rim: "#86c2c6", cLit: "#3d6c72", cShade: "#10282c", glow: "#3f7d84", stars: 1, sat: 0.85, tint: "#0d3a40" },
-  { h: 4.4, top: "#08191c", hor: "#1f4f55", sun: "#a9cbd6", sunI: 0.4, amb: "#2d5a63", gnd: "#122a2c", rim: "#86c2c6", cLit: "#3d6c72", cShade: "#10282c", glow: "#3f7d84", stars: 1, sat: 0.85, tint: "#0d3a40" },
-  { h: 5.3, top: "#1d3550", hor: "#7a6474", sun: "#ff9a6a", sunI: 0.18, amb: "#4a5068", gnd: "#2a2a30", rim: "#d898a8", cLit: "#c08a98", cShade: "#4a4462", glow: "#e0907a", stars: 0.5, sat: 0.9, tint: "#3a3050" },
-  { h: 6.1, top: "#557aa0", hor: "#f3b47a", sun: "#ffb874", sunI: 0.8, amb: "#7d86a0", gnd: "#6a5a48", rim: "#ffb36b", cLit: "#ffd6a4", cShade: "#9a88a8", glow: "#ffbf7a", stars: 0, sat: 1.05, tint: "#5a4060" },
-  { h: 7.5, top: "#79aecb", hor: "#f3e2bf", sun: "#ffe9c4", sunI: 1.05, amb: "#93aebc", gnd: "#7d7458", rim: "#ffd9a0", cLit: "#fff7ea", cShade: "#b6c2d2", glow: "#ffe0aa", stars: 0, sat: 1.05, tint: "#3e5468" },
-  { h: 12, top: "#6aa9ca", hor: "#ebe3c8", sun: "#fff3df", sunI: 1.02, amb: "#9ab4c0", gnd: "#7f7a5a", rim: "#ffe4b4", cLit: "#ffffff", cShade: "#bfcad6", glow: "#fff0c8", stars: 0, sat: 0.98, tint: "#3e5468" },
-  { h: 16, top: "#72a7c4", hor: "#f2dbb0", sun: "#ffe4b8", sunI: 1.08, amb: "#98aebb", gnd: "#80765a", rim: "#ffd6a0", cLit: "#fff4e0", cShade: "#bcc2d0", glow: "#ffe0a8", stars: 0, sat: 1.06, tint: "#44506a" },
-  { h: 17.6, top: "#6684a8", hor: "#f4c48c", sun: "#ffc283", sunI: 0.95, amb: "#8c94aa", gnd: "#7a6650", rim: "#ffb070", cLit: "#ffe0b8", cShade: "#a898b0", glow: "#ffc080", stars: 0, sat: 1.1, tint: "#5a4868" },
-  { h: 18.6, top: "#3c4f7a", hor: "#e48a5b", sun: "#ff9a62", sunI: 0.52, amb: "#6a6688", gnd: "#4a3a3a", rim: "#ff8048", cLit: "#f8aa80", cShade: "#6a5276", glow: "#ff9256", stars: 0.05, sat: 1.04, tint: "#4a3058" },
-  { h: 19.5, top: "#1a2c48", hor: "#8a5a68", sun: "#9a88b0", sunI: 0.22, amb: "#3e4a66", gnd: "#1e2430", rim: "#d08488", cLit: "#9a6a7a", cShade: "#2e3048", glow: "#b06a70", stars: 0.5, sat: 0.95, tint: "#202a48" },
-  { h: 20.6, top: "#08191c", hor: "#1f4f55", sun: "#a9cbd6", sunI: 0.4, amb: "#2d5a63", gnd: "#122a2c", rim: "#86c2c6", cLit: "#3d6c72", cShade: "#10282c", glow: "#3f7d84", stars: 1, sat: 0.85, tint: "#0d3a40" },
-  { h: 24, top: "#061519", hor: "#1b4a50", sun: "#a9cbd6", sunI: 0.42, amb: "#2d5a63", gnd: "#122a2c", rim: "#86c2c6", cLit: "#3d6c72", cShade: "#10282c", glow: "#3f7d84", stars: 1, sat: 0.85, tint: "#0d3a40" },
+  { h: 0, ...NIGHT },
+  { h: 4.6, ...NIGHT, top: "#101a3c", hor: "#2c3866" },
+  { h: 5.8, top: "#3d4f86", hor: "#f4b48a", sun: "#ffcf9a", sunI: 0.8, amb: "#6c6fa0", gnd: "#5a4a52", rim: "#ffd2a8", cLit: "#fff1df", cShade: "#4d5488", glow: "#ffd27a", fog: "#e9b7a0", stars: 0.15, sat: 1.05, tint: "#4a3a66" },
+  { h: 8, top: "#5f9fd6", hor: "#f1e6c8", sun: "#fff0cf", sunI: 1.15, amb: "#7f9bc0", gnd: "#6a6a4e", rim: "#fff4dc", cLit: "#fffaf0", cShade: "#5a6f9e", glow: "#ffe08a", fog: "#d9e4e8", stars: 0, sat: 1.02, tint: "#3e4f78" },
+  { h: 12.5, top: "#4c95d0", hor: "#e3eef0", sun: "#fff6e0", sunI: 1.3, amb: "#8aa6c8", gnd: "#6b7050", rim: "#ffffff", cLit: "#fffbe8", cShade: "#4f6890", glow: "#ffe9a0", fog: "#cfe0ea", stars: 0, sat: 1.0, tint: "#3a4c74" },
+  { h: 15.2, top: "#5090cc", hor: "#ebeae0", sun: "#ffefd2", sunI: 1.26, amb: "#86a0c4", gnd: "#6d6a4c", rim: "#fff2d8", cLit: "#fff6e4", cShade: "#525f90", glow: "#ffdf96", fog: "#dfe2e0", stars: 0, sat: 1.04, tint: "#404c78" },
+  { h: 17, top: "#5a84c0", hor: "#f6d39a", sun: "#ffc477", sunI: 1.2, amb: "#7d86b0", gnd: "#6e5a40", rim: "#ffd08a", cLit: "#fff0d0", cShade: "#5a5a90", glow: "#ffc860", fog: "#f1d2a4", stars: 0, sat: 1.1, tint: "#4c4278" },
+  { h: 18.6, top: "#2e3c78", hor: "#f08a5c", sun: "#ff9a5a", sunI: 0.9, amb: "#6a5a8c", gnd: "#4a3a40", rim: "#ffb07a", cLit: "#ffe0c0", cShade: "#463e78", glow: "#ffb050", fog: "#c98a86", stars: 0.05, sat: 1.06, tint: "#4a3068" },
+  { h: 19.6, top: "#1a2552", hor: "#6a5a9a", sun: "#c0a0ff", sunI: 0.4, amb: "#3a4478", gnd: "#20223a", rim: "#b0a0ff", cLit: "#e0dcff", cShade: "#262c5a", glow: "#ffb357", fog: "#3d3f72", stars: 0.5, sat: 0.95, tint: "#262a5a" },
+  { h: 20.8, ...NIGHT, hor: "#27335e" },
+  { h: 24, ...NIGHT },
 ];
 
-type CKey = "top" | "hor" | "sun" | "amb" | "gnd" | "rim" | "cLit" | "cShade" | "glow" | "tint";
-const CKEYS: CKey[] = ["top", "hor", "sun", "amb", "gnd", "rim", "cLit", "cShade", "glow", "tint"];
+type CKey = "top" | "hor" | "sun" | "amb" | "gnd" | "rim" | "cLit" | "cShade" | "glow" | "fog" | "tint";
+const CKEYS: CKey[] = ["top", "hor", "sun", "amb", "gnd", "rim", "cLit", "cShade", "glow", "fog", "tint"];
 // palette colors converted once to linear THREE.Color
 const LIN = KEYS.map((k) => {
   const o = {} as Record<CKey, THREE.Color>;
@@ -38,6 +40,8 @@ const LIN = KEYS.map((k) => {
 export interface Palette {
   top: THREE.Color; hor: THREE.Color; sun: THREE.Color; amb: THREE.Color; gnd: THREE.Color; rim: THREE.Color;
   cLit: THREE.Color; cShade: THREE.Color; glow: THREE.Color; tint: THREE.Color;
+  fog: THREE.Color; // v2: aerial perspective tint (look reads it)
+  daylight: number; rain: number; // copies for the look
   stars: number; sat: number; cloud: number; // cloud cover 0..1
   sunPos: THREE.Vector3; moonPos: THREE.Vector3; // true sky positions (unit)
   fogScale: number; // fog distance multiplier (rain pulls it in)
@@ -45,8 +49,8 @@ export interface Palette {
   flash: number; // thunder flash 0..1
 }
 
-const OVERCAST = new THREE.Color("#a3a9a6");
-const OVERCAST_NIGHT = new THREE.Color("#1d2a2c");
+const OVERCAST = new THREE.Color("#a2a6b4");
+const OVERCAST_NIGHT = new THREE.Color("#1c2238");
 const tmpC = new THREE.Color();
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -67,6 +71,7 @@ export function createEnvSim(env: EnvState): EnvSim {
   const pal: Palette = {
     top: new THREE.Color(), hor: new THREE.Color(), sun: new THREE.Color(), amb: new THREE.Color(), gnd: new THREE.Color(),
     rim: new THREE.Color(), cLit: new THREE.Color(), cShade: new THREE.Color(), glow: new THREE.Color(), tint: new THREE.Color(),
+    fog: new THREE.Color(), daylight: 1, rain: 0,
     stars: 0, sat: 1, cloud: 0.3, sunPos: new THREE.Vector3(), moonPos: new THREE.Vector3(), fogScale: 1, lantern: 0, flash: 0,
   };
   let rollT = 3; // game hours until the next weather roll
@@ -128,6 +133,7 @@ export function createEnvSim(env: EnvState): EnvSim {
       pal.hor.lerp(tmpC, over * 0.8);
       pal.cLit.lerp(tmpC, over * 0.6);
       pal.cShade.lerp(tmpC, over * 0.4).multiplyScalar(1 - 0.25 * over);
+      pal.fog.lerp(tmpC, over * 0.7);
       pal.glow.multiplyScalar(1 - over * 0.8);
       pal.sun.multiplyScalar(1 - over * 0.7);
       pal.amb.lerp(tmpC, over * 0.4).multiplyScalar(1 + over * 0.25);
@@ -138,6 +144,9 @@ export function createEnvSim(env: EnvState): EnvSim {
     pal.cloud = cloud;
     pal.fogScale = 1 - rain * 0.45;
     pal.lantern = 1 - smooth(env.daylight) * 0.94;
+    pal.daylight = env.daylight;
+    pal.rain = rain;
+    writeLook(pal);
   };
 
   const sim: EnvSim = {

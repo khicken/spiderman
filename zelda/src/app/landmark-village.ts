@@ -6,7 +6,7 @@ import type { PrimOpts, SiteEnv, SiteInfo } from "./landmark-kit";
 const OWNER = "landmarks:village";
 
 type Map2 = (a: number, b: number) => [number, number];
-type Tag = "solid" | "climbable";
+type Tag = "solid" | "climbable" | "decor";
 type Style = "stone" | "timber" | "collapse";
 
 const PLASTER = ["#d9c79b", "#cdb98a", "#d4c08f"];
@@ -583,7 +583,7 @@ export function buildVillage(env: SiteEnv): SiteInfo {
         if (broken || R() < 0.2) continue;
         for (const hh of [0.45, 0.9]) S.beam(x, f + hh, z, xn, H(xn, zn) + hh, zn, 0.07, PAL.wood);
         const a = alongX ? Math.min(x, xn) : x - 0.1, b = alongX ? z - 0.1 : Math.min(z, zn);
-        world.addBox({ minX: a, maxX: alongX ? Math.max(x, xn) : x + 0.1, minZ: b, maxZ: alongX ? z + 0.1 : Math.max(z, zn), minY: f, maxY: f + 1.0, tag: "solid", owner: OWNER });
+        world.addBox({ minX: a, maxX: alongX ? Math.max(x, xn) : x + 0.1, minZ: b, maxZ: alongX ? z + 0.1 : Math.max(z, zn), minY: f, maxY: f + 1.0, tag: "decor", owner: OWNER });
       }
     }
   };
@@ -626,7 +626,7 @@ export function buildVillage(env: SiteEnv): SiteInfo {
       E.box(ax, f + 1.95, az, 0.2, 0.35, 0.2, PAL.emberHi, 0, { jit: 0, ao: 0 });
       litHalo.position.set(ax, f + 2.1, az);
     } else S.box(ax, f + 1.95, az, 0.2, 0.35, 0.2, COLD, 0, { jit: 0.03 });
-    coll(ID, x - 0.12, z - 0.12, x + 0.12, z + 0.12, f, f + 2.6, "solid");
+    coll(ID, x - 0.12, z - 0.12, x + 0.12, z + 0.12, f, f + 2.6, "decor");
   };
   {
     const door = mm(5.6, 2.6);

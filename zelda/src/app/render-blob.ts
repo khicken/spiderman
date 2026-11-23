@@ -33,7 +33,7 @@ export function createBlobShadows(scene: THREE.Scene): BlobShadows {
       void main() { vUv = uv * 2.0 - 1.0; vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       varying vec2 vUv; varying float vA;
-      void main() { float r = length(vUv); float a = smoothstep(1.0, 0.25, r) * vA; if (a < 0.01) discard; gl_FragColor = vec4(0.08, 0.07, 0.1, a * 0.42); }`,
+      void main() { float r = length(vUv); float a = (1.0 - smoothstep(0.25, 1.0, r)) * vA; if (a < 0.01) discard; gl_FragColor = vec4(0.08, 0.07, 0.1, a * 0.42); }`,
   });
   const mesh = new THREE.InstancedMesh(geo, mat, MAX);
   mesh.name = "blob-shadows";

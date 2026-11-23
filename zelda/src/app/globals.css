@@ -192,9 +192,12 @@ body {
 .hm-hud[data-calm="1"] .hm-calm { opacity: 0; }
 .hm-hud[data-calm="1"] .hm-calm-soft { opacity: 0.85; }
 /* objective under the compass: a dark ink pill so it reads against a bright noon sky or snow */
-.hm-objective { color: var(--color-parchment-hi); font-weight: 600; line-height: 1.25; padding: 0.22em 1.1em 0.26em; border-radius: 999px;
+.hm-objective { color: var(--color-parchment-hi); font-weight: 600; line-height: 1.25; padding: 0.3em 1em 0.34em; border-radius: 0.6em;
   background: rgb(8 25 28 / 0.66); box-shadow: 0 0 0 1px rgb(214 178 106 / 0.35), 0 0.15em 0.6em rgb(8 25 28 / 0.35);
   text-shadow: 0 0.05em 0.15em rgb(8 25 28 / 0.9); }
+/* wick and heart shards under the hearts: the same ink backing as the objective, so they read on bright ground */
+.hm-stat-pill { padding: 0.22em 0.75em 0.26em; border-radius: 0.6em; background: rgb(8 25 28 / 0.6);
+  box-shadow: 0 0 0 1px rgb(214 178 106 / 0.3), 0 0.15em 0.6em rgb(8 25 28 / 0.3); text-shadow: 0 0.05em 0.15em rgb(8 25 28 / 0.9); }
 .hm-shadow { text-shadow: 0 0.06em 0.2em rgb(8 25 28 / 0.85), 0 0 0.6em rgb(8 25 28 / 0.5); }
 .hm-flame-flicker { transform-origin: 50% 90%; animation: hm-flicker 1.9s ease-in-out infinite; }
 @keyframes hm-flicker { 0%,100% { transform: scale(1, 1) skewX(0deg); } 25% { transform: scale(0.96, 1.04) skewX(-2deg); } 50% { transform: scale(1.03, 0.97) skewX(1.5deg); } 75% { transform: scale(0.98, 1.03) skewX(-1deg); } }
@@ -202,8 +205,8 @@ body {
 @keyframes hm-gutter { 50% { opacity: 0.55; } }
 .hm-pop { animation: hm-pop 0.45s var(--ease-ink); }
 @keyframes hm-pop { 0% { transform: scale(1); } 35% { transform: scale(1.28); } 100% { transform: scale(1); } }
-.hm-toast { animation: hm-toast 3.2s var(--ease-ink) both; }
-@keyframes hm-toast { 0% { opacity: 0; transform: translateX(-1.2rem); } 10% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateY(-0.4rem); } }
+.hm-toast { animation: hm-toast 3s var(--ease-ink) both; }
+@keyframes hm-toast { 0% { opacity: 0; transform: translateX(-0.8rem); } 8% { opacity: 1; transform: none; } 88% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
 .hm-banner { animation: hm-banner var(--hm-banner-t, 2.6s) var(--ease-ink) both; }
 @keyframes hm-banner { 0% { opacity: 0; letter-spacing: 0.25em; } 18% { opacity: 1; letter-spacing: 0.04em; } 78% { opacity: 1; } 100% { opacity: 0; } }
 .hm-banner-rule { animation: hm-rule var(--hm-banner-t, 2.6s) var(--ease-ink) both; transform-origin: center; }
@@ -286,3 +289,19 @@ body {
 .hm-btn.dark .hm-btn-glyph { color: var(--color-gold-hi); }
 .hm-btn.dark.primary { background: linear-gradient(90deg, rgb(180 81 30 / 0.95), rgb(180 81 30 / 0.35)); border-color: rgb(255 192 122 / 0.5); }
 .hm-btn.dark.primary:hover, .hm-btn.dark.primary:focus-visible, .hm-btn.dark.primary[data-focus="1"] { background: linear-gradient(90deg, rgb(240 138 60 / 0.95), rgb(180 81 30 / 0.45)); color: #fff8ea; }
+
+/* v2 HUD: compass pips, arrows counter, thread aim reticle */
+.hm-pip { pointer-events: none; transition: opacity 0.2s; }
+.hm-pip-g { position: absolute; left: 50%; top: 50%; width: 0.95em; height: 0.95em; transform: translate(-50%, -50%); }
+.hm-pip[data-kind="waystone"] .hm-pip-g { width: 0.8em; height: 0.8em; fill: #3b8fb0; stroke: var(--color-ink); stroke-width: 1; }
+.hm-pip:not([data-kind="waystone"]) .hm-pip-g { fill: #8d8a80; stroke: var(--color-ink); stroke-width: 1.2; }
+.hm-pip[data-lit="1"] .hm-pip-g { fill: #cdbf94; }
+.hm-pip[data-tr="1"] .hm-pip-g { fill: var(--color-gold-hi); stroke: var(--color-ink); width: 1.3em; height: 1.3em; filter: drop-shadow(0 0 0.2em rgb(232 199 102 / 0.9)); }
+.hm-arrows { opacity: 0; transition: opacity 0.3s; }
+.hm-arrows[data-aim="1"], .hm-arrows[data-pulse="1"] { opacity: 1; }
+.hm-thread-aim { pointer-events: none; transition: opacity 0.12s; }
+.hm-thread-aim svg path { stroke: var(--color-rubric); }
+.hm-thread-aim .hm-thread-core { fill: var(--color-rubric); }
+.hm-thread-aim[data-valid="1"] svg path { stroke: var(--color-gold-hi); }
+.hm-thread-aim[data-valid="1"] .hm-thread-core { fill: var(--color-gold-hi); }
+.hm-thread-aim[data-pending="1"] svg { animation: hm-spin 3s linear infinite; }

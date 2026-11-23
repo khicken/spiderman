@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { EnemyKind, EnemySpec, EnemyState, FrameCtx, GameEvent, RayHit, Shot, Strike, V3 } from "./contracts";
-import { ENEMY, WISP_BOLT } from "./contracts";
+import { COUNTER, ENEMY, TELL, WISP_BOLT } from "./contracts";
 import { angleDiff } from "./state";
 import type { EnemyFx } from "./enemy-fx";
 import { B, M, W } from "./enemy-models";
@@ -39,6 +39,19 @@ export interface EnemyRt {
   dist: number; // to the player (xz), refreshed every frame
   active: boolean; // runs a full brain this frame (AI cap)
   leash: number;
+  // v2 telegraphs and thread state. resetAttack() clears the attack ones on every exit path.
+  told: boolean; // the "tell" (glint) for the current attack has fired
+  glint: number; // s left of the gold weapon glint
+  freeze: number; // s of local hitstop left (victim freeze)
+  riposte: number; // s left of the parry stun window (gold ring under the enemy)
+  bindTo: number; // enemy slot this one is being yanked toward (bind thread), -1 none
+  bindLine: number; // thread line id of the bind, -1 none
+  tether: number; // thread line id tethering this enemy to a fixed anchor, -1 none
+  tetherLen: number; // m
+  tetherX: number; tetherY: number; tetherZ: number; // fixed end
+  burnFx: number; // s of burn embers left (a burning thread touches it)
+  seenLine: boolean; // scratch: a live thread line still references this enemy this frame
+  low: number; // wisp: s left hanging low at sword height (after a bolt or a sword hit)
 }
 
 export function newRt(parts: number): EnemyRt {
@@ -47,7 +60,19 @@ export function newRt(parts: number): EnemyRt {
     aggro: false, target: new THREE.Vector3(), wait: 0, walk: 0, speed: 0, animT: Math.random() * 10, glow: 0, flash: 0,
     dying: -1, silent: false, emerge: 1, lodAcc: 1, pose: new Float32Array(parts * 16), hitDone: false, poise: 0,
     knock: new THREE.Vector3(), blink: 2 + Math.random() * 3, dist: 1e9, active: false, leash: 40,
+    told: false, glint: 0, freeze: 0, riposte: 0, bindTo: -1, bindLine: -1, tether: -1, tetherLen: 0, tetherX: 0, tetherY: 0,
+    tetherZ: 0, burnFx: 0, seenLine: false, low: 0,
   };
+}
+
+/** Clear everything an attack leaves behind. Call on every exit from windup / attack: hurt, stun, bind, give up, death,
+ *  despawn, AI sleep. Gives the attack token back. */
+export function resetAttack(rt: EnemyRt, host: Host): void {
+  host.release(rt);
+  rt.told = false;
+  rt.glint = 0;
+  rt.glow = 0;
+  rt.hitDone = false;
 }
 
 /** What a brain needs from the pool. */
@@ -59,6 +84,8 @@ export interface Host {
   /** Wake campmates near this enemy. */
   rally(e: EnemyState): void;
   release(rt: EnemyRt): void;
+  /** Wren stands inside a quest-safe zone (TELL.questStartSafeR): camp enemies neither see nor chase. */
+  playerSafe: boolean;
 }
 
 export function v3(x: number, y: number, z: number): V3 {
@@ -143,10 +170,16 @@ export function move(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, dvx: number, dvz
   rt.speed = Math.hypot(e.vel.x, e.vel.z);
 }
 
-const RING: Record<EnemyKind, number> = { brambling: 3.2, mossback: 4.4, wisp: 15, warden: 6 };
+const RING: Record<EnemyKind, number> = { brambling: 3.2, mossback: COUNTER.mossbackRing, wisp: 15, warden: 6 };
 const TURN: Record<EnemyKind, number> = { brambling: 11, mossback: 3.2, wisp: 6, warden: 2.6 };
 export const ATTACK_T: Record<EnemyKind, number> = { brambling: 0.22, mossback: 0.14, wisp: 0.12, warden: 0 };
 export const RECOVER_T: Record<EnemyKind, number> = { brambling: 0.45, mossback: 1.0, wisp: 0.5, warden: 0 };
+/** s from the start of the attack state to the hit frame (wisp: the bolt leaves the hand). */
+export const HIT_OFF: Record<EnemyKind, number> = { brambling: 0.06, mossback: 0.14, wisp: 0, warden: 0 };
+/** s from the start of the windup to the hit frame. */
+export function hitTime(kind: EnemyKind): number {
+  return ENEMY[kind].windup + HIT_OFF[kind];
+}
 const SLAM_FWD = 1.7;
 
 function setBrain(e: EnemyState, b: EnemyState["brain"]): void {
@@ -161,6 +194,7 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
   const p = ctx.player;
   e.brainT += dt;
   rt.cd -= dt;
+  rt.low = Math.max(0, rt.low - dt);
   rt.want = false;
   const dx = p.pos.x - e.pos.x, dz = p.pos.z - e.pos.z;
   const d = Math.hypot(dx, dz) + 1e-6;
@@ -173,7 +207,7 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
     rt.emerge = Math.min(1, rt.emerge + dt / 0.7);
     turnTo(e, face, TURN[e.kind], dt);
     e.vel.set(0, 0, 0);
-    if (float) hover(ctx, e, dt);
+    if (float) hover(ctx, e, rt, dt);
     return;
   }
 
@@ -182,7 +216,9 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
     rt.think = 0.25 + Math.random() * 0.1;
     rt.seen = playerUp && d < s.sight * (rt.aggro ? 1.6 : 1) && canSee(ctx, e, s.height * 0.8);
   }
-  if (!playerUp && rt.aggro) giveUp(e, rt, host);
+  const calm = rt.camp >= 0 && host.playerSafe;
+  if (calm) rt.seen = false;
+  if ((!playerUp || calm) && rt.aggro) giveUp(e, rt, host);
   if (rt.aggro && e.group !== "boss" && !e.group.startsWith("trial")) {
     const hx = e.pos.x - e.home.x, hz = e.pos.z - e.home.z;
     if (hx * hx + hz * hz > rt.leash * rt.leash || d > rt.leash * 1.4) giveUp(e, rt, host);
@@ -230,8 +266,9 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
       }
       strafe(rt, dt);
       const tang = s.walk * 0.9 * rt.strafe;
-      dvx = ux * radial - uz * tang;
-      dvz = uz * radial + ux * tang;
+      const slow = rt.low > 0 ? COUNTER.wispSpentDrift : 1; // spent: it hangs low and does not flee
+      dvx = (ux * radial - uz * tang) * slow;
+      dvz = (uz * radial + ux * tang) * slow;
       // pen fleeing wisps near home so a sword-only player can corner them (trial arenas must not be left)
       const hx = e.pos.x - e.home.x, hz = e.pos.z - e.home.z, hd = Math.hypot(hx, hz);
       const pen = e.group.startsWith("trial") ? 3 : 16; // trial wisps spawn 18-22 m out of a 26 m ring
@@ -250,7 +287,7 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
           dvx = ux * s.chase;
           dvz = uz * s.chase;
         }
-        if (d <= s.reach + 0.35 + (e.kind === "mossback" ? 0.6 : 0)) windup(ctx, e, rt, host);
+        if (d <= (e.kind === "mossback" ? COUNTER.mossbackSlamFrom : s.reach + 0.35)) windup(ctx, e, rt, host);
         else if (e.brainT > 4) host.release(rt);
       } else {
         strafe(rt, dt);
@@ -264,6 +301,7 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
   } else if (b === "windup") {
     const wt = s.windup;
     const k = e.brainT / wt;
+    tell(e, rt, host, wt - e.brainT + HIT_OFF[e.kind]);
     rt.glow = Math.min(1, k * 1.3);
     if (k < 0.75) turnTo(e, face, TURN[e.kind] * 1.4, dt);
     if (e.kind === "mossback") {
@@ -277,11 +315,21 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
       dvz = -uz * 0.4;
     }
     if (e.brainT >= wt) {
+      // carry the overshoot so the hit frame stays on time at any frame rate
+      const over = e.brainT - wt;
       setBrain(e, "attack");
+      e.brainT = over;
       rt.hitDone = false;
+      if (e.kind === "wisp") {
+        // the bolt leaves on the last windup frame (HIT_OFF 0), not one frame into the attack
+        rt.hitDone = true;
+        fireBolt(ctx, e, host, s.damage, WISP_BOLT.speed, 0);
+        rt.low = Math.max(rt.low, COUNTER.wispSpent);
+      }
     }
   } else if (b === "attack") {
     const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw);
+    tell(e, rt, host, HIT_OFF[e.kind] - e.brainT);
     rt.glow = Math.max(0, rt.glow - dt * 4);
     if (e.kind === "brambling") {
       if (e.brainT < 0.15) {
@@ -331,10 +379,11 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
       if (!rt.hitDone) {
         rt.hitDone = true;
         fireBolt(ctx, e, host, s.damage, WISP_BOLT.speed, 0);
-        host.release(rt);
       }
     }
     if (e.brainT >= ATTACK_T[e.kind]) {
+      // the token goes back as the blow lands; TELL.tokenCooldown spaces out the next attacker
+      resetAttack(rt, host);
       setBrain(e, "recover");
       if (e.kind === "brambling") {
         rt.knock.x = -fx * 5;
@@ -344,13 +393,13 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
   } else if (b === "recover") {
     rt.glow = Math.max(0, rt.glow - dt * 4);
     if (e.brainT >= RECOVER_T[e.kind]) {
-      host.release(rt);
       rt.cd = s.cooldown * (0.85 + Math.random() * 0.3);
       setBrain(e, rt.aggro ? "chase" : "idle");
     }
   } else if (b === "stunned") {
     e.stun -= dt;
     rt.glow = 0;
+    rt.glint = 0;
     if (e.stun <= 0) {
       e.stun = 0;
       rt.cd = Math.max(rt.cd, 0.6);
@@ -363,7 +412,7 @@ export function think(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): vo
   if (b !== "windup") rt.glow = Math.max(0, rt.glow - dt * 3);
   const accel = e.kind === "mossback" ? 4 : e.kind === "wisp" ? 3 : 10;
   move(ctx, e, rt, dvx, dvz, accel, s.radius, float);
-  if (float) hover(ctx, e, dt);
+  if (float) hover(ctx, e, rt, dt);
 }
 
 function strafe(rt: EnemyRt, dt: number): void {
@@ -374,10 +423,17 @@ function strafe(rt: EnemyRt, dt: number): void {
   }
 }
 
-function hover(ctx: FrameCtx, e: EnemyState, dt: number): void {
+/** Wisps are low (sword height) while they charge or fire a bolt, while spent after it, and while hurt or stunned. */
+export function wispLow(e: EnemyState, rt: EnemyRt): boolean {
+  const b = e.brain;
+  return rt.low > 0 || b === "windup" || b === "attack" || b === "hurt" || b === "stunned";
+}
+
+function hover(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, dt: number): void {
   const g = Math.max(ctx.world.heightAt(e.pos.x, e.pos.z), ctx.world.waterAt(e.pos.x, e.pos.z));
-  const want = g + 2.8 + Math.sin(ctx.time * 0.9 + e.id) * 0.7 + (e.brain === "windup" ? 0.5 : 0);
-  e.pos.y += (want - e.pos.y) * Math.min(1, dt * 2.5);
+  const low = wispLow(e, rt);
+  const want = g + (low ? COUNTER.wispLowY + Math.sin(ctx.time * 0.9 + e.id) * 0.1 : 2.8 + Math.sin(ctx.time * 0.9 + e.id) * 0.7);
+  e.pos.y += (want - e.pos.y) * Math.min(1, dt * (low && want < e.pos.y ? COUNTER.wispSink : 2.5));
 }
 
 export function alert(e: EnemyState, rt: EnemyRt, host: Host): void {
@@ -393,15 +449,25 @@ export function giveUp(e: EnemyState, rt: EnemyRt, host: Host): void {
   rt.aggro = false;
   rt.seen = false;
   rt.think = 1.5;
-  host.release(rt);
+  resetAttack(rt, host);
   rt.target.copy(e.home);
   e.stun = 0;
   setBrain(e, "patrol");
 }
 
+/** Fire the tell once, TELL.glintLead before the hit frame: the gold glint plus a "tell" event (sound, HUD). */
+function tell(e: EnemyState, rt: EnemyRt, host: Host, toHit: number): void {
+  if (rt.told || toHit > TELL.glintLead + 1e-6) return;
+  rt.told = true;
+  rt.glint = 0.14;
+  host.out.push({ type: "tell", id: e.id, kind: e.kind, pos: v3(e.pos.x, e.pos.y + ENEMY[e.kind].height * 0.8, e.pos.z), lead: Math.max(0, toHit) });
+}
+
 function windup(ctx: FrameCtx, e: EnemyState, rt: EnemyRt, host: Host): void {
   setBrain(e, "windup");
   rt.glow = 0;
+  rt.told = false;
+  rt.hitDone = false;
   host.out.push({ type: "enemyWindup", id: e.id, kind: e.kind, pos: v3(e.pos.x, e.pos.y, e.pos.z) });
   if (e.kind === "mossback") rt.target.set(e.pos.x + Math.sin(e.yaw) * SLAM_FWD, e.pos.y, e.pos.z + Math.cos(e.yaw) * SLAM_FWD);
   void ctx;
@@ -574,8 +640,10 @@ function mossback(e: EnemyState, rt: EnemyRt, P: Poser, sp: number): void {
     aRz = -0.12 - 0.7 * k;
     hx = -0.3 - 0.4 * k;
   } else if (b === "windup") {
-    const k = sm(bt / wu(e));
-    const tr = Math.sin(t * 50) * 0.03 * k;
+    // rise over windup - preHold, then freeze at the top (no tremble): the "hold... now" beat
+    const rise = wu(e) - TELL.mossbackPreHold;
+    const k = sm(bt / rise);
+    const tr = bt < rise ? Math.sin(t * 50) * 0.03 * k : 0;
     lean = 0.42 - 0.75 * k;
     hipY += 0.18 * k;
     aLx = aRx = -0.35 + 3.25 * k + tr;
@@ -659,6 +727,11 @@ function wisp(e: EnemyState, rt: EnemyRt, P: Poser): void {
   } else if (b === "hurt") {
     fl = 0.6 + Math.sin(t * 50) * 0.3;
     tx = -0.5 * (1 - Math.min(1, bt / 0.3));
+  } else if (rt.low > 0) {
+    // spent after a bolt: flame down to a flicker, lantern drooping. This is the window to hit it.
+    fl = 0.4 + Math.sin(t * 9) * 0.08;
+    tz += 0.35;
+    aLx = aRx = 0.3;
   }
   if (rt.dying >= 0) {
     const k = Math.min(1, rt.dying / 0.5);

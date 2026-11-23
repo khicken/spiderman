@@ -1,12 +1,14 @@
 import * as THREE from "three";
 import type {
-  BtnName, EnemyKind, EnemyState, EnvState, InputState, Platform, PlayerState, QuestStage, QuestState, SaveData, Settings,
+  BeaconId, BtnName, EnemyKind, EnemyState, EnvState, HintId, InputState, Platform, PlayerState, Progress, QuestState, SaveData, Settings,
 } from "./contracts";
-import { DEFAULT_SETTINGS, ENEMY, PLAYER, PLAYER_SPAWN, SAVE_KEY, START_HOUR } from "./contracts";
+import { BEACON_LANDMARK, DEFAULT_SETTINGS, ENEMY, FIRST_DAY_SCALE, LANDMARKS, PLAYER, PLAYER_SPAWN, START_HOUR } from "./contracts";
+import { readSaveV2, toV1, writeSaveFromV1 } from "./save";
+import { objectiveFor } from "./guide";
 
 // Canonical constructors and small shared helpers. Frozen for builders (owner: integrator).
 
-export const BTN_NAMES: readonly BtnName[] = ["jump", "attack", "block", "dodge", "sprint", "bow", "glide", "lock", "use", "map", "pause"];
+export const BTN_NAMES: readonly BtnName[] = ["jump", "attack", "block", "dodge", "sprint", "bow", "glide", "lock", "use", "map", "pause", "thread"];
 
 export function newInputState(): InputState {
   const btn = {} as InputState["btn"];
@@ -44,6 +46,10 @@ export function newPlayerState(): PlayerState {
     hasGlider: true,
     lanternPos: new THREE.Vector3(),
     handPos: new THREE.Vector3(),
+    aimOrigin: new THREE.Vector3(),
+    aimDir: new THREE.Vector3(0, 0, -1),
+    staminaRings: 1,
+    softLockId: -1,
   };
 }
 
@@ -69,7 +75,39 @@ export function newEnemyState(id: number, kind: EnemyKind = "brambling"): EnemyS
 }
 
 export function newQuest(): QuestState {
-  return { stage: "awaken", beacons: [false, false, false, false], trial: -1, barrierDown: false, wardenDefeated: false, visited: [] };
+  return {
+    stage: "awaken", beacons: [false, false, false, false], trial: -1, barrierDown: false, wardenDefeated: false, visited: [],
+    prologue: "wake", gladeLit: false, tracked: { kind: "none" }, autoTrack: true, waystones: [], memories: [], endingChoice: null,
+  };
+}
+
+export function newProgress(): Progress {
+  return { wickOil: 0, seeds: 0, powers: [], hintsSeen: [], glimmersSpent: 0 };
+}
+
+/** Marks a chip as shown. True the first time, so callers emit the hint once. */
+export function markHint(p: Progress, id: HintId): boolean {
+  if (p.hintsSeen.includes(id)) return false;
+  p.hintsSeen.push(id);
+  return true;
+}
+
+/** Day-clock rate: half speed until the first main beacon is lit or 25 real minutes pass (DESIGN-V2 section 3). */
+export function clockScale(q: QuestState, playTime: number): number {
+  return litCount(q) >= 1 || playTime >= 1500 ? 1 : FIRST_DAY_SCALE;
+}
+
+/** Runs one frame step so a thrown error cannot stop the rAF loop. Logs the first 5 failures per label. */
+const guardFails = new Map<string, number>();
+export function guard<T>(label: string, fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch (e) {
+    const n = (guardFails.get(label) ?? 0) + 1;
+    guardFails.set(label, n);
+    if (n <= 5) console.error(`[hollowmere] ${label} failed (${n})`, e);
+    return fallback;
+  }
 }
 
 export function newEnv(): EnvState {
@@ -89,67 +127,29 @@ export function litCount(q: QuestState): number {
   return (q.beacons[0] ? 1 : 0) + (q.beacons[1] ? 1 : 0) + (q.beacons[2] ? 1 : 0) + (q.beacons[3] ? 1 : 0);
 }
 
-export function objectiveText(q: QuestState, hasBow: boolean): string {
-  switch (q.stage) {
-    case "awaken":
-      return "Leave the Hollow Shrine and head out into Hollowmere";
-    case "beacons": {
-      const n = litCount(q);
-      if (!hasBow && !q.beacons[3] && n >= 1) return `Wake the four beacons (${n}/4). Search Mirebrook Ruin for a bow`;
-      return `Wake the four beacons (${n}/4)`;
-    }
-    case "spire":
-      return "The barrier has fallen. Climb Mt. Cinder to the Gloam Spire";
-    case "boss":
-      return "Defeat the Gloam Warden";
-    case "ending":
-    case "free":
-      return "Hollowmere is awake. Explore freely";
-  }
+/** One objective table: guide.ts objectiveFor (DESIGN-V2 section 10). Kept here for save-check and old callers. */
+export interface ObjectiveLines { text: string; sub: string | null }
+export function objectiveLines(q: QuestState, hasBow: boolean, from?: { x: number; z: number }): ObjectiveLines {
+  return objectiveFor(q, hasBow, null, from);
 }
 
-const STAGES: readonly QuestStage[] = ["awaken", "beacons", "spire", "boss", "ending", "free"];
+export function objectiveText(q: QuestState, hasBow: boolean, from?: { x: number; z: number }): string {
+  const o = objectiveLines(q, hasBow, from);
+  return o.sub ? `${o.text}. ${o.sub}` : o.text;
+}
+
 const num = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 const bool = (x: unknown): x is boolean => typeof x === "boolean";
 
-/** A hand-edited or half-written save must not reach start(), which trusts every field. */
-function validSave(d: unknown): d is SaveData {
-  if (!d || typeof d !== "object") return false;
-  const o = d as Record<string, unknown>;
-  const pos = o.pos as Record<string, unknown> | null;
-  const q = o.quest as Record<string, unknown> | null;
-  if (o.v !== 1 || !pos || typeof pos !== "object" || !num(pos.x) || !num(pos.y) || !num(pos.z)) return false;
-  if (![o.yaw, o.maxHp, o.hp, o.shards, o.glimmers, o.arrows, o.timeOfDay, o.playTime].every(num)) return false;
-  if (!bool(o.hasBow) || !bool(o.hasGlider) || !Array.isArray(o.collected) || !o.collected.every((c) => typeof c === "string")) return false;
-  if (!q || typeof q !== "object" || !STAGES.includes(q.stage as QuestStage)) return false;
-  if (!Array.isArray(q.beacons) || q.beacons.length !== 4 || !q.beacons.every(bool)) return false;
-  return bool(q.barrierDown) && bool(q.wardenDefeated) && Array.isArray(q.visited);
-}
-
+// Save I/O lives in save.ts (versioned, migrated, validated). These keep the v1-shaped API until game.ts switches.
 export function readSave(): SaveData | null {
-  try {
-    const s = localStorage.getItem(SAVE_KEY);
-    if (!s) return null;
-    const d = JSON.parse(s) as SaveData;
-    return validSave(d) ? d : null;
-  } catch {
-    return null;
-  }
+  const d = readSaveV2();
+  return d ? toV1(d) : null;
 }
-
 export function writeSave(d: SaveData): void {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(d));
-  } catch {
-    // storage full or blocked: progress stays in memory
-  }
+  writeSaveFromV1(d);
 }
-
-export function clearSave(): void {
-  try {
-    localStorage.removeItem(SAVE_KEY);
-  } catch {}
-}
+export { clearSave } from "./save";
 
 const SETTINGS_KEY = "hollowmere.settings.v1";
 export function readSettings(): Settings {
@@ -161,13 +161,14 @@ export function readSettings(): Settings {
     // copy only fields of the right type and range; one bad value (say quality "max") would break the renderer
     const r = raw as Record<string, unknown>;
     if (typeof r.quality === "string" && ["auto", "low", "medium", "high", "ultra"].includes(r.quality)) out.quality = r.quality as Settings["quality"];
-    const range = (k: "master" | "music" | "sfx" | "lookSens" | "touchScale" | "renderScale" | "ambience", lo: number, hi: number) => {
+    const range = (k: "master" | "music" | "sfx" | "lookSens" | "touchScale" | "renderScale" | "ambience" | "voice", lo: number, hi: number) => {
       const v = r[k];
       if (num(v)) out[k] = Math.min(hi, Math.max(lo, v));
     };
-    range("master", 0, 1); range("music", 0, 1); range("sfx", 0, 1); range("ambience", 0, 1);
+    range("master", 0, 1); range("music", 0, 1); range("sfx", 0, 1); range("ambience", 0, 1); range("voice", 0, 1);
     range("lookSens", 0.25, 3); range("touchScale", 0.75, 1.4); range("renderScale", 0.5, 1);
-    for (const k of ["dynamicRes", "invertY", "showFps", "reduceMotion"] as const) if (bool(r[k])) out[k] = r[k] as boolean;
+    for (const k of ["dynamicRes", "invertY", "showFps", "reduceMotion", "subtitles", "hints", "cameraFollow"] as const) if (bool(r[k])) out[k] = r[k] as boolean;
+    if (r.fpsCap === 0 || r.fpsCap === 30 || r.fpsCap === 60) out.fpsCap = r.fpsCap;
     return out;
   } catch {
     return { ...DEFAULT_SETTINGS };

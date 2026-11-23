@@ -49,10 +49,11 @@ function plinth(m: MesherT, env: SiteEnv, owner: string, cx: number, cz: number,
 
 export function buildBeacon(env: SiteEnv, sky: THREE.Group, index: BeaconId, opts: BeaconOpts = {}): BeaconTower {
   const { world, look, group } = env;
-  const lm = LANDMARKS.find((l) => l.id === BEACON_LANDMARK[index])!;
+  const glade = (index as number) === 4; // the Glade beacon reuses this builder with index 4 cast to BeaconId
+  const lm = LANDMARKS.find((l) => l.id === (glade ? "beacon-glade" : BEACON_LANDMARK[index]))!;
   const cx = lm.x, cz = lm.z;
   const gy = world.heightAt(cx, cz);
-  const color = BEACON_COLOR[index];
+  const color = glade ? "#f2b24a" : BEACON_COLOR[index];
   const owner = `landmarks:beacon-${index}`;
   const stone = new Mesher(40 + index);
   const dimRunes = new Mesher(50 + index);
@@ -64,7 +65,29 @@ export function buildBeacon(env: SiteEnv, sky: THREE.Group, index: BeaconId, opt
   let spinMesh: THREE.Object3D | null = null;
   let crystals: THREE.Mesh[] = [];
 
-  if (index === 0) {
+  if (glade) {
+    // short, readable first goal: a stepped plinth and a slim fluted pillar with a brazier cup
+    H = 17;
+    plinth(stone, env, owner + "-base", cx, cz, 5.0, gy);
+    let y = gy + 1.3;
+    for (const [rb, rt, h] of [[2.2, 1.9, 4.2], [1.9, 1.6, 4.0], [1.6, 1.4, 3.6]] as [number, number, number][]) {
+      stone.cyl(cx, y, cz, rb, rt, h, PAL.rock, 8, A8);
+      accents.cyl(cx, y + h - 0.2, cz, rb * 0.97, rb * 0.97, 0.4, PAL.gold, 8, A8, { ao: 0 });
+      runeBand(dimRunes, cx, cz, y + h * 0.5, rb * 0.9, PAL.rune);
+      runeBand(litRunes, cx, cz, y + h * 0.5, rb * 0.9, color);
+      y += h;
+    }
+    stone.cyl(cx, y - 0.1, cz, 2.3, 1.5, 0.8, PAL.rockHi, 8, A8);
+    accents.cyl(cx, y + 0.7, cz, 2.35, 2.35, 0.16, PAL.goldHi, 8, A8, { ao: 0 });
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2 + A8 * 2;
+      stone.beam(cx + Math.sin(a) * 1.3, y + 0.5, cz + Math.cos(a) * 1.3, cx + Math.sin(a) * 2.3, y + 2.6, cz + Math.cos(a) * 2.3, 0.3, PAL.rockLo);
+    }
+    // "barrier", not "solid": the first beacon is a goal to light, not a climb. A climbable shaft let Wren stand in the
+    // lit bowl with the camera inside the fire. maxY stays the shaft top: camera-collide.ts hangs the crown blockers on it.
+    world.addBox({ minX: cx - 2.1, maxX: cx + 2.1, minZ: cz - 2.1, maxZ: cz + 2.1, minY: gy, maxY: y, tag: "barrier", owner: owner + "-shaft" });
+    H = y + 2.6 - gy;
+  } else if (index === 0) {
     H = 31;
     plinth(stone, env, owner + "-base", cx, cz, 6.6, gy);
     const seg: [number, number, number][] = [[3.5, 3.1, 7], [3.1, 2.6, 6.5], [2.6, 2.1, 6], [2.1, 1.7, 5]];
@@ -231,7 +254,13 @@ export function buildBeacon(env: SiteEnv, sky: THREE.Group, index: BeaconId, opt
     group.add(mesh);
     return mesh;
   };
-  add(stone, undefined, "beacon-stone");
+  const stoneMat = env.own(look.toon({ color: "#ffffff", vertexColors: true }) as THREE.Material);
+  add(stone, stoneMat, "beacon-stone");
+  const tintStone = (on: boolean) => {
+    const c = (stoneMat as THREE.MeshToonMaterial).color;
+    if (c) c.set(on ? "#ffffff" : "#aab0ba");
+  };
+  tintStone(false);
   add(accents, undefined, "beacon-gold");
   add(cloth, look.toon({ color: "#ffffff", vertexColors: true, side: THREE.DoubleSide }), "beacon-cloth");
   const dimMat = glowMat(look, PAL.rune, 0.35);
@@ -291,6 +320,11 @@ export function buildBeacon(env: SiteEnv, sky: THREE.Group, index: BeaconId, opt
   column.visible = false;
   sky.add(column);
 
+  // unlit glint: a small gold spark that carries the eye to the goal from far away (fog off, drawn in the sky group)
+  const glint = haloSprite(env.glow, "#f6d98a", 10);
+  glint.position.set(cx, flameY + 2.2, cz);
+  sky.add(glint);
+
   let litT = 0;
   let target = 0;
   let acc = 0;
@@ -311,10 +345,17 @@ export function buildBeacon(env: SiteEnv, sky: THREE.Group, index: BeaconId, opt
       if (sockD) sockD.visible = !on;
       if (sockL) sockL.visible = on;
       sigil.material = on ? sigilLit : sigilMat;
+      tintStone(on);
+      glint.visible = !on;
       if (on && animated) litT = 0;
       if (!on) { flameGroup.visible = false; halo.visible = false; column.visible = false; }
     },
     tick(dt, time, near, px, pz, fx) {
+      if (!tower.lit) {
+        const k = 9 + Math.sin(time * 1.7 + index * 1.3) * 2.2;
+        glint.scale.set(k, k, 1);
+        (glint.material as THREE.SpriteMaterial).opacity = 0.75 + Math.sin(time * 1.7 + index) * 0.2;
+      }
       if (litT !== target) litT = target > litT ? Math.min(target, litT + dt * 0.4) : Math.max(target, litT - dt * 0.8);
       if (near) {
         sigil.rotation.z += dt * (0.3 + litT * 0.9);

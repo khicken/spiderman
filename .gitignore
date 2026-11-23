@@ -11,3 +11,7 @@ next-env.d.ts
 .DS_Store
 *.pem
 npm-debug.log*
+
+# large local screenshots and agent worktrees
+zelda/v2/shots/
+.claude/worktrees/

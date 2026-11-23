@@ -1,0 +1,103 @@
+{
+ "version": 1,
+ "sampleRate": 24000,
+ "boot": [],
+ "clips": {
+  "oriel-1": {
+   "files": [
+    "oriel-1.mp3"
+   ],
+   "text": "Four beacons ring the mountain.",
+   "who": "oriel",
+   "seconds": 1.775
+  },
+  "oriel-2": {
+   "files": [
+    "oriel-2.mp3"
+   ],
+   "text": "Light them and the Spire barrier falls.",
+   "who": "oriel",
+   "seconds": 2.42
+  },
+  "oriel-3": {
+   "files": [
+    "oriel-3.mp3"
+   ],
+   "text": "Touch a waystone to travel back here.",
+   "who": "oriel",
+   "seconds": 2.191
+  },
+  "tallow-wake": {
+   "files": [
+    "tallow-wake.mp3"
+   ],
+   "text": "There you are. Up you get.",
+   "who": "tallow",
+   "seconds": 1.708
+  },
+  "tallow-gate": {
+   "files": [
+    "tallow-gate.mp3"
+   ],
+   "text": "Light the brazier at the gate.",
+   "who": "tallow",
+   "seconds": 1.377
+  },
+  "tallow-vista": {
+   "files": [
+    "tallow-vista.mp3"
+   ],
+   "text": "Look. The Glade Beacon. Let's light it.",
+   "who": "tallow",
+   "seconds": 2.385
+  },
+  "tallow-ride": {
+   "files": [
+    "tallow-ride.mp3"
+   ],
+   "text": "Jump onto the line. I'll hold you.",
+   "who": "tallow",
+   "seconds": 2.489
+  },
+  "tallow-gladeLit": {
+   "files": [
+    "tallow-gladeLit.mp3"
+   ],
+   "text": "The Glade Beacon is lit!",
+   "who": "tallow",
+   "seconds": 1.508
+  },
+  "tallow-mem0": {
+   "files": [
+    "tallow-mem0.mp3"
+   ],
+   "text": "I was bigger once. I lit ships home.",
+   "who": "tallow",
+   "seconds": 2.54
+  },
+  "tallow-mem1": {
+   "files": [
+    "tallow-mem1.mp3"
+   ],
+   "text": "Someone carried me. Someone kind.",
+   "who": "tallow",
+   "seconds": 2.183
+  },
+  "tallow-mem2": {
+   "files": [
+    "tallow-mem2.mp3"
+   ],
+   "text": "The water rose. They chose the lamp over the boat.",
+   "who": "tallow",
+   "seconds": 2.812
+  },
+  "tallow-mem3": {
+   "files": [
+    "tallow-mem3.mp3"
+   ],
+   "text": "Their name was... I gave it to the dark.",
+   "who": "tallow",
+   "seconds": 2.113
+  }
+ }
+}

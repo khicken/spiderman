@@ -169,23 +169,19 @@ export function buildShrine(env: SiteEnv): SiteInfo {
     const side = i % 2 ? 1 : -1;
     const x = pathX(z) + side * 2.1;
     const y0 = groundMin(world, x, z, 0.1, 0.1) - 0.1;
-    const lit = i < 4;
+    // v2: every path lamp is lit; a dark lamp by the gate reads as "light this", and the gate brazier is the one goal
     stone.box(x, y0, z, 0.16, 2.6, 0.16, PAL.wood, 0, { jit: 0.04 });
     stone.box(x, y0, z, 0.34, 0.25, 0.34, PAL.rockLo);
     const ax = x - side * 0.45;
     stone.beam(x, y0 + 2.5, z, ax, y0 + 2.5, z, 0.08, PAL.woodLo);
     stone.beam(ax, y0 + 2.5, z, ax, y0 + 2.35, z, 0.025, PAL.goldLo);
-    stone.box(ax, y0 + 2.0 + 0.3, z, 0.26, 0.05, 0.26, lit ? PAL.gold : "#7a7a76", 0, { ao: 0 });
-    stone.box(ax, y0 + 1.9, z, 0.26, 0.05, 0.26, lit ? PAL.gold : "#7a7a76", 0, { ao: 0 });
-    if (lit) {
-      ember.box(ax, y0 + 1.95, z, 0.2, 0.35, 0.2, PAL.emberHi, 0, { jit: 0, ao: 0 });
-      const s = new THREE.Sprite(lanternMat);
-      s.scale.set(2.4, 2.4, 1);
-      s.position.set(ax, y0 + 2.12, z);
-      group.add(s);
-    } else {
-      stone.box(ax, y0 + 1.95, z, 0.2, 0.35, 0.2, "#8f8f8a", 0, { jit: 0.03 });
-    }
+    stone.box(ax, y0 + 2.0 + 0.3, z, 0.26, 0.05, 0.26, PAL.gold, 0, { ao: 0 });
+    stone.box(ax, y0 + 1.9, z, 0.26, 0.05, 0.26, PAL.gold, 0, { ao: 0 });
+    ember.box(ax, y0 + 1.95, z, 0.2, 0.35, 0.2, PAL.emberHi, 0, { jit: 0, ao: 0 });
+    const s = new THREE.Sprite(lanternMat);
+    s.scale.set(2.4, 2.4, 1);
+    s.position.set(ax, y0 + 2.12, z);
+    group.add(s);
     world.addBox({ minX: x - 0.12, maxX: x + 0.12, minZ: z - 0.12, maxZ: z + 0.12, minY: y0, maxY: y0 + 2.6, tag: "solid", owner: OWNER });
   }
 

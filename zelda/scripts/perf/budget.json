@@ -1,0 +1,8 @@
+{
+  "_source": "DESIGN-V2.md section 11. Per frame, 95th percentile. gpuMs is the GPU timer total; phoneFrameP95 is DECISIONS.md item 3 (phone proxy only).",
+  "low": { "calls": 90, "tris": 150000, "gpuMs": 11, "phoneFrameP95": 20, "aa": "fxaa", "maxPixels": 1100000, "fpsCap": 60,
+    "passes": { "shadow": 0, "opaque": 5, "grass": 1.5, "water": 1, "sky": 0.5, "particles": 0.8, "post": 1.5 } },
+  "medium": { "calls": 160, "tris": 400000, "gpuMs": 12, "phoneFrameP95": 20, "aa": "smaa", "maxPixels": 2100000, "fpsCap": 60 },
+  "high": { "calls": 220, "tris": 900000, "gpuMs": 9, "aa": "msaa", "maxPixels": 3700000, "fpsCap": 0 },
+  "ultra": { "calls": 300, "tris": 1800000, "gpuMs": 12, "aa": "msaa", "maxPixels": 8300000, "fpsCap": 0 }
+}

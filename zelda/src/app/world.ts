@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import type { Biome, Box, ColliderTag, Landmark, RayHit, Surface, V3, World } from "./contracts";
 import { CLIFFS, FOREST, LAKE, LANDMARKS, MOUNTAIN, SEA_LEVEL, WORLD } from "./contracts";
-import { GRID_N, LO_N, generateWorld, riverInfo, sampleLo } from "./world-gen";
+import { GRID_N, LO_N, RILL, generateWorld, riverInfo, sampleLo } from "./world-gen";
 import type { WorldData } from "./world-gen";
 
-export { SEA_STACKS, PATHS } from "./world-gen";
+export { SEA_STACKS, PATHS, RILL, PROLOGUE_PATH, distToLine } from "./world-gen";
 
 // The island as data: heightmap queries, water, biomes, the collider spatial hash and raycasts. Owner: terrain.
 
@@ -56,6 +56,8 @@ export function createWorld(seed: number): World {
   };
 
   const waterAt = (x: number, z: number): number => {
+    // the prologue ford (shallow pool, 0.4 m deep)
+    if (z > RILL.z - RILL.half - 1 && z < RILL.z + RILL.half + 1 && x > RILL.x0 - RILL.fade && x < RILL.x1 + RILL.fade && heightAt(x, z) < RILL.surf) return RILL.surf;
     const r = riverSurface(x, z);
     const dl = Math.hypot(x - LAKE.x, z - LAKE.z);
     if (dl < LAKE.r + 10 && heightAt(x, z) < LAKE.level + 0.5) return Math.max(r, LAKE.level);
@@ -295,7 +297,12 @@ export function createWorld(seed: number): World {
     groundAt,
     waterAt,
     isWater: (x, y, z) => y < waterAt(x, z),
-    isClimbable: (n: V3, box?: Box | null) => (box ? box.tag === "climbable" || box.tag === "solid" : n.y < CLIMB_NY),
+    isClimbable: (n: V3, box?: Box | null) => {
+      if (!box) return n.y < CLIMB_NY;
+      if (box.tag === "climbable") return true;
+      // a "solid" box is a wall; anything thinner than 0.6 m is a post, a sign or a rail and is never climbable
+      return box.tag === "solid" && box.maxX - box.minX >= 0.6 && box.maxZ - box.minZ >= 0.6;
+    },
     surfaceAt,
     biomeAt,
     raycast,
@@ -351,4 +358,17 @@ export function createWorld(seed: number): World {
   };
   registry.set(world, data);
   return world;
+}
+
+/** Soft world edge. `k` is 0 on the island and rises to 1 at `EDGE_BAND` m past the coast; (nx, nz) points back to the
+ *  island. The player module uses it to turn Wren back with a message instead of letting her swim into the dark. */
+export const EDGE_BAND = 70;
+export function edgeAt(w: World, x: number, z: number, out: { k: number; nx: number; nz: number }) {
+  const d = worldData(w);
+  const r = Math.hypot(x, z) || 1;
+  const coast = d ? d.coastR(x, z) : WORLD.islandR;
+  out.k = Math.max(0, Math.min(1, (r - coast) / EDGE_BAND));
+  out.nx = -x / r;
+  out.nz = -z / r;
+  return out;
 }

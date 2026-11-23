@@ -1,4 +1,4 @@
-import type { BtnName, CreateInput, Input, PlayerState, Settings } from "./contracts";
+import type { BtnName, CreateInput, InputV2, PlayerState, Settings } from "./contracts";
 import { DEFAULT_SETTINGS } from "./contracts";
 import { BTN_NAMES, newInputState } from "./state";
 import { createPad } from "./input-pad";
@@ -12,29 +12,45 @@ import type { TouchContext } from "./input-touch";
 export type { TouchContext } from "./input-touch";
 
 /** createInput plus the extras the integrator can call. `syncPlayer` relabels and shows touch buttons by context. */
-export interface InputPlus extends Input {
+export interface InputPlus extends InputV2 {
   setContext(c: TouchContext | null): void;
   syncPlayer(p: PlayerState): void;
 }
 
+// v2: the focus-cycling key and the browser-shortcut modifier are never bound (they fight the browser on every OS).
 const KEYMAP: readonly (readonly [string, BtnName])[] = [
-  ["Space", "jump"], ["KeyJ", "attack"], ["KeyK", "block"], ["KeyL", "dodge"], ["ControlLeft", "dodge"],
-  ["ControlRight", "dodge"], ["ShiftLeft", "sprint"], ["ShiftRight", "sprint"], ["KeyF", "bow"], ["KeyG", "glide"],
-  ["KeyQ", "lock"], ["Tab", "lock"], ["KeyE", "use"], ["KeyM", "map"], ["Escape", "pause"], ["KeyP", "pause"],
+  ["Space", "jump"], ["KeyJ", "attack"], ["KeyK", "block"], ["KeyC", "dodge"], ["KeyL", "dodge"],
+  ["ShiftLeft", "sprint"], ["ShiftRight", "sprint"], ["KeyF", "bow"], ["KeyG", "glide"], ["KeyR", "thread"],
+  ["KeyQ", "lock"], ["KeyE", "use"], ["KeyM", "map"], ["Escape", "pause"], ["KeyP", "pause"],
 ];
 const MOVE_KEYS = { fwd: ["KeyW", "ArrowUp"], back: ["KeyS", "ArrowDown"], left: ["KeyA", "ArrowLeft"], right: ["KeyD", "ArrowRight"] };
 const NAV_KEYS: Record<string, NavDir> = {
   ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", KeyW: "up", KeyS: "down", KeyA: "left", KeyD: "right",
   Enter: "ok", Escape: "back",
 };
-const MOUSE_BTN: Record<number, BtnName> = { 0: "attack", 1: "bow", 2: "block" };
+const MOUSE_BTN: Record<number, BtnName> = { 0: "attack", 1: "lock", 2: "block" };
+
+/** Chip glyphs per device (DESIGN-V2 controls table). */
+const GLYPH: Record<"keys" | "pad" | "touch", Record<BtnName | "move" | "look", string>> = {
+  keys: {
+    jump: "Space", attack: "LMB", block: "RMB", dodge: "C", sprint: "Shift", bow: "F", glide: "Space", lock: "Q",
+    use: "E", map: "M", pause: "Esc", thread: "R", move: "WASD", look: "Mouse",
+  },
+  pad: {
+    jump: "A", attack: "X", block: "LT", dodge: "B", sprint: "B hold", bow: "RT", glide: "A", lock: "RB", use: "Y",
+    map: "View", pause: "Menu", thread: "LB", move: "L stick", look: "R stick",
+  },
+  touch: {
+    jump: "Jump", attack: "Attack", block: "Shield", dodge: "Dodge", sprint: "Stick", bow: "Bow", glide: "Glide",
+    lock: "Lock", use: "Use", map: "Map", pause: "Pause", thread: "Thread", move: "Left thumb", look: "Right thumb",
+  },
+};
 
 const MOUSE_LOCKED = 0.0022; // rad per px
 const MOUSE_DRAG = 0.005;
 const TOUCH_LOOK = 0.0055;
 const PAD_LOOK_X = 2.7; // rad/s at full stick
 const PAD_LOOK_Y = 1.7;
-const SHIFT_TAP_S = 0.18;
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -57,8 +73,8 @@ export const createInput = ((canvas: HTMLCanvasElement, container: HTMLElement):
   let touchShown = false;
   let lookX = 0, lookY = 0, wheel = 0;
   let dragging = false, lastX = 0, lastY = 0;
-  let shiftDownAt = -1;
   let lockFailed = false;
+  let softReq = false; // a lock request outside a user gesture: its failure is not permanent
   let selfExit = false;
   let lastTouchAt = -1e9;
   let disposed = false;
@@ -88,34 +104,39 @@ export const createInput = ((canvas: HTMLCanvasElement, container: HTMLElement):
     keyHeld.clear();
     for (const b of BTN_NAMES) mouseHeld[b] = false;
     dragging = false;
-    shiftDownAt = -1;
     touch.releaseAll();
   };
 
   const onKeyDown = (ev: KeyboardEvent) => {
-    if (typing(ev.target) || ev.metaKey) return;
-    if (ev.ctrlKey && ev.code !== "ControlLeft" && ev.code !== "ControlRight") return;
+    if (typing(ev.target)) return;
+    // Cmd shortcuts swallow the keyup of every key held with them on macOS: drop held keys so W never sticks
+    if (ev.metaKey || ev.key === "Meta") {
+      keyHeld.clear();
+      return;
+    }
+    if (ev.ctrlKey) return;
     const nd = NAV_KEYS[ev.code];
     if (nd && !ev.repeat) nav(nd);
     else if (nd && ev.repeat && nd !== "ok" && nd !== "back") nav(nd);
     if (ev.code === "Space" && !ev.repeat && !enabled) nav("ok");
-    if (ev.code === "Tab" || (enabled && (ev.code === "Space" || ev.code.startsWith("Arrow")))) ev.preventDefault();
+    if (enabled && (ev.code === "Space" || ev.code.startsWith("Arrow"))) ev.preventDefault();
     if (ev.repeat) return;
     keyHeld.add(ev.code);
-    if (ev.code === "ShiftLeft" || ev.code === "ShiftRight") shiftDownAt = performance.now();
     setDevice("keys");
     for (const [code, b] of KEYMAP) if (code === ev.code) latch[b] = true;
   };
   const onKeyUp = (ev: KeyboardEvent) => {
-    keyHeld.delete(ev.code);
-    if ((ev.code === "ShiftLeft" || ev.code === "ShiftRight") && shiftDownAt >= 0) {
-      if (performance.now() - shiftDownAt < SHIFT_TAP_S * 1000) latch.dodge = true;
-      shiftDownAt = -1;
-    }
+    if (ev.key === "Meta" || ev.code === "MetaLeft" || ev.code === "MetaRight") keyHeld.clear();
+    else keyHeld.delete(ev.code);
   };
 
-  const requestLock = () => {
-    if (lockFailed || document.pointerLockElement === canvas || state.device === "touch") return;
+  const requestLock = (soft = false) => {
+    if ((lockFailed && !soft) || document.pointerLockElement === canvas || state.device === "touch") return;
+    softReq = soft;
+    const fail = () => {
+      if (!softReq) lockFailed = true;
+      softReq = false;
+    };
     try {
       const c = canvas as HTMLCanvasElement & { requestPointerLock(o?: object): Promise<void> | void };
       const r = c.requestPointerLock({ unadjustedMovement: true });
@@ -123,18 +144,20 @@ export const createInput = ((canvas: HTMLCanvasElement, container: HTMLElement):
         r.catch(() => {
           try {
             const r2 = canvas.requestPointerLock() as Promise<void> | void;
-            if (r2 && typeof r2.catch === "function") r2.catch(() => { lockFailed = true; });
-          } catch { lockFailed = true; }
+            if (r2 && typeof r2.catch === "function") r2.catch(fail);
+          } catch { fail(); }
         });
       }
-    } catch { lockFailed = true; }
+    } catch { fail(); }
   };
   const onMouseDown = (ev: MouseEvent) => {
     if (!enabled || recentTouch()) return;
     setDevice("keys");
     if (ev.button === 1) ev.preventDefault();
+    // the click that captures the mouse is not an attack
+    const capturing = ev.button === 0 && !lockFailed && document.pointerLockElement !== canvas;
     const b = MOUSE_BTN[ev.button];
-    if (b) {
+    if (b && !capturing) {
       mouseHeld[b] = true;
       latch[b] = true;
     }
@@ -176,7 +199,8 @@ export const createInput = ((canvas: HTMLCanvasElement, container: HTMLElement):
     state.pointerLocked = locked;
   };
   const onLockError = () => {
-    lockFailed = true;
+    if (!softReq) lockFailed = true;
+    softReq = false;
   };
   const onPointerDown = (ev: PointerEvent) => {
     if (ev.pointerType === "touch") {
@@ -296,7 +320,16 @@ export const createInput = ((canvas: HTMLCanvasElement, container: HTMLElement):
         clearHeld();
         exitLock();
         lookX = lookY = wheel = 0;
-      }
+      } else if (state.device === "keys") requestLock(true);
+    },
+    relock() {
+      if (state.device !== "keys") return;
+      lockFailed = false;
+      requestLock(false);
+    },
+    glyph(b) {
+      const d = state.device === "pad" ? "pad" : state.device === "touch" ? "touch" : "keys";
+      return GLYPH[d][b] ?? String(b);
     },
     onNav(cb) {
       navs.add(cb);

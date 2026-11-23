@@ -1,7 +1,11 @@
 import * as THREE from "three";
-import type { Look, MoveMode, PlayerAction } from "./contracts";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import type { HeroAnimIn, HeroModel, Look, MoveMode, PlayerAction, V2 } from "./contracts";
 import { PLAYER } from "./contracts";
 
+// Wren, v2. One skinned mesh (vertex colours, one skeleton) for the body, cloak, hood, gear, bow and glider sail.
+// One additive skinned mesh for the lantern flame, halo, sword glow and sword trail. One blob shadow quad.
+// Optional inverted-hull outline: a second draw of the body geometry. Total: 3 draw calls, 4 with the outline.
 
 const ROOTY = 0, ROOTF = 1, TUMBLE = 2, BODYP = 3, BODYR = 4, BODYYAW = 5;
 const SPX = 6, SPY = 7, SPZ = 8, HDX = 9, HDY = 10, HDZ = 11;
@@ -10,6 +14,7 @@ const HLX = 20, HLZ = 21, KNL = 22, FTL = 23, HRX = 24, HRZ = 25, KNR = 26, FTR 
 const WRX = 28, WRZ = 29, WLX = 30, WRY = 31, WLZ = 32;
 const N = 33;
 
+/** v1 input (game.ts feeds this until the integrator switches to HeroAnimIn). The v2 fields are optional. */
 export interface WrenAnimIn {
   mode: MoveMode;
   action: PlayerAction;
@@ -38,6 +43,13 @@ export interface WrenAnimIn {
   windZ: number;
   slope: number; // ground pitch under Wren along facing (+ = uphill)
   exhausted: boolean;
+  lean?: number;
+  skid?: number;
+  vault?: number;
+  rideT?: number;
+  pinAim?: boolean;
+  lanternLean?: V2;
+  glideMode?: 0 | 1 | 2;
 }
 
 export function newAnimIn(): WrenAnimIn {
@@ -45,32 +57,29 @@ export function newAnimIn(): WrenAnimIn {
     mode: "ground", action: "none", actionT: 0, speed: 0, vy: 0, grounded: true, sprint: false, turn: 0, climbX: 0,
     climbY: 0, mantle: -1, combo: 1, windup: 0.08, recover: 0.28, charge: 0, draw: 0, shield: false, swimMove: 0, wade: 0,
     hurtBig: false, armed: false, hasBow: false, time: 0, windX: 0, windZ: 0, slope: 0, exhausted: false,
+    lean: 0, skid: -1, vault: -1, rideT: -1, pinAim: false, lanternLean: { x: 0, y: 0 }, glideMode: 0,
   };
 }
 
-export interface WrenModel {
-  readonly group: THREE.Group;
-  /** World-space sockets, valid after update. */
-  readonly lanternWorld: THREE.Vector3;
-  readonly handWorld: THREE.Vector3; // sword hand
-  readonly bladeTipWorld: THREE.Vector3;
-  readonly bowHandWorld: THREE.Vector3;
-  /** True on the frame a foot touched down. */
-  footstep: boolean;
-  trailOn: boolean;
+export function newHeroAnimIn(): HeroAnimIn {
+  return newAnimIn() as HeroAnimIn;
+}
+
+/** HeroModel plus the v1 extras the player module still calls. update() also accepts the v1 input. */
+export interface WrenModel extends Omit<HeroModel, "update"> {
   /** Feed a landing impulse (0..1). */
   land(impact: number): void;
   update(a: WrenAnimIn, dt: number): void;
   setShadows(on: boolean): void;
+  setCameraDistance(d: number): void;
   setGroundOffset(dy: number): void; // blob shadow sits this far below the feet
-  dispose(): void;
 }
 
 const C = {
-  cloak: "#2f5f5a", cloakIn: "#1d3d3a", cloakTrim: "#c9a13b", tunic: "#c9a77a", tunicDark: "#a88658", trousers: "#5a4a3a",
-  boot: "#4a3426", belt: "#6b4a2e", skin: "#f2c9a2", blush: "#ea9a84", hair: "#7a3e24", ink: "#2b2118", white: "#fff8ec",
-  glove: "#7a5236", brass: "#c9a13b", steel: "#eef0ea", wood: "#8a5a34", woodDark: "#5a3a22", ember: "#f08a3c",
-  emberHi: "#ffc07a", paper: "#efe3c8", paperLo: "#d8c49c",
+  cloak: "#2f6263", cloakLin: "#e0954a", trim: "#d9ab42", tunic: "#c9a26b", tunicDark: "#9c7a4e", trousers: "#4d4036",
+  boot: "#3e2c20", belt: "#6b4a2e", skin: "#eec4a0", mask: "#f4e8d0", blush: "#e9957f", hair: "#8a4426", ink: "#241c16",
+  white: "#fff8ec", glove: "#7a5236", brass: "#d9ab42", steel: "#e4eaee", steelDark: "#aab6be", wood: "#8a5a34",
+  woodDark: "#55361f", ember: "#f08a3c", emberHi: "#ffc07a", paper: "#efe3c8", paperLo: "#d8c49c",
 };
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
@@ -81,429 +90,126 @@ const smooth = (t: number) => {
 };
 const easeOut = (t: number) => 1 - (1 - clamp(t, 0, 1)) ** 3;
 
-function radialTexture(inner: string, outer: string): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const g = c.getContext("2d")!;
-  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gr.addColorStop(0, inner);
-  gr.addColorStop(1, outer);
-  g.fillStyle = gr;
-  g.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
+function radialTexture(rgb: [number, number, number], alpha: number): THREE.DataTexture {
+  const S = 32, d = new Uint8Array(S * S * 4);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const r = Math.hypot((x + 0.5) / S - 0.5, (y + 0.5) / S - 0.5) * 2;
+    const a = (1 - smooth(r)) ** 1.5 * alpha;
+    const i = (y * S + x) * 4;
+    d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = Math.round(a * 255);
+  }
+  const t = new THREE.DataTexture(d, S, S, THREE.RGBAFormat);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = t.minFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
   return t;
 }
 
-function sigilTexture(): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 128;
-  const g = c.getContext("2d")!;
-  g.fillStyle = C.paper;
-  g.fillRect(0, 0, 256, 128);
-  g.globalAlpha = 0.18;
-  for (let i = 0; i < 400; i++) {
-    g.fillStyle = i % 2 ? C.paperLo : "#fff6e2";
-    g.fillRect(Math.random() * 256, Math.random() * 128, 2 + Math.random() * 6, 1);
+class Batch {
+  pos: number[] = []; nor: number[] = []; col: number[] = []; uv: number[] = [];
+  si: number[] = []; sw: number[] = []; ow: number[] = []; idx: number[] = [];
+  cols: 3 | 4;
+  constructor(cols: 3 | 4) {
+    this.cols = cols;
   }
-  g.globalAlpha = 1;
-  g.fillStyle = C.ember;
-  g.beginPath();
-  g.arc(128, 62, 30, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = C.emberHi;
-  g.beginPath();
-  g.arc(128, 62, 16, 0, Math.PI * 2);
-  g.fill();
-  g.strokeStyle = C.ink;
-  g.lineWidth = 3;
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    g.beginPath();
-    g.moveTo(128 + Math.cos(a) * 36, 62 + Math.sin(a) * 36);
-    g.lineTo(128 + Math.cos(a) * 46, 62 + Math.sin(a) * 46);
-    g.stroke();
+  get count() { return this.pos.length / 3; }
+  build(): THREE.BufferGeometry {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(this.pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(this.nor, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(this.col, this.cols));
+    g.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(this.si, 4));
+    g.setAttribute("skinWeight", new THREE.Float32BufferAttribute(this.sw, 4));
+    g.setAttribute("ow", new THREE.Float32BufferAttribute(this.ow, 1));
+    if (this.uv.length) g.setAttribute("uv", new THREE.Float32BufferAttribute(this.uv, 2));
+    g.setIndex(this.count > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
+    return g;
   }
-  g.strokeStyle = C.brass;
-  g.lineWidth = 6;
-  g.strokeRect(3, 3, 250, 122);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
 }
 
-export function createWrenModel(look: Look): WrenModel {
+interface PO {
+  x?: number; y?: number; z?: number; rx?: number; ry?: number; rz?: number; sx?: number; sy?: number; sz?: number;
+  q?: THREE.Quaternion;
+  c?: string; a?: number; ow?: number; uv?: [number, number];
+  blend?: { to: THREE.Bone; y0: number; y1: number }; // weight toward `to` as rest-pose y goes y0 -> y1
+}
+
+export function createHeroModel(look: Look): WrenModel {
   const geos: THREE.BufferGeometry[] = [];
   const ownMats: THREE.Material[] = [];
   const texes: THREE.Texture[] = [];
-  const meshes: THREE.Mesh[] = [];
-  const T = (color: string, side?: THREE.Side) => look.toon(side ? { color, side } : { color });
-  const G = <G2 extends THREE.BufferGeometry>(g: G2) => {
-    geos.push(g);
-    return g;
+  const bones: THREE.Bone[] = [];
+  const boneIdx = new Map<THREE.Bone, number>();
+  const bone = (parent: THREE.Object3D, x: number, y: number, z: number, order: THREE.EulerOrder = "XYZ") => {
+    const b = new THREE.Bone();
+    b.position.set(x, y, z);
+    b.rotation.order = order;
+    parent.add(b);
+    boneIdx.set(b, bones.length);
+    bones.push(b);
+    return b;
   };
-  const M = (g: THREE.BufferGeometry, m: THREE.Material, parent: THREE.Object3D, x = 0, y = 0, z = 0) => {
-    const mesh = new THREE.Mesh(g, m);
-    mesh.position.set(x, y, z);
-    parent.add(mesh);
-    meshes.push(mesh);
-    return mesh;
-  };
-  const glow = (color: string, opacity = 1, additive = false) => {
-    const m = new THREE.MeshBasicMaterial({
-      color, transparent: opacity < 1 || additive, opacity, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-      depthWrite: !additive, toneMapped: false,
-    });
-    ownMats.push(m);
-    return m;
-  };
-  const cap = (r: number, len: number) => G(new THREE.CapsuleGeometry(r, len, 4, 10));
-  const pivot = (parent: THREE.Object3D, x: number, y: number, z: number, order: THREE.EulerOrder = "XYZ") => {
+  const socket = (parent: THREE.Object3D, x: number, y: number, z: number) => {
     const o = new THREE.Object3D();
     o.position.set(x, y, z);
-    o.rotation.order = order;
     parent.add(o);
     return o;
   };
 
   const group = new THREE.Group();
   group.name = "wren";
-  const offset = pivot(group, 0, 0, 0); // step smoothing and swim bob
-  const tumble = pivot(offset, 0, 0.55, 0);
-  const hips = pivot(tumble, 0, 0.35, 0, "YXZ");
-  const spine = pivot(hips, 0, 0.04, 0, "YXZ");
-  const neck = pivot(spine, 0, 0.43, 0.01, "YXZ");
-  const shL = pivot(spine, 0.205, 0.33, 0, "YXZ");
-  const shR = pivot(spine, -0.205, 0.33, 0, "YXZ");
-  const elL = pivot(shL, 0, -0.25, 0);
-  const elR = pivot(shR, 0, -0.25, 0);
-  const handL = pivot(elL, 0, -0.24, 0, "YXZ");
-  const handR = pivot(elR, 0, -0.24, 0, "YXZ");
-  const hipL = pivot(hips, 0.1, -0.08, 0, "YXZ");
-  const hipR = pivot(hips, -0.1, -0.08, 0, "YXZ");
-  const knL = pivot(hipL, 0, -0.38, 0);
-  const knR = pivot(hipR, 0, -0.38, 0);
-  const ftL = pivot(knL, 0, -0.34, 0);
-  const ftR = pivot(knR, 0, -0.34, 0);
-
-  const mCloak = T(C.cloak), mCloakIn = T(C.cloakIn), mTunic = T(C.tunic), mTunicD = T(C.tunicDark), mTrous = T(C.trousers);
-  const mBoot = T(C.boot), mBelt = T(C.belt), mSkin = T(C.skin), mHair = T(C.hair), mInk = T(C.ink), mGlove = T(C.glove);
-  const mBrass = T(C.brass), mSteel = T(C.steel), mWood = T(C.wood), mWoodD = T(C.woodDark), mBlush = T(C.blush);
-  const mWhite = glow(C.white);
-  const mCloakDS = T(C.cloak, THREE.DoubleSide);
-
-  const skirt = G(new THREE.CylinderGeometry(0.165, 0.25, 0.32, 14, 1, true));
-  M(skirt, T(C.tunic, THREE.DoubleSide), hips, 0, -0.12, 0);
-  M(G(new THREE.TorusGeometry(0.17, 0.032, 6, 18).rotateX(Math.PI / 2)), mBelt, hips, 0, 0.04, 0);
-  M(G(new THREE.BoxGeometry(0.07, 0.06, 0.03)), mBrass, hips, 0, 0.04, 0.17);
-  const torso = G(new THREE.CapsuleGeometry(0.165, 0.2, 4, 12));
-  torso.scale(1, 1, 0.82);
-  M(torso, mTunic, spine, 0, 0.2, 0);
-  M(G(new THREE.BoxGeometry(0.05, 0.42, 0.02).rotateZ(0.62)), mBelt, spine, 0, 0.2, 0.135); // chest strap
-  const capelet = G(new THREE.CylinderGeometry(0.12, 0.27, 0.2, 16, 1, false));
-  M(capelet, mCloak, spine, 0, 0.36, -0.005);
-  M(G(new THREE.TorusGeometry(0.262, 0.018, 5, 22).rotateX(Math.PI / 2)), mBrass, spine, 0, 0.262, -0.005);
-  M(G(new THREE.SphereGeometry(0.03, 8, 6)), mBrass, spine, 0, 0.4, 0.12); // cloak clasp
-
-  const headG = G(new THREE.SphereGeometry(0.19, 20, 16));
-  const head = M(headG, mSkin, neck, 0, 0.15, 0.035);
-  head.scale.set(1, 0.97, 0.98);
-  const hc = new THREE.Vector3(0, 0.15, 0.035);
-  const onFace = (ax: number, ay: number, r: number) => {
-    const d = new THREE.Vector3(Math.sin(ax), Math.sin(ay), Math.cos(ax) * Math.cos(ay)).normalize();
-    return hc.clone().addScaledVector(d, r);
+  const offset = bone(group, 0, 0, 0);
+  const tumble = bone(offset, 0, 0.55, 0);
+  const hips = bone(tumble, 0, 0.35, 0, "YXZ");
+  const spine = bone(hips, 0, 0.04, 0, "YXZ");
+  const neck = bone(spine, 0, 0.43, 0.01, "YXZ");
+  const shL = bone(spine, 0.205, 0.33, 0, "YXZ");
+  const shR = bone(spine, -0.205, 0.33, 0, "YXZ");
+  const elL = bone(shL, 0, -0.25, 0);
+  const elR = bone(shR, 0, -0.25, 0);
+  const handL = bone(elL, 0, -0.24, 0, "YXZ");
+  const handR = bone(elR, 0, -0.24, 0, "YXZ");
+  const hipL = bone(hips, 0.1, -0.08, 0, "YXZ");
+  const hipR = bone(hips, -0.1, -0.08, 0, "YXZ");
+  const knL = bone(hipL, 0, -0.38, 0);
+  const knR = bone(hipR, 0, -0.38, 0);
+  const ftL = bone(knL, 0, -0.34, 0);
+  const ftR = bone(knR, 0, -0.34, 0);
+  const hood = bone(neck, 0, 0.185, -0.03);
+  const hoodTip = bone(hood, 0, 0.05, -0.18);
+  const capeRoot = bone(spine, 0, 0.37, -0.02);
+  const lanternPivot = bone(hips, 0.2, 0.02, 0.06);
+  const lantern = bone(lanternPivot, 0, -0.04, 0);
+  const flameB = bone(lantern, 0, -0.1, 0);
+  const haloB = bone(lantern, 0, -0.11, 0);
+  const back = bone(spine, 0, 0.22, -0.2);
+  const swordB = bone(back, 0.02, 0, -0.06);
+  swordB.rotation.set(0, 0, 2.55 + Math.PI);
+  const edgeB = bone(swordB, 0, 0.5, 0);
+  const bowB = bone(back, 0, 0.02, -0.04);
+  bowB.rotation.set(0, Math.PI / 2, -0.62);
+  const arrowB = bone(bowB, 0, 0, 0);
+  const glider = bone(group, 0, 2.02, 0.05);
+  const trailB = bone(group, 0, 0, 0);
+  const HC = new THREE.Vector3(0, 0.165, 0.02), HR = new THREE.Vector3(0.135, 0.16, 0.145);
+  const facePt = (ax: number, ay: number, off = 0) => {
+    const d = new THREE.Vector3(Math.sin(ax) * Math.cos(ay), Math.sin(ay), Math.cos(ax) * Math.cos(ay));
+    const n = new THREE.Vector3(d.x / HR.x, d.y / HR.y, d.z / HR.z).normalize();
+    const p = new THREE.Vector3(HR.x * d.x, HR.y * d.y, HR.z * d.z).add(HC).addScaledVector(n, off);
+    return { p, n, q: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n) };
   };
-  const eyeG = G(new THREE.SphereGeometry(0.036, 12, 10));
-  const eyes: THREE.Mesh[] = [];
-  for (const s of [1, -1]) {
-    const p = onFace(0.36 * s, -0.04, 0.178);
-    const e = M(eyeG, mInk, neck, p.x, p.y, p.z);
-    e.scale.set(0.8, 1.2, 0.75);
-    e.lookAt(e.position.clone().add(new THREE.Vector3(0.3 * s, 0, 1)));
-    eyes.push(e);
-    const hp = onFace(0.33 * s, 0.01, 0.2);
-    const hl = M(G(new THREE.SphereGeometry(0.012, 6, 4)), mWhite, neck, hp.x + 0.006 * s, hp.y + 0.008, hp.z);
-    eyes.push(hl);
-    const bp = onFace(0.56 * s, -0.2, 0.18);
-    const b = M(G(new THREE.CircleGeometry(0.03, 12)), mBlush, neck, bp.x, bp.y, bp.z);
-    b.scale.set(1.3, 0.8, 1);
-    b.lookAt(b.position.clone().sub(hc).multiplyScalar(4).add(hc));
-  }
-  const np = onFace(0, -0.13, 0.19);
-  M(G(new THREE.SphereGeometry(0.018, 8, 6)), mSkin, neck, np.x, np.y, np.z);
-  const mp = onFace(0, -0.28, 0.176);
-  const mouth = M(G(new THREE.CapsuleGeometry(0.006, 0.03, 2, 6).rotateZ(Math.PI / 2)), mInk, neck, mp.x, mp.y, mp.z);
-  const lockG = G(new THREE.SphereGeometry(0.075, 10, 8));
-  for (const [x, y, z, sx, sy, rz] of [
-    [0.0, 0.29, 0.15, 1.3, 0.55, 0], [0.09, 0.27, 0.13, 1.0, 0.6, 0.5], [-0.09, 0.27, 0.13, 1.0, 0.6, -0.5],
-    [0.16, 0.12, 0.08, 0.5, 1.2, 0.2], [-0.16, 0.12, 0.08, 0.5, 1.2, -0.2],
-  ] as const) {
-    const h = M(lockG, mHair, neck, x, y, z);
-    h.scale.set(sx, sy, 0.7);
-    h.rotation.z = rz;
-  }
-  const hoodR = 0.245;
-  const hood = pivot(neck, 0, 0.175, -0.035);
-  M(G(new THREE.SphereGeometry(hoodR, 20, 6, 0, Math.PI * 2, 0, 0.7)), mCloakDS, hood);
-  const open = 1.05;
-  M(G(new THREE.SphereGeometry(hoodR, 20, 12, Math.PI / 2 + open, Math.PI * 2 - open * 2, 0.69, 1.65)), mCloakDS, hood);
-  M(G(new THREE.SphereGeometry(hoodR - 0.012, 16, 10, 0, Math.PI * 2, 0, 2.3)), T(C.cloakIn, THREE.BackSide), hood);
-  const brim = M(G(new THREE.TorusGeometry(0.205, 0.024, 6, 20, Math.PI * 1.25)), mCloak, hood, 0, 0.0, 0.13);
-  brim.rotation.set(-0.35, 0, -Math.PI * 0.125 + Math.PI / 2 - Math.PI * 0.5);
-  brim.rotation.z = Math.PI * -0.125;
-  const hoodTip = pivot(hood, 0, 0.05, -0.2);
-  const tipG = G(new THREE.ConeGeometry(0.09, 0.32, 10).translate(0, -0.16, 0));
-  const tip = M(tipG, mCloak, hoodTip);
-  tip.rotation.x = 0.35;
+  const eyeP = [facePt(0.4, 0.05, 0.004), facePt(-0.4, 0.05, 0.004)];
+  const eyeL = bone(neck, eyeP[0].p.x, eyeP[0].p.y, eyeP[0].p.z);
+  const eyeR = bone(neck, eyeP[1].p.x, eyeP[1].p.y, eyeP[1].p.z);
+  const mouthP = facePt(0, -0.62, 0.003);
+  const mouthB = bone(neck, mouthP.p.x, mouthP.p.y, mouthP.p.z);
 
-  const upperArm = cap(0.058, 0.16);
-  const foreArm = cap(0.052, 0.15);
-  const handG = G(new THREE.SphereGeometry(0.058, 10, 8));
-  const cuffG = G(new THREE.CylinderGeometry(0.066, 0.06, 0.08, 10));
-  for (const [sh, el, hd] of [[shL, elL, handL], [shR, elR, handR]] as const) {
-    M(upperArm, mTunic, sh, 0, -0.12, 0);
-    M(G(new THREE.SphereGeometry(0.085, 10, 8)), mCloak, sh, 0, 0.0, 0); // cloaked shoulder
-    M(foreArm, mTunicD, el, 0, -0.11, 0);
-    M(cuffG, mGlove, el, 0, -0.17, 0);
-    const h = M(handG, mGlove, hd, 0, -0.03, 0);
-    h.scale.set(0.9, 1.05, 0.95);
-  }
-  const thigh = cap(0.078, 0.22);
-  const shin = cap(0.064, 0.2);
-  const bootG = G(new THREE.CapsuleGeometry(0.07, 0.12, 4, 10).rotateX(Math.PI / 2));
-  const bootTop = G(new THREE.CylinderGeometry(0.085, 0.075, 0.1, 10));
-  for (const [hp, kn, ft] of [[hipL, knL, ftL], [hipR, knR, ftR]] as const) {
-    M(thigh, mTrous, hp, 0, -0.19, 0);
-    M(shin, mTrous, kn, 0, -0.16, 0);
-    M(bootTop, mBoot, kn, 0, -0.26, 0);
-    const b = M(bootG, mBoot, ft, 0, -0.035, 0.045);
-    b.scale.set(1, 0.85, 1);
-  }
-
-  const CC = 11, CR = 9, capeLen = 0.86;
-  const capeGeo = G(new THREE.BufferGeometry());
-  const capeBase = new Float32Array(CC * CR * 3);
-  const capePos = new Float32Array(CC * CR * 3);
-  const capeIdx: number[] = [];
-  for (let r = 0; r < CR; r++) {
-    const t = r / (CR - 1);
-    const rad = lerp(0.215, 0.36, t);
-    const span = lerp(1.95, 2.3, t);
-    for (let c = 0; c < CC; c++) {
-      const a = lerp(-span / 2, span / 2, c / (CC - 1));
-      const i = (r * CC + c) * 3;
-      capeBase[i] = Math.sin(a) * rad;
-      capeBase[i + 1] = -t * capeLen + Math.abs(Math.sin(a * 1.6)) * 0.04 * t; // scalloped hem
-      capeBase[i + 2] = -Math.cos(a) * rad * 0.85;
-    }
-  }
-  for (let r = 0; r < CR - 1; r++) {
-    for (let c = 0; c < CC - 1; c++) {
-      const a = r * CC + c, b = a + 1, d = a + CC, e = d + 1;
-      capeIdx.push(a, d, b, b, d, e);
-    }
-  }
-  capePos.set(capeBase);
-  capeGeo.setAttribute("position", new THREE.BufferAttribute(capePos, 3));
-  capeGeo.setIndex(capeIdx);
-  capeGeo.computeVertexNormals();
-  const capeRoot = pivot(spine, 0, 0.37, -0.02);
-  const cape = M(capeGeo, mCloakDS, capeRoot);
-  cape.frustumCulled = false;
-  const hemG = G(new THREE.BufferGeometry());
-  const hemPos = new Float32Array(CC * 3);
-  hemG.setAttribute("position", new THREE.BufferAttribute(hemPos, 3));
-  const hem = new THREE.Line(hemG, new THREE.LineBasicMaterial({ color: C.cloakTrim }));
-  ownMats.push(hem.material as THREE.Material);
-  hem.frustumCulled = false;
-  capeRoot.add(hem);
-
-  const lanternPivot = pivot(hips, 0.2, 0.02, 0.06);
-  const lantern = pivot(lanternPivot, 0, -0.04, 0);
-  M(G(new THREE.TorusGeometry(0.03, 0.007, 4, 10)), mBrass, lantern, 0, 0.0, 0);
-  const plateG = G(new THREE.CylinderGeometry(0.06, 0.07, 0.022, 6));
-  M(plateG, mBrass, lantern, 0, -0.04, 0);
-  M(plateG, mBrass, lantern, 0, -0.18, 0);
-  M(G(new THREE.ConeGeometry(0.062, 0.05, 6)), mBrass, lantern, 0, -0.015, 0);
-  const postG = G(new THREE.CylinderGeometry(0.007, 0.007, 0.14, 4));
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    M(postG, mBrass, lantern, Math.cos(a) * 0.058, -0.11, Math.sin(a) * 0.058);
-  }
-  const coreMat = glow(C.emberHi);
-  M(G(new THREE.SphereGeometry(0.042, 12, 10)), coreMat, lantern, 0, -0.11, 0);
-  const flameMat = glow(C.ember, 0.55, true);
-  const flame = M(G(new THREE.SphereGeometry(0.055, 10, 8)), flameMat, lantern, 0, -0.1, 0);
-  flame.scale.set(1, 1.35, 1);
-  const haloTex = radialTexture("rgba(255,192,122,0.9)", "rgba(240,138,60,0)");
-  texes.push(haloTex);
-  const haloMat = new THREE.SpriteMaterial({ map: haloTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-  ownMats.push(haloMat);
-  const halo = new THREE.Sprite(haloMat);
-  halo.scale.setScalar(0.55);
-  halo.position.set(0, -0.11, 0);
-  lantern.add(halo);
-  const lanternSocket = pivot(lantern, 0, -0.11, 0);
-
-  const sword = new THREE.Group();
-  M(G(new THREE.CylinderGeometry(0.019, 0.022, 0.15, 8)), mBelt, sword, 0, 0, 0);
-  M(G(new THREE.SphereGeometry(0.032, 8, 6)), mBrass, sword, 0, -0.09, 0);
-  const guard = M(G(new THREE.BoxGeometry(0.2, 0.035, 0.05)), mBrass, sword, 0, 0.085, 0);
-  guard.scale.set(1, 1, 1);
-  const guardCage = M(G(new THREE.OctahedronGeometry(0.04, 0)), mBrass, sword, 0, 0.115, 0);
-  guardCage.scale.set(1, 1.2, 0.7);
-  const swordCoreMat = glow(C.emberHi);
-  M(G(new THREE.SphereGeometry(0.022, 8, 6)), swordCoreMat, sword, 0, 0.115, 0.0);
-  const bladeG = G(new THREE.CylinderGeometry(0.01, 0.05, 0.8, 4, 1).rotateY(Math.PI / 4));
-  bladeG.scale(1, 1, 0.28);
-  M(bladeG, mSteel, sword, 0, 0.53, 0);
-  const fullerMat = glow(C.ember);
-  const fullerG = G(new THREE.BoxGeometry(0.012, 0.56, 0.022));
-  M(fullerG, fullerMat, sword, 0, 0.45, 0);
-  const edgeMat = glow(C.ember, 0.0, true);
-  const edgeG = G(new THREE.CylinderGeometry(0.02, 0.07, 0.82, 4, 1).rotateY(Math.PI / 4));
-  edgeG.scale(1, 1, 0.3);
-  const edge = M(edgeG, edgeMat, sword, 0, 0.5, 0);
-  edge.renderOrder = 2;
-  const tipSocket = pivot(sword, 0, 0.92, 0);
-  const trailN = 10;
-  const trailGeo = G(new THREE.BufferGeometry());
-  const trailPos = new Float32Array(trailN * 2 * 3);
-  const trailAlpha = new Float32Array(trailN * 2);
-  trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPos, 3));
-  trailGeo.setAttribute("alpha", new THREE.BufferAttribute(trailAlpha, 1));
-  const tIdx: number[] = [];
-  for (let i = 0; i < trailN - 1; i++) {
-    const a = i * 2;
-    tIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-  }
-  trailGeo.setIndex(tIdx);
-  const trailMat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    uniforms: { uColor: { value: new THREE.Color(C.emberHi) } },
-    vertexShader: "attribute float alpha; varying float vA; void main(){ vA = alpha; gl_Position = projectionMatrix * viewMatrix * vec4(position,1.0); }",
-    fragmentShader: "uniform vec3 uColor; varying float vA; void main(){ gl_FragColor = vec4(uColor * vA, vA); \n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}",
-  });
-  ownMats.push(trailMat);
-  const trail = new THREE.Mesh(trailGeo, trailMat);
-  trail.frustumCulled = false;
-  trail.matrixAutoUpdate = false;
-  let trailLive = 0;
-
-  const buckler = new THREE.Group();
-  M(G(new THREE.CylinderGeometry(0.2, 0.19, 0.035, 22).rotateZ(Math.PI / 2)), mWood, buckler);
-  M(G(new THREE.TorusGeometry(0.2, 0.02, 5, 24).rotateY(Math.PI / 2)), mBrass, buckler);
-  M(G(new THREE.TorusGeometry(0.11, 0.012, 4, 20).rotateY(Math.PI / 2)), T(C.ember), buckler, 0.02, 0, 0);
-  M(G(new THREE.SphereGeometry(0.05, 10, 8)), mSteel, buckler, 0.025, 0, 0);
-  buckler.position.set(0.075, -0.12, 0.0);
-  elL.add(buckler);
-
-  const bow = new THREE.Group();
-  const bowArc = 1.9, bowR = 0.46;
-  const bowG = G(new THREE.TorusGeometry(bowR, 0.016, 5, 18, bowArc));
-  bowG.rotateZ(-bowArc / 2);
-  bowG.translate(-bowR, 0, 0); // grip at the origin, limbs curving toward +x... string side at -x
-  M(bowG, mWoodD, bow);
-  M(G(new THREE.CylinderGeometry(0.024, 0.024, 0.11, 6)), mBelt, bow);
-  const tipY = Math.sin(bowArc / 2) * bowR, tipX = -bowR + Math.cos(bowArc / 2) * bowR;
-  const nockTipG = G(new THREE.SphereGeometry(0.022, 6, 4));
-  M(nockTipG, mBrass, bow, tipX, tipY, 0);
-  M(nockTipG, mBrass, bow, tipX, -tipY, 0);
-  const strG = G(new THREE.BufferGeometry());
-  const strPos = new Float32Array([tipX, tipY, 0, tipX, 0, 0, tipX, -tipY, 0]);
-  strG.setAttribute("position", new THREE.BufferAttribute(strPos, 3));
-  const bowString = new THREE.Line(strG, new THREE.LineBasicMaterial({ color: C.paper }));
-  ownMats.push(bowString.material as THREE.Material);
-  bowString.frustumCulled = false;
-  bow.add(bowString);
-  const arrow = new THREE.Group();
-  M(G(new THREE.CylinderGeometry(0.008, 0.008, 0.72, 5).rotateZ(Math.PI / 2).translate(0.36, 0, 0)), mWood, arrow);
-  M(G(new THREE.ConeGeometry(0.022, 0.07, 5).rotateZ(-Math.PI / 2).translate(0.75, 0, 0)), mSteel, arrow);
-  const fletchG = G(new THREE.BoxGeometry(0.1, 0.05, 0.004).translate(0.06, 0, 0));
-  M(fletchG, T(C.ember), arrow);
-  M(fletchG, T(C.ember), arrow).rotation.x = Math.PI / 2;
-  arrow.visible = false;
-  bow.add(arrow);
-
-  const back = pivot(spine, 0, 0.22, -0.2);
-  const swordBack = { p: new THREE.Vector3(0.02, 0.0, -0.06), r: new THREE.Euler(0, 0, 2.55 + Math.PI) };
-  const swordHand = { p: new THREE.Vector3(0, -0.04, 0.01), r: new THREE.Euler(Math.PI / 2, 0, 0) };
-  const bowBack = { p: new THREE.Vector3(0.0, 0.02, -0.04), r: new THREE.Euler(0, Math.PI / 2, -0.62) };
-  const bowHand = { p: new THREE.Vector3(0, -0.04, 0.0), r: new THREE.Euler(0, 0, 0) };
-  const place = (o: THREE.Object3D, parent: THREE.Object3D, s: { p: THREE.Vector3; r: THREE.Euler }) => {
-    if (o.parent !== parent) parent.add(o);
-    o.position.copy(s.p);
-    o.rotation.copy(s.r);
-  };
-  place(sword, back, swordBack);
-  place(bow, back, bowBack);
-  bow.visible = false;
-
-  const glider = pivot(group, 0, 2.02, 0.05);
-  const sailRoot = pivot(glider, 0, 0, 0);
-  {
-    const W = 2.0, D = 0.95, cols = 12, rows = 4;
-    const g = G(new THREE.PlaneGeometry(W, D, cols, rows));
-    const p = g.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), y = p.getY(i);
-      const u = x / (W / 2);
-      p.setXYZ(i, x, 0.42 - u * u * 0.32 + (1 - (y / (D / 2)) ** 2) * 0.06, -y - Math.abs(u) ** 2 * 0.18 + 0.08);
-    }
-    g.computeVertexNormals();
-    const sigil = sigilTexture();
-    texes.push(sigil);
-    const sailMat = look.toon({ color: "#ffffff", map: sigil, side: THREE.DoubleSide });
-    M(g, sailMat, sailRoot);
-    const ribG = G(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 5).rotateX(Math.PI / 2));
-    for (const u of [-1, -0.5, 0, 0.5, 1]) {
-      const x = u * W * 0.5;
-      M(ribG, mWoodD, sailRoot, x, 0.42 - u * u * 0.32 + 0.02, 0.08 - Math.abs(u) ** 2 * 0.18);
-    }
-    const rodG = G(new THREE.CylinderGeometry(0.013, 0.013, 0.5, 5));
-    for (const s of [1, -1]) {
-      const rod = M(rodG, mWoodD, sailRoot, s * 0.2, 0.19, 0.02);
-      rod.rotation.z = -s * 0.5;
-    }
-    M(G(new THREE.CylinderGeometry(0.016, 0.016, 0.56, 6).rotateZ(Math.PI / 2)), mBrass, sailRoot, 0, -0.0, 0.02);
-  }
-  glider.scale.setScalar(0.001);
-  glider.visible = false;
-
-  const blobTex = radialTexture("rgba(43,33,24,0.5)", "rgba(43,33,24,0)");
-  texes.push(blobTex);
-  const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
-  ownMats.push(blobMat);
-  const blob = new THREE.Mesh(G(new THREE.PlaneGeometry(1.1, 1.1).rotateX(-Math.PI / 2)), blobMat);
-  blob.renderOrder = 1;
-  group.add(blob);
-
-  for (const m of meshes) {
-    m.castShadow = true;
-    m.receiveShadow = false;
-  }
+  const lanternSocket = socket(lantern, 0, -0.11, 0);
+  const tipSocket = socket(swordB, 0, 0.98, 0);
 
   const cur = new Float32Array(N);
   const tgt = new Float32Array(N);
   const tmp = new Float32Array(N);
-  let phase = 0, climbPhase = 0, swimPhase = 0, pushPhase = 0;
-  let landK = 0, landV = 0; // landing squash spring
-  let capeLift = 0, capeLiftV = 0, capeSide = 0, capeSideV = 0;
-  let lanSwing = 0, lanSwingV = 0, lanSwingZ = 0, lanSwingZV = 0;
-  let tipSwing = 0, tipSwingV = 0;
-  let gliderS = 0, gliderV = 0;
-  let blink = 0, nextBlink = 2;
-  let prevSpeed = 0, prevVy = 0;
-  let lookT = 0;
-  let lastAction: PlayerAction = "none";
-  let prevSin = 0;
-  let armedW = 0;
-  let bobT = 0;
-  let groundDy = 0;
-  const v = new THREE.Vector3(), v2 = new THREE.Vector3();
-  const lanternWorld = new THREE.Vector3(), handWorld = new THREE.Vector3(), bladeTipWorld = new THREE.Vector3(), bowHandWorld = new THREE.Vector3();
-  const trailHist = new Float32Array(trailN * 6);
 
   function base(p: Float32Array) {
     p.fill(0);
@@ -512,6 +218,386 @@ export function createWrenModel(look: Look): WrenModel {
     p[HLZ] = 0.035; p[HRZ] = 0.035; p[KNL] = 0.06; p[KNR] = 0.06;
     p[WRX] = 0; p[WLX] = 0;
   }
+  function apply(p: Float32Array) {
+    tumble.rotation.x = p[TUMBLE];
+    hips.position.set(0, 0.35 + p[ROOTY], p[ROOTF]);
+    hips.rotation.set(p[BODYP], p[BODYYAW], p[BODYR]);
+    spine.rotation.set(p[SPX], p[SPY], p[SPZ]);
+    neck.rotation.set(p[HDX], p[HDY], p[HDZ]);
+    shL.rotation.set(p[SLX], p[SLY], p[SLZ]);
+    shR.rotation.set(p[SRX], p[SRY], -p[SRZ]);
+    elL.rotation.x = -p[ELL];
+    elR.rotation.x = -p[ELR];
+    handL.rotation.set(p[WLX], 0, p[WLZ]);
+    handR.rotation.set(p[WRX], p[WRY], p[WRZ]);
+    hipL.rotation.set(p[HLX], 0, p[HLZ]);
+    hipR.rotation.set(p[HRX], 0, -p[HRZ]);
+    knL.rotation.x = p[KNL];
+    knR.rotation.x = p[KNR];
+    ftL.rotation.x = p[FTL];
+    ftR.rotation.x = p[FTR];
+  }
+  base(cur);
+  apply(cur);
+  group.updateMatrixWorld(true); // rest pose: every part below is baked into this space
+
+  const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
+  const _c = new THREE.Color();
+  function part(b: Batch, geo: THREE.BufferGeometry, bn: THREE.Bone, o: PO): number {
+    const g = geo.index ? geo.clone() : mergeVertices(geo.clone());
+    _q.copy(o.q ?? _q.setFromEuler(_e.set(o.rx ?? 0, o.ry ?? 0, o.rz ?? 0)));
+    if (o.q && (o.rx || o.ry || o.rz)) _q.multiply(new THREE.Quaternion().setFromEuler(_e.set(o.rx ?? 0, o.ry ?? 0, o.rz ?? 0)));
+    _m.compose(_p.set(o.x ?? 0, o.y ?? 0, o.z ?? 0), _q, _s.set(o.sx ?? 1, o.sy ?? 1, o.sz ?? 1)).premultiply(bn.matrixWorld);
+    g.applyMatrix4(_m);
+    const first = b.count;
+    const P = g.attributes.position as THREE.BufferAttribute, Nn = g.attributes.normal as THREE.BufferAttribute;
+    const U = g.attributes.uv as THREE.BufferAttribute | undefined;
+    _c.set(o.c ?? "#ffffff");
+    const bi = boneIdx.get(bn)!;
+    for (let i = 0; i < P.count; i++) {
+      const y = P.getY(i);
+      b.pos.push(P.getX(i), y, P.getZ(i));
+      b.nor.push(Nn.getX(i), Nn.getY(i), Nn.getZ(i));
+      if (b.cols === 4) b.col.push(_c.r, _c.g, _c.b, o.a ?? 1); else b.col.push(_c.r, _c.g, _c.b);
+      if (b.cols === 4) {
+        if (o.uv) b.uv.push(o.uv[0], o.uv[1]); else b.uv.push(U ? U.getX(i) : 0.5, U ? U.getY(i) : 0.5);
+      }
+      b.ow.push(o.ow ?? 1);
+      if (o.blend) {
+        const t = smooth((y - o.blend.y0) / (o.blend.y1 - o.blend.y0));
+        b.si.push(bi, boneIdx.get(o.blend.to)!, 0, 0);
+        b.sw.push(1 - t, t, 0, 0);
+      } else {
+        b.si.push(bi, 0, 0, 0);
+        b.sw.push(1, 0, 0, 0);
+      }
+    }
+    const I = g.index!;
+    for (let i = 0; i < I.count; i++) b.idx.push(I.getX(i) + first);
+    g.dispose();
+    return first;
+  }
+  const restY = (bn: THREE.Bone, ly = 0) => _p.set(0, ly, 0).applyMatrix4(bn.matrixWorld).y;
+
+  const S = (r: number, w = 14, h = 10) => new THREE.SphereGeometry(r, w, h);
+  const CAP = (r: number, len: number, seg = 7) => new THREE.CapsuleGeometry(r, len, 2, seg);
+
+  const body = new Batch(3);
+  const glow = new Batch(4);
+
+  part(body, new THREE.CylinderGeometry(0.15, 0.235, 0.3, 14, 1, true), hips, { y: -0.12, c: C.tunic });
+  part(body, new THREE.TorusGeometry(0.235, 0.012, 3, 16).rotateX(Math.PI / 2), hips, { y: -0.27, c: C.tunicDark });
+  part(body, S(0.13, 12, 8), hips, { y: -0.04, sy: 0.9, c: C.trousers });
+  part(body, new THREE.TorusGeometry(0.165, 0.03, 4, 14).rotateX(Math.PI / 2), hips, { y: 0.04, c: C.belt });
+  part(body, new THREE.BoxGeometry(0.07, 0.06, 0.03), hips, { y: 0.04, z: 0.17, c: C.brass });
+  part(body, new THREE.BoxGeometry(0.09, 0.1, 0.06), hips, { x: -0.16, y: -0.03, z: -0.07, ry: -0.5, c: C.glove });
+
+  part(body, CAP(0.15, 0.2, 9), spine, { y: 0.2, sx: 1.08, sz: 0.85, c: C.tunic, blend: { to: hips, y0: restY(spine, 0.12), y1: restY(spine, -0.02) } });
+  part(body, new THREE.BoxGeometry(0.05, 0.4, 0.02), spine, { y: 0.2, z: 0.128, rz: 0.62, c: C.belt });
+  part(body, S(0.028, 8, 6), spine, { y: 0.39, z: 0.115, c: C.brass });
+  part(body, new THREE.CylinderGeometry(0.115, 0.27, 0.2, 14, 1, false), spine, { y: 0.36, z: -0.005, c: C.cloak });
+  part(body, new THREE.TorusGeometry(0.262, 0.016, 3, 18).rotateX(Math.PI / 2), spine, { y: 0.262, z: -0.005, c: C.trim });
+
+  part(body, new THREE.CylinderGeometry(0.045, 0.055, 0.1, 8), neck, { y: 0.03, c: C.skin });
+  part(body, S(1, 16, 12), neck, { x: HC.x, y: HC.y, z: HC.z, sx: HR.x, sy: HR.y, sz: HR.z, c: C.skin });
+  for (const s of [1, -1]) part(body, S(0.03, 8, 6), neck, { x: 0.132 * s, y: 0.16, z: 0.0, sx: 0.4, sy: 1.1, sz: 0.7, c: C.skin });
+  part(body, new THREE.SphereGeometry(1, 12, 6, Math.PI / 2 - 0.98, 1.96, 0.74, 1.0), neck, {
+    x: HC.x, y: HC.y, z: HC.z, sx: HR.x * 1.03, sy: HR.y * 1.03, sz: HR.z * 1.03, c: C.mask,
+  });
+  part(body, S(0.011, 6, 5), neck, { ...pos3(facePt(0, 0.62, 0.006).p), sy: 0.8, sz: 0.5, c: C.trim });
+  const nose = facePt(0, -0.2, 0.004);
+  part(body, S(0.016, 8, 6), neck, { ...pos3(nose.p), sy: 0.9, c: C.skin });
+  for (const [s, bn] of [[1, eyeL], [-1, eyeR]] as const) {
+    const fp = facePt(0.4 * s, 0.05, 0.004);
+    const q = fp.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0.26 * s)));
+    part(body, S(1, 8, 5), bn, { q, sx: 0.034, sy: 0.02, sz: 0.012, c: C.ink });
+    part(body, S(1, 6, 5), bn, { q, x: 0.007 * s, y: 0.008, z: 0.008, sx: 0.008, sy: 0.008, sz: 0.004, c: C.white });
+    const bp = facePt(0.4 * s, 0.05 + 0.34, 0.006);
+    part(body, new THREE.CapsuleGeometry(0.0065, 0.04, 2, 5).rotateZ(Math.PI / 2), neck, {
+      ...pos3(bp.p), q: bp.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, -0.16 * s))), c: C.hair,
+    });
+    const ch = facePt(0.66 * s, -0.3, 0.003);
+    part(body, new THREE.CircleGeometry(0.022, 10), neck, { ...pos3(ch.p), q: ch.q, sx: 1.3, sy: 0.8, c: C.blush });
+  }
+  part(body, new THREE.CapsuleGeometry(0.006, 0.026, 2, 5).rotateZ(Math.PI / 2), mouthB, { q: mouthP.q, c: C.ink });
+  for (const [x, y, z, sx, sy, rz] of [
+    [0.0, 0.305, 0.1, 1.2, 0.55, 0], [0.075, 0.29, 0.085, 1.0, 0.6, 0.5], [-0.075, 0.29, 0.085, 1.0, 0.6, -0.5],
+    [0.128, 0.2, 0.02, 0.45, 1.2, 0.2], [-0.128, 0.2, 0.02, 0.45, 1.2, -0.2], [0, 0.2, -0.1, 1.4, 1.5, 0],
+  ] as const) part(body, S(0.07, 7, 5), neck, { x, y, z, sx, sy, sz: 0.7, rz, c: C.hair });
+
+  const HRD = 0.19, open = 1.0;
+  part(body, new THREE.SphereGeometry(HRD, 14, 4, 0, Math.PI * 2, 0, 0.7), hood, { sz: 1.04, c: C.cloak });
+  part(body, new THREE.SphereGeometry(HRD, 14, 8, Math.PI / 2 + open, Math.PI * 2 - open * 2, 0.69, 1.65), hood, { sz: 1.04, c: C.cloak });
+  part(body, new THREE.SphereGeometry(HRD - 0.012, 14, 8, 0, Math.PI * 2, 0, 2.34), hood, { sz: 1.04, c: C.cloakLin });
+  {
+    const pt = (phi: number, th: number) => new THREE.Vector3(-Math.cos(phi) * Math.sin(th), Math.cos(th), Math.sin(phi) * Math.sin(th)).multiplyScalar(HRD + 0.002);
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 8; i++) pts.push(pt(Math.PI / 2 + open, lerp(2.34, 0.69, i / 8)));
+    for (let i = 1; i < 12; i++) pts.push(pt(Math.PI / 2 + open - (2 * open * i) / 12, 0.69));
+    for (let i = 0; i <= 8; i++) pts.push(pt(Math.PI / 2 - open, lerp(0.69, 2.34, i / 8)));
+    part(body, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 28, 0.011, 4, false), hood, { sz: 1.04, c: C.trim });
+  }
+  part(body, new THREE.ConeGeometry(0.075, 0.32, 9).translate(0, -0.16, 0).rotateX(0.35), hoodTip, { c: C.cloak });
+  part(body, S(0.02, 8, 6), hoodTip, { y: -0.3, z: -0.1, c: C.trim });
+
+  const upper = CAP(0.05, 0.17), fore = CAP(0.045, 0.15), cuff = new THREE.CylinderGeometry(0.058, 0.052, 0.07, 9);
+  const elY = restY(elL);
+  for (const [sh, el, hd] of [[shL, elL, handL], [shR, elR, handR]] as const) {
+    part(body, S(0.082, 8, 6), sh, { c: C.cloak });
+    part(body, upper, sh, { y: -0.12, c: C.tunic, blend: { to: el, y0: elY + 0.07, y1: elY - 0.05 } });
+    part(body, fore, el, { y: -0.11, c: C.tunicDark });
+    part(body, cuff, el, { y: -0.17, c: C.glove });
+    part(body, S(0.055, 8, 6), hd, { y: -0.03, sx: 0.9, sy: 1.05, sz: 0.95, c: C.glove });
+  }
+
+  const thigh = CAP(0.07, 0.22), shin = CAP(0.056, 0.2), boot = new THREE.CapsuleGeometry(0.063, 0.12, 2, 7).rotateX(Math.PI / 2);
+  const bootTop = new THREE.CylinderGeometry(0.078, 0.07, 0.1, 10);
+  const knY = restY(knL);
+  for (const [hp, kn, ft] of [[hipL, knL, ftL], [hipR, knR, ftR]] as const) {
+    part(body, thigh, hp, { y: -0.19, c: C.trousers, blend: { to: kn, y0: knY + 0.08, y1: knY - 0.04 } });
+    part(body, shin, kn, { y: -0.16, c: C.trousers });
+    part(body, bootTop, kn, { y: -0.26, c: C.boot });
+    part(body, boot, ft, { y: -0.035, z: 0.045, sy: 0.85, c: C.boot });
+  }
+
+  part(body, new THREE.CylinderGeometry(0.2, 0.19, 0.035, 16).rotateZ(Math.PI / 2), elL, { x: 0.075, y: -0.12, c: C.wood });
+  part(body, new THREE.TorusGeometry(0.2, 0.02, 4, 16).rotateY(Math.PI / 2), elL, { x: 0.075, y: -0.12, c: C.brass });
+  part(body, new THREE.TorusGeometry(0.11, 0.012, 3, 14).rotateY(Math.PI / 2), elL, { x: 0.095, y: -0.12, c: C.ember });
+  part(body, S(0.05, 8, 6), elL, { x: 0.1, y: -0.12, c: C.steel });
+
+  part(body, new THREE.TorusGeometry(0.03, 0.007, 4, 10), lantern, { c: C.brass });
+  const plate = new THREE.CylinderGeometry(0.06, 0.07, 0.022, 6);
+  part(body, plate, lantern, { y: -0.04, c: C.brass });
+  part(body, plate, lantern, { y: -0.18, c: C.brass });
+  part(body, new THREE.ConeGeometry(0.062, 0.05, 6), lantern, { y: -0.015, c: C.brass });
+  const post = new THREE.CylinderGeometry(0.007, 0.007, 0.14, 4);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    part(body, post, lantern, { x: Math.cos(a) * 0.058, y: -0.11, z: Math.sin(a) * 0.058, c: C.brass });
+  }
+
+  part(body, new THREE.CylinderGeometry(0.019, 0.022, 0.15, 8), swordB, { c: C.belt });
+  part(body, S(0.032, 8, 6), swordB, { y: -0.09, c: C.brass });
+  part(body, new THREE.BoxGeometry(0.2, 0.032, 0.046), swordB, { y: 0.085, c: C.brass });
+  for (const s of [1, -1]) part(body, S(0.022, 7, 5), swordB, { x: 0.1 * s, y: 0.085, c: C.brass });
+  part(body, new THREE.OctahedronGeometry(0.036, 0), swordB, { y: 0.115, sy: 1.2, sz: 0.7, c: C.brass });
+  part(body, new THREE.CylinderGeometry(0.014, 0.064, 0.86, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 0.3), swordB, { y: 0.56, c: C.steel });
+  part(body, new THREE.BoxGeometry(0.01, 0.56, 0.03), swordB, { y: 0.48, c: C.steelDark });
+
+  const bowArc = 1.9, bowR = 0.46;
+  const bowG = new THREE.TorusGeometry(bowR, 0.016, 4, 14, bowArc);
+  bowG.rotateZ(-bowArc / 2);
+  bowG.translate(-bowR, 0, 0);
+  part(body, bowG, bowB, { c: C.woodDark });
+  part(body, new THREE.CylinderGeometry(0.024, 0.024, 0.11, 6), bowB, { c: C.belt });
+  const tipY = Math.sin(bowArc / 2) * bowR, tipX = -bowR + Math.cos(bowArc / 2) * bowR;
+  part(body, S(0.022, 6, 4), bowB, { x: tipX, y: tipY, c: C.brass });
+  part(body, S(0.022, 6, 4), bowB, { x: tipX, y: -tipY, c: C.brass });
+  const strFirst = body.count;
+  {
+    const rows = [[tipX, tipY], [tipX, 0], [tipX, -tipY]];
+    for (const [rx, ry] of rows) for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2;
+      _p.set(rx, ry, 0).applyMatrix4(bowB.matrixWorld);
+      body.pos.push(_p.x, _p.y, _p.z);
+      body.nor.push(Math.cos(a), 0, Math.sin(a));
+      _c.set(C.paper);
+      body.col.push(_c.r, _c.g, _c.b);
+      body.si.push(boneIdx.get(bowB)!, 0, 0, 0); body.sw.push(1, 0, 0, 0); body.ow.push(0);
+    }
+    for (let r = 0; r < 2; r++) for (let k = 0; k < 3; k++) {
+      const a = strFirst + r * 3 + k, b = strFirst + r * 3 + ((k + 1) % 3), d = a + 3, e = b + 3;
+      body.idx.push(a, b, d, b, e, d);
+    }
+  }
+  const strRest = new Float32Array(3 * 3);
+  for (let k = 0; k < 3; k++) { strRest[k * 3] = body.pos[(strFirst + 3 + k) * 3]; strRest[k * 3 + 1] = body.pos[(strFirst + 3 + k) * 3 + 1]; strRest[k * 3 + 2] = body.pos[(strFirst + 3 + k) * 3 + 2]; }
+  const arrowShaft = new THREE.CylinderGeometry(0.008, 0.008, 0.72, 5).rotateZ(Math.PI / 2).translate(0.36, 0, 0);
+  part(body, arrowShaft, arrowB, { c: C.wood });
+  part(body, new THREE.ConeGeometry(0.022, 0.07, 5).rotateZ(-Math.PI / 2).translate(0.75, 0, 0), arrowB, { c: C.steel });
+  const fletch = new THREE.BoxGeometry(0.1, 0.05, 0.004).translate(0.06, 0, 0);
+  part(body, fletch, arrowB, { c: C.ember });
+  part(body, fletch, arrowB, { rx: Math.PI / 2, c: C.ember });
+
+  const CC = 11, CR = 10, capeLen = 0.95;
+  const capeT = [0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.84, 0.95, 0.962, 1];
+  const capeBase = new Float32Array(CC * CR * 3);
+  for (let r = 0; r < CR; r++) {
+    const t = capeT[r];
+    const rad = lerp(0.215, 0.5, t ** 0.9);
+    const span = lerp(1.95, 2.45, t);
+    for (let c = 0; c < CC; c++) {
+      const a = lerp(-span / 2, span / 2, c / (CC - 1));
+      const i = (r * CC + c) * 3;
+      capeBase[i] = Math.sin(a) * rad;
+      capeBase[i + 1] = -t * capeLen + Math.abs(Math.sin(a * 1.6)) * 0.05 * t;
+      capeBase[i + 2] = -Math.cos(a) * rad * 0.85;
+    }
+  }
+  _p.set(0, 0, 0).applyMatrix4(capeRoot.matrixWorld);
+  const cOff = { x: _p.x, y: _p.y, z: _p.z };
+  const capeFirst = [body.count, body.count + CC * CR];
+  for (let layer = 0; layer < 2; layer++) {
+    for (let r = 0; r < CR; r++) for (let c = 0; c < CC; c++) {
+      const i = (r * CC + c) * 3;
+      body.pos.push(capeBase[i] + cOff.x, capeBase[i + 1] + cOff.y, capeBase[i + 2] + cOff.z);
+      body.nor.push(0, 0, -1);
+      _c.set(r >= 8 ? C.trim : layer === 0 ? C.cloak : C.cloakLin);
+      body.col.push(_c.r, _c.g, _c.b);
+      body.si.push(boneIdx.get(capeRoot)!, 0, 0, 0); body.sw.push(1, 0, 0, 0); body.ow.push(0);
+    }
+    for (let r = 0; r < CR - 1; r++) for (let c = 0; c < CC - 1; c++) {
+      const a = capeFirst[layer] + r * CC + c, b = a + 1, d = a + CC, e = d + 1;
+      body.idx.push(a, b, d, b, e, d);
+    }
+  }
+
+  {
+    const W = 2.0, D = 0.95, cols = 16, rows = 6;
+    const g = new THREE.PlaneGeometry(W, D, cols, rows);
+    const p = g.attributes.position as THREE.BufferAttribute;
+    const colA = new Float32Array(p.count * 3);
+    const cc = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i);
+      const u = x / (W / 2), rr = Math.hypot(x, y * 1.05);
+      cc.set(C.paper);
+      if (rr < 0.34) cc.set(C.ink);
+      if (rr < 0.3) cc.set(C.ember);
+      if (rr < 0.16) cc.set(C.emberHi);
+      if (Math.abs(u) > 0.93 || Math.abs(y) > D / 2 - 0.05) cc.set(C.brass);
+      colA[i * 3] = cc.r; colA[i * 3 + 1] = cc.g; colA[i * 3 + 2] = cc.b;
+      p.setXYZ(i, x, 0.42 - u * u * 0.32 + (1 - (y / (D / 2)) ** 2) * 0.06, -y - Math.abs(u) ** 2 * 0.18 + 0.08);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(colA, 3));
+    g.computeVertexNormals();
+    const first = body.count;
+    part(body, g, glider, { c: "#ffffff" });
+    for (let i = 0; i < p.count; i++) { body.col[(first + i) * 3] = colA[i * 3]; body.col[(first + i) * 3 + 1] = colA[i * 3 + 1]; body.col[(first + i) * 3 + 2] = colA[i * 3 + 2]; body.ow[first + i] = 0; }
+    const rib = new THREE.CylinderGeometry(0.012, 0.012, 1.0, 5).rotateX(Math.PI / 2);
+    for (const u of [-1, -0.5, 0, 0.5, 1]) part(body, rib, glider, { x: u * W * 0.5, y: 0.42 - u * u * 0.32 + 0.02, z: 0.08 - Math.abs(u) ** 2 * 0.18, c: C.woodDark, ow: 0 });
+    const rod = new THREE.CylinderGeometry(0.013, 0.013, 0.5, 5);
+    for (const s of [1, -1]) part(body, rod, glider, { x: s * 0.2, y: 0.19, z: 0.02, rz: -s * 0.5, c: C.woodDark, ow: 0 });
+    part(body, new THREE.CylinderGeometry(0.016, 0.016, 0.56, 6).rotateZ(Math.PI / 2), glider, { z: 0.02, c: C.brass, ow: 0 });
+  }
+
+  part(glow, S(0.042, 10, 8), lantern, { y: -0.11, c: C.emberHi, a: 0.95, uv: [0.5, 0.5] });
+  part(glow, S(0.055, 10, 8), flameB, { sy: 1.35, c: C.ember, a: 0.55, uv: [0.5, 0.5] });
+  {
+    const pl = new THREE.PlaneGeometry(1, 1);
+    part(glow, pl, haloB, { c: "#ffc07a", a: 0.55 });
+    part(glow, pl, haloB, { ry: Math.PI / 2, c: "#ffc07a", a: 0.55 });
+    part(glow, pl, haloB, { rx: Math.PI / 2, c: "#ffc07a", a: 0.55 });
+  }
+  const edgeFirst = glow.count;
+  part(glow, new THREE.CylinderGeometry(0.024, 0.085, 0.9, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 0.34), edgeB, { y: 0.06, c: C.emberHi, a: 0, uv: [0.5, 0.5] });
+  const edgeCount = glow.count - edgeFirst;
+  const trailN = 10, trailFirst = glow.count;
+  for (let i = 0; i < trailN * 2; i++) {
+    glow.pos.push(0, 0, 0); glow.nor.push(0, 1, 0);
+    _c.set("#fff1d0"); glow.col.push(_c.r, _c.g, _c.b, 0); glow.uv.push(0.5, 0.5);
+    glow.si.push(boneIdx.get(trailB)!, 0, 0, 0); glow.sw.push(1, 0, 0, 0); glow.ow.push(0);
+  }
+  for (let i = 0; i < trailN - 1; i++) {
+    const a = trailFirst + i * 2;
+    glow.idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+
+  const skeleton = new THREE.Skeleton(bones);
+  const bodyGeo = body.build();
+  const glowGeo = glow.build();
+  geos.push(bodyGeo, glowGeo);
+  // Wren's own material, not the shared look.toon() one: the close-camera fade must not fade every vertex-coloured
+  // prop that shares that cached instance. Same cel defines as toon().
+  const bodyLm = new THREE.MeshLambertMaterial({ color: "#ffffff", vertexColors: true, side: THREE.DoubleSide });
+  bodyLm.defines = { HM_RIM: "0.350", HM_BANDS: "3" };
+  const bodyMat = look.patch(bodyLm);
+  const glowTex = radialTexture([255, 255, 255], 1);
+  texes.push(glowTex);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: "#ffffff", vertexColors: true, map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    toneMapped: false, side: THREE.DoubleSide,
+  });
+  ownMats.push(glowMat, bodyMat);
+  const outlineMat = new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide });
+  outlineMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uOutW = { value: 0.011 };
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float ow;\nuniform float uOutW;")
+      .replace("#include <skinning_vertex>", `#include <skinning_vertex>
+      {
+        float hmD = distance(cameraPosition, (modelMatrix * vec4(transformed, 1.0)).xyz);
+        float hmF = 1.0 - smoothstep(18.0, 25.0, hmD);
+        transformed += normalize(objectNormal) * ow * uOutW * hmF * (1.0 + hmD * 0.03);
+      }`);
+  };
+  outlineMat.customProgramCacheKey = () => "hero-outline";
+  ownMats.push(outlineMat);
+
+  const I4 = new THREE.Matrix4();
+  const mk = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
+    const m = new THREE.SkinnedMesh(geo, mat);
+    m.bind(skeleton, I4);
+    m.frustumCulled = false;
+    group.add(m);
+    return m;
+  };
+  const bodyMesh = mk(bodyGeo, bodyMat);
+  bodyMesh.castShadow = true;
+  const outline = mk(bodyGeo, outlineMat);
+  let outlineOn = false, camFade = 1;
+  outline.visible = false;
+  const glowMesh = mk(glowGeo, glowMat);
+  glowMesh.renderOrder = 2;
+
+  const blobTex = radialTexture([43, 33, 24], 0.5);
+  texes.push(blobTex);
+  const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  ownMats.push(blobMat);
+  const blobGeo = new THREE.PlaneGeometry(1.1, 1.1).rotateX(-Math.PI / 2);
+  geos.push(blobGeo);
+  const blob = new THREE.Mesh(blobGeo, blobMat);
+  blob.renderOrder = 1;
+  group.add(blob);
+
+  const place = (o: THREE.Bone, parent: THREE.Object3D, px: number, py: number, pz: number, rx: number, ry: number, rz: number) => {
+    if (o.parent !== parent) parent.add(o);
+    o.position.set(px, py, pz);
+    o.rotation.set(rx, ry, rz);
+  };
+  const swordBack = [0.02, 0, -0.06, 0, 0, 2.55 + Math.PI] as const;
+  const swordHand = [0, -0.04, 0.01, Math.PI / 2, 0, 0] as const;
+  const bowBackP = [0, 0.02, -0.04, 0, Math.PI / 2, -0.62] as const;
+  const bowHandP = [0, -0.04, 0, 0, 0, 0] as const;
+
+  glider.scale.setScalar(0.001);
+  bowB.scale.setScalar(0.001);
+  arrowB.scale.setScalar(0.001);
+
+  let phase = 0, climbPhase = 0, swimPhase = 0, pushPhase = 0;
+  let landK = 0, landV = 0;
+  let capeLift = 0, capeLiftV = 0, capeSide = 0, capeSideV = 0;
+  let lanSwing = 0, lanSwingV = 0, lanSwingZ = 0, lanSwingZV = 0;
+  let tipSwing = 0, tipSwingV = 0;
+  let gliderS = 0, gliderV = 0, gliderTilt = 0;
+  let blink = 0, nextBlink = 2;
+  let prevSpeed = 0, prevVy = 0;
+  let lookT = 0;
+  let lastAction: PlayerAction = "none";
+  let prevSin = 0;
+  let armedW = 0;
+  let bobT = 0;
+  let groundDy = 0;
+  let footstepFlag = false;
+  let flLx = 0, flLz = 0;
+  let edgeA = -1;
+  const v = new THREE.Vector3(), v2 = new THREE.Vector3();
+  const inv = new THREE.Matrix4();
+  const lanternWorld = new THREE.Vector3(), handWorld = new THREE.Vector3(), bladeTipWorld = new THREE.Vector3(), bowHandWorld = new THREE.Vector3();
+  const trailHist = new Float32Array(trailN * 6);
+  let trailLive = 0;
+  const cl = new Float32Array(CC * CR * 3);
+  const cn = new Float32Array(CC * CR * 3);
 
   /** Pose for the right arm swinging the sword. k: 0 windup .. 1 follow-through. */
   function swingPose(p: Float32Array, combo: number, k: number) {
@@ -591,9 +677,21 @@ export function createWrenModel(look: Look): WrenModel {
     }
   }
 
-  let footstepFlag = false;
+  /** Hanging from Tallow: both hands up, body hangs, legs swing with speed. */
+  function ridePose(p: Float32Array, a: WrenAnimIn) {
+    const sw = Math.sin(a.time * 2.6 + (a.rideT ?? 0) * 5), s2 = Math.sin(a.time * 1.7 + 1);
+    const kick = clamp(a.speed / 12, 0, 1);
+    p[SLX] = -3.0; p[SRX] = -3.0; p[SLZ] = 0.1; p[SRZ] = 0.1; p[ELL] = 0.1; p[ELR] = 0.1; p[WLX] = 0.3; p[WRX] = 0.3;
+    p[BODYP] = -0.04 + kick * 0.16; p[HDX] = -0.25 - kick * 0.15; p[SPX] = 0.04;
+    const amp = 0.22 + 0.5 * kick;
+    p[HLX] = 0.12 + amp * sw; p[HRX] = 0.12 - amp * sw;
+    p[KNL] = 0.25 + (0.3 + 0.7 * kick) * Math.max(0, -sw); p[KNR] = 0.25 + (0.3 + 0.7 * kick) * Math.max(0, sw);
+    p[FTL] = 0.5; p[FTR] = 0.5;
+    p[BODYR] = clamp(-a.turn * 0.1, -0.3, 0.3) + 0.05 * s2;
+    p[ROOTY] = -0.02;
+  }
 
-  function buildTarget(a: WrenAnimIn, dt: number) {
+  function buildBase(a: WrenAnimIn, dt: number) {
     const p = tgt;
     base(p);
     const act = a.action, t = a.actionT;
@@ -601,6 +699,18 @@ export function createWrenModel(look: Look): WrenModel {
       p[TUMBLE] = -1.48; p[ROOTY] = -0.33; p[SPX] = -0.1; p[HDY] = 0.5; p[HDX] = -0.2;
       p[SLZ] = 1.1; p[SRZ] = 0.9; p[SLX] = -0.3; p[ELL] = 0.5; p[ELR] = 0.3;
       p[HLX] = -0.25; p[KNL] = 0.5; p[HRZ] = 0.15;
+      return;
+    }
+    if (a.mode === "ride" || (a.rideT ?? -1) >= 0) {
+      ridePose(p, a);
+      return;
+    }
+    const vault = a.vault ?? -1;
+    if (vault >= 0 && (a.mode === "ground" || a.mode === "air")) {
+      const k = Math.sin(clamp(vault, 0, 1) * Math.PI);
+      p[BODYP] = 0.5 * k; p[BODYR] = 0.3 * k; p[ROOTY] = 0.03 * k; p[SPX] = 0.15 * k; p[HDX] = -0.3 * k;
+      p[SLX] = -1.9 * k + 0.06; p[SRX] = -1.5 * k + 0.06; p[SLZ] = 0.2 + 0.2 * k; p[SRZ] = 0.2; p[ELL] = 0.3; p[ELR] = 0.5;
+      p[HLX] = -1.6 * k; p[KNL] = 1.8 * k; p[HRX] = -1.1 * k; p[KNR] = 1.9 * k; p[HLZ] = 0.2 * k;
       return;
     }
     if (a.mode === "climb") {
@@ -645,6 +755,12 @@ export function createWrenModel(look: Look): WrenModel {
       p[HLZ] = 0.08; p[HRZ] = 0.08; p[FTL] = 0.5; p[FTR] = 0.5;
       p[BODYR] = clamp(-a.turn * 0.18, -0.5, 0.5);
       p[ROOTY] = -0.08;
+      if (a.glideMode === 1) {
+        p[BODYP] = -0.08; p[HDX] = -0.2; p[HLX] = -0.5; p[HRX] = -0.4; p[KNL] = 0.15; p[KNR] = 0.25; p[FTL] = 0.2; p[FTR] = 0.2;
+      } else if (a.glideMode === 2) {
+        p[BODYP] = 0.95; p[HDX] = -0.85; p[HLX] = 0.45; p[HRX] = 0.45; p[KNL] = 0.1; p[KNR] = 0.1; p[SLX] = -3.1; p[SRX] = -3.1;
+        p[HLZ] = 0.02; p[HRZ] = 0.02; p[FTL] = 0.9; p[FTR] = 0.9;
+      }
       if (act === "aim") aimPose(p, a);
       return;
     }
@@ -766,6 +882,31 @@ export function createWrenModel(look: Look): WrenModel {
     if (a.shield && act !== "block" && act !== "parry") {
       p[SLX] = -1.35; p[SLY] = -0.65; p[ELL] = 1.45; p[SLZ] = 0.1;
     }
+    const sk = a.skid ?? -1;
+    if (sk >= 0 && act === "none") {
+      const w = smooth(sk * 5) * (1 - smooth((sk - 0.7) / 0.3));
+      p[BODYP] = lerp(p[BODYP], -0.3, w); p[SPX] = lerp(p[SPX], -0.12, w); p[HDX] = lerp(p[HDX], 0.2, w);
+      p[HLX] = lerp(p[HLX], -0.85, w); p[HRX] = lerp(p[HRX], 0.25, w); p[KNL] = lerp(p[KNL], 0.12, w); p[KNR] = lerp(p[KNR], 0.75, w);
+      p[FTL] = lerp(p[FTL], -0.35, w);
+      p[SLX] = lerp(p[SLX], -0.5, w); p[SRX] = lerp(p[SRX], -0.5, w); p[SLZ] = lerp(p[SLZ], 0.95, w); p[SRZ] = lerp(p[SRZ], 0.95, w);
+      p[ELL] = lerp(p[ELL], 0.5, w); p[ELR] = lerp(p[ELR], 0.5, w); p[ROOTY] = lerp(p[ROOTY], -0.14, w);
+    }
+  }
+
+  /** Overlays that apply on top of any base pose: lean bank and the thread-aim lantern arm. */
+  function buildTarget(a: WrenAnimIn, dt: number) {
+    buildBase(a, dt);
+    const p = tgt, act = a.action, mode = a.mode;
+    const lean = a.lean ?? 0;
+    if (lean !== 0 && mode !== "dead" && mode !== "climb" && mode !== "ride") {
+      p[BODYR] -= lean * (mode === "glide" ? 0.45 : mode === "ground" ? (a.sprint ? 0.3 : 0.18) : 0.12);
+      p[HDZ] += lean * 0.12;
+    }
+    if (a.pinAim && mode !== "dead" && mode !== "climb" && mode !== "swim" && mode !== "ride"
+      && act !== "aim" && act !== "charge" && act !== "spin" && act !== "block" && act !== "parry" && act !== "dodge") {
+      p[SLX] = -1.45; p[SLY] = 0.12; p[SLZ] = 0.12; p[ELL] = 0.12; p[WLX] = 0;
+      p[SPY] += 0.12;
+    }
   }
 
   function attackPose(p: Float32Array, a: WrenAnimIn) {
@@ -792,25 +933,14 @@ export function createWrenModel(look: Look): WrenModel {
     }
   }
 
-  function apply(p: Float32Array) {
-    tumble.rotation.x = p[TUMBLE];
-    hips.position.set(0, 0.35 + p[ROOTY], p[ROOTF]);
-    hips.rotation.set(p[BODYP], p[BODYYAW], p[BODYR]);
-    spine.rotation.set(p[SPX], p[SPY], p[SPZ]);
-    neck.rotation.set(p[HDX], p[HDY], p[HDZ]);
-    shL.rotation.set(p[SLX], p[SLY], p[SLZ]);
-    shR.rotation.set(p[SRX], p[SRY], -p[SRZ]);
-    elL.rotation.x = -p[ELL];
-    elR.rotation.x = -p[ELR];
-    handL.rotation.set(p[WLX], 0, p[WLZ]);
-    handR.rotation.set(p[WRX], p[WRY], p[WRZ]);
-    hipL.rotation.set(p[HLX], 0, p[HLZ]);
-    hipR.rotation.set(p[HRX], 0, -p[HRZ]);
-    knL.rotation.x = p[KNL];
-    knR.rotation.x = p[KNR];
-    ftL.rotation.x = p[FTL];
-    ftR.rotation.x = p[FTR];
-  }
+  const bodyPosA = bodyGeo.attributes.position as THREE.BufferAttribute;
+  const bodyNorA = bodyGeo.attributes.normal as THREE.BufferAttribute;
+  const glowPosA = glowGeo.attributes.position as THREE.BufferAttribute;
+  const glowColA = glowGeo.attributes.color as THREE.BufferAttribute;
+  const bodyPos = bodyPosA.array as Float32Array, bodyNor = bodyNorA.array as Float32Array;
+  const glowPos = glowPosA.array as Float32Array, glowCol = glowColA.array as Float32Array;
+  const strPosBase = strFirst * 3;
+  const ec = new THREE.Color(C.emberHi);
 
   const model: WrenModel = {
     group,
@@ -823,8 +953,30 @@ export function createWrenModel(look: Look): WrenModel {
     land(impact) {
       landV -= 6 * clamp(impact, 0, 1.2);
     },
+    setOutline(on) {
+      outlineOn = on;
+      outline.visible = on && camFade >= 1;
+    },
+    setCameraDistance(d) {
+      // dithered (alpha-hashed) fade keeps depth writes, so body, cloak, sword, shield and lantern fade as one
+      // solid figure; under ~1 m the lens is at her head and the inside would show, so she is hidden outright
+      let f = clamp((d - 0.95) / 0.65, 0, 1);
+      if (f < 0.2) f = 0;
+      if (f === camFade) return;
+      const hash = f < 1;
+      if (bodyMat.alphaHash !== hash) {
+        bodyMat.alphaHash = hash;
+        bodyMat.needsUpdate = true;
+      }
+      camFade = f;
+      bodyMat.opacity = f;
+      glowMat.opacity = f;
+      bodyMesh.visible = f > 0;
+      glowMesh.visible = f > 0;
+      outline.visible = outlineOn && f >= 1;
+    },
     setShadows(on) {
-      for (const m of meshes) m.castShadow = on;
+      bodyMesh.castShadow = on;
       blob.visible = true;
       blobMat.opacity = on ? 0.55 : 1;
     },
@@ -870,35 +1022,52 @@ export function createWrenModel(look: Look): WrenModel {
         nextBlink = 2 + Math.random() * 3.5;
       }
       blink = Math.max(0, blink - dt);
-      const lid = blink > 0 ? 0.12 : a.mode === "dead" ? 0.1 : 1;
-      eyes[0].scale.y = eyes[2].scale.y = 1.2 * lid;
-      eyes[1].visible = eyes[3].visible = lid > 0.5;
-      mouth.scale.x = a.exhausted || act === "hurt" ? 1.8 : a.mode === "swim" ? 1.3 : 1;
+      const lid = blink > 0 ? 0.1 : a.mode === "dead" ? 0.1 : 1;
+      eyeL.scale.y = eyeR.scale.y = lid;
+      mouthB.scale.x = a.exhausted || act === "hurt" ? 1.8 : a.mode === "swim" ? 1.3 : 1;
 
       const aiming = act === "aim";
       armedW = a.armed || aiming ? 1 : 0;
       if (aiming) {
-        place(bow, handL, bowHand);
-        bow.rotation.set(0, Math.PI / 2, 0);
-        place(sword, back, swordBack);
+        place(bowB, handL, ...bowHandP);
+        bowB.rotation.set(0, Math.PI / 2, 0);
+        place(swordB, back, ...swordBack);
       } else {
-        if (a.hasBow) place(bow, back, bowBack);
-        place(sword, armedW > 0 ? handR : back, armedW > 0 ? swordHand : swordBack);
+        if (a.hasBow) place(bowB, back, ...bowBackP);
+        if (armedW > 0) place(swordB, handR, ...swordHand); else place(swordB, back, ...swordBack);
       }
-      bow.visible = a.hasBow;
-      buckler.visible = true;
+      bowB.scale.setScalar(a.hasBow ? 1 : 0.001);
+      arrowB.scale.setScalar(aiming ? 1 : 0.001);
       const pull = aiming ? 0.08 + a.draw * 0.42 : 0;
-      strPos[3] = tipX - pull;
-      (strG.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-      arrow.visible = aiming;
-      arrow.position.set(tipX - pull, 0, 0);
+      for (let kk = 0; kk < 3; kk++) bodyPos[strPosBase + 9 + kk * 3] = strRest[kk * 3] - pull;
+      arrowB.position.set(tipX - pull, 0, 0);
       const ch = act === "charge" ? a.charge : act === "spin" ? 1 - clamp(a.actionT / 0.5, 0, 1) : 0;
-      edgeMat.opacity = 0.12 * armedW + ch * 0.75 + (ch >= 1 ? Math.sin(a.time * 30) * 0.12 : 0);
-      edge.scale.setScalar(1 + ch * 0.35);
-      fullerMat.color.set(ch > 0.98 ? C.emberHi : C.ember);
+      // the blade catches the light through each swing so the cut reads at a glance
+      const atk = act === "attack1" || act === "attack2" || act === "attack3" || act === "riposte" || act === "spin";
+      const sw = atk ? clamp((a.actionT - a.windup * 0.4) / 0.06, 0, 1) * (1 - clamp((a.actionT - a.windup - 0.18) / 0.15, 0, 1)) : 0;
+      const ea = armedW * 0.04 + Math.max(ch * 0.75, sw * 0.5) + (ch >= 1 ? Math.sin(a.time * 30) * 0.12 : 0);
+      if (Math.abs(ea - edgeA) > 0.003) {
+        edgeA = ea;
+        for (let i = 0; i < edgeCount; i++) {
+          const o = (edgeFirst + i) * 4;
+          glowCol[o] = ec.r; glowCol[o + 1] = ec.g; glowCol[o + 2] = ec.b; glowCol[o + 3] = Math.max(0, ea);
+        }
+        glowColA.needsUpdate = true;
+      }
+      edgeB.scale.setScalar(1 + ch * 0.35);
       const fl = 0.85 + Math.sin(a.time * 23) * 0.05 + Math.sin(a.time * 37.7) * 0.05 + Math.sin(a.time * 7.3) * 0.05;
-      flame.scale.set(fl, 1.35 * fl, fl);
-      halo.scale.setScalar(0.5 * fl + 0.05);
+      flameB.scale.set(fl, fl, fl);
+      haloB.scale.setScalar(0.5 * fl + 0.05);
+      const ll = a.lanternLean;
+      let tx = 0, tz = 0;
+      if (ll && (ll.x !== 0 || ll.y !== 0)) {
+        inv.copy(group.matrixWorld).invert();
+        v.set(ll.x, 0, ll.y).transformDirection(inv);
+        tx = v.x; tz = v.z;
+      }
+      const lk = 1 - Math.exp(-9 * dt);
+      flLx += (tx - flLx) * lk; flLz += (tz - flLz) * lk;
+      flameB.rotation.set(flLz * 0.6, 0, -flLx * 0.6);
 
       const accel = (a.speed - prevSpeed) / Math.max(dt, 1e-3);
       const vyAcc = (a.vy - prevVy) / Math.max(dt, 1e-3);
@@ -912,18 +1081,21 @@ export function createWrenModel(look: Look): WrenModel {
       tipSwingV += (-tipSwing * 60 - tipSwingV * 4 + clamp(accel, -30, 30) * 0.2 + clamp(vyAcc, -40, 40) * 0.05) * dt;
       tipSwing += tipSwingV * dt;
       hoodTip.rotation.x = clamp(tipSwing, -0.8, 0.8) + a.speed * 0.05 + cur[HDX] * -0.6 + (a.mode === "glide" ? 0.5 : 0);
+      hoodTip.rotation.z = clamp(a.turn * -0.05, -0.3, 0.3) + Math.sin(a.time * 2.1) * 0.05;
 
-      const liftT = a.mode === "glide" ? 1.1 : a.mode === "swim" ? 0.08 * a.swimMove : a.mode === "climb" ? 0.05 : a.mode === "air" ? clamp(-a.vy * 0.07, 0, 1.0) + a.speed * 0.03 : clamp(a.speed * 0.075, 0, 0.75);
+      const lift = a.mode === "glide" ? 1.1 : a.mode === "swim" ? 0.08 * a.swimMove : a.mode === "climb" ? 0.05
+        : a.mode === "ride" ? 0.5 : a.mode === "air" ? clamp(-a.vy * 0.07, 0, 1.0) + a.speed * 0.03 : clamp(a.speed * 0.075, 0, 0.75);
+      const liftT = lift + (a.skid !== undefined && a.skid >= 0 ? 0.35 : 0);
       capeLiftV += ((liftT - capeLift) * 55 - capeLiftV * 7) * dt;
       capeLift += capeLiftV * dt;
-      capeSideV += ((clamp(a.turn * 0.15, -0.5, 0.5) - capeSide) * 40 - capeSideV * 6) * dt;
+      capeSideV += ((clamp(a.turn * 0.15 + (a.lean ?? 0) * 0.25, -0.6, 0.6) - capeSide) * 40 - capeSideV * 6) * dt;
       capeSide += capeSideV * dt;
       const wind = Math.hypot(a.windX, a.windZ);
       const tm = a.time;
       const lean = cur[BODYP] + cur[SPX];
       const leanK = a.mode === "swim" ? -0.15 : -0.6;
       for (let r = 0; r < CR; r++) {
-        const tt = r / (CR - 1);
+        const tt = capeT[r];
         const w = tt ** 1.25;
         for (let c = 0; c < CC; c++) {
           const i = (r * CC + c) * 3;
@@ -931,35 +1103,47 @@ export function createWrenModel(look: Look): WrenModel {
           const flutter = Math.sin(tm * (6 + capeLift * 6) + c * 0.75 - r * 0.95) * (0.04 + 0.05 * capeLift + wind * 0.008) * w;
           const ang = (capeLift * 1.05 + lean * leanK) * w + flutter;
           const ca = Math.cos(ang), sa = Math.sin(ang);
-          let y = by * ca - bz * sa, z = by * sa + bz * ca;
+          const y = by * ca - bz * sa;
+          let z = by * sa + bz * ca;
           z -= Math.max(0, ang) * 0.06 * w;
           let x = bx + capeSide * by * 0.9 * w + Math.sin(tm * 3.1 + r * 0.6) * 0.012 * w * (1 + wind * 0.3);
           x *= 1 + capeLift * 0.18 * w;
-          if (a.mode === "swim") y *= 0.9;
-          capePos[i] = x;
-          capePos[i + 1] = y;
-          capePos[i + 2] = z;
+          cl[i] = x; cl[i + 1] = a.mode === "swim" ? y * 0.9 : y; cl[i + 2] = z;
         }
       }
-      for (let c = 0; c < CC; c++) {
-        const i = ((CR - 1) * CC + c) * 3;
-        hemPos[c * 3] = capePos[i];
-        hemPos[c * 3 + 1] = capePos[i + 1] + 0.005;
-        hemPos[c * 3 + 2] = capePos[i + 2];
+      for (let r = 0; r < CR; r++) for (let c = 0; c < CC; c++) {
+        const i = (r * CC + c) * 3;
+        const r0 = Math.max(0, r - 1) * CC + c, r1 = Math.min(CR - 1, r + 1) * CC + c;
+        const c0 = r * CC + Math.max(0, c - 1), c1 = r * CC + Math.min(CC - 1, c + 1);
+        const ux = cl[c1 * 3] - cl[c0 * 3], uy = cl[c1 * 3 + 1] - cl[c0 * 3 + 1], uz = cl[c1 * 3 + 2] - cl[c0 * 3 + 2];
+        const vx = cl[r1 * 3] - cl[r0 * 3], vy = cl[r1 * 3 + 1] - cl[r0 * 3 + 1], vz = cl[r1 * 3 + 2] - cl[r0 * 3 + 2];
+        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nx /= l; ny /= l; nz /= l;
+        if (nx * cl[i] + nz * cl[i + 2] < 0) { nx = -nx; ny = -ny; nz = -nz; } // outward
+        cn[i] = nx; cn[i + 1] = ny; cn[i + 2] = nz;
       }
-      (capeGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-      (hemG.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-      capeGeo.computeVertexNormals();
+      for (let layer = 0; layer < 2; layer++) {
+        const o = capeFirst[layer] * 3, off = layer === 0 ? 0 : -0.006;
+        for (let i = 0; i < CC * CR * 3; i += 3) {
+          bodyPos[o + i] = cl[i] + cn[i] * off + cOff.x;
+          bodyPos[o + i + 1] = cl[i + 1] + cn[i + 1] * off + cOff.y;
+          bodyPos[o + i + 2] = cl[i + 2] + cn[i + 2] * off + cOff.z;
+          bodyNor[o + i] = cn[i]; bodyNor[o + i + 1] = cn[i + 1]; bodyNor[o + i + 2] = cn[i + 2];
+        }
+      }
+      bodyPosA.needsUpdate = true;
+      bodyNorA.needsUpdate = true;
 
       const gOn = a.mode === "glide" ? 1 : 0;
       gliderV += ((gOn - gliderS) * (gOn ? 160 : 260) - gliderV * (gOn ? 11 : 22)) * dt;
       gliderS = clamp(gliderS + gliderV * dt, 0, 1.25);
-      glider.visible = gliderS > 0.02;
-      glider.scale.set(Math.max(0.001, gliderS), Math.max(0.001, Math.min(1.1, gliderS * 1.2)), Math.max(0.001, gliderS));
+      const gs = Math.max(0.001, gliderS);
+      glider.scale.set(gs, Math.max(0.001, Math.min(1.1, gliderS * 1.2)), gs);
+      gliderTilt += ((a.glideMode === 1 ? -0.4 : a.glideMode === 2 ? 0.32 : 0) - gliderTilt) * (1 - Math.exp(-6 * dt));
       glider.rotation.z = cur[BODYR] * 0.6 + Math.sin(tm * 2.6) * 0.03 * gOn;
-      glider.rotation.x = -0.05 + Math.sin(tm * 3.3) * 0.02 * gOn;
+      glider.rotation.x = -0.05 + Math.sin(tm * 3.3) * 0.02 * gOn + gliderTilt;
       glider.position.set(0, 2.0 + cur[ROOTY], 0.12);
-      sailRoot.rotation.x = Math.sin(tm * 9) * 0.015 * gOn;
 
       bobT += dt;
       offset.position.y = a.mode === "swim" ? Math.sin(bobT * 2.4) * 0.05 : 0;
@@ -970,28 +1154,30 @@ export function createWrenModel(look: Look): WrenModel {
       tipSocket.getWorldPosition(bladeTipWorld);
       handL.getWorldPosition(bowHandWorld);
 
-      const swinging = (act === "attack1" || act === "attack2" || act === "attack3" || act === "riposte") && a.actionT > a.windup * 0.6 && a.actionT < a.windup + 0.2
+      const swinging = (act === "attack1" || act === "attack2" || act === "attack3" || act === "riposte") && a.actionT > a.windup * 0.45 && a.actionT < a.windup + 0.24
         || (act === "spin" && a.actionT < 0.45);
-      sword.getWorldPosition(v);
+      swordB.getWorldPosition(v);
       v2.copy(bladeTipWorld);
-      v.lerp(v2, 0.3);
+      v.lerp(v2, 0.2);
       if (swinging) {
         if (trailLive === 0) for (let i = 0; i < trailN; i++) { trailHist.set([v.x, v.y, v.z, v2.x, v2.y, v2.z], i * 6); }
         trailLive = 1;
       } else trailLive = Math.max(0, trailLive - dt * 6);
       for (let i = trailN - 1; i > 0; i--) trailHist.copyWithin(i * 6, (i - 1) * 6, i * 6);
       trailHist[0] = v.x; trailHist[1] = v.y; trailHist[2] = v.z; trailHist[3] = v2.x; trailHist[4] = v2.y; trailHist[5] = v2.z;
+      inv.copy(group.matrixWorld).invert(); // trail verts ride on a bone fixed to the group, so store them group-local
+      const live = model.trailOn ? trailLive : 0;
       for (let i = 0; i < trailN; i++) {
-        trailPos.set(trailHist.subarray(i * 6, i * 6 + 3), i * 6);
-        trailPos.set(trailHist.subarray(i * 6 + 3, i * 6 + 6), i * 6 + 3);
-        const al = (1 - i / (trailN - 1)) * trailLive * 0.85;
-        trailAlpha[i * 2] = al * 0.2;
-        trailAlpha[i * 2 + 1] = al;
+        const al = (1 - i / (trailN - 1)) * live;
+        for (let e = 0; e < 2; e++) {
+          v.set(trailHist[i * 6 + e * 3], trailHist[i * 6 + e * 3 + 1], trailHist[i * 6 + e * 3 + 2]).applyMatrix4(inv);
+          const vi = trailFirst + i * 2 + e;
+          glowPos[vi * 3] = v.x; glowPos[vi * 3 + 1] = v.y; glowPos[vi * 3 + 2] = v.z;
+          glowCol[vi * 4 + 3] = e === 0 ? al * 0.3 : al;
+        }
       }
-      (trailGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-      (trailGeo.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
-      trail.visible = model.trailOn && trailLive > 0.01;
-      if (trail.parent !== group.parent && group.parent) group.parent.add(trail);
+      glowPosA.needsUpdate = true;
+      glowColA.needsUpdate = true;
 
       blob.position.set(0, groundDy + 0.03, 0);
       const hgt = -groundDy;
@@ -1001,14 +1187,18 @@ export function createWrenModel(look: Look): WrenModel {
       model.footstep = footstepFlag;
     },
     dispose() {
-      trail.parent?.remove(trail);
       group.parent?.remove(group);
+      skeleton.dispose();
       for (const g of geos) g.dispose();
       for (const m of ownMats) m.dispose();
       for (const t of texes) t.dispose();
     },
   };
-  base(cur);
-  apply(cur);
   return model;
 }
+
+function pos3(v: THREE.Vector3) {
+  return { x: v.x, y: v.y, z: v.z };
+}
+
+export const createWrenModel = createHeroModel;

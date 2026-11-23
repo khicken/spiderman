@@ -74,24 +74,30 @@ void main() {
   col = mix(col, uCMud * (0.85 + 0.3 * det.a), sb.a * 0.7);
 
   vec3 sandC = uCSand * (0.86 + 0.26 * det.b);
-  sandC = mix(sandC, sandC * vec3(0.74, 0.76, 0.78), smoothstep(1.1, 0.25, vWorld.y) * smoothstep(-2.0, 0.0, vWorld.y));
+  sandC = mix(sandC, sandC * vec3(0.74, 0.76, 0.78), (1.0 - smoothstep(0.25, 1.1, vWorld.y)) * smoothstep(-2.0, 0.0, vWorld.y));
   col = mix(col, sandC, sharpen(sa.r, det.b));
 
   // rock: facet normal catches heightfield walls the 1 m normal map smears; biplanar detail, cel strata ledges
   vec3 dpx = dFdx(vWorld), dpy = dFdy(vWorld);
-  vec3 fN = normalize(cross(dpx, dpy));
+  // a degenerate derivative pair (grazing angle, distant pixel) gives a zero cross; fall back to the vertex normal, not NaN
+  vec3 fc = cross(dpx, dpy);
+  float fl = dot(fc, fc);
+  vec3 fN = fl > 1e-12 ? fc * inversesqrt(fl) : n;
   if (fN.y < 0.0) fN = -fN;
-  float wall = smoothstep(0.6, 0.38, fN.y) * smoothstep(0.93, 0.8, n.y);
+  float wall = (1.0 - smoothstep(0.38, 0.6, fN.y)) * (1.0 - smoothstep(0.8, 0.93, n.y));
   vec3 an = pow(abs(fN), vec3(4.0));
   an /= (an.x + an.y + an.z);
   float rx = texture2D(uTDetail, vWorld.zy * vec2(0.07, 0.05)).g;
   float rz = texture2D(uTDetail, vWorld.xy * vec2(0.07, 0.05)).g;
   float rdet = mix(rx * an.x + rz * an.z + dA.g * an.y, 0.5, fade * 0.45);
-  float layer = vWorld.y / 7.5 + (big.r - 0.5) * 1.6;
+  // strata: dip and thickness wander with world-space noise so ledges never read as a ruler-straight repeat
+  float dip = (big.g - 0.5) * 9.0 + sin(dot(xz, vec2(0.013, 0.021))) * 4.0;
+  float layer = (vWorld.y + dip) / (5.5 + 4.0 * big.b) + (big.r - 0.5) * 1.6;
   float lf = fract(layer);
-  float tone = fract(sin(floor(layer) * 12.9898) * 43758.5453);
-  vec3 rockBase = mix(uCRock, uCAshRock, sb.r) * (0.86 + 0.26 * tone);
-  float slopeRock = max(smoothstep(0.79, 0.66, n.y + (rdet - 0.5) * 0.12), smoothstep(0.66, 0.5, fN.y) * smoothstep(0.93, 0.8, n.y));
+  float tone = fract(sin(floor(layer) * 12.9898 + floor(xz.x * 0.004) * 7.1) * 43758.5453);
+  vec3 rockBase = mix(uCRock, uCAshRock, sb.r) * (0.84 + 0.3 * tone);
+  rockBase = mix(rockBase, rockBase * vec3(0.92, 0.93, 1.06), smoothstep(0.35, 0.65, mid.b));
+  float slopeRock = max((1.0 - smoothstep(0.66, 0.79, n.y + (rdet - 0.5) * 0.12)), (1.0 - smoothstep(0.5, 0.66, fN.y)) * (1.0 - smoothstep(0.8, 0.93, n.y)));
   float steep = max(slopeRock, wall);
   float lip = smoothstep(0.84, 0.9, lf) * steep;
   float seam = (1.0 - smoothstep(0.0, 0.09, lf)) * steep;
@@ -131,7 +137,7 @@ void main() {
 
   col *= mix(0.58, 1.0, ao);
   vec3 lit = hmShade(col, nL, vWorld, V);
-  lit = hmFog(lit, dist);
+  lit = hmFogP(lit, vWorld);
   lit = mix(lit, uFogColor, smoothstep(uFade * 0.78, uFade * 0.9, dist));
   gl_FragColor = vec4(lit, 1.0);
   #include <tonemapping_fragment>
@@ -217,7 +223,7 @@ void main() {
   float a = mix(0.42, 0.93, smoothstep(0.0, 4.0, depth));
   a = max(a, foam);
   a = mix(a, 1.0, fr * 0.5);
-  col = hmFog(col, dist);
+  col = hmFogP(col, vWorld);
   col = mix(col, uFogColor, smoothstep(uFade * 0.78, uFade * 0.9, dist));
   gl_FragColor = vec4(col, a);
   #include <tonemapping_fragment>

@@ -1,4 +1,4 @@
-import type { BeaconId, HudSnapshot, QuestState, SaveData } from "./contracts";
+import type { BeaconId, Device, HudSnapshot, LanternPower, QuestState, SaveData } from "./contracts";
 import { BEACON_LANDMARK, LANDMARKS, PLAYER } from "./contracts";
 
 // UI-only state that the contract Settings does not hold: reduce-motion and the lore the player has read.
@@ -56,31 +56,48 @@ export function osReducedMotion(): boolean {
 }
 
 export const BEACON_NAMES = BEACON_LANDMARK.map((id) => LANDMARKS.find((l) => l.id === id)!.name);
+/** Journal rules: verbs and numbers, same wording as the trial rule cards. */
 export const BEACON_TRIALS: readonly string[] = [
-  "Climb the Ashen Cliffs, then glide through six lantern rings to the brazier on the beach.",
-  "Stand in the ring of thorns in Whisperwood and outlast three waves of the Gloam's creatures.",
-  "Slide the drowned stones onto three pressure plates to raise the beacon stair.",
-  "On the windy north bluff, strike eight targets before the sand runs out.",
+  "Glide through 6 rings to the beach brazier in 75 s.",
+  "Defeat 3 waves inside the thorn ring.",
+  "Push 3 blocks onto 3 plates.",
+  "Hit 8 targets in 60 s. Needs the bow.",
 ];
-export const TRIAL_VERB: readonly string[] = ["Rings", "Waves", "Plates", "Targets"];
+export const TRIAL_VERB: readonly string[] = ["rings", "waves", "plates", "targets"];
 
 export function beaconName(b: BeaconId | number): string {
   return BEACON_NAMES[b] ?? "Beacon";
 }
 
-/** Lines shown while the world loads. All original. */
+/** Tips and lore shown while the world loads. Tips first: they say what to do. */
 export const LORE_LINES: readonly string[] = [
+  "Hold the shield just before a hit lands to parry.",
+  "Jump in mid-air to glide.",
+  "Rest at a lit beacon to save and heal.",
+  "Press M to open the map and pick a place to track.",
+  "Light the 4 beacons to open the Gloam Spire.",
   "Before the Gloam, the four beacons sang to one another across the water.",
-  "A lantern-bearer carries no torch for themself. The light is for the road behind.",
-  "Glimmers are what is left when a star forgets its name.",
   "The Mirebrook millers ground barley by day and moonlight by night.",
-  "In Whisperwood the birches lean toward whoever is lost.",
   "Mt. Cinder was a hearth once. The Spire was only its chimney.",
-  "The Gloam does not hate the light. It only wants to sleep, and light keeps it awake.",
-  "Rest where the old stones still hum. The shrine remembers every keeper.",
-  "Wind off the north bluff carries an arrow farther than any arm.",
-  "The Sunken Lake was a market square. Its bells still ring when the water is still.",
 ];
+
+export const POWER_INFO: Record<LanternPower, { name: string; effect: string }> = {
+  long: { name: "Long Thread", effect: "Threads reach 30 m" },
+  burning: { name: "Burning Thread", effect: "Every thread burns, no brazier needed" },
+  heavy: { name: "Heavy Thread", effect: "Threads can pull heavy things" },
+  arrow: { name: "Thread Arrow", effect: "An arrow that hits a knot pins a thread" },
+};
+
+/** One memory per main beacon (DESIGN-V2 section 8). Optional reading, so these may be lore. */
+export const MEMORIES: readonly { beacon: BeaconId; line: string }[] = [
+  { beacon: 0, line: "I was bigger once. I lit ships home." },
+  { beacon: 1, line: "Someone carried me. Someone kind." },
+  { beacon: 2, line: "The water rose. They chose the lamp over the boat." },
+  { beacon: 3, line: "Their name was... I gave it to the dark." },
+];
+
+export const SECRET_TOTAL = 40;
+export const WICK_OIL_TOTAL = 3;
 
 export const ENDING_TEXT: readonly string[] = [
   "And when the fourth flame took, the long dusk over Mt. Cinder folded like a letter and was put away.",
@@ -96,6 +113,36 @@ export const CREDITS: readonly { role: string; names: string[] }[] = [
   { role: "Type", names: ["Cormorant Garamond", "Manrope"] },
   { role: "With thanks", names: ["Everyone who carries a light for someone else"] },
 ];
+
+/** Hollowmere keeps two kinds of progress the contract does not carry: secrets and memories found. Persisted per save slot. */
+const PROG_KEY = "hollowmere.ui.progress.v1";
+export interface UiProgress {
+  secrets: string[];
+  memories: number[];
+}
+export function readUiProgress(): UiProgress {
+  try {
+    const v = JSON.parse(localStorage.getItem(PROG_KEY) ?? "null") as Partial<UiProgress> | null;
+    return { secrets: Array.isArray(v?.secrets) ? v!.secrets! : [], memories: Array.isArray(v?.memories) ? v!.memories! : [] };
+  } catch {
+    return { secrets: [], memories: [] };
+  }
+}
+export function writeUiProgress(p: UiProgress): void {
+  try {
+    localStorage.setItem(PROG_KEY, JSON.stringify(p));
+  } catch {}
+}
+export function clearUiProgress(): void {
+  try {
+    localStorage.removeItem(PROG_KEY);
+  } catch {}
+}
+
+/** Name of the button for an action, by device, for prompts and toasts. Never an empty key box. */
+export function btnLabel(device: Device, keys: string, pad: string, touch: string): string {
+  return device === "pad" ? pad : device === "touch" ? touch : keys;
+}
 
 export const SHARD_TOTAL = (PLAYER.maxHearts - PLAYER.startHearts) * PLAYER.shardsPerHeart;
 

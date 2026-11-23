@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Combat, EnemyState, FrameCtx, GameEvent, Look, Prop, Quality, RayHit, Shot, Strike, Team, World } from "./contracts";
 import { BOW, ENEMY, PLAYER, SWORD } from "./contracts";
-import { createEmitter } from "./combat-events";
+import { createEmitter, hitstopFor } from "./combat-events";
 import { createFlashes } from "./combat-flash";
 import { createProjectiles, STUCK_LIFE } from "./combat-projectiles";
 import type { Arrow, Bolt } from "./combat-projectiles";
@@ -21,7 +21,10 @@ export interface CombatPlus extends Combat {
 const MAX_STRIKES = 48;
 const MAX_ENEMY = 64;
 const MAX_BRK = 96;
-const SWING_GAP = 0.22; // s without a submission = a new swing (fresh hit list)
+// s without a submission = a new swing (fresh hit list). Longer than the longest active window (0.09 s), shorter than
+// the shortest gap between two active windows (recovery 0.22 + startup 0.10).
+const SWING_GAP = 0.15;
+const THREAD_SLOT = 65; // bind strikes from the thread module keep their own hit list, apart from the sword
 const TAU = Math.PI * 2;
 const REFLECT_DAMAGE = 20; // a parried bolt flies back for this much (DESIGN: Warden phase 2)
 const REFLECT_SPEED = 24;
@@ -53,7 +56,7 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
     team: "player", source: -1, ox: 0, oy: 0, oz: 0, yaw: 0, reach: 0, arc: 0, height: 0, damage: 0, kind: "sword", knockback: 0, unblockable: false,
   }));
   let qn = 0;
-  const swings: Swing[] = Array.from({ length: 65 }, () => ({
+  const swings: Swing[] = Array.from({ length: 66 }, () => ({
     lastT: -9, kind: "", damage: 0, enemies: new Uint8Array(MAX_ENEMY), brk: new Uint8Array(MAX_BRK), props: ["", "", "", "", "", "", "", ""], propN: 0, player: false,
   }));
 
@@ -62,6 +65,7 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
   let enemyDrops = true;
   let frame = 0;
   let cur: FrameCtx | null = null;
+  let slowT = -1; // real seconds into a parry slow-mo, -1 none (the 0.5x tail follows it)
 
   // ---- effects -------------------------------------------------------------------------------------------------
   function sparks(ctx: FrameCtx, x: number, y: number, z: number, dx: number, dz: number, n: number, speed: number, kind: "spark" | "ember" | "blood-sap" | "dust" | "gloam" = "spark") {
@@ -101,7 +105,7 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
     let blocked = false, parried = false;
     if (p.shieldUp && !unblockable && Math.abs(wrap(Math.atan2(ax - p.pos.x, az - p.pos.z) - p.yaw)) <= SWORD.blockArc / 2) {
       blocked = true;
-      parried = p.parryT < SWORD.parryWindow;
+      parried = p.parryT < (ctx.input.device === "touch" ? SWORD.parryWindowTouch : SWORD.parryWindow);
     }
     let dx = p.pos.x - ax, dz = p.pos.z - az;
     const dl = Math.hypot(dx, dz) || 1;
@@ -117,42 +121,56 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
         sparks(ctx, px, cy, pz, -dx, -dz, 8, 4, "ember");
         flashes.add(px, cy, pz, 1.5, COL_PARRY, 0.22);
         flashes.add(px, cy, pz, 2.4, 0xffffff, 0.3, true);
-        em.feel(0.14, 0.45);
+        em.feel(SWORD.hitstopHurtMax, 0.45);
+        // the parried enemy's id lets the HUD pulse the attack glyph over it (riposte prompt)
+        const src = source >= 0 && source < ctx.enemies.length ? ctx.enemies[source] : null;
+        if (src) em.parry(source, src.aimPoint.x, src.aimPoint.y, src.aimPoint.z);
+        else em.parry(source, px, cy, pz);
+        em.slowmo(SWORD.parrySlowScale, SWORD.parrySlowMo);
+        slowT = 0;
       } else {
         sparks(ctx, px, cy, pz, -dx, -dz, 14, 5);
         flashes.add(px, cy, pz, 0.8, COL_BLOCK, 0.14);
-        em.feel(SWORD.hitstop, 0.22);
+        em.feel(SWORD.hitstopHurtMax, 0.22);
       }
       return parried ? 2 : 1;
     }
     em.hit("enemy", -1, source, dmg, p.pos.x, cy, p.pos.z, dx, 0, dz, kind, false, false, knock);
     sparks(ctx, p.pos.x, cy, p.pos.z, dx, dz, 7, 4);
     flashes.add(p.pos.x, cy, p.pos.z, 0.9 + damage * 0.06, COL_HURT, 0.16);
-    em.feel(Math.min(0.12, 0.04 + damage * 0.012), Math.min(1, 0.28 + damage * 0.05));
+    em.feel(SWORD.hitstopHurtMax, Math.min(1, 0.28 + damage * 0.05));
     return 1;
   }
 
-  function feelEnemy(kind: Strike["kind"] | Shot["kind"], damage: number) {
+  /** "hitstop" now means the attacker and the victim only: enemies freeze the victim themselves (hitstopFor). */
+  function feelEnemy(kind: Strike["kind"] | Shot["kind"], damage: number, knock: number) {
+    const stop = hitstopFor(kind, knock);
     switch (kind) {
-      case "spin": em.feel(0.1, 0.45); break;
-      case "riposte": em.feel(0.14, 0.55); break;
-      case "arrow": em.feel(0.03, 0.08 + damage * 0.006); break;
-      default: em.feel(SWORD.hitstop * (damage >= 16 ? 1.6 : 1), 0.1 + damage * 0.014);
+      case "spin": em.feel(stop, 0.45); break;
+      case "riposte": em.feel(stop, 0.55); break;
+      case "arrow": em.feel(stop, 0.08 + damage * 0.006); break;
+      case "bind": em.feel(0, 0.25); break;
+      case "burn": break;
+      default: em.feel(stop, 0.1 + damage * 0.014);
     }
   }
 
   function hitEnemy(ctx: FrameCtx, e: EnemyState, x: number, y: number, z: number, dx: number, dy: number, dz: number, damage: number, kind: Strike["kind"] | Shot["kind"], source: number, knock: number) {
     em.hit("player", e.id, source, damage, x, y, z, dx, dy, dz, kind, false, false, knock);
+    if (kind === "burn") {
+      if (((frame + e.id) & 3) === 0) sparks(ctx, x, y, z, 0, 0, 2, 1.5, "ember");
+      return;
+    }
     const big = kind === "riposte" || kind === "spin" || damage >= 16;
     sparks(ctx, x, y, z, -dx, -dz, 6 + Math.min(10, damage * 0.4), big ? 7 : 5);
     sparks(ctx, x, y, z, dx, dz, 5, 3.2, "blood-sap");
     flashes.add(x, y, z, 0.5 + damage * 0.035, COL_HIT, 0.13);
     if (big) flashes.add(x, y, z, 1.6, 0xffffff, 0.2, true);
-    feelEnemy(kind, damage);
+    feelEnemy(kind, damage, knock);
   }
 
   function swingFor(q: QStrike, t: number): Swing {
-    const s = swings[q.team === "player" ? 0 : 1 + (q.source & 63)];
+    const s = swings[q.team === "enemy" ? 1 + (q.source & 63) : q.kind === "bind" ? THREAD_SLOT : 0];
     if (t - s.lastT > SWING_GAP || s.kind !== q.kind || s.damage !== q.damage) {
       s.enemies.fill(0); s.brk.fill(0); s.propN = 0; s.player = false;
       s.kind = q.kind; s.damage = q.damage;
@@ -162,6 +180,7 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
   }
 
   function resolveStrike(ctx: FrameCtx, q: QStrike) {
+    if (q.team === "player" && q.kind === "burn") { resolveBurn(ctx, q); return; }
     const sw = swingFor(q, ctx.time);
     if (q.team === "enemy") {
       if (sw.player) return;
@@ -186,6 +205,7 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
       const back = Math.min(r * 0.6, dl);
       hitEnemy(ctx, e, e.pos.x - dx * back, eb.cy, e.pos.z - dz * back, dx, 0, dz, q.damage, q.kind, -1, q.knockback);
     }
+    if (q.kind === "bind") return; // a thread yank hits enemies only
     for (let i = 0; i < brk.list.length; i++) {
       const b = brk.list[i];
       if (!b.alive || sw.brk[i]) continue;
@@ -214,6 +234,18 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
       sparks(ctx, b.x, b.y, b.z, 0, 0, 10, 5, "gloam");
       flashes.add(b.x, b.y, b.z, 0.9, COL_BOLT, 0.15);
       em.feel(0.03, 0.15);
+    }
+  }
+
+  /** Burn ticks from the thread module: every submission is one damage tick (no per-swing dedupe), enemies only. */
+  function resolveBurn(ctx: FrameCtx, q: QStrike) {
+    const list = ctx.enemies;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive || e.brain === "dead") continue;
+      enemyBox(e, eb);
+      if (!inArc(q.ox, q.oz, q.yaw, q.reach, q.arc, e.pos.x, e.pos.z, ENEMY[e.kind].radius) || !vertOk(q.oy, q.height, eb.y0, eb.y1)) continue;
+      hitEnemy(ctx, e, e.pos.x, eb.cy, e.pos.z, 0, 1, 0, q.damage, "burn", -1, 0);
     }
   }
 
@@ -410,6 +442,13 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
       cur = ctx;
       frame++;
       em.reset();
+      // parry slow-mo 0.4x for 0.35 s, then a 0.12 s tail at 0.5x (real time: the slow-mo scales ctx.dt)
+      if (slowT >= 0) {
+        const before = slowT;
+        slowT += ctx.realDt;
+        if (before < SWORD.parrySlowMo && slowT >= SWORD.parrySlowMo) em.slowmo(SWORD.parryHitstopScale, SWORD.parryHitstop);
+        if (slowT >= SWORD.parrySlowMo + SWORD.parryHitstop) slowT = -1;
+      }
       const dt = ctx.dt;
       for (let i = 0; i < qn; i++) resolveStrike(ctx, queue[i]);
       qn = 0;
@@ -434,6 +473,7 @@ export function createCombat(scene: THREE.Scene, world: World, look: Look): Comb
     },
     clear() {
       qn = 0;
+      slowT = -1;
       proj.clear();
       flashes.clear();
       brk.clearDrops();

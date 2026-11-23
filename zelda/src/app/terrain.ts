@@ -1,11 +1,12 @@
 import * as THREE from "three";
-import type { FrameCtx, Look, Quality, QualityPreset, Terrain, World } from "./contracts";
+import type { BeaconId, FrameCtx, Look, Quality, QualityPreset, Terrain, World } from "./contracts";
 import { LAKE, QUALITY, WORLD } from "./contracts";
 import { worldData } from "./world";
 import { generateWorld } from "./world-gen";
 import { makeTerrainTextures } from "./terrain-textures";
-import { TERRAIN_VERT, WATER_VERT, terrainFrag, waterFrag } from "./terrain-shader";
-import { makeInlandWaterGeometry, makeSeaGeometry } from "./terrain-water";
+import { setRegionColor } from "./render-look";
+import { TERRAIN_VERT, WATER_VERT, terrainFrag } from "./terrain-shader";
+import { makeInlandWaterGeometry, makeSeaGeometry, waterFragV2 } from "./terrain-water";
 
 export { createWorld } from "./world";
 
@@ -82,14 +83,14 @@ export function createTerrain(scene: THREE.Scene, world: World, look: Look, qual
       uTSplatB: { value: tex.splatB },
       uTDetail: { value: tex.detail },
       uTNoise: { value: tex.water },
-      uCGrass: C("#7f9f4e"),
-      uCGrassFar: C("#93ad5c"),
-      uCGrassWarm: C("#aaa55c"),
-      uCForest: C("#4d6b3a"),
-      uCRock: C("#a39a88"),
-      uCAshRock: C("#7c736a"),
+      uCGrass: C("#8fb050"),
+      uCGrassFar: C("#6f9452"),
+      uCGrassWarm: C("#c2b46a"),
+      uCForest: C("#3f5a38"),
+      uCRock: C("#b0a492"),
+      uCAshRock: C("#6d6872"),
       uCAsh: C("#857b70"),
-      uCSand: C("#e0cc98"),
+      uCSand: C("#e6d3a0"),
       uCDirt: C("#9c7b55"),
       uCSnow: C("#f4efe2"),
       uCMud: C("#6e5a40"),
@@ -113,7 +114,7 @@ export function createTerrain(scene: THREE.Scene, world: World, look: Look, qual
   const waterMat = new THREE.ShaderMaterial({
     name: "hm-water",
     vertexShader: WATER_VERT,
-    fragmentShader: waterFrag(look.glsl),
+    fragmentShader: waterFragV2(look.glsl),
     transparent: true,
     side: THREE.DoubleSide,
     defines: { WQ: preset.water },
@@ -153,10 +154,19 @@ export function createTerrain(scene: THREE.Scene, world: World, look: Look, qual
   }
   const frustum = new THREE.Frustum();
   const projView = new THREE.Matrix4();
+  const region = [0, 0, 0, 0];
 
   return {
     group,
     update(ctx: FrameCtx) {
+      // Gloam wash: each beacon region eases back to full colour over ~4 s once its beacon is lit
+      const lit = ctx.quest?.beacons;
+      for (let i = 0; i < 4; i++) {
+        const target = lit && lit[i] ? 1 : 0;
+        region[i] += (target - region[i]) * Math.min(1, ctx.dt * 0.6);
+        if (Math.abs(target - region[i]) < 0.002) region[i] = target;
+        setRegionColor(i as BeaconId, region[i]);
+      }
       const cam = ctx.camera;
       cam.updateMatrixWorld();
       projView.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);

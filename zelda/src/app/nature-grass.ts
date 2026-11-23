@@ -5,7 +5,8 @@ import { clamp01, fbm2, hash2, mulberry32, riverEdge, shaderMat, sstep } from ".
 
 // Grass and wildflowers. Both are procedural fields streamed around the camera in 8 m cells: each cell generates its
 // blades once (deterministic from the cell and the world seed), tiers get sparser with distance, and the vertex shader
-// thins and widens blades smoothly. One instanced draw call per field.
+// thins and widens blades smoothly. One instanced draw call per field. Grass and flowers draw in the main pass only:
+// no shadow casting, and alpha 1 keeps them out of the bloom glow mask.
 
 const STRIDE = 8; // x y z | yaw scale rank tone | cutTime
 const CELL = 8;
@@ -64,6 +65,10 @@ class StreamField {
     this.geo.instanceCount = 0;
     this.mesh = new THREE.Mesh(this.geo, mat);
     this.mesh.frustumCulled = false;
+    this.mesh.castShadow = false;
+    this.mesh.receiveShadow = false;
+    this.mesh.userData.hmNoShadow = true;
+    this.mesh.userData.hmPass = "grass";
     group.add(this.mesh);
   }
 
@@ -300,9 +305,11 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+// Flowers are crossed painted cards (fix 16): two quads with a clump of 3 blossoms on stems. The card texture holds
+// masks, not colors: R petals, G centers, B stems, so one texture serves every palette color.
 const FLOWER_VS = SHARED_VS_HEAD + /* glsl */ `
-attribute float aPart;
-varying float vPart; varying float vT; varying float vIdx; varying vec3 vW; varying float vVar;
+attribute vec2 aUv;
+varying vec2 vUv; varying float vIdx; varying vec3 vW; varying float vVar;
 void main() {
   float yaw = aData.x, sc = aData.y, rank = aData.z;
   float idx = floor(aData.w); float vr = fract(aData.w);
@@ -311,40 +318,32 @@ void main() {
   float vis = clamp((f - rank) * 14.0, 0.0, 1.0);
   if (vis <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
   float gr = aCut > -1000.0 ? mix(0.18, 1.0, smoothstep(0.0, 30.0, uTime - aCut)) : 1.0;
-  float hs = uH * sc * vis * gr;
+  float hs = uH * sc * vis * gr * (1.0 + d * 0.01);
   float cs = cos(yaw), sn = sin(yaw);
   vec2 pv = aPos.xz - uPlayerPos.xz;
   float pd = length(pv);
   float push = (1.0 - smoothstep(0.3, 1.9, pd)) * (1.0 - smoothstep(1.4, 3.2, abs(aPos.y - uPlayerPos.y)));
   vec2 pdir = pv / max(pd, 0.001);
   float sw = nt_sway(aPos.xz + 3.0);
-  float t = aPart < 0.5 ? position.y : 1.0;
-  vec2 off = (nt_wdir() * sw * 0.34 + pdir * push * 0.9) * hs * t * t;
-  float L = t * hs;
-  float dl = length(off);
-  if (dl > L * 0.96) off *= L * 0.96 / max(dl, 0.0001);
-  float y = sqrt(max(L * L - dot(off, off), 0.0));
-  vec3 local;
-  if (aPart < 0.5) {
-    local = vec3(position.x, 0.0, 0.0);
-  } else {
-    float hsz = (1.0 + d * 0.012) * (0.85 + 0.3 * vr) * vis;
-    local = position * hsz * uWidth;
-  }
-  vec3 rl = vec3(local.x * cs + local.z * sn, local.y, -local.x * sn + local.z * cs);
-  vec3 wp = vec3(aPos.x + off.x + rl.x, aPos.y + y + (aPart < 0.5 ? 0.0 : rl.y), aPos.z + off.y + rl.z);
-  vPart = aPart; vT = t; vIdx = idx; vW = wp; vVar = vr;
+  float t = position.y;
+  vec2 off = (nt_wdir() * sw * 0.3 + pdir * push * 0.9) * hs * t * t;
+  vec3 local = vec3(position.x * uWidth * hs, 0.0, position.z * uWidth * hs);
+  vec3 rl = vec3(local.x * cs + local.z * sn, 0.0, -local.x * sn + local.z * cs);
+  vec3 wp = vec3(aPos.x + off.x + rl.x, aPos.y + t * hs, aPos.z + off.y + rl.z);
+  vUv = aUv; vIdx = idx; vW = wp; vVar = vr;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }`;
 
 const FLOWER_FS = /* glsl */ `
-varying float vPart; varying float vT; varying float vIdx; varying vec3 vW; varying float vVar;
-uniform vec3 uPal[6];
+varying vec2 vUv; varying float vIdx; varying vec3 vW; varying float vVar;
+uniform vec3 uPal[6]; uniform sampler2D uCard;
 void main() {
-  vec3 col;
-  if (vPart < 0.5) col = mix(vec3(0.05, 0.16, 0.04), vec3(0.2, 0.36, 0.1), vT);
-  else if (vPart < 1.5) col = uPal[int(vIdx + 0.5)] * (0.9 + 0.2 * vVar);
-  else col = vec3(0.9, 0.62, 0.08);
+  vec4 m = texture2D(uCard, vUv);
+  if (m.a < 0.5) discard;
+  vec3 w = m.rgb / max(m.r + m.g + m.b, 1e-3);
+  vec3 petal = uPal[int(vIdx + 0.5)] * (0.9 + 0.2 * vVar);
+  vec3 stem = mix(vec3(0.07, 0.17, 0.05), vec3(0.22, 0.38, 0.12), vUv.y);
+  vec3 col = w.r * petal + w.g * vec3(0.95, 0.66, 0.1) + w.b * stem;
   vec3 V = normalize(cameraPosition - vW);
   vec3 c = hmShade(col, vec3(0.0, 1.0, 0.0), vW, V);
   c = hmFog(c, length(cameraPosition - vW));
@@ -353,19 +352,60 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
-function bladeGeometry(): THREE.BufferGeometry {
+function flowerCardTexture(): THREE.Texture {
+  const S = 64;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d");
+  if (g) {
+    // (x, head height, radius) per blossom, in card units (x -0.5..0.5, y 0..1 bottom-up)
+    const heads: [number, number, number][] = [[-0.22, 0.66, 0.15], [0.12, 0.92, 0.16], [0.28, 0.5, 0.13]];
+    const X = (x: number) => (x + 0.5) * S, Y = (y: number) => (1 - y) * S;
+    g.strokeStyle = "rgb(0,0,255)";
+    g.lineWidth = 2.2;
+    g.lineCap = "round";
+    for (const [x, y] of heads) {
+      g.beginPath();
+      g.moveTo(X(x * 0.3), Y(0));
+      g.quadraticCurveTo(X(x * 0.8), Y(y * 0.5), X(x), Y(y));
+      g.stroke();
+    }
+    for (const [x, y, r] of heads) {
+      g.fillStyle = "rgb(255,0,0)";
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + x * 3;
+        g.beginPath();
+        g.ellipse(X(x) + Math.cos(a) * r * S * 0.5, Y(y) + Math.sin(a) * r * S * 0.5, r * S * 0.42, r * S * 0.27, a, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.fillStyle = "rgb(0,255,0)";
+      g.beginPath();
+      g.arc(X(x), Y(y), r * S * 0.24, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  return t;
+}
+
+/** 5 triangles, or 3 on low (the bend shows less at phone resolution). */
+function bladeGeometry(low: boolean): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
-  const ys = [0, 0.34, 0.68, 1];
-  const ws = [1, 0.82, 0.5, 0];
+  const ys = low ? [0, 0.5, 1] : [0, 0.34, 0.68, 1];
+  const ws = low ? [1, 0.62, 0] : [1, 0.82, 0.5, 0];
+  const rows = ys.length - 1;
   const pos: number[] = [];
   const idx: number[] = [];
-  for (let i = 0; i < 3; i++) pos.push(-ws[i] * 0.5, ys[i], 0, ws[i] * 0.5, ys[i], 0);
+  for (let i = 0; i < rows; i++) pos.push(-ws[i] * 0.5, ys[i], 0, ws[i] * 0.5, ys[i], 0);
   pos.push(0, 1, 0);
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < rows - 1; i++) {
     const a = i * 2;
     idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
   }
-  idx.push(4, 5, 6);
+  const a = (rows - 1) * 2;
+  idx.push(a, a + 1, a + 2);
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setIndex(idx);
   return g;
@@ -374,31 +414,19 @@ function bladeGeometry(): THREE.BufferGeometry {
 function flowerGeometry(): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   const pos: number[] = [];
-  const part: number[] = [];
+  const uv: number[] = [];
   const idx: number[] = [];
-  const v = (x: number, y: number, z: number, p: number) => { pos.push(x, y, z); part.push(p); return part.length - 1; };
-  const s0 = v(-0.012, 0, 0, 0), s1 = v(0.012, 0, 0, 0), s2 = v(-0.008, 1, 0, 0), s3 = v(0.008, 1, 0, 0);
-  idx.push(s0, s1, s2, s1, s3, s2);
-  const tilt = 0.85;
-  const ct = Math.cos(tilt), st = Math.sin(tilt);
-  const head = (x: number, z: number, lift = 0) => v(x, z * st + lift, z * ct, 1);
-  const c = head(0, 0, 0.002);
-  const ring: number[] = [];
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2, r = i % 2 ? 0.045 : 0.1;
-    ring.push(head(Math.cos(a) * r, Math.sin(a) * r));
+  for (let k = 0; k < 2; k++) {
+    const b = k * 4;
+    const ax = k === 0 ? 1 : 0, az = k === 0 ? 0 : 1;
+    for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      pos.push((u - 0.5) * ax, v, (u - 0.5) * az);
+      uv.push(u, v);
+    }
+    idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
   }
-  for (let i = 0; i < 10; i++) idx.push(c, ring[i], ring[(i + 1) % 10]);
-  const cc = v(0, 0.004 * ct + 0.0, 0.004 * st, 2);
-  const cr: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    const x = Math.cos(a) * 0.026, z = Math.sin(a) * 0.026;
-    cr.push(v(x, z * st + 0.006, z * ct, 2));
-  }
-  for (let i = 0; i < 6; i++) idx.push(cc, cr[i], cr[(i + 1) % 6]);
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("aPart", new THREE.Float32BufferAttribute(part, 1));
+  g.setAttribute("aUv", new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   return g;
 }
@@ -431,6 +459,7 @@ export class GrassSystem {
   private seed: number;
   private edgeW = { w: 0 };
   private blades = 0;
+  private card: THREE.Texture | null = null;
 
   constructor(private group: THREE.Group, private look: Look, private world: World, q: QualityPreset) {
     this.seed = world.seed | 0;
@@ -455,12 +484,12 @@ export class GrassSystem {
       uTip: { value: ["#aecb6e", "#7a9a58", "#cbbd7c", "#9ccf74"].map((c) => new THREE.Color(c)) },
     }, { side: THREE.DoubleSide });
     this.gMat = gMat;
-    this.grass = new StreamField(this.group, bladeGeometry(), gMat, {
+    this.grass = new StreamField(this.group, bladeGeometry(q.grassDensity < 0.2), gMat, {
       edges, th, cap0, maxBlades: Math.ceil(maxBlades), gen: (cx, cz, tier, t, out, cap) => this.genGrass(cx, cz, th[tier] === t ? t : t, out, cap, cap0),
     });
 
     const Df = Math.max(24, D * 0.8);
-    const fcap0 = Math.max(6, Math.round(CELL * CELL * 1.1 * q.grassDensity));
+    const fcap0 = Math.max(4, Math.round(CELL * CELL * 0.7 * q.grassDensity));
     const fd0 = Df * 0.2;
     const fedges = [0.4 * Df, 0.7 * Df, Df + 2];
     const fth = fedges.map((e, i) => (i === 0 ? 1 : thinF(e - CELL * 0.75, fd0, Df, 1.2)));
@@ -470,8 +499,10 @@ export class GrassSystem {
       fmax += (Math.PI * (e * e - lo * lo) / (CELL * CELL) * 1.25 + 10) * fcap0 * fth[i] * 0.45;
     });
     const pal = ["#f6efe0", "#f4cf45", "#e987a8", "#9a84dc", "#f08a3c", "#7fa8e6"].map((c) => new THREE.Color(c));
+    this.card ??= flowerCardTexture();
     const fMat = shaderMat(this.look, FLOWER_VS, FLOWER_FS, {
-      uDist: { value: Df }, uD0: { value: fd0 }, uThin: { value: 1.2 }, uH: { value: 0.72 }, uWidth: { value: 1 }, uPal: { value: pal },
+      uDist: { value: Df }, uD0: { value: fd0 }, uThin: { value: 1.2 }, uH: { value: 0.38 }, uWidth: { value: 0.95 }, uPal: { value: pal },
+      uCard: { value: this.card },
     }, { side: THREE.DoubleSide });
     this.fMat = fMat;
     this.flowers = new StreamField(this.group, flowerGeometry(), fMat, {
@@ -635,6 +666,7 @@ export class GrassSystem {
   dispose(): void {
     this.grass.dispose();
     this.flowers.dispose();
+    this.card?.dispose();
   }
 }
 
